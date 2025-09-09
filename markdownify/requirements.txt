@@ -1,5 +1,0 @@
-html-to-markdown[lxml]
-fastapi
-playwright
-fastapi[standard]
-beautifulsoup4

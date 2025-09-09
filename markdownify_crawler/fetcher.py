@@ -78,7 +78,13 @@ _DEFAULT_USER_AGENT = _USER_AGENTS["desktop_chrome"][0]
 
 # Common screen resolutions for stealth mode
 _VIEWPORT_SIZES = {
-    "desktop": [(1920, 1080), (1366, 768), (1440, 900), (1536, 864), (1280, 720)],
+    "desktop": [
+        (1920, 1080),
+        (1366, 768),
+        (1440, 900),
+        (1536, 864),
+        (1280, 720),
+    ],
     "mobile": [(375, 667), (414, 896), (390, 844), (360, 640), (412, 915)],
 }
 
@@ -442,7 +448,9 @@ async def get_rendered_html(
                 if wait_for_selector:
                     try:
                         await page.wait_for_selector(
-                            wait_for_selector, timeout=timeout_ms, state="attached"
+                            wait_for_selector,
+                            timeout=timeout_ms,
+                            state="attached",
                         )
                     except PlaywrightTimeoutError as e:
                         metrics.errors.append(f"Selector wait timeout: {e}")
@@ -495,10 +503,6 @@ async def get_rendered_html(
                 logger.info(
                     f"HTML captured successfully. Content length: {len(html)} characters, Network requests: {request_count}"
                 )
-
-                # Validate content if validator provided
-                if validate_content and not validate_content(html):
-                    raise ValueError("Content validation failed")
 
                 # Cache the result
                 if cache_dir and cache_path and not cache_hit:
