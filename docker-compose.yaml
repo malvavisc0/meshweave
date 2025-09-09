@@ -1,3 +1,6 @@
+networks:
+  magics:
+
 services:
   markdownify-crawler:
     build:
@@ -12,8 +15,31 @@ services:
       - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
       - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com
       - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
-    ports:
-      - "8081:8000"
+    expose:
+      - 8000
     volumes:
       # Persist HTML cache locally between runs
       - ./.cache:/tmp/markdownify/cache
+    networks:
+      - magics
+  webapp:
+    build:
+      context: .
+      dockerfile: webapp/Dockerfile
+    image: markdownify-webapp:latest
+    container_name: markdownify-webapp
+    hostname: markdownify-webapp
+    restart: always
+    environment:
+      - SQLITE_PATH=/app/app.db
+      - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
+      - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
+      - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com
+      - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
+    volumes:
+      - ./.cache:/tmp/markdownify/cache
+      - ./data:/app
+    ports:
+      - "8080:8080"
+    networks:
+      - magics

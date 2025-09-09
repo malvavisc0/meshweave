@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markdownify-webapp"
+version = "0.1.0"
+description = "Public FastAPI UI for markdownify-crawler"
+requires-python = ">=3.9"
+readme = ""
+authors = [{ name = "Your Name", email = "you@example.com" }]
+dependencies = []  # Runtime deps are installed at image level
+
+[tool.setuptools]
+packages = ["webapp"]
+package-dir = { "webapp" = "." }
+
+[tool.setuptools.package-data]
+webapp = ["templates/*.html"]
+
+[project.scripts]
+markdownify-webapp = "webapp.cli:main"

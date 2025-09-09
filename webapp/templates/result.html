@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Result — {{ domain }}</title>
+  </head>
+  <body>
+    <h1>Result for {{ domain }}</h1>
+    {% if visibility == "private" %}
+      <p>[Private Result]</p>
+    {% endif %}
+
+    {% if status in ["pending", "running"] %}
+      <p>Status: {{ status }}. Processing... Please refresh this page later.</p>
+    {% elif status == "failed" %}
+      <p>Status: failed.</p>
+      <pre>{{ error }}</pre>
+    {% elif status == "succeeded" and payload %}
+      <p>Status: succeeded.</p>
+
+      <h2>Page Metadata</h2>
+      <ul>
+        <li>Title: {{ payload.page.title if payload.page and payload.page.title else "" }}</li>
+        <li>Description: {{ payload.page.description if payload.page and payload.page.description else "" }}</li>
+        <li>OG Title: {{ payload.page.og.title if payload.page and payload.page.og and payload.page.og.title else "" }}</li>
+        <li>OG Description: {{ payload.page.og.description if payload.page and payload.page.og and payload.page.og.description else "" }}</li>
+        <li>OG Image: {{ payload.page.og.image if payload.page and payload.page.og and payload.page.og.image else "" }}</li>
+        <li>OG URL: {{ payload.page.og.url if payload.page and payload.page.og and payload.page.og.url else "" }}</li>
+        <li>Canonical: {{ payload.page.canonical if payload.page and payload.page.canonical else "" }}</li>
+      </ul>
+
+      <h2>Metrics</h2>
+      <h3>Render</h3>
+      <ul>
+        <li>Final URL: {{ payload.metrics.render.final_url if payload.metrics and payload.metrics.render else "" }}</li>
+        <li>Status: {{ payload.metrics.render.response_status if payload.metrics and payload.metrics.render else "" }}</li>
+        <li>Network Requests: {{ payload.metrics.render.network_requests if payload.metrics and payload.metrics.render else "" }}</li>
+        <li>Content Length: {{ payload.metrics.render.content_length if payload.metrics and payload.metrics.render else "" }}</li>
+        <li>Load Time (ms): {{ payload.metrics.render.load_time_ms if payload.metrics and payload.metrics.render else "" }}</li>
+        <li>Cache Hit: {{ payload.metrics.render.cache_hit if payload.metrics and payload.metrics.render else "" }}</li>
+      </ul>
+      <h3>Extraction</h3>
+      <ul>
+        <li>Total Candidates: {{ payload.metrics.extraction.total_candidates if payload.metrics and payload.metrics.extraction else "" }}</li>
+        <li>Unique Total: {{ payload.metrics.extraction.unique_total if payload.metrics and payload.metrics.extraction else "" }}</li>
+        <li>Internal Count: {{ payload.metrics.extraction.internal_count if payload.metrics and payload.metrics.extraction else "" }}</li>
+        <li>External Count: {{ payload.metrics.extraction.external_count if payload.metrics and payload.metrics.extraction else "" }}</li>
+        <li>Base Domain: {{ payload.metrics.extraction.base_domain if payload.metrics and payload.metrics.extraction else "" }}</li>
+        <li>Parse Time (ms): {{ payload.metrics.extraction.parse_time_ms if payload.metrics and payload.metrics.extraction else "" }}</li>
+      </ul>
+
+      {% if payload.emails %}
+      <h2>Emails</h2>
+      <ul>
+        <li>Total Unique: {{ payload.emails.counts.total_unique if payload.emails.counts else 0 }}</li>
+        <li>Total Mentions: {{ payload.emails.counts.total_mentions if payload.emails.counts else 0 }}</li>
+      </ul>
+      {% if payload.emails.unique and payload.emails.unique|length > 0 %}
+      <p>Unique:</p>
+      <ul>
+        {% for e in payload.emails.unique %}
+          <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endif %}
+
+      <h2>Links</h2>
+      <ul>
+        <li>Internal: {{ payload.links.internal|length if payload.links and payload.links.internal else 0 }}</li>
+        <li>External: {{ payload.links.external|length if payload.links and payload.links.external else 0 }}</li>
+      </ul>
+
+      <h2>Markdown</h2>
+      <pre style="white-space: pre-wrap; word-wrap: break-word;">{{ payload.markdown }}</pre>
+    {% else %}
+      <p>No data available.</p>
+    {% endif %}
+
+    <p>JSON API: <a href="{{ api_url }}">{{ api_url }}</a></p>
+    <p><a href="/">Back to Home</a></p>
+  </body>
+</html>
