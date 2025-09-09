@@ -6,14 +6,17 @@ from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlparse
+import os
+import hashlib
+import uuid
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from markdownify_crawler.core import crawl as crawler_run
 from webapp.db import get_session, init_db
-from webapp.models import Crawl
+from webapp.models import Crawl, Submission
 
 
 @asynccontextmanager
@@ -35,6 +38,61 @@ except Exception:
     # Fallback for dev runs
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
+
+# -----------------------------
+# Helper configuration and request metadata utilities
+# -----------------------------
+def _env_bool(name: str, default: bool = False) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    v = str(v).strip().lower()
+    return v in {"1", "true", "yes", "y", "on"}
+
+def _normalize_ip(ip: str) -> str:
+    ip = (ip or "").strip()
+    if ip.startswith("::ffff:"):
+        return ip[len("::ffff:") :]
+    return ip
+
+def _client_ip_from_request(request: Request, trust_proxy: bool) -> str:
+    headers = request.headers
+    ip = ""
+    try:
+        if trust_proxy:
+            xff = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
+            if xff:
+                ip = xff.split(",")[0].strip()
+        if not ip:
+            ip = headers.get("x-real-ip") or headers.get("X-Real-IP") or ""
+        if not ip:
+            # Starlette provides client as (host, port)
+            client = getattr(request, "client", None)
+            if client and getattr(client, "host", None):
+                ip = client.host
+    except Exception:
+        pass
+    return _normalize_ip(ip)
+
+def _hash_ip(ip: str, salt: str) -> str:
+    s = f"{ip}|{salt}".encode("utf-8")
+    return hashlib.sha256(s).hexdigest()
+
+def _collect_headers_subset(request: Request) -> dict:
+    h = request.headers
+    subset = {
+        "user-agent": h.get("user-agent"),
+        "accept-language": h.get("accept-language"),
+        "referer": h.get("referer"),
+        "origin": h.get("origin"),
+        "host": h.get("host"),
+        "x-request-id": h.get("x-request-id"),
+        "x-correlation-id": h.get("x-correlation-id"),
+        "x-forwarded-for": h.get("x-forwarded-for"),
+        "x-real-ip": h.get("x-real-ip"),
+    }
+    # Drop None values
+    return {k: v for k, v in subset.items() if v is not None}
 
 def normalize_domain(url: str) -> str:
     """
@@ -202,10 +260,92 @@ async def submit(
             # start a new run when pending/failed/succeeded
             background_tasks.add_task(run_crawl_task, crawl_id, force_refresh)
 
+    # Capture submission metadata (configurable)
+    if _env_bool("WEBAPP_LOG_REQUESTS", True):
+        trust_proxy = _env_bool("WEBAPP_TRUST_PROXY", False)
+        mask_ip = _env_bool("WEBAPP_MASK_IP", False)
+        log_headers = _env_bool("WEBAPP_LOG_HEADERS", True)
+        log_cookies = _env_bool("WEBAPP_LOG_COOKIES", False)
+        ip_salt = os.getenv("IP_HASH_SALT", "")
+        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+
+        # Client identity
+        client_ip = _client_ip_from_request(request, trust_proxy=trust_proxy)
+        client_ip_hash = _hash_ip(client_ip, ip_salt) if (client_ip and mask_ip) else None
+        raw_client_ip = None if mask_ip else (client_ip or None)
+
+        headers_subset = _collect_headers_subset(request) if log_headers else None
+
+        # Cookies: optionally log, but exclude our own session id to avoid correlating via DB
+        cookies_obj = {}
+        try:
+            if log_cookies and getattr(request, "cookies", None):
+                for k, v in request.cookies.items():
+                    if k == cookie_name:
+                        continue
+                    cookies_obj[k] = v
+        except Exception:
+            cookies_obj = {}
+
+        # Determine status at submit time (after upsert)
+        status_at_submit = "pending"
+        with get_session() as s:
+            row = s.get(Crawl, crawl_id)
+            if row and row.status:
+                status_at_submit = row.status
+
+        # Persist submission log
+        with get_session() as s:
+            s.add(
+                Submission(
+                    crawl_id=crawl_id,
+                    domain=domain,
+                    url_at_submit=url,
+                    visibility=visibility,
+                    force_refresh=force_refresh,
+                    status_at_submit=status_at_submit,
+                    client_ip=raw_client_ip if raw_client_ip else None,
+                    client_ip_hash=client_ip_hash,
+                    forwarded_for=(request.headers.get("x-forwarded-for") or None),
+                    x_real_ip=(request.headers.get("x-real-ip") or None),
+                    user_agent=(request.headers.get("user-agent") or None),
+                    accept_language=(request.headers.get("accept-language") or None),
+                    referer=(request.headers.get("referer") or None),
+                    origin=(request.headers.get("origin") or None),
+                    host=(request.headers.get("host") or None),
+                    session_id=(request.cookies.get(os.getenv("WEBAPP_COOKIE_NAME", "sid")) or None),
+                    headers_json=(json.dumps(headers_subset) if headers_subset else None),
+                    cookies_json=(json.dumps(cookies_obj) if cookies_obj else None),
+                )
+            )
+
+    # Ensure anonymous session cookie exists
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    session_id = request.cookies.get(cookie_name)
+    new_session = False
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        new_session = True
+
+    # Build redirect response and set cookie if new
     if is_public:
-        return RedirectResponse(url=f"/domain/{domain}", status_code=303)
+        resp = RedirectResponse(url=f"/domain/{domain}", status_code=303)
     else:
-        return RedirectResponse(url=f"/private/{crawl_id}", status_code=303)
+        resp = RedirectResponse(url=f"/private/{crawl_id}", status_code=303)
+
+    if new_session:
+        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+        # 365 days
+        resp.set_cookie(
+            key=cookie_name,
+            value=session_id,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True,
+            samesite="lax",
+            secure=cookie_secure,
+        )
+
+    return resp
 
 
 @app.get("/domain/{domain}", response_class=HTMLResponse)

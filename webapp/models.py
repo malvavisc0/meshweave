@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, Index, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Index, String, Text, UniqueConstraint, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -42,4 +42,47 @@ class Crawl(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Submission(Base):
+    __tablename__ = "submissions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    crawl_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    url_at_submit: Mapped[str] = mapped_column(Text, nullable=False)
+    visibility: Mapped[str] = mapped_column(String(10), nullable=False)  # "public" | "private"
+    force_refresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status_at_submit: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    client_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    client_ip_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    forwarded_for: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    x_real_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    accept_language: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    referer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    origin: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    session_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    headers_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cookies_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_submissions_created_at", "created_at"),
+        Index("ix_submissions_domain", "domain"),
+        Index("ix_submissions_client_ip", "client_ip"),
+        Index("ix_submissions_session_id", "session_id"),
     )
