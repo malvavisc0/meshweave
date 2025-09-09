@@ -38,7 +38,7 @@ services:
       - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
     volumes:
       - ./.cache:/tmp/markdownify/cache
-      - ./data:/app
+      - ./data/webapp:/db
     ports:
       - "8080:8080"
     networks:

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, Index, String, Text, UniqueConstraint, Boolean
+from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -54,7 +54,9 @@ class Submission(Base):
     crawl_id: Mapped[str] = mapped_column(String(36), nullable=False)
     domain: Mapped[str] = mapped_column(String(255), nullable=False)
     url_at_submit: Mapped[str] = mapped_column(Text, nullable=False)
-    visibility: Mapped[str] = mapped_column(String(10), nullable=False)  # "public" | "private"
+    visibility: Mapped[str] = mapped_column(
+        String(10), nullable=False
+    )  # "public" | "private"
     force_refresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status_at_submit: Mapped[str] = mapped_column(String(10), nullable=False)
 

@@ -1,18 +1,21 @@
 import asyncio
+import hashlib
+import hmac
 import json
+import os
+import time
+import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlparse
-import os
-import hashlib
-import uuid
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, or_
 
 from markdownify_crawler.core import crawl as crawler_run
 from webapp.db import get_session, init_db
@@ -49,11 +52,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     v = str(v).strip().lower()
     return v in {"1", "true", "yes", "y", "on"}
 
+
 def _normalize_ip(ip: str) -> str:
     ip = (ip or "").strip()
     if ip.startswith("::ffff:"):
         return ip[len("::ffff:") :]
     return ip
+
 
 def _client_ip_from_request(request: Request, trust_proxy: bool) -> str:
     headers = request.headers
@@ -74,9 +79,11 @@ def _client_ip_from_request(request: Request, trust_proxy: bool) -> str:
         pass
     return _normalize_ip(ip)
 
+
 def _hash_ip(ip: str, salt: str) -> str:
     s = f"{ip}|{salt}".encode("utf-8")
     return hashlib.sha256(s).hexdigest()
+
 
 def _collect_headers_subset(request: Request) -> dict:
     h = request.headers
@@ -93,6 +100,44 @@ def _collect_headers_subset(request: Request) -> dict:
     }
     # Drop None values
     return {k: v for k, v in subset.items() if v is not None}
+
+
+def _get_secret_key() -> bytes:
+    key = os.getenv("WEBAPP_SECRET_KEY") or os.getenv("SECRET_KEY") or ""
+    if not key:
+        key = "dev-secret"
+    return key.encode("utf-8")
+
+
+def _make_csrf_token(session_id: str) -> str:
+    ts = str(int(time.time()))
+    data = f"{session_id}:{ts}:submit"
+    mac = hmac.new(_get_secret_key(), data.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{ts}:{mac}"
+
+
+def _verify_csrf_token(
+    token: Optional[str], session_id: str, max_age_seconds: int = 7200
+) -> bool:
+    try:
+        if not token or not session_id:
+            return False
+        parts = token.split(":")
+        if len(parts) != 2:
+            return False
+        ts_s, mac = parts[0], parts[1]
+        ts = int(ts_s)
+        if int(time.time()) - ts > int(max_age_seconds):
+            return False
+        expected = hmac.new(
+            _get_secret_key(),
+            f"{session_id}:{ts_s}:submit".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected, mac)
+    except Exception:
+        return False
+
 
 def normalize_domain(url: str) -> str:
     """
@@ -185,13 +230,37 @@ async def home(request: Request):
             }
         )
 
-    return templates.TemplateResponse(
+    # Ensure session cookie and CSRF token
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    session_id = request.cookies.get(cookie_name)
+    new_session = False
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        new_session = True
+
+    csrf_token = (
+        _make_csrf_token(session_id) if _env_bool("WEBAPP_CSRF_ENABLED", True) else ""
+    )
+
+    resp = templates.TemplateResponse(
         "home.html",
         {
             "request": request,
             "items": items,
+            "csrf_token": csrf_token,
         },
     )
+    if new_session:
+        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+        resp.set_cookie(
+            key=cookie_name,
+            value=session_id,
+            max_age=60 * 60 * 24 * 365,
+            httponly=True,
+            samesite="lax",
+            secure=cookie_secure,
+        )
+    return resp
 
 
 @app.post("/submit")
@@ -200,6 +269,8 @@ async def submit(
     background_tasks: BackgroundTasks,
     url: str = Form(...),
     public: Optional[str] = Form(None),  # checkbox presence => public
+    csrf_token: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),
 ):
     """
     Handle form submission. Create/replace crawl row and start background job.
@@ -217,6 +288,75 @@ async def submit(
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
 
     now = datetime.now(timezone.utc)
+
+    # Security: origin validation, honeypot, CSRF, and simple rate limiting
+    enforce_origin = _env_bool("WEBAPP_ENFORCE_ORIGIN", True)
+    if enforce_origin:
+        host_hdr = (request.headers.get("host") or "").lower()
+        origin_hdr = request.headers.get("origin")
+        referer_hdr = request.headers.get("referer")
+
+        def _host_of(u: Optional[str]) -> str:
+            try:
+                return (urlparse(u or "").netloc or "").lower()
+            except Exception:
+                return ""
+
+        if origin_hdr:
+            if _host_of(origin_hdr) != host_hdr:
+                raise HTTPException(status_code=403, detail="Origin not allowed")
+        elif referer_hdr:
+            if _host_of(referer_hdr) != host_hdr:
+                raise HTTPException(status_code=403, detail="Referer not allowed")
+
+    # Honeypot field to deter bots
+    if (website or "").strip():
+        raise HTTPException(status_code=400, detail="Invalid submission")
+
+    # CSRF validation
+    if _env_bool("WEBAPP_CSRF_ENABLED", True):
+        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+        session_id = request.cookies.get(cookie_name) or ""
+        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
+        if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
+            raise HTTPException(status_code=403, detail="CSRF validation failed")
+
+    # Rate limit per client/session
+    window_sec = int(os.getenv("WEBAPP_RATE_LIMIT_WINDOW_SEC", "60"))
+    max_in_window = int(os.getenv("WEBAPP_RATE_LIMIT_MAX", "10"))
+    trust_proxy = _env_bool("WEBAPP_TRUST_PROXY", False)
+    ip_salt = os.getenv("IP_HASH_SALT", "")
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    client_ip_val = _client_ip_from_request(request, trust_proxy=trust_proxy)
+    client_ip_hashed = _hash_ip(client_ip_val, ip_salt) if client_ip_val else None
+    session_cookie_val = request.cookies.get(cookie_name)
+
+    window_start = now - timedelta(seconds=window_sec)
+    try:
+        from sqlalchemy import and_
+
+        with get_session() as s:
+            q = s.query(Submission).filter(Submission.created_at >= window_start)
+            conds = []
+            if client_ip_val:
+                conds.append(Submission.client_ip == client_ip_val)
+            if client_ip_hashed:
+                conds.append(Submission.client_ip_hash == client_ip_hashed)
+            if session_cookie_val:
+                conds.append(Submission.session_id == session_cookie_val)
+            if conds:
+                q = q.filter(or_(*conds))
+            recent_count = q.count()
+            if recent_count >= max_in_window:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many submissions. Please try again later.",
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        # On error, do not block but proceed (fail-open)
+        pass
 
     # Upsert by domain and visibility
     visibility = "public" if is_public else "private"
@@ -313,7 +453,10 @@ async def submit(
                     referer=(request.headers.get("referer") or None),
                     origin=(request.headers.get("origin") or None),
                     host=(request.headers.get("host") or None),
-                    session_id=(request.cookies.get(os.getenv("WEBAPP_COOKIE_NAME", "sid")) or None),
+                    session_id=(
+                        request.cookies.get(os.getenv("WEBAPP_COOKIE_NAME", "sid"))
+                        or None
+                    ),
                     headers_json=(json.dumps(headers_subset) if headers_subset else None),
                     cookies_json=(json.dumps(cookies_obj) if cookies_obj else None),
                 )

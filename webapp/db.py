@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from .models import Base
 
 # SQLite path configurable via env
-SQLITE_PATH = os.getenv("SQLITE_PATH", "/app.db")
+SQLITE_PATH = os.getenv("SQLITE_PATH", "/db/app.db")
 
 # Ensure parent dir exists when running in container/local
 os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)

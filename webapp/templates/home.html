@@ -9,6 +9,11 @@
 
     <h2>Submit a URL</h2>
     <form action="/submit" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+        <label for="website">Website</label>
+        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+      </div>
       <label for="url">URL:</label>
       <input type="url" id="url" name="url" placeholder="https://example.com" required style="width: 420px;">
       <label for="public">
