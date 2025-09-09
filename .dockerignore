@@ -1,0 +1,137 @@
+# Root .dockerignore
+# Reduce Docker build context size by excluding files/folders not needed at build time.
+
+# =========================
+# VCS
+# =========================
+.git
+**/.git
+.gitignore
+.gitattributes
+.gitmodules
+
+# =========================
+# Editors / OS cruft
+# =========================
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+*.swp
+*.swo
+*.tmp
+*.bak
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+*.env
+.envrc
+*.secret
+secrets
+secrets/**
+config/*.local.*
+*.local.*
+
+# =========================
+# Node.js
+# =========================
+node_modules
+**/node_modules
+.npm
+.npm-cache
+bower_components
+
+# Logs
+logs
+**/logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Coverage / build outputs
+coverage
+.nyc_output
+.next
+.nuxt
+out
+dist
+.tmp
+.temp
+
+# =========================
+# Python
+# =========================
+__pycache__
+**/__pycache__
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv
+.venvs
+venv
+env
+ENV
+
+# Packages / builds
+build
+dist
+.eggs
+*.egg-info
+*.egg
+
+# Testing / coverage / tooling
+.pytest_cache
+.coverage
+.coverage.*
+.cache
+htmlcov
+.mypy_cache
+.ruff_cache
+.tox
+.nox
+.pyre
+.ipynb_checkpoints
+
+# =========================
+# Docker (dev-only files)
+# =========================
+.docker
+docker-data
+docker/*.local.*
+docker-compose.override.yml
+
+# =========================
+# Binaries / archives / misc
+# =========================
+*.pid
+*.pid.lock
+*.out
+*.err
+*.dump
+*.dmp
+
+*.so
+*.dylib
+*.dll
+*.exe
+
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# =========================
+# Temp dirs
+# =========================
+tmp
+temp
