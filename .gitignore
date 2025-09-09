@@ -1,0 +1,138 @@
+# Root .gitignore for mixed Python + Node.js + Docker + VSCode project
+# Customize as needed per your workflow.
+
+# =========================
+# OS / Editor cruft
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+*.swp
+*.swo
+*.tmp
+*.bak
+
+# VSCode / JetBrains
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.sample.json
+.idea/
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.venvs/
+venv/
+env/
+ENV/
+
+# Packages / builds
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Testing / coverage / tooling
+.pytest_cache/
+.coverage
+.coverage.*
+.cache/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.pyre/
+
+# Misc
+.python-version
+.ipynb_checkpoints/
+
+# =========================
+# Node.js
+# =========================
+node_modules/
+.npm/
+.npmrc.local
+.npm-cache/
+bower_components/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Coverage / build outputs
+coverage/
+.nyc_output/
+.next/
+.nuxt/
+out/
+dist/
+.tmp/
+.temp/
+
+# Note: lockfiles are intentionally NOT ignored (commit them based on project policy)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+*.env
+.envrc
+*.secret
+secrets/
+secrets.*.json
+config/*.local.*
+*.local.*
+
+# =========================
+# Docker
+# =========================
+.docker/
+docker-data/
+docker/*.local.*
+docker-compose.override.yml
+
+# =========================
+# Images / binaries / archives (common)
+# =========================
+*.pid
+*.pid.lock
+*.out
+*.err
+*.dump
+*.dmp
+
+*.so
+*.dylib
+*.dll
+*.exe
+
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# =========================
+# Misc project-level
+# =========================
+tmp/
+temp/

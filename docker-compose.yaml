@@ -1,0 +1,19 @@
+services:
+  markdownify-crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: markdownify-crawler:latest
+    container_name: markdownify-crawler
+    hostname: markdownify-crawler
+    restart: always
+    environment:
+      - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
+      - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
+      - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com
+      - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
+    ports:
+      - "8081:8000"
+    volumes:
+      # Persist HTML cache locally between runs
+      - ./.cache:/tmp/markdownify/cache
