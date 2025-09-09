@@ -2,16 +2,16 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from importlib.resources import files as resource_files
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from importlib.resources import files as resource_files
-from pathlib import Path
-from markdownify_crawler.core import crawl as crawler_run
 
+from markdownify_crawler.core import crawl as crawler_run
 from webapp.db import get_session, init_db
 from webapp.models import Crawl
 
@@ -48,7 +48,7 @@ def normalize_domain(url: str) -> str:
         return ""
 
 
-async def run_crawl_task(crawl_id: str) -> None:
+async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
     """
     Background task: execute the crawl and persist results.
     """
@@ -73,6 +73,7 @@ async def run_crawl_task(crawl_id: str) -> None:
             same_domain_only=True,
             include_emails=True,
             deobfuscate_emails=True,
+            disable_cache=force_refresh,
             cache_dir=None,  # env MARKDOWNIFY_CACHE_DIR applies in core
         )
         payload_json = json.dumps(payload)
@@ -161,6 +162,7 @@ async def submit(
 
     # Upsert by domain and visibility
     visibility = "public" if is_public else "private"
+    force_refresh = False
     with get_session() as s:
         existing = (
             s.query(Crawl)
@@ -176,6 +178,8 @@ async def submit(
                 existing.error = None
             existing.updated_at = now
             crawl_id = existing.id
+            # Treat repeated submissions for same domain+visibility as an update -> bypass cache
+            force_refresh = True
         else:
             row = Crawl(
                 url=url,
@@ -196,7 +200,7 @@ async def submit(
         row = s.get(Crawl, crawl_id)
         if row and row.status in {"pending", "failed", "succeeded"}:
             # start a new run when pending/failed/succeeded
-            background_tasks.add_task(run_crawl_task, crawl_id)
+            background_tasks.add_task(run_crawl_task, crawl_id, force_refresh)
 
     if is_public:
         return RedirectResponse(url=f"/domain/{domain}", status_code=303)

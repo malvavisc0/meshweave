@@ -688,6 +688,7 @@ async def crawl(
     deobfuscate_emails: bool = True,
     throttle_ms: int = 0,
     per_page_timeout: float = 15.0,
+    disable_cache: bool = False,
     cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Render a page, convert to markdown, classify links, optionally crawl internal pages, and extract emails.
@@ -715,11 +716,13 @@ async def crawl(
     cache_dir_env = (
         cache_dir or os.getenv("MARKDOWNIFY_CACHE_DIR") or "/tmp/markdownify/cache"
     )
+    # Per-run cache control: when disable_cache=True, bypass HTML cache entirely
+    local_cache_dir = None if disable_cache else cache_dir_env
 
     # Render start page
     html, metrics = await render_page(
         url=url,
-        cache_dir=cache_dir_env,
+        cache_dir=local_cache_dir,
         timeout=30.0,
         progressive=True,
     )
@@ -805,7 +808,7 @@ async def crawl(
                     return_metrics=True,
                     timeout=max(1.0, float(per_page_timeout)),
                     wait_until="domcontentloaded",
-                    cache_dir=cache_dir_env,
+                    cache_dir=local_cache_dir,
                 )
             except Exception:
                 if throttle_ms > 0:

@@ -17,6 +17,7 @@ async def crawl_endpoint(
     deobfuscate_emails: bool = True,
     throttle_ms: int = 0,
     per_page_timeout: float = 15.0,
+    force_refresh: bool = False,
 ):
     """
     HTTP GET /crawl: Render a page, collect metadata and links, optionally crawl internal pages, and extract emails.
@@ -30,6 +31,7 @@ async def crawl_endpoint(
         deobfuscate_emails (bool): If true, deobfuscate "at"/"dot" textual patterns before email extraction. Default: True.
         throttle_ms (int): Delay (milliseconds) between page fetches during crawl. Default: 0.
         per_page_timeout (float): Timeout (seconds) for each crawled page fetch. Default: 15.0.
+        force_refresh (bool): If true, bypass HTML cache (disable_cache) for this run. Default: False.
 
     Returns:
         fastapi.responses.JSONResponse: JSON payload mirroring markdownify_crawler.core.crawl output:
@@ -60,6 +62,7 @@ async def crawl_endpoint(
         deobfuscate_emails=deobfuscate_emails,
         throttle_ms=throttle_ms,
         per_page_timeout=per_page_timeout,
+        disable_cache=force_refresh,
         cache_dir=None,  # core will pick MARKDOWNIFY_CACHE_DIR or default
     )
     return JSONResponse(content=payload)
