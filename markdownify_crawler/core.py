@@ -1,3 +1,13 @@
+"""Core library for markdownify-crawler.
+
+Provides:
+- Rendering via Playwright (through fetcher.get_rendered_html)
+- HTML preprocessing and markdown conversion
+- Link classification (internal/external) with path filtering and domain-ignore support
+- Email extraction (mailto + deobfuscated text)
+- Optional BFS crawl of internal links up to a page limit
+"""
+
 import asyncio
 import os
 import re
@@ -18,11 +28,27 @@ from .fetcher import get_rendered_html
 
 
 def _strip_www(domain: str) -> str:
+    """Return the given domain lowercased with a leading 'www.' stripped if present.
+
+    Parameters:
+        domain (str): Domain name, possibly with 'www.' prefix.
+
+    Returns:
+        str: Normalized domain without 'www.' and in lowercase.
+    """
     d = (domain or "").lower()
     return d[4:] if d.startswith("www.") else d
 
 
 def _domain_of(url: str) -> str:
+    """Extract the normalized domain (netloc) from a URL with 'www.' removed.
+
+    Parameters:
+        url (str): A URL string.
+
+    Returns:
+        str: Lowercased netloc without 'www.' or empty string on failure.
+    """
     try:
         parsed = urlparse(url or "")
         return _strip_www(parsed.netloc or "")
@@ -31,6 +57,14 @@ def _domain_of(url: str) -> str:
 
 
 def _remove_query_and_fragment(href: str) -> str:
+    """Remove query and fragment from an href while keeping scheme, netloc and path.
+
+    Parameters:
+        href (str): Absolute or relative href.
+
+    Returns:
+        str: The href without query (?...) and fragment (#...).
+    """
     try:
         parts = urlsplit(href or "")
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
@@ -39,9 +73,19 @@ def _remove_query_and_fragment(href: str) -> str:
 
 
 def _normalize_abs_url(href: str, base_url: str) -> str:
-    """
-    Resolve href against base_url, drop query and fragment, lowercase host,
-    and normalize trailing slash (remove if not root).
+    """Resolve href against base_url and normalize the result for deduplication.
+
+    - Resolve relative links to absolute using base_url.
+    - Lowercase the scheme and host.
+    - Remove query string and fragment.
+    - Remove trailing slash from path unless it is root ("/").
+
+    Parameters:
+        href (str): The link to resolve (relative or absolute).
+        base_url (str): Base URL against which to resolve relative links.
+
+    Returns:
+        str: A normalized absolute URL string.
     """
     try:
         absolute = urljoin(base_url or "", href or "")
@@ -58,12 +102,30 @@ def _normalize_abs_url(href: str, base_url: str) -> str:
 
 
 def _same_domain(u1: str, u2: str) -> bool:
+    """Return True if two URLs share the same normalized base domain.
+
+    Parameters:
+        u1 (str): First URL.
+        u2 (str): Second URL.
+
+    Returns:
+        bool: True if both normalize to the same domain (with 'www.' stripped).
+    """
     return _domain_of(u1) == _domain_of(u2)
 
 
 def _is_skippable(href: Any) -> bool:
-    """
-    Skip None, empty strings, fragment-only anchors, and non-navigational schemes.
+    """Return True for hrefs that should be skipped during extraction.
+
+    Skips:
+      - None, empty strings, fragment-only anchors ('#...')
+      - Non-navigational schemes: mailto:, javascript:, tel:, data:
+
+    Parameters:
+        href (Any): Raw href attribute value.
+
+    Returns:
+        bool: True if href should be ignored.
     """
     if href is None:
         return True
@@ -86,6 +148,14 @@ _DEFAULT_IGNORE_PATTERNS = [
 
 
 def _compile_ignore_regexes() -> List[re.Pattern]:
+    """Compile path ignore regexes from defaults and MARKDOWNIFY_IGNORE_PATHS.
+
+    Environment:
+        MARKDOWNIFY_IGNORE_PATHS (str): Comma-separated regexes to ignore.
+
+    Returns:
+        list[re.Pattern]: Compiled regex list for path filtering.
+    """
     env_patterns = [
         p.strip()
         for p in (os.getenv("MARKDOWNIFY_IGNORE_PATHS") or "").split(",")
@@ -103,6 +173,14 @@ _IGNORE_REGEXES = _compile_ignore_regexes()
 
 
 def _normalize_domain(d: str) -> str:
+    """Normalize a domain string.
+
+    Parameters:
+        d (str): Domain name or URL netloc.
+
+    Returns:
+        str: Domain lowercased without 'www.' prefix.
+    """
     d = (d or "").strip().lower()
     if d.startswith("www."):
         d = d[4:]
@@ -110,6 +188,14 @@ def _normalize_domain(d: str) -> str:
 
 
 def _compile_ignore_domains() -> Set[str]:
+    """Compile a set of ignored domains from MARKDOWNIFY_IGNORE_DOMAINS.
+
+    Environment:
+        MARKDOWNIFY_IGNORE_DOMAINS (str): Comma-separated domain list.
+
+    Returns:
+        set[str]: A set of normalized ignored domains.
+    """
     raw = os.getenv("MARKDOWNIFY_IGNORE_DOMAINS", "") or ""
     domains = set()
     for part in raw.split(","):
@@ -124,12 +210,17 @@ _IGNORED_DOMAINS: Set[str] = _compile_ignore_domains()
 
 
 def _is_ignored_domain(value: str) -> bool:
-    """
-    Return True if the given URL or domain matches the ignored domain list.
+    """Return True if a URL or domain matches any ignored domain.
 
-    Matching is case-insensitive, 'www.' stripped, and subdomain-suffix matches:
+    - Matching is suffix-based for subdomains:
       - 'github.com' matches 'github.com' and 'docs.github.com'
       - 'play.google.com' matches only that subdomain (not other google.com subdomains)
+
+    Parameters:
+        value (str): A URL or domain string.
+
+    Returns:
+        bool: True if domain matches the ignore list.
     """
     dom = value or ""
     # If 'value' looks like a URL, extract netloc
@@ -148,6 +239,14 @@ def _is_ignored_domain(value: str) -> bool:
 
 
 def _should_ignore_path(path: str) -> bool:
+    """Return True if a URL path should be ignored by compiled regexes.
+
+    Parameters:
+        path (str): URL path (e.g., '/api/auth').
+
+    Returns:
+        bool: True if path matches ignore regexes.
+    """
     p = path or ""
     for rx in _IGNORE_REGEXES:
         if rx.search(p):
@@ -161,13 +260,21 @@ def _should_ignore_path(path: str) -> bool:
 
 
 def _classify_links(soup: BeautifulSoup, base_url: str):
-    """
-    Extract, normalize, and classify links from a BeautifulSoup document.
+    """Extract, normalize, and classify links from a BeautifulSoup document.
+
     - Removes query and fragment.
     - Dedupes by normalized link string.
     - Classifies internal vs external relative to base_url's domain.
     - Skips root paths ('/' and absolute same-domain roots).
     - Applies ignore patterns (api/auth/static/media).
+    - Optionally filters out domains listed in MARKDOWNIFY_IGNORE_DOMAINS from output.
+
+    Parameters:
+        soup (BeautifulSoup): Parsed DOM.
+        base_url (str): Base URL used to determine internal domain.
+
+    Returns:
+        tuple[list[str], list[str], dict[str, Any]]: (internal_links, external_links, extraction_metrics)
     """
     start = time.perf_counter()
     base_domain = _domain_of(base_url)
@@ -243,11 +350,17 @@ _EMAIL_REGEX = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[A-Za-z]{2,})")
 
 
 def _deobfuscate_text(text: str) -> str:
-    """
-    Replace common obfuscations like:
-      name [at] example [dot] com
-      name (at) example (dot) com
-      name at example dot com
+    """Replace common textual obfuscations of email addresses.
+
+    Examples replaced (case-insensitive, with token boundaries):
+      - '[at]', '(at)', '{at}', or standalone ' at ' -> '@'
+      - '[dot]', '(dot)', '{dot}', or standalone ' dot ' -> '.'
+
+    Parameters:
+        text (str): Visible text content from the page.
+
+    Returns:
+        str: Deobfuscated text.
     """
     s = text
     s = re.sub(r"(?i)\b\[\s*at\s*\]|\(\s*at\s*\)|\{\s*at\s*\}", "@", s)
@@ -260,6 +373,14 @@ def _deobfuscate_text(text: str) -> str:
 
 
 def _extract_emails_from_mailto(soup: BeautifulSoup) -> Set[str]:
+    """Extract emails from mailto: links within the provided BeautifulSoup document.
+
+    Parameters:
+        soup (BeautifulSoup): Parsed DOM.
+
+    Returns:
+        set[str]: Lowercased email addresses from mailto: links.
+    """
     emails: Set[str] = set()
     for a in soup.find_all("a"):
         if not isinstance(a, Tag):
@@ -285,6 +406,15 @@ def _extract_emails_from_mailto(soup: BeautifulSoup) -> Set[str]:
 
 
 def _extract_emails_from_text(html: str, deobfuscate: bool) -> Tuple[Set[str], bool]:
+    """Extract emails from visible text content of an HTML string.
+
+    Parameters:
+        html (str): Full page HTML.
+        deobfuscate (bool): Whether to run deobfuscation passes first.
+
+    Returns:
+        tuple[set[str], bool]: (emails, had_obfuscated_text)
+    """
     soup = BeautifulSoup(html, "lxml")
     text = soup.get_text(" ")
     found_obfuscated = False
@@ -304,11 +434,17 @@ def _extract_emails_from_text(html: str, deobfuscate: bool) -> Tuple[Set[str], b
 def extract_emails(
     html: str, deobfuscate: bool = True
 ) -> Tuple[Set[str], List[Dict[str, Any]]]:
-    """
-    Return:
-      - set of unique lowercase emails
-      - list of sources aggregated per (email,url)? No url yet at this stage, so found_as only.
-        The caller can map url when assembling page-level results.
+    """Extract emails from an HTML string by combining mailto and text matches.
+
+    Parameters:
+        html (str): Full page HTML.
+        deobfuscate (bool): If True, attempt to deobfuscate 'at'/'dot' etc.
+
+    Returns:
+        tuple[set[str], list[dict[str, Any]]]:
+            - Unique lowercase emails
+            - Sources list with items {"email": str, "found_as": "mailto"|"text"|"obfuscated"}
+              (Note: caller attaches per-page URL later.)
     """
     sources: List[Dict[str, Any]] = []
 
@@ -331,7 +467,17 @@ def extract_emails(
 
 
 def extract_page_meta(soup: BeautifulSoup) -> Dict[str, Any]:
+    """Extract useful page metadata: title, meta description, Open Graph tags, and canonical link.
+
+    Parameters:
+        soup (BeautifulSoup): Parsed DOM.
+
+    Returns:
+        dict[str, Any]: Dict with keys {"title", "description", "og": {...}, "canonical"}.
+    """
+
     def _safe_meta(s: BeautifulSoup, attr: str, value: str) -> str:
+        """Return a meta tag's content if present, else empty string."""
         try:
             tag = s.find("meta", attrs={attr: value})
             if isinstance(tag, Tag) and tag.has_attr("content"):
@@ -363,6 +509,16 @@ def extract_page_meta(soup: BeautifulSoup) -> Dict[str, Any]:
 
 
 def preprocess_soup(soup: BeautifulSoup, base_url: str, final_url: str) -> BeautifulSoup:
+    """Remove non-content sections, strip images, and normalize anchors to text for robust markdown.
+
+    Parameters:
+        soup (BeautifulSoup): Parsed DOM to be modified in-place.
+        base_url (str): Original input URL.
+        final_url (str): Final URL after redirects (for absolute URL resolution).
+
+    Returns:
+        BeautifulSoup: The modified soup.
+    """
     # Remove non-content and utility sections
     for tag_name in ("nav", "footer", "header", "aside"):
         for node in soup.find_all(tag_name):
@@ -384,8 +540,7 @@ def preprocess_soup(soup: BeautifulSoup, base_url: str, final_url: str) -> Beaut
 
     # common nav/header/menu/footer/social classes
     for node in soup.find_all(
-        True,
-        {"class": re.compile(r"(nav|navbar|menu|header|footer|social)", re.I)},
+        True, {"class": re.compile(r"(nav|navbar|menu|header|footer|social)", re.I)}
     ):
         node.decompose()
 
@@ -447,6 +602,14 @@ def preprocess_soup(soup: BeautifulSoup, base_url: str, final_url: str) -> Beaut
 
 
 def to_markdown(soup: BeautifulSoup) -> str:
+    """Convert a preprocessed BeautifulSoup document to markdown and normalize spacing.
+
+    Parameters:
+        soup (BeautifulSoup): Preprocessed DOM.
+
+    Returns:
+        str: Markdown text.
+    """
     md = convert_to_markdown(source=str(soup), parser="lxml")
 
     # Strip injected HTML comment metadata block at the very top if present
@@ -476,6 +639,17 @@ async def render_page(
     timeout: float = 30.0,
     progressive: bool = True,
 ):
+    """Render a URL with Playwright and return (html, metrics).
+
+    Parameters:
+        url (str): Page URL to render (http/https).
+        cache_dir (str | None): Cache directory override; uses env/default if None.
+        timeout (float): Navigation timeout in seconds.
+        progressive (bool): If True, progressively scroll to trigger lazy-loading.
+
+    Returns:
+        tuple[str, fetcher.RenderMetrics]: Rendered HTML and metrics object.
+    """
     html, metrics = await get_rendered_html(
         url=url,
         progressive_scroll=bool(progressive),
@@ -488,6 +662,14 @@ async def render_page(
 
 
 def soup_from_html(html: str) -> BeautifulSoup:
+    """Create a BeautifulSoup object from an HTML string using the lxml parser.
+
+    Parameters:
+        html (str): HTML source.
+
+    Returns:
+        BeautifulSoup: Parsed DOM.
+    """
     return BeautifulSoup(html, "lxml")
 
 
@@ -508,8 +690,27 @@ async def crawl(
     per_page_timeout: float = 15.0,
     cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Render a page, convert to markdown, classify links, optionally crawl internal pages, and extract emails.
+    """Render a page, convert to markdown, classify links, optionally crawl internal pages, and extract emails.
+
+    Parameters:
+        url (str): Starting URL.
+        crawl_internal (bool): If True, BFS crawl internal links until crawl_max_pages is reached.
+        crawl_max_pages (int): Hard cap on total pages visited, including the start page.
+        same_domain_only (bool): If True, enforce visited pages remain on the starting domain after redirects.
+        include_emails (bool): If True, extract emails on each visited page.
+        deobfuscate_emails (bool): If True, attempt deobfuscation in textual matches.
+        throttle_ms (int): Delay in milliseconds between page fetches.
+        per_page_timeout (float): Timeout for each crawled page fetch, in seconds.
+        cache_dir (str | None): Cache directory override; uses env/default if None.
+
+    Returns:
+        dict[str, Any]: Payload with keys:
+            page (dict): Metadata (title, description, og, canonical)
+            markdown (str): Page content in markdown
+            links (dict): { "internal": list[str], "external": list[str] }
+            metrics (dict): { "render": dict, "extraction": dict }
+            emails (dict, optional): { "unique": list[str], "by_url": dict[str, list[str]], "sources": list[dict], "counts": dict }
+            crawl (dict): { "enabled": bool, "start_url": str, "visited": list[str], "limits": { "max_pages": int }, "reason_stopped": str }
     """
     cache_dir_env = (
         cache_dir or os.getenv("MARKDOWNIFY_CACHE_DIR") or "/tmp/markdownify/cache"
@@ -560,11 +761,7 @@ async def crawl(
             emails_by_url[final_url or url] = sorted(emails0)
         for s in src0:
             email_sources.append(
-                {
-                    "email": s["email"],
-                    "found_as": s["found_as"],
-                    "url": final_url or url,
-                }
+                {"email": s["email"], "found_as": s["found_as"], "url": final_url or url}
             )
 
     # Crawl (BFS) until crawl_max_pages, no depth limit
@@ -639,11 +836,7 @@ async def crawl(
                     emails_by_url[final_u] = sorted(emails_i)
                 for s in src_i:
                     email_sources.append(
-                        {
-                            "email": s["email"],
-                            "found_as": s["found_as"],
-                            "url": final_u,
-                        }
+                        {"email": s["email"], "found_as": s["found_as"], "url": final_u}
                     )
 
             # Expand further links

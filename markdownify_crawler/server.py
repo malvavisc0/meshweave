@@ -19,8 +19,37 @@ async def crawl_endpoint(
     per_page_timeout: float = 15.0,
 ):
     """
-    Render a page, convert to markdown, classify links, optionally crawl internal pages, and extract emails.
-    Delegates to markdownify_crawler.core.crawl and returns the same payload shape.
+    HTTP GET /crawl: Render a page, collect metadata and links, optionally crawl internal pages, and extract emails.
+
+    Query Parameters:
+        url (HttpUrl): Required. Starting HTTP/HTTPS URL.
+        crawl_internal (bool): If true, perform a same-site BFS crawl of internal links up to crawl_max_pages. Default: False.
+        crawl_max_pages (int): Hard cap on total pages visited including the start page. Default: 25.
+        same_domain_only (bool): If true, enforce that visited pages remain on the starting domain after redirects. Default: True.
+        include_emails (bool): If true, extract email addresses on each visited page. Default: True.
+        deobfuscate_emails (bool): If true, deobfuscate "at"/"dot" textual patterns before email extraction. Default: True.
+        throttle_ms (int): Delay (milliseconds) between page fetches during crawl. Default: 0.
+        per_page_timeout (float): Timeout (seconds) for each crawled page fetch. Default: 15.0.
+
+    Returns:
+        fastapi.responses.JSONResponse: JSON payload mirroring markdownify_crawler.core.crawl output:
+            {
+              "page": {...},
+              "markdown": "...",
+              "links": {"internal": [...], "external": [...]},
+              "metrics": {"render": {...}, "extraction": {...}},
+              "emails": {...},    # present if include_emails=True
+              "crawl": {
+                "enabled": bool,
+                "start_url": str,
+                "visited": [...],
+                "limits": {"max_pages": int},
+                "reason_stopped": str
+              }
+            }
+
+    Notes:
+        This endpoint delegates core logic to markdownify_crawler.core.crawl and returns its payload unchanged.
     """
     payload = await crawl(
         url=str(url),

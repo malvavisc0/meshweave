@@ -39,7 +39,19 @@ except ImportError:
 
 @dataclass
 class RenderMetrics:
-    """Performance and diagnostic metrics for HTML rendering."""
+    """Performance and diagnostic metrics for HTML rendering.
+
+    Attributes:
+        load_time: Total seconds from browser launch to HTML capture.
+        network_requests: Number of network requests observed on the page.
+        response_status: HTTP status code of the main navigation response (0 if unavailable).
+        final_url: Final URL after any redirects.
+        content_length: Length in characters of the captured HTML.
+        errors: A list of non-fatal error messages encountered during rendering.
+        retries_used: Number of retries used (currently always 0; reserved for future logic).
+        screenshot_path: Absolute or relative path to the saved screenshot if capture_screenshot=True.
+        cache_hit: True if the HTML was served from cache_dir instead of a fresh render.
+    """
 
     load_time: float
     network_requests: int
@@ -93,14 +105,30 @@ _DEFAULT_BLOCKED_RESOURCES = ["image"]
 
 
 def _get_cache_path(cache_dir: str, url: str, params_hash: str) -> Path:
-    """Generate cache file path for a URL and parameters."""
+    """Generate the cache file path for a URL and rendering parameters.
+
+    Parameters:
+        cache_dir: Directory on disk used to store cached HTML files.
+        url: The canonical URL being rendered.
+        params_hash: Stable hash derived from the subset of parameters that affect rendering.
+
+    Returns:
+        Path object pointing to the HTML cache file within cache_dir.
+    """
     url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
     filename = f"{url_hash}_{params_hash}.html"
     return Path(cache_dir) / filename
 
 
 def _get_params_hash(params: Dict[str, Any]) -> str:
-    """Generate hash of parameters for cache key."""
+    """Generate a short, stable hash for the provided parameter dictionary.
+
+    Parameters:
+        params: Dictionary of parameters that influence the rendering output.
+
+    Returns:
+        12-character hexadecimal MD5 digest string used as part of the cache key.
+    """
     # Sort params to ensure consistent hashing
     param_str = json.dumps(params, sort_keys=True, default=str)
     return hashlib.md5(param_str.encode()).hexdigest()[:12]
@@ -109,7 +137,16 @@ def _get_params_hash(params: Dict[str, Any]) -> str:
 def _select_user_agent(
     device_type: str, custom_ua: Optional[str], use_default: bool = False
 ) -> str:
-    """Select appropriate user agent string."""
+    """Select a User-Agent string based on device type or explicit override.
+
+    Parameters:
+        device_type: One of "desktop_chrome", "desktop_firefox", "mobile_chrome", "mobile_safari".
+        custom_ua: Explicit UA string. If provided, it is returned verbatim.
+        use_default: When True, return the module default UA regardless of device_type.
+
+    Returns:
+        A User-Agent string to use when creating the browser context.
+    """
     if custom_ua:
         return custom_ua
 
@@ -126,7 +163,15 @@ def _select_user_agent(
 def _select_viewport(
     device_type: str, custom_viewport: Optional[Tuple[int, int]]
 ) -> Tuple[int, int]:
-    """Select appropriate viewport size."""
+    """Select an appropriate viewport size.
+
+    Parameters:
+        device_type: Device type used to choose from desktop or mobile presets.
+        custom_viewport: Optional (width, height) override in pixels.
+
+    Returns:
+        Tuple of (width, height) in pixels.
+    """
     if custom_viewport:
         return custom_viewport
 
@@ -135,7 +180,15 @@ def _select_viewport(
 
 
 async def _apply_stealth_measures(page, stealth_mode: bool) -> None:
-    """Apply anti-detection measures to the page."""
+    """Apply simple anti-automation measures to reduce bot detection.
+
+    Parameters:
+        page: Playwright Page instance.
+        stealth_mode: If False, do nothing; when True, injects small JS shims.
+
+    Returns:
+        None. Modifies the page environment in-place.
+    """
     if not stealth_mode:
         return
 
@@ -183,7 +236,15 @@ async def _apply_stealth_measures(page, stealth_mode: bool) -> None:
 
 
 async def _progressive_scroll(page, timeout_ms: int) -> None:
-    """Progressively scroll through the page to trigger lazy loading."""
+    """Progressively scroll through the page to trigger lazy loading.
+
+    Parameters:
+        page: Playwright Page instance.
+        timeout_ms: Maximum time budget in milliseconds used to bound waits.
+
+    Returns:
+        None. Scrolls and waits to encourage content to load.
+    """
     await page.evaluate(
         """
     (async () => {
@@ -236,52 +297,52 @@ async def get_rendered_html(
     cache_dir: Optional[str] = None,
     intercept_requests: Optional[Callable[[Any], None]] = None,
 ) -> Union[str, Tuple[str, RenderMetrics]]:
-    """Return HTML of the given URL as rendered in a real browser with advanced features.
+    """Render a URL in a real browser (Playwright/Chromium) and return the HTML.
 
     Parameters:
-        url: The page URL to load.
-        wait_until: One of {"load", "domcontentloaded", "networkidle"}.
-        timeout: Max time in seconds for navigation/waits before raising TimeoutError.
-        render_wait: Extra time in seconds to wait after initial load.
-        user_agent: Custom User-Agent string. If None, uses device_type to select one.
-        device_type: Device type for UA selection: "desktop_chrome", "desktop_firefox",
-            "mobile_chrome", "mobile_safari". Ignored if user_agent is provided.
-        viewport: (width, height) in pixels. If None, auto-selected based on device_type.
-        extra_headers: Optional dict of additional HTTP headers.
-        wait_for_selector: Optional CSS selector to wait for before capturing HTML.
-        referer: Optional HTTP Referer header for the navigation.
-        ignore_https_errors: If True, proceed even when encountering HTTPS errors.
-        block_resources: List of resource types to block: ["image", "stylesheet", "font",
-            "media", "websocket", "other"]. If None, defaults to blocking images only.
-        scroll_for_lazy_load: If True, scroll to bottom once to trigger lazy loading.
-        progressive_scroll: If True, scroll progressively through page to load all content.
-        stealth_mode: If True, apply anti-detection measures (randomized timing, etc.).
-        execute_js: Optional JavaScript code string or list of strings to execute.
-        max_retries: Number of retries for transient failures.
-        retry_delay: Base delay in seconds between retries (with exponential backoff).
-        capture_screenshot: If True, save a screenshot of the rendered page.
-        screenshot_path: Path to save screenshot. If None, auto-generated.
-        return_metrics: If True, return (html, metrics) tuple instead of just html.
-        validate_content: Optional function to validate captured content.
-        cache_dir: Optional directory to cache responses for faster repeated access.
-        intercept_requests: Optional callback to intercept and modify network requests.
+        url: HTTP(S) URL to navigate to.
+        wait_until: Navigation readiness state. One of {"load", "domcontentloaded", "networkidle"}.
+        timeout: Maximum time in seconds for navigation and waits.
+        render_wait: Extra time in seconds to wait after the page signals ready.
+        user_agent: Explicit User-Agent string to use. If None, derived from device_type.
+        device_type: Preset that influences default UA and viewport: "desktop_chrome",
+            "desktop_firefox", "mobile_chrome", "mobile_safari".
+        viewport: Optional (width, height) pixels. If None, a preset is chosen by device_type.
+        extra_headers: Additional HTTP request headers for the context.
+        wait_for_selector: If provided, waits for the CSS selector to appear before capture.
+        referer: Optional HTTP Referer header for initial navigation.
+        ignore_https_errors: Continue navigation even if HTTPS errors occur.
+        block_resources: Resource types to block for speed, e.g. ["image","stylesheet","font","media"].
+            If None, defaults to ["image"].
+        scroll_for_lazy_load: If True, scrolls once to the bottom to trigger lazy loading.
+        progressive_scroll: If True, scrolls in steps to trigger more thorough lazy loading.
+        stealth_mode: If True, applies small JS shims and launch flags to reduce automation fingerprints.
+        execute_js: JavaScript string or list of strings to execute after load and before capture.
+        capture_screenshot: If True, writes a full-page screenshot to screenshot_path.
+        screenshot_path: Optional path for the screenshot. If None and capture_screenshot=True,
+            a path is generated automatically.
+        return_metrics: If True, returns a (html, RenderMetrics) tuple; otherwise returns only html.
+        validate_content: Optional function to validate captured content (not enforced internally).
+        cache_dir: If provided, the HTML is cached/read under this directory keyed by url and params.
+        intercept_requests: Optional Playwright route handler to inspect/modify network requests.
 
     Returns:
-        String containing rendered HTML, or (html, metrics) tuple if return_metrics=True.
+        If return_metrics is False: the rendered HTML string.
+        If return_metrics is True: a tuple of (html, RenderMetrics).
 
     Raises:
+        ValueError: If url is empty/invalid or wait_until is unsupported.
+        TimeoutError: If navigation/selector waits exceed timeout.
+        RuntimeError: For other rendering failures.
         ImportError: If Playwright is not installed.
-        TimeoutError: If page fails to load within timeout.
-        ValueError: If URL is malformed or validation fails.
-        RuntimeError: For other browser/navigation issues.
 
     Example:
-        html = get_rendered_html(
+        html, metrics = await get_rendered_html(
             "https://example.com",
             device_type="mobile_chrome",
             progressive_scroll=True,
             stealth_mode=True,
-            execute_js="document.querySelector('.load-more').click()",
+            execute_js="document.querySelector('.load-more')?.click()",
             return_metrics=True,
         )
     """

@@ -6,6 +6,19 @@ from typing import Any, Dict
 
 
 def _bool_flag(val: str) -> bool:
+    """Parse a boolean-like CLI flag value.
+
+    Accepts case-insensitive aliases: 1/0, true/false, yes/no, y/n, on/off.
+
+    Parameters:
+        val: Raw CLI string value.
+
+    Returns:
+        bool: Parsed truth value.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value cannot be parsed as boolean.
+    """
     v = str(val).strip().lower()
     if v in ("1", "true", "yes", "y", "on"):
         return True
@@ -15,6 +28,17 @@ def _bool_flag(val: str) -> bool:
 
 
 def _positive_int(val: str) -> int:
+    """Parse a string into a strictly positive integer (> 0).
+
+    Parameters:
+        val: Raw CLI string value.
+
+    Returns:
+        int: Parsed positive integer.
+
+    Raises:
+        argparse.ArgumentTypeError: If value is not an integer or is <= 0.
+    """
     i = int(val)
     if i <= 0:
         raise argparse.ArgumentTypeError("Value must be > 0")
@@ -22,6 +46,17 @@ def _positive_int(val: str) -> int:
 
 
 def _nonneg_int(val: str) -> int:
+    """Parse a string into a non-negative integer (>= 0).
+
+    Parameters:
+        val: Raw CLI string value.
+
+    Returns:
+        int: Parsed non-negative integer.
+
+    Raises:
+        argparse.ArgumentTypeError: If value is not an integer or is < 0.
+    """
     i = int(val)
     if i < 0:
         raise argparse.ArgumentTypeError("Value must be >= 0")
@@ -29,6 +64,17 @@ def _nonneg_int(val: str) -> int:
 
 
 def _positive_float(val: str) -> float:
+    """Parse a string into a strictly positive float (> 0).
+
+    Parameters:
+        val: Raw CLI string value.
+
+    Returns:
+        float: Parsed positive float.
+
+    Raises:
+        argparse.ArgumentTypeError: If value is not a float or is <= 0.
+    """
     f = float(val)
     if f <= 0:
         raise argparse.ArgumentTypeError("Value must be > 0")
@@ -36,6 +82,15 @@ def _positive_float(val: str) -> float:
 
 
 def _write_output(payload: Dict[str, Any], output: str | None) -> None:
+    """Write JSON payload to a file or stdout.
+
+    Parameters:
+        payload: The data to serialize to JSON.
+        output: Optional file path. If None, prints to stdout.
+
+    Returns:
+        None. Writes side effects to filesystem or stdout.
+    """
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     if output:
         with open(output, "w", encoding="utf-8") as f:
@@ -45,6 +100,26 @@ def _write_output(payload: Dict[str, Any], output: str | None) -> None:
 
 
 def main_crawl() -> None:
+    """CLI entry point: Render, extract, and optionally crawl a site.
+
+    Parses arguments and invokes markdownify_crawler.core.crawl, then prints or writes
+    the resulting JSON payload.
+
+    Arguments (parsed from CLI):
+        url (str): Target page URL (http/https).
+        --crawl-internal (bool): Enable internal BFS crawl (default: false).
+        --max-pages (int): Max pages to visit including start page (default: 25).
+        --same-domain (bool): Restrict crawl to same domain (default: true).
+        --include-emails (bool): Extract emails (default: true).
+        --deobfuscate (bool): Deobfuscate textual emails (default: true).
+        --throttle-ms (int): Delay between page fetches (default: 0).
+        --per-page-timeout (float): Timeout per crawled page (default: 15.0).
+        --cache-dir (str|None): Override MARKDOWNIFY_CACHE_DIR (default: env or /tmp/markdownify/cache).
+        --output/-o (str|None): Write JSON to file, else stdout.
+
+    Returns:
+        None. Exits with status 0 on success; may raise on fatal errors.
+    """
     # Lazy import to keep core import time fast in non-CLI contexts
     from .core import crawl
 
@@ -127,6 +202,18 @@ def main_crawl() -> None:
 
 
 def main_serve() -> None:
+    """CLI entry point: Run the packaged FastAPI server with Uvicorn.
+
+    Environment Variables:
+        HOST: Bind address (default: "0.0.0.0").
+        PORT: Port number (default: "8000").
+
+    Behavior:
+        Launches uvicorn with application "markdownify_crawler.server:app".
+
+    Raises:
+        SystemExit: If uvicorn is not installed (suggests installing server extras).
+    """
     try:
         import uvicorn  # type: ignore
     except Exception as e:
