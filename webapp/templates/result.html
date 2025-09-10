@@ -2,10 +2,10 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Result — {{ domain }}</title>
+    <title>Result — {% if canonical_url %}{{ canonical_url }}{% else %}{{ domain }}{{ path }}{% if query %}?{{ query }}{% endif %}{% endif %}</title>
   </head>
   <body>
-    <h1>Result for {{ domain }}</h1>
+    <h1>Result for {% if canonical_url %}{{ canonical_url }}{% else %}{{ domain }}{{ path }}{% if query %}?{{ query }}{% endif %}{% endif %}</h1>
     {% if visibility == "private" %}
       <p>[Private Result]</p>
     {% endif %}

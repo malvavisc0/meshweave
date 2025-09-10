@@ -15,20 +15,26 @@
         <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
       </div>
       <label for="url">URL:</label>
-      <input type="url" id="url" name="url" placeholder="https://example.com" required style="width: 420px;">
+      <input type="url" id="url" name="url" placeholder="https://example.com/path?query=1" required style="width: 520px;">
       <label for="public">
         <input type="checkbox" id="public" name="public" checked>
-        Public (listed on homepage; accessible by domain)
+        Public (listed on homepage; accessible by key)
       </label>
       <button type="submit">Crawl</button>
     </form>
 
-    <h2>Latest 10 Crawled Public Domains</h2>
+    <h2>Latest 10 Public URLs</h2>
     {% if items and items|length > 0 %}
       <ul>
         {% for item in items %}
           <li>
-            <a href="/domain/{{ item.domain }}">{{ item.domain }}</a>
+            <a href="/k/{{ item.key }}">
+              {% if item.canonical_url %}
+                {{ item.canonical_url }}
+              {% else %}
+                {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
+              {% endif %}
+            </a>
             {% if item.title %} — {{ item.title }}{% endif %}
             <br>
             <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>

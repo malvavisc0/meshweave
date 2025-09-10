@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -9,8 +10,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files as resource_files
 from pathlib import Path
-from typing import AsyncGenerator, Optional
-from urllib.parse import urlparse
+from typing import AsyncGenerator, Optional, Tuple, List, Dict
+from urllib.parse import urlparse, parse_qsl, urlencode
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -151,6 +152,57 @@ def normalize_domain(url: str) -> str:
         return ""
 
 
+def _normalize_path(p: str) -> str:
+    p = (p or "").strip()
+    if not p or p == "":
+        return "/"
+    if not p.startswith("/"):
+        p = "/" + p
+    if p != "/" and p.endswith("/"):
+        p = p.rstrip("/")
+    return p
+
+
+def _normalize_query(q: str) -> str:
+    """
+    Parse query, sort by (key, value), preserve duplicates and blanks.
+    Return normalized query string without leading '?'.
+    """
+    try:
+        pairs = parse_qsl(q or "", keep_blank_values=True)
+        pairs.sort(key=lambda kv: (kv[0], kv[1]))
+        return urlencode(pairs, doseq=True)
+    except Exception:
+        return (q or "").lstrip("?").strip()
+
+
+def canonicalize_url(url: str) -> Tuple[str, str, str, str]:
+    """
+    Return (domain, path, query, canonical_url)
+    - domain: normalized by normalize_domain
+    - path: normalized leading '/', trim trailing '/' except root
+    - query: normalized sorted query string (no leading '?')
+    - canonical_url: https://{domain}{path}{?query}
+    """
+    parsed = urlparse(url or "")
+    domain = (parsed.netloc or "").lower()
+    domain = domain[4:] if domain.startswith("www.") else domain
+    path = _normalize_path(parsed.path or "")
+    query = _normalize_query(parsed.query or "")
+    canon = f"https://{domain}{path}"
+    if query:
+        canon += f"?{query}"
+    return domain, path, query, canon
+
+
+def generate_short_key() -> str:
+    """
+    Generate a short, URL-safe key (~22 chars) from UUID4 bytes.
+    """
+    raw = uuid.uuid4().bytes
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
 async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
     """
     Background task: execute the crawl and persist results.
@@ -201,10 +253,10 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """
-    Homepage: submission form and latest 10 public crawled domains.
+    Homepage: submission form and latest 10 public crawled URLs (domain+path+query).
     """
     with get_session() as s:
-        rows = (
+        rows: List[Crawl] = (
             s.query(Crawl)
             .filter(Crawl.visibility == "public")
             .order_by(Crawl.updated_at.desc())
@@ -224,6 +276,10 @@ async def home(request: Request):
         items.append(
             {
                 "domain": r.domain,
+                "path": r.path,
+                "query": r.query,
+                "canonical_url": r.canonical_url,
+                "key": r.key,
                 "title": title,
                 "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
                 "status": r.status,
@@ -274,7 +330,9 @@ async def submit(
 ):
     """
     Handle form submission. Create/replace crawl row and start background job.
-    Redirect to domain or private page immediately.
+    Redirect:
+      - public -> key page (/k/{key})
+      - private -> private page (/private/{id})
     """
     url = (url or "").strip()
     if not (url.startswith("http://") or url.startswith("https://")):
@@ -283,8 +341,8 @@ async def submit(
         )
 
     is_public = bool(public)
-    domain = normalize_domain(url)
-    if not domain:
+    dom, path, query, canon_url = canonicalize_url(url)
+    if not dom:
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
 
     now = datetime.now(timezone.utc)
@@ -358,31 +416,76 @@ async def submit(
         # On error, do not block but proceed (fail-open)
         pass
 
-    # Upsert by domain and visibility
     visibility = "public" if is_public else "private"
     force_refresh = False
+
+    # Upsert behavior:
+    # - public: upsert by (visibility, domain, path, query)
+    # - private: always create a new row (no upsert)
     with get_session() as s:
-        existing = (
-            s.query(Crawl)
-            .filter(Crawl.domain == domain, Crawl.visibility == visibility)
-            .one_or_none()
-        )
-        if existing:
-            existing.url = url
-            # If a run is already in progress, keep it running; else reset to pending
-            if existing.status not in {"running"}:
-                existing.status = "pending"
-                existing.payload_json = None
-                existing.error = None
-            existing.updated_at = now
-            crawl_id = existing.id
-            # Treat repeated submissions for same domain+visibility as an update -> bypass cache
-            force_refresh = True
+        crawl_id = None
+        key_val: Optional[str] = None
+
+        if is_public:
+            existing = (
+                s.query(Crawl)
+                .filter(
+                    Crawl.visibility == "public",
+                    Crawl.domain == dom,
+                    Crawl.path == path,
+                    Crawl.query == query,
+                )
+                .one_or_none()
+            )
+            if existing:
+                existing.url = url
+                existing.canonical_url = canon_url
+                # If a run is already in progress, keep it running; else reset to pending
+                if existing.status not in {"running"}:
+                    existing.status = "pending"
+                    existing.payload_json = None
+                    existing.error = None
+                existing.updated_at = now
+                crawl_id = existing.id
+                key_val = existing.key
+                force_refresh = True
+            else:
+                # Generate unique short key (retry on extremely rare collision)
+                key_try = generate_short_key()
+                dup = s.query(Crawl).filter(Crawl.key == key_try).one_or_none()
+                tries = 0
+                while dup is not None and tries < 3:
+                    key_try = generate_short_key()
+                    dup = s.query(Crawl).filter(Crawl.key == key_try).one_or_none()
+                    tries += 1
+
+                row = Crawl(
+                    url=url,
+                    domain=dom,
+                    path=path,
+                    query=query,
+                    canonical_url=canon_url,
+                    key=key_try,
+                    visibility="public",
+                    status="pending",
+                    payload_json=None,
+                    error=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                s.add(row)
+                s.flush()
+                crawl_id = row.id
+                key_val = row.key
         else:
             row = Crawl(
                 url=url,
-                domain=domain,
-                visibility=visibility,
+                domain=dom,
+                path=path,
+                query=query,
+                canonical_url=canon_url,
+                key=None,  # not exposed for private rows
+                visibility="private",
                 status="pending",
                 payload_json=None,
                 error=None,
@@ -390,7 +493,7 @@ async def submit(
                 updated_at=now,
             )
             s.add(row)
-            s.flush()  # assign ID before commit at context exit
+            s.flush()
             crawl_id = row.id
 
     # Schedule background crawl if not already running
@@ -439,7 +542,7 @@ async def submit(
             s.add(
                 Submission(
                     crawl_id=crawl_id,
-                    domain=domain,
+                    domain=dom,
                     url_at_submit=url,
                     visibility=visibility,
                     force_refresh=force_refresh,
@@ -472,7 +575,10 @@ async def submit(
 
     # Build redirect response and set cookie if new
     if is_public:
-        resp = RedirectResponse(url=f"/domain/{domain}", status_code=303)
+        if not key_val:
+            # Should not happen, but guard
+            raise HTTPException(status_code=500, detail="Key generation failed")
+        resp = RedirectResponse(url=f"/k/{key_val}", status_code=303)
     else:
         resp = RedirectResponse(url=f"/private/{crawl_id}", status_code=303)
 
@@ -491,16 +597,15 @@ async def submit(
     return resp
 
 
-@app.get("/domain/{domain}", response_class=HTMLResponse)
-async def view_public_domain(request: Request, domain: str):
+@app.get("/k/{key}", response_class=HTMLResponse)
+async def view_public_by_key(request: Request, key: str):
     """
-    Public result page by domain.
+    Public result page by short key.
     """
-    dom = (domain or "").lower()
     with get_session() as s:
         row = (
             s.query(Crawl)
-            .filter(Crawl.domain == dom, Crawl.visibility == "public")
+            .filter(Crawl.key == key, Crawl.visibility == "public")
             .one_or_none()
         )
     if not row:
@@ -518,11 +623,55 @@ async def view_public_domain(request: Request, domain: str):
         {
             "request": request,
             "domain": row.domain,
+            "path": row.path,
+            "query": row.query,
+            "canonical_url": row.canonical_url,
             "visibility": row.visibility,
             "status": row.status,
             "error": row.error,
             "payload": payload,
-            "api_url": f"/api/domain/{row.domain}",
+            "api_url": f"/api/k/{row.key}",
+        },
+    )
+
+
+@app.get("/domain/{domain}", response_class=HTMLResponse)
+async def view_domain_index(request: Request, domain: str):
+    """
+    List public results for a domain (not a single result).
+    """
+    dom = (domain or "").lower()
+    with get_session() as s:
+        rows: List[Crawl] = (
+            s.query(Crawl)
+            .filter(Crawl.domain == dom, Crawl.visibility == "public")
+            .order_by(Crawl.updated_at.desc())
+            .limit(100)
+            .all()
+        )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "domain": r.domain,
+                "path": r.path,
+                "query": r.query,
+                "canonical_url": r.canonical_url,
+                "key": r.key,
+                "status": r.status,
+                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+            }
+        )
+
+    return templates.TemplateResponse(
+        "domain_index.html",
+        {
+            "request": request,
+            "domain": dom,
+            "items": items,
         },
     )
 
@@ -549,6 +698,9 @@ async def view_private(request: Request, crawl_id: str):
         {
             "request": request,
             "domain": row.domain,
+            "path": row.path,
+            "query": row.query,
+            "canonical_url": row.canonical_url,
             "visibility": row.visibility,
             "status": row.status,
             "error": row.error,
@@ -561,13 +713,12 @@ async def view_private(request: Request, crawl_id: str):
     return resp
 
 
-@app.get("/api/domain/{domain}")
-async def api_public(domain: str):
-    dom = (domain or "").lower()
+@app.get("/api/k/{key}")
+async def api_public_by_key(key: str):
     with get_session() as s:
         row = (
             s.query(Crawl)
-            .filter(Crawl.domain == dom, Crawl.visibility == "public")
+            .filter(Crawl.key == key, Crawl.visibility == "public")
             .one_or_none()
         )
     if not row:
@@ -575,7 +726,13 @@ async def api_public(domain: str):
 
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
-            content={"status": row.status, "domain": row.domain},
+            content={
+                "status": row.status,
+                "domain": row.domain,
+                "path": row.path,
+                "query": row.query,
+                "key": row.key,
+            },
             status_code=202,
         )
 
@@ -595,7 +752,13 @@ async def api_private(crawl_id: str):
 
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
-            content={"status": row.status, "id": row.id, "domain": row.domain},
+            content={
+                "status": row.status,
+                "id": row.id,
+                "domain": row.domain,
+                "path": row.path,
+                "query": row.query,
+            },
             status_code=202,
         )
 
@@ -608,6 +771,39 @@ async def api_private(crawl_id: str):
     return resp
 
 
+@app.get("/api/domain/{domain}")
+async def api_domain_index(domain: str):
+    """
+    Return list of public entries for a domain with their keys and status.
+    """
+    dom = (domain or "").lower()
+    with get_session() as s:
+        rows: List[Crawl] = (
+            s.query(Crawl)
+            .filter(Crawl.domain == dom, Crawl.visibility == "public")
+            .order_by(Crawl.updated_at.desc())
+            .limit(100)
+            .all()
+        )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "key": r.key,
+                "domain": r.domain,
+                "path": r.path,
+                "query": r.query,
+                "canonical_url": r.canonical_url,
+                "status": r.status,
+                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+            }
+        )
+    return JSONResponse(content={"domain": dom, "items": items})
+
+
 @app.get("/api/status/{crawl_id}")
 async def api_status(crawl_id: str):
     with get_session() as s:
@@ -618,6 +814,8 @@ async def api_status(crawl_id: str):
         content={
             "id": row.id,
             "domain": row.domain,
+            "path": row.path,
+            "query": row.query,
             "visibility": row.visibility,
             "status": row.status,
             "error": row.error,

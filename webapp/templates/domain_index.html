@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Domain Index — {{ domain }}</title>
+  </head>
+  <body>
+    <h1>Public Results for {{ domain }}</h1>
+    <p><a href="/">Back to Home</a></p>
+
+    {% if items and items|length > 0 %}
+      <ul>
+        {% for item in items %}
+          <li>
+            <a href="/k/{{ item.key }}">
+              {% if item.canonical_url %}
+                {{ item.canonical_url }}
+              {% else %}
+                {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
+              {% endif %}
+            </a>
+            <br>
+            <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No public results found for this domain.</p>
+    {% endif %}
+  </body>
+</html>

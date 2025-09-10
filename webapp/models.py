@@ -14,15 +14,33 @@ class Base(DeclarativeBase):
 class Crawl(Base):
     __tablename__ = "crawls"
     __table_args__ = (
-        UniqueConstraint("domain", "visibility", name="uq_crawls_domain_visibility"),
+        # Enforce deduplication at DB-level for public entries
+        UniqueConstraint(
+            "visibility", "domain", "path", "query", name="uq_crawls_vis_dom_path_query"
+        ),
+        # Short public key used for URL access (unique across table, nullable for private)
+        UniqueConstraint("key", name="uq_crawls_key"),
         Index("ix_crawls_updated_at", "updated_at"),
+        Index("ix_crawls_domain", "domain"),
     )
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
+
+    # Original submitted URL (as-is)
     url: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Canonicalized components used for deduplication and display
     domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False, default="/")  # normalized path (leading '/')
+    query: Mapped[str] = mapped_column(Text, nullable=False, default="")  # normalized sorted query string (no leading '?')
+    canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Short URL-safe key for public access (/k/{key}); nullable for private rows
+    key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+    # Visibility and crawl state
     visibility: Mapped[str] = mapped_column(
         String(10), default="public"
     )  # "public" | "private"
