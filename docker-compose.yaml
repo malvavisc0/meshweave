@@ -31,6 +31,7 @@ services:
     hostname: markdownify-webapp
     restart: always
     environment:
+      # - SITE_BASE_URL=
       - SQLITE_PATH=/db/app.db
       - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
       - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/

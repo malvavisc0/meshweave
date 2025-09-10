@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -33,8 +32,12 @@ class Crawl(Base):
 
     # Canonicalized components used for deduplication and display
     domain: Mapped[str] = mapped_column(String(255), nullable=False)
-    path: Mapped[str] = mapped_column(Text, nullable=False, default="/")  # normalized path (leading '/')
-    query: Mapped[str] = mapped_column(Text, nullable=False, default="")  # normalized sorted query string (no leading '?')
+    path: Mapped[str] = mapped_column(
+        Text, nullable=False, default="/"
+    )  # normalized path (leading '/')
+    query: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )  # normalized sorted query string (no leading '?')
     canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Short URL-safe key for public access (/k/{key}); nullable for private rows

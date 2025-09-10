@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -10,16 +9,22 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files as resource_files
 from pathlib import Path
-from typing import AsyncGenerator, Optional, Tuple, List
-from urllib.parse import urlparse, parse_qsl, urlencode
+from typing import AsyncGenerator, List, Optional, Tuple
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse, Response
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from markdownify_crawler.core import crawl as crawler_run
 from sqlalchemy import or_
 
-from markdownify_crawler.core import crawl as crawler_run
 from webapp.db import get_session, init_db
 from webapp.models import Crawl, Submission
 
@@ -46,9 +51,15 @@ except Exception:
 # Static files (for OG image, favicon, etc.)
 try:
     static_dir = resource_files("webapp") / "static"
-    app.mount("/static", StaticFiles(directory=str(static_dir), check_dir=False), name="static")
+    app.mount(
+        "/static", StaticFiles(directory=str(static_dir), check_dir=False), name="static"
+    )
 except Exception:
-    app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static"), check_dir=False), name="static")
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(Path(__file__).parent / "static"), check_dir=False),
+        name="static",
+    )
 
 
 # -----------------------------
@@ -442,8 +453,6 @@ async def submit(
 
     window_start = now - timedelta(seconds=window_sec)
     try:
-        from sqlalchemy import and_
-
         with get_session() as s:
             q = s.query(Submission).filter(Submission.created_at >= window_start)
             conds = []
@@ -681,7 +690,9 @@ async def view_public_by_key(request: Request, key: str):
         pass
 
     page_title = title_from_payload or f"Result for {row.canonical_url}"
-    meta_description = _safe_summary(desc_from_payload) or _safe_summary((payload or {}).get("markdown", ""))
+    meta_description = _safe_summary(desc_from_payload) or _safe_summary(
+        (payload or {}).get("markdown", "")
+    )
 
     abs_page_url = _abs_url(request, f"/k/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
@@ -694,7 +705,9 @@ async def view_public_by_key(request: Request, key: str):
             "name": page_title,
             "description": meta_description,
             "url": abs_page_url,
-            "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
         }
     )
 
@@ -756,7 +769,9 @@ async def view_domain_index(request: Request, domain: str):
     # SEO meta for domain index
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     page_title = f"Public results for {dom} — {site_name}"
-    meta_description = f"Latest crawls for {dom}. View shareable Markdown, links, emails, and metrics."
+    meta_description = (
+        f"Latest crawls for {dom}. View shareable Markdown, links, emails, and metrics."
+    )
     abs_page_url = _abs_url(request, f"/domain/{dom}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
@@ -869,13 +884,17 @@ async def view_all(
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     if dom and st:
         page_title = f"All public results for {dom} ({st}) — {site_name}"
-        meta_description = f"Browse public results for {dom} with status {st}. Filter and paginate."
+        meta_description = (
+            f"Browse public results for {dom} with status {st}. Filter and paginate."
+        )
     elif dom:
         page_title = f"All public results for {dom} — {site_name}"
         meta_description = f"Browse public results for {dom}. Filter and paginate."
     elif st:
         page_title = f"All public results — status {st} — {site_name}"
-        meta_description = f"Browse public results filtered by status {st}. Filter and paginate."
+        meta_description = (
+            f"Browse public results filtered by status {st}. Filter and paginate."
+        )
     else:
         page_title = f"All public results — {site_name}"
         meta_description = "Browse all public results. Filter by domain or status, and paginate through the list."
@@ -1053,9 +1072,15 @@ async def sitemap_xml(request: Request):
     parts = []
     for r in rows:
         loc = f"{base}/k/{r.key}"
-        lastmod = (r.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        lastmod = (r.updated_at or datetime.now(timezone.utc)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         parts.append(f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>")
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(parts) + "\n</urlset>"
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(parts)
+        + "\n</urlset>"
+    )
     return Response(content=xml, media_type="application/xml")
 
 
