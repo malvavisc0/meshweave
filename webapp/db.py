@@ -25,13 +25,30 @@ SessionLocal = sessionmaker(
 
 
 def init_db() -> None:
-    """Create DB tables if they do not exist."""
+    """Create database tables if they do not exist.
+
+    Uses SQLAlchemy metadata to create all tables bound to the configured engine.
+
+    Returns:
+        None
+    """
     Base.metadata.create_all(bind=engine)
 
 
 @contextmanager
 def get_session() -> Iterator[Session]:
-    """Provide a transactional scope around a series of operations."""
+    """Provide a transactional SQLAlchemy session scope.
+
+    Yields:
+        Session: A database session with autoflush/commit disabled.
+
+    Raises:
+        Exception: Re-raises any exception from the block after rolling back.
+
+    Notes:
+        - Commits if the block exits normally.
+        - Rolls back on exception and always closes the session.
+    """
     session: Session = SessionLocal()
     try:
         yield session

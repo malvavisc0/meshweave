@@ -4,6 +4,13 @@ import uvicorn
 
 
 def main() -> None:
+    """Run the webapp server via Uvicorn.
+
+    Parses CLI arguments and starts Uvicorn with the FastAPI application.
+
+    Returns:
+        None
+    """
     parser = argparse.ArgumentParser(description="Run the markdownify webapp server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind")
