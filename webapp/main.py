@@ -10,13 +10,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from importlib.resources import files as resource_files
 from pathlib import Path
-from typing import AsyncGenerator, Optional, Tuple, List, Dict
+from typing import AsyncGenerator, Optional, Tuple, List
 from urllib.parse import urlparse, parse_qsl, urlencode
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import or_
 
 from markdownify_crawler.core import crawl as crawler_run
 from webapp.db import get_session, init_db
@@ -41,6 +42,13 @@ try:
 except Exception:
     # Fallback for dev runs
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# Static files (for OG image, favicon, etc.)
+try:
+    static_dir = resource_files("webapp") / "static"
+    app.mount("/static", StaticFiles(directory=str(static_dir), check_dir=False), name="static")
+except Exception:
+    app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static"), check_dir=False), name="static")
 
 
 # -----------------------------
@@ -195,6 +203,36 @@ def canonicalize_url(url: str) -> Tuple[str, str, str, str]:
     return domain, path, query, canon
 
 
+def _get_base_url(request: Request) -> str:
+    """
+    Base URL used for absolute links and SEO meta.
+    Prefers SITE_BASE_URL env (e.g., https://yourdomain.com), else infers from request.
+    """
+    env_base = os.getenv("SITE_BASE_URL")
+    if env_base:
+        return env_base.rstrip("/")
+    scheme = getattr(request.url, "scheme", None) or "http"
+    host = request.headers.get("host") or "localhost"
+    return f"{scheme}://{host}"
+
+
+def _abs_url(request: Request, path: str) -> str:
+    base = _get_base_url(request)
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{base}{path}"
+
+
+def _safe_summary(text: Optional[str], max_len: int = 160) -> str:
+    try:
+        s = (text or "").strip().replace("\n", " ").replace("\r", " ")
+        if len(s) <= max_len:
+            return s
+        return s[: max_len - 1].rstrip() + "…"
+    except Exception:
+        return ""
+
+
 def generate_short_key() -> str:
     """
     Generate a short, URL-safe key (~22 chars) from UUID4 bytes.
@@ -298,12 +336,25 @@ async def home(request: Request):
         _make_csrf_token(session_id) if _env_bool("WEBAPP_CSRF_ENABLED", True) else ""
     )
 
+    # SEO meta for home
+    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    page_title = f"{site_name} — Turn any page into clean Markdown"
+    meta_description = "Render pages to Markdown, extract emails and links. Share public results with short keys and browse recent URLs."
+    abs_page_url = _abs_url(request, "/")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+
     resp = templates.TemplateResponse(
         "home.html",
         {
             "request": request,
             "items": items,
             "csrf_token": csrf_token,
+            # SEO
+            "site_name": site_name,
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
         },
     )
     if new_session:
@@ -618,6 +669,35 @@ async def view_public_by_key(request: Request, key: str):
         except Exception:
             payload = None
 
+    # SEO/meta computation
+    title_from_payload = ""
+    desc_from_payload = ""
+    try:
+        if payload:
+            pg = payload.get("page") or {}
+            title_from_payload = (pg.get("title") or "").strip()
+            desc_from_payload = (pg.get("description") or "").strip()
+    except Exception:
+        pass
+
+    page_title = title_from_payload or f"Result for {row.canonical_url}"
+    meta_description = _safe_summary(desc_from_payload) or _safe_summary((payload or {}).get("markdown", ""))
+
+    abs_page_url = _abs_url(request, f"/k/{row.key}")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+
+    json_ld = json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": page_title,
+            "description": meta_description,
+            "url": abs_page_url,
+            "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+    )
+
     return templates.TemplateResponse(
         "result.html",
         {
@@ -631,6 +711,13 @@ async def view_public_by_key(request: Request, key: str):
             "error": row.error,
             "payload": payload,
             "api_url": f"/api/k/{row.key}",
+            # SEO/Sharing
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
+            "site_name": site_name,
+            "json_ld": json_ld,
         },
     )
 
@@ -666,12 +753,154 @@ async def view_domain_index(request: Request, domain: str):
             }
         )
 
+    # SEO meta for domain index
+    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    page_title = f"Public results for {dom} — {site_name}"
+    meta_description = f"Latest crawls for {dom}. View shareable Markdown, links, emails, and metrics."
+    abs_page_url = _abs_url(request, f"/domain/{dom}")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+
     return templates.TemplateResponse(
         "domain_index.html",
         {
             "request": request,
             "domain": dom,
             "items": items,
+            # SEO
+            "site_name": site_name,
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
+        },
+    )
+
+
+@app.get("/all", response_class=HTMLResponse)
+async def view_all(
+    request: Request,
+    page: int = 1,
+    page_size: int = 50,
+    domain: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """
+    Paginated listing of public results.
+    Filters:
+      - domain: exact host (lowercase, 'www.' stripped)
+      - status: pending|running|succeeded|failed
+    """
+    # Normalize inputs
+    try:
+        page = int(page)
+    except Exception:
+        page = 1
+    page = 1 if page < 1 else page
+
+    try:
+        page_size = int(page_size)
+    except Exception:
+        page_size = 50
+    page_size = max(10, min(100, page_size))
+
+    dom = None
+    if domain:
+        dom = domain.strip().lower()
+        if dom.startswith("www."):
+            dom = dom[4:]
+
+    allowed_status = {"pending", "running", "succeeded", "failed"}
+    st = status if (status and status in allowed_status) else None
+
+    offset = (page - 1) * page_size
+
+    # Query rows
+    with get_session() as s:
+        q = s.query(Crawl).filter(Crawl.visibility == "public")
+        if dom:
+            q = q.filter(Crawl.domain == dom)
+        if st:
+            q = q.filter(Crawl.status == st)
+        q = q.order_by(Crawl.updated_at.desc())
+        rows: List[Crawl] = q.offset(offset).limit(page_size + 1).all()
+
+    has_next = len(rows) > page_size
+    rows = rows[:page_size]
+    has_prev = page > 1
+
+    # Build items
+    items = []
+    for r in rows:
+        title = ""
+        try:
+            if r.payload_json:
+                payload = json.loads(r.payload_json)
+                title = (payload.get("page") or {}).get("title") or ""
+        except Exception:
+            title = ""
+        items.append(
+            {
+                "key": r.key,
+                "domain": r.domain,
+                "path": r.path,
+                "query": r.query,
+                "canonical_url": r.canonical_url,
+                "title": title,
+                "status": r.status,
+                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+            }
+        )
+
+    # Prev/Next URLs (preserve filters)
+    def _q(page_val: int) -> str:
+        params = {}
+        if dom:
+            params["domain"] = dom
+        if st:
+            params["status"] = st
+        params["page"] = str(page_val)
+        params["page_size"] = str(page_size)
+        return "/all?" + urlencode(params)
+
+    prev_url = _q(page - 1) if has_prev else None
+    next_url = _q(page + 1) if has_next else None
+
+    # SEO
+    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    if dom and st:
+        page_title = f"All public results for {dom} ({st}) — {site_name}"
+        meta_description = f"Browse public results for {dom} with status {st}. Filter and paginate."
+    elif dom:
+        page_title = f"All public results for {dom} — {site_name}"
+        meta_description = f"Browse public results for {dom}. Filter and paginate."
+    elif st:
+        page_title = f"All public results — status {st} — {site_name}"
+        meta_description = f"Browse public results filtered by status {st}. Filter and paginate."
+    else:
+        page_title = f"All public results — {site_name}"
+        meta_description = "Browse all public results. Filter by domain or status, and paginate through the list."
+    abs_page_url = str(request.url)
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+
+    return templates.TemplateResponse(
+        "all.html",
+        {
+            "request": request,
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "has_prev": has_prev,
+            "has_next": has_next,
+            "prev_url": prev_url,
+            "next_url": next_url,
+            "filter_domain": dom or "",
+            "filter_status": st or "",
+            # SEO
+            "site_name": site_name,
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
         },
     )
 
@@ -802,6 +1031,32 @@ async def api_domain_index(domain: str):
             }
         )
     return JSONResponse(content={"domain": dom, "items": items})
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt(request: Request):
+    base = _get_base_url(request)
+    return f"User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n"
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml(request: Request):
+    base = _get_base_url(request)
+    with get_session() as s:
+        rows: List[Crawl] = (
+            s.query(Crawl)
+            .filter(Crawl.visibility == "public")
+            .order_by(Crawl.updated_at.desc())
+            .limit(500)
+            .all()
+        )
+    parts = []
+    for r in rows:
+        loc = f"{base}/k/{r.key}"
+        lastmod = (r.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        parts.append(f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>")
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(parts) + "\n</urlset>"
+    return Response(content=xml, media_type="application/xml")
 
 
 @app.get("/api/status/{crawl_id}")
