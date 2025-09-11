@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from webapp.db import get_session
 from webapp.models import Crawl
+from webapp.utils.logging import log_audit
 from webapp.utils.url import _get_base_url
 
 router = APIRouter()
@@ -51,8 +52,12 @@ async def api_public_by_key(key: str):
 
     try:
         payload = json.loads(row.payload_json)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Stored payload is invalid JSON")
+    except json.JSONDecodeError:
+        try:
+            log_audit("invalid_stored_payload", key=key, crawl_id=row.id)
+        except Exception:
+            pass
+        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     return JSONResponse(content=payload)
 
 
@@ -88,8 +93,12 @@ async def api_private(crawl_id: str):
 
     try:
         payload = json.loads(row.payload_json)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Stored payload is invalid JSON")
+    except json.JSONDecodeError:
+        try:
+            log_audit("invalid_stored_payload", crawl_id=row.id)
+        except Exception:
+            pass
+        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     resp = JSONResponse(content=payload)
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp

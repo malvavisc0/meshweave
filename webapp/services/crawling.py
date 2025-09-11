@@ -6,6 +6,7 @@ from markdownify_crawler.core import crawl as crawler_run
 
 from webapp.db import get_session
 from webapp.models import Crawl
+from webapp.utils.logging import log_audit
 
 
 async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
@@ -21,21 +22,32 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
     Returns:
         None
     """
-    # Mark running and get URL in one session
+    # Attempt to transition to 'running' atomically to avoid races
     url: Optional[str] = None
+    now = datetime.now(timezone.utc)
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if not row:
             return
-        # If another worker already finished it, do nothing
-        if row.status == "succeeded":
-            return
-        row.status = "running"
-        row.updated_at = datetime.now(timezone.utc)
         url = row.url
+        # Only one worker should transition into running; others exit early
+        updated = (
+            s.query(Crawl)
+            .filter(
+                Crawl.id == crawl_id, Crawl.status.in_(["pending", "failed", "succeeded"])
+            )
+            .update({"status": "running", "updated_at": now})
+        )
+        if updated == 0:
+            # Another worker already running; exit
+            return
 
     # Execute crawl
     try:
+        try:
+            log_audit("crawl_started", crawl_id=crawl_id)
+        except Exception:
+            pass
         payload = await crawler_run(
             url=url,
             crawl_internal=False,
@@ -54,6 +66,10 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
             row.status = "succeeded"
             row.error = None
             row.updated_at = datetime.now(timezone.utc)
+        try:
+            log_audit("crawl_succeeded", crawl_id=crawl_id)
+        except Exception:
+            pass
     except Exception as e:
         with get_session() as s:
             row = s.get(Crawl, crawl_id)
@@ -62,3 +78,7 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
             row.status = "failed"
             row.error = str(e)
             row.updated_at = datetime.now(timezone.utc)
+        try:
+            log_audit("crawl_failed", crawl_id=crawl_id)
+        except Exception:
+            pass

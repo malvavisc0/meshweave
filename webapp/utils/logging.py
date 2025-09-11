@@ -1,0 +1,134 @@
+import json
+import logging
+import os
+import sys
+import traceback
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+DEFAULT_LOG_LEVEL = os.getenv("WEBAPP_LOG_LEVEL", "INFO").upper()
+
+
+class JsonFormatter(logging.Formatter):
+    """Minimal JSON log formatter to avoid extra deps."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        base: Dict[str, Any] = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        # Attach standard extras if present
+        for attr in (
+            "request_id",
+            "path",
+            "method",
+            "ip",
+            "user_agent",
+            "actor",
+            "event",
+            "error_code",
+        ):
+            if hasattr(record, attr):
+                base[attr] = getattr(record, attr)  # type: ignore[attr-defined]
+
+        # If record has an 'extra' dict, merge it
+        extra = getattr(record, "extra", None)
+        if isinstance(extra, dict):
+            # prevent overriding core keys unless explicit
+            for k, v in extra.items():
+                if k not in base or k in ("event", "error_code"):
+                    base[k] = v
+
+        # Stack trace on errors if present
+        if record.exc_info:
+            base["exc"] = "".join(traceback.format_exception(*record.exc_info))  # type: ignore[arg-type]
+
+        return json.dumps(base, ensure_ascii=False)
+
+
+def init_logging(level: str = DEFAULT_LOG_LEVEL) -> None:
+    """Initialize root logger with JSON formatter."""
+    root = logging.getLogger()
+    # Avoid duplicating handlers on reload
+    if not root.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(JsonFormatter())
+        root.addHandler(handler)
+    try:
+        root.setLevel(getattr(logging, level, logging.INFO))
+    except Exception:
+        root.setLevel(logging.INFO)
+
+    # Quiet overly noisy server loggers (agnostic: Uvicorn/Gunicorn/Hypercorn) if present
+    noisy_loggers = (
+        "uvicorn.error",
+        "uvicorn.access",
+        "gunicorn.error",
+        "gunicorn.access",
+        "hypercorn.error",
+        "hypercorn.access",
+    )
+    for name in noisy_loggers:
+        logging.getLogger(name).setLevel(logging.INFO)
+
+
+def get_audit_logger() -> logging.Logger:
+    """Return audit logger."""
+    logger = logging.getLogger("audit")
+    logger.propagate = True
+    logger.setLevel(logging.INFO)
+    return logger
+
+
+def log_audit(
+    event: str,
+    *,
+    request: Optional[Request] = None,
+    level: int = logging.INFO,
+    **fields: Any,
+) -> None:
+    """Emit a structured audit log event."""
+    logger = get_audit_logger()
+    extra: Dict[str, Any] = {"event": event}
+    if request is not None:
+        try:
+            extra.update(
+                {
+                    "request_id": getattr(request.state, "request_id", None),
+                    "path": str(request.url.path),
+                    "method": request.method,
+                    "ip": _client_ip(request),
+                    "user_agent": request.headers.get("user-agent"),
+                }
+            )
+        except Exception:
+            pass
+    if fields:
+        extra.update(fields)
+    logger.log(level, event, extra={"extra": extra})
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    # Mirrors minimal logic; full trust-proxy logic is elsewhere
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Assign a per-request UUID and expose via header."""
+
+    async def dispatch(self, request: Request, call_next):
+        rid = str(uuid.uuid4())
+        request.state.request_id = rid
+        response: Response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response

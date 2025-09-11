@@ -2,8 +2,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -65,6 +73,14 @@ class Crawl(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    # Relationship to submissions (enforce delete orphan on Submission when Crawl is deleted)
+    submissions: Mapped[list["Submission"]] = relationship(
+        "Submission",
+        back_populates="crawl",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 
 class Submission(Base):
     __tablename__ = "submissions"
@@ -72,7 +88,12 @@ class Submission(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    crawl_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    crawl_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("crawls.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     domain: Mapped[str] = mapped_column(String(255), nullable=False)
     url_at_submit: Mapped[str] = mapped_column(Text, nullable=False)
     visibility: Mapped[str] = mapped_column(
@@ -102,6 +123,9 @@ class Submission(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+
+    # Relationship back to crawl
+    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="submissions")
 
     __table_args__ = (
         Index("ix_submissions_created_at", "created_at"),

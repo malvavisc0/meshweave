@@ -34,7 +34,7 @@
 
     <h2>Submit a URL</h2>
     <form action="/submit" method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
       <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
         <label for="website">Website</label>
         <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">

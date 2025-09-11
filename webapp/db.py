@@ -2,7 +2,7 @@ import os
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base
@@ -19,6 +19,20 @@ engine = create_engine(
     connect_args={"check_same_thread": False},  # needed for SQLite with threads
     future=True,
 )
+
+
+# Ensure SQLite enforces foreign key constraints
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    except Exception:
+        # If this fails, constraints may not be enforced in dev SQLite
+        pass
+
+
 SessionLocal = sessionmaker(
     bind=engine, autoflush=False, autocommit=False, future=True, expire_on_commit=False
 )

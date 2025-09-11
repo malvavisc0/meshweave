@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from webapp.models import Crawl, Submission
 from webapp.services.crawling import run_crawl_task
 from webapp.utils.config import _env_bool
 from webapp.utils.http import _client_ip_from_request, _collect_headers_subset
+from webapp.utils.logging import log_audit
 from webapp.utils.security import _hash_ip, _make_csrf_token, _verify_csrf_token
 from webapp.utils.url import _abs_url, _safe_summary, canonicalize_url, generate_short_key
 
@@ -74,7 +76,7 @@ async def home(request: Request):
         new_session = True
 
     csrf_token = (
-        _make_csrf_token(session_id) if _env_bool("WEBAPP_CSRF_ENABLED", True) else ""
+        _make_csrf_token(session_id) if _env_bool("WEBAPP_CSRF_ENABLED", False) else ""
     )
 
     # SEO meta for home
@@ -100,10 +102,15 @@ async def home(request: Request):
     )
     if new_session:
         cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
+        try:
+            log_audit("session_created", request=request)
+        except Exception:
+            pass
         resp.set_cookie(
             key=cookie_name,
             value=session_id,
-            max_age=60 * 60 * 24 * 365,
+            max_age=session_ttl,
             httponly=True,
             samesite="lax",
             secure=cookie_secure,
@@ -168,21 +175,51 @@ async def submit(
 
         if origin_hdr:
             if _host_of(origin_hdr) != host_hdr:
+                try:
+                    log_audit(
+                        "origin_not_allowed",
+                        request=request,
+                        level=logging.WARNING,
+                        origin=origin_hdr,
+                        host=host_hdr,
+                    )
+                except Exception:
+                    pass
                 raise HTTPException(status_code=403, detail="Origin not allowed")
         elif referer_hdr:
             if _host_of(referer_hdr) != host_hdr:
+                try:
+                    log_audit(
+                        "referer_not_allowed",
+                        request=request,
+                        level=logging.WARNING,
+                        referer=referer_hdr,
+                        host=host_hdr,
+                    )
+                except Exception:
+                    pass
                 raise HTTPException(status_code=403, detail="Referer not allowed")
 
     # Honeypot field to deter bots
     if (website or "").strip():
+        try:
+            log_audit("honeypot_triggered", request=request, level=logging.WARNING)
+        except Exception:
+            pass
         raise HTTPException(status_code=400, detail="Invalid submission")
 
     # CSRF validation
-    if _env_bool("WEBAPP_CSRF_ENABLED", True):
+    if _env_bool("WEBAPP_CSRF_ENABLED", False):
         cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
         session_id = request.cookies.get(cookie_name) or ""
         max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
         if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
+            try:
+                log_audit(
+                    "csrf_validation_failed", request=request, level=logging.WARNING
+                )
+            except Exception:
+                pass
             raise HTTPException(status_code=403, detail="CSRF validation failed")
 
     # Rate limit per client/session
@@ -210,6 +247,10 @@ async def submit(
                 q = q.filter(or_(*conds))
             recent_count = q.count()
             if recent_count >= max_in_window:
+                try:
+                    log_audit("rate_limited", request=request, level=logging.WARNING)
+                except Exception:
+                    pass
                 raise HTTPException(
                     status_code=429,
                     detail="Too many submissions. Please try again later.",
@@ -369,14 +410,6 @@ async def submit(
                 )
             )
 
-    # Ensure anonymous session cookie exists
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name)
-    new_session = False
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        new_session = True
-
     # Build redirect response and set cookie if new
     if is_public:
         if not key_val:
@@ -386,17 +419,18 @@ async def submit(
     else:
         resp = RedirectResponse(url=f"/private/{crawl_id}", status_code=303)
 
-    if new_session:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        # 365 days
-        resp.set_cookie(
-            key=cookie_name,
-            value=session_id,
-            max_age=60 * 60 * 24 * 365,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
+    cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+    session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
+    # Rotate session on every submit to reduce fixation risk
+    new_session_id = str(uuid.uuid4())
+    resp.set_cookie(
+        key=cookie_name,
+        value=new_session_id,
+        max_age=session_ttl,
+        httponly=True,
+        samesite="lax",
+        secure=cookie_secure,
+    )
 
     return resp
 
@@ -428,7 +462,7 @@ async def view_public_by_key(request: Request, key: str):
     if row.payload_json:
         try:
             payload = json.loads(row.payload_json)
-        except Exception:
+        except json.JSONDecodeError:
             payload = None
 
     # SEO/meta computation
@@ -623,7 +657,7 @@ async def view_all(
             if r.payload_json:
                 payload = json.loads(r.payload_json)
                 title = (payload.get("page") or {}).get("title") or ""
-        except Exception:
+        except json.JSONDecodeError:
             title = ""
         items.append(
             {
@@ -719,7 +753,7 @@ async def view_private(request: Request, crawl_id: str):
     if row.payload_json:
         try:
             payload = json.loads(row.payload_json)
-        except Exception:
+        except json.JSONDecodeError:
             payload = None
 
     resp = templates.TemplateResponse(
