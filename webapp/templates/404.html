@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>{{ page_title or 'Page Not Found' }}</title>
+    {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
+    {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
+
+    <meta property="og:type" content="website">
+    {% if site_name %}<meta property="og:site_name" content="{{ site_name }}">{% endif %}
+    <meta property="og:title" content="{{ page_title or 'Page Not Found' }}">
+    {% if meta_description %}<meta property="og:description" content="{{ meta_description }}">{% endif %}
+    {% if abs_page_url %}<meta property="og:url" content="{{ abs_page_url }}">{% endif %}
+    {% if og_image_url %}<meta property="og:image" content="{{ og_image_url }}">{% endif %}
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ page_title or 'Page Not Found' }}">
+    {% if meta_description %}<meta name="twitter:description" content="{{ meta_description }}">{% endif %}
+    {% if og_image_url %}<meta name="twitter:image" content="{{ og_image_url }}">{% endif %}
+  </head>
+  <body>
+    <nav>
+      <a href="/">Home</a>
+      &nbsp;|&nbsp;
+      <a href="/all">All</a>
+      &nbsp;|&nbsp;
+      <form onsubmit="var v=document.getElementById('nav-domain').value.trim(); if(v){ window.location.href='/domain/'+encodeURIComponent(v.toLowerCase()); } return false;">
+        <label for="nav-domain">Domain:</label>
+        <input type="text" id="nav-domain" name="domain" placeholder="example.com">
+        <button type="submit">Go</button>
+      </form>
+    </nav>
+
+    <h1>404 — Page Not Found</h1>
+    <p>The page you requested was not found.</p>
+    <p><a href="/">Try submitting a URL</a></p>
+  </body>
+</html>

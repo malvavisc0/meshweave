@@ -2,19 +2,19 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>{{ page_title or 'Markdownify Web App' }}</title>
+    <title>{{ page_title or site_name or 'Markdownify Web App' }}</title>
     {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
     {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
 
     <meta property="og:type" content="website">
     {% if site_name %}<meta property="og:site_name" content="{{ site_name }}">{% endif %}
-    <meta property="og:title" content="{{ page_title or 'Markdownify Web App' }}">
+    <meta property="og:title" content="{{ page_title or site_name or 'Markdownify Web App' }}">
     {% if meta_description %}<meta property="og:description" content="{{ meta_description }}">{% endif %}
     {% if abs_page_url %}<meta property="og:url" content="{{ abs_page_url }}">{% endif %}
     {% if og_image_url %}<meta property="og:image" content="{{ og_image_url }}">{% endif %}
 
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ page_title or 'Markdownify Web App' }}">
+    <meta name="twitter:title" content="{{ page_title or site_name or 'Markdownify Web App' }}">
     {% if meta_description %}<meta name="twitter:description" content="{{ meta_description }}">{% endif %}
     {% if og_image_url %}<meta name="twitter:image" content="{{ og_image_url }}">{% endif %}
   </head>
@@ -30,7 +30,7 @@
         <button type="submit">Go</button>
       </form>
     </nav>
-    <h1>Markdownify Web App</h1>
+    <h1>{{ site_name or 'Markdownify Web App' }}</h1>
 
     <h2>Submit a URL</h2>
     <form action="/submit" method="post">

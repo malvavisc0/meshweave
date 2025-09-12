@@ -37,6 +37,7 @@ services:
       - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
       - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com,apps.apple.com
       - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
+      - SITE_NAME=Markdownify
     volumes:
       - ./.cache:/tmp/markdownify/cache
       - ./data/webapp:/db
