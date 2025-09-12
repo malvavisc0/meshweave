@@ -142,7 +142,7 @@ async def submit(
         website (Optional[str]): Honeypot field; any non-empty value is rejected.
 
     Returns:
-        RedirectResponse: 303 redirect to /k/{key} for public or /private/{id} for private.
+        RedirectResponse: 303 redirect to /analysis/public/{key} for public or /analysis/private/{id} for private.
 
     Raises:
         HTTPException: 400 invalid URL or honeypot; 403 origin/CSRF violations; 429 rate limiting; 500 key generation failure.
@@ -415,9 +415,9 @@ async def submit(
         if not key_val:
             # Should not happen, but guard
             raise HTTPException(status_code=500, detail="Key generation failed")
-        resp = RedirectResponse(url=f"/k/{key_val}", status_code=303)
+        resp = RedirectResponse(url=f"/analysis/public/{key_val}", status_code=303)
     else:
-        resp = RedirectResponse(url=f"/private/{crawl_id}", status_code=303)
+        resp = RedirectResponse(url=f"/analysis/private/{crawl_id}", status_code=303)
 
     cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
     session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
@@ -435,7 +435,7 @@ async def submit(
     return resp
 
 
-@router.get("/k/{key}", response_class=HTMLResponse)
+@router.get("/analysis/public/{key}", response_class=HTMLResponse)
 async def view_public_by_key(request: Request, key: str):
     """Public result page by short key.
 
@@ -481,7 +481,7 @@ async def view_public_by_key(request: Request, key: str):
         (payload or {}).get("markdown", "")
     )
 
-    abs_page_url = _abs_url(request, f"/k/{row.key}")
+    abs_page_url = _abs_url(request, f"/analysis/public/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
 
@@ -510,7 +510,7 @@ async def view_public_by_key(request: Request, key: str):
             "status": row.status,
             "error": row.error,
             "payload": payload,
-            "api_url": f"/api/k/{row.key}",
+            "api_url": f"/api/analysis/public/{row.key}",
             # SEO/Sharing
             "page_title": page_title,
             "meta_description": meta_description,
@@ -730,7 +730,7 @@ async def view_all(
     )
 
 
-@router.get("/private/{crawl_id}", response_class=HTMLResponse)
+@router.get("/analysis/private/{crawl_id}", response_class=HTMLResponse)
 async def view_private(request: Request, crawl_id: str):
     """Private result page by crawl UUID.
 
@@ -768,7 +768,7 @@ async def view_private(request: Request, crawl_id: str):
             "status": row.status,
             "error": row.error,
             "payload": payload,
-            "api_url": f"/api/private/{row.id}",
+            "api_url": f"/api/analysis/private/{row.id}",
         },
     )
     # Prevent indexing of private results

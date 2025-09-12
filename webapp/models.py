@@ -48,7 +48,7 @@ class Crawl(Base):
     )  # normalized sorted query string (no leading '?')
     canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Short URL-safe key for public access (/k/{key}); nullable for private rows
+    # Short URL-safe key for public access (/analysis/public/{key}); nullable for private rows
     key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 
     # Visibility and crawl state

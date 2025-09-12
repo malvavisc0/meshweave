@@ -13,7 +13,7 @@ from webapp.utils.url import _get_base_url
 router = APIRouter()
 
 
-@router.get("/api/k/{key}")
+@router.get("/api/analysis/public/{key}")
 async def api_public_by_key(key: str):
     """Public API for a crawl addressed by short key.
 
@@ -61,7 +61,7 @@ async def api_public_by_key(key: str):
     return JSONResponse(content=payload)
 
 
-@router.get("/api/private/{crawl_id}")
+@router.get("/api/analysis/private/{crawl_id}")
 async def api_private(crawl_id: str):
     """Private API for a crawl addressed by UUID.
 
@@ -177,7 +177,7 @@ async def sitemap_xml(request: Request):
         )
     parts = []
     for r in rows:
-        loc = f"{base}/k/{r.key}"
+        loc = f"{base}/analysis/public/{r.key}"
         lastmod = (r.updated_at or datetime.now(timezone.utc)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
