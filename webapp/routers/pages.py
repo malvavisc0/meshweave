@@ -8,7 +8,7 @@ from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from webapp.db import get_session
 from webapp.infra import templates
@@ -527,7 +527,13 @@ async def view_public_by_key(request: Request, key: str):
 
 
 @router.get("/domain/{domain}", response_class=HTMLResponse)
-async def view_domain_index(request: Request, domain: str):
+async def view_domain_index(
+    request: Request,
+    domain: str,
+    page_size: int = 50,
+    cursor: Optional[str] = None,
+    dir: Optional[str] = "next",
+):
     """List public results for a given domain.
 
     Args:
@@ -540,20 +546,63 @@ async def view_domain_index(request: Request, domain: str):
     Raises:
         HTTPException: 404 if no public results exist for the domain.
     """
+    # Normalize inputs
     dom = (domain or "").lower()
-    with get_session() as s:
-        rows: List[Crawl] = (
-            s.query(Crawl)
-            .filter(Crawl.domain == dom, Crawl.visibility == "public")
-            .order_by(Crawl.updated_at.desc())
-            .limit(100)
-            .all()
-        )
-    if not rows:
-        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        page_size = int(page_size)
+    except Exception:
+        page_size = 50
+    if page_size not in (25, 50, 100):
+        page_size = 50
 
+    direction = (dir or "next").lower()
+    if direction not in ("next", "prev"):
+        direction = "next"
+
+    # Parse cursor "epoch:id"
+    cursor_ts = None
+    cursor_id = None
+    if cursor:
+        try:
+            parts = cursor.split(":", 1)
+            cursor_ts = datetime.fromtimestamp(int(parts[0]), tz=timezone.utc)
+            cursor_id = parts[1]
+        except Exception:
+            cursor_ts = None
+            cursor_id = None
+
+    # Query rows with keyset filters
+    with get_session() as s:
+        q = s.query(Crawl).filter(Crawl.domain == dom, Crawl.visibility == "public")
+        if cursor_ts and cursor_id:
+            if direction == "next":
+                q = q.filter(
+                    or_(
+                        Crawl.updated_at < cursor_ts,
+                        and_(Crawl.updated_at == cursor_ts, Crawl.id < cursor_id),
+                    )
+                ).order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+            else:
+                q = q.filter(
+                    or_(
+                        Crawl.updated_at > cursor_ts,
+                        and_(Crawl.updated_at == cursor_ts, Crawl.id > cursor_id),
+                    )
+                ).order_by(Crawl.updated_at.asc(), Crawl.id.asc())
+        else:
+            q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+        rows_db: List[Crawl] = q.limit(page_size + 1).all()
+
+    if direction == "prev" and cursor_ts and cursor_id:
+        if len(rows_db) > page_size:
+            rows_db = rows_db[-page_size:]
+        rows_dom = list(reversed(rows_db))
+    else:
+        rows_dom = rows_db[:page_size]
+
+    # Build items
     items = []
-    for r in rows:
+    for r in rows_dom:
         items.append(
             {
                 "domain": r.domain,
@@ -566,6 +615,27 @@ async def view_domain_index(request: Request, domain: str):
             }
         )
 
+    # Build cursors and URLs
+    def _cursor_of(row: Crawl) -> str:
+        ts = int((row.updated_at or datetime.now(timezone.utc)).timestamp())
+        return f"{ts}:{row.id}"
+
+    prev_url = None
+    next_url = None
+    if rows_dom:
+        first = rows_dom[0]
+        last = rows_dom[-1]
+        base_params = {"page_size": str(page_size)}
+        prev_params = dict(base_params)
+        prev_params["cursor"] = _cursor_of(first)
+        prev_params["dir"] = "prev"
+        prev_url = f"/domain/{dom}?" + urlencode(prev_params)
+
+        next_params = dict(base_params)
+        next_params["cursor"] = _cursor_of(last)
+        next_params["dir"] = "next"
+        next_url = f"/domain/{dom}?" + urlencode(next_params)
+
     # SEO meta for domain index
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     page_title = f"Public results for {dom} — {site_name}"
@@ -573,6 +643,10 @@ async def view_domain_index(request: Request, domain: str):
         f"Latest crawls for {dom}. View shareable Markdown, links, emails, and metrics."
     )
     abs_page_url = _abs_url(request, f"/domain/{dom}")
+
+    # Absolute prev/next for link rel
+    abs_prev_url = _abs_url(request, prev_url) if prev_url else None
+    abs_next_url = _abs_url(request, next_url) if next_url else None
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
     return templates.TemplateResponse(
@@ -581,6 +655,13 @@ async def view_domain_index(request: Request, domain: str):
             "request": request,
             "domain": dom,
             "items": items,
+            "page_size": page_size,
+            "has_prev": True if prev_url else False,
+            "has_next": True if next_url else False,
+            "prev_url": prev_url,
+            "next_url": next_url,
+            "abs_prev_url": abs_prev_url,
+            "abs_next_url": abs_next_url,
             # SEO
             "site_name": site_name,
             "page_title": page_title,
@@ -598,6 +679,8 @@ async def view_all(
     page_size: int = 50,
     domain: Optional[str] = None,
     status: Optional[str] = None,
+    cursor: Optional[str] = None,
+    dir: Optional[str] = "next",
 ):
     """Paginated listing of public results with optional filters.
 
@@ -615,18 +698,14 @@ async def view_all(
     Returns:
         HTMLResponse: Rendered list page.
     """
-    # Normalize inputs
-    try:
-        page = int(page)
-    except Exception:
-        page = 1
-    page = 1 if page < 1 else page
-
+    # Normalize inputs (keyset pagination)
     try:
         page_size = int(page_size)
     except Exception:
         page_size = 50
-    page_size = max(10, min(100, page_size))
+    # Standardize to a small set for UX/caching
+    if page_size not in (25, 50, 100):
+        page_size = 50
 
     dom = None
     if domain:
@@ -637,21 +716,74 @@ async def view_all(
     allowed_status = {"pending", "running", "succeeded", "failed"}
     st = status if (status and status in allowed_status) else None
 
-    offset = (page - 1) * page_size
+    direction = (dir or "next").lower()
+    if direction not in ("next", "prev"):
+        direction = "next"
 
-    # Query rows
+    # Parse cursor of form "epoch:id"
+    cursor_ts = None
+    cursor_id = None
+    if cursor:
+        try:
+            parts = cursor.split(":", 1)
+            cursor_ts = datetime.fromtimestamp(int(parts[0]), tz=timezone.utc)
+            cursor_id = parts[1]
+        except Exception:
+            cursor_ts = None
+            cursor_id = None
+
+    # Query rows with keyset filters
     with get_session() as s:
         q = s.query(Crawl).filter(Crawl.visibility == "public")
         if dom:
             q = q.filter(Crawl.domain == dom)
         if st:
             q = q.filter(Crawl.status == st)
-        q = q.order_by(Crawl.updated_at.desc())
-        rows: List[Crawl] = q.offset(offset).limit(page_size + 1).all()
 
-    has_next = len(rows) > page_size
-    rows = rows[:page_size]
-    has_prev = page > 1
+        if cursor_ts and cursor_id:
+            if direction == "next":
+                # Older than cursor (since we order DESC by default)
+                q = q.filter(
+                    or_(
+                        Crawl.updated_at < cursor_ts,
+                        and_(Crawl.updated_at == cursor_ts, Crawl.id < cursor_id),
+                    )
+                )
+                q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+            else:
+                # Newer than cursor, fetch ASC then reverse for display
+                q = q.filter(
+                    or_(
+                        Crawl.updated_at > cursor_ts,
+                        and_(Crawl.updated_at == cursor_ts, Crawl.id > cursor_id),
+                    )
+                )
+                q = q.order_by(Crawl.updated_at.asc(), Crawl.id.asc())
+        else:
+            q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+
+        rows_db: List[Crawl] = q.limit(page_size + 1).all()
+
+    # Build current page items and determine cursors
+    has_next = False
+    has_prev = False
+
+    if direction == "prev" and cursor_ts and cursor_id:
+        # rows_db are in ASC (newer first) for 'prev' fetch; keep the newest 'page_size'
+        if len(rows_db) > page_size:
+            has_prev = True  # there are even newer pages before this
+            rows_db = rows_db[-page_size:]
+        # reverse to display DESC
+        rows = list(reversed(rows_db))
+        # On any non-first page, prev should be offered
+        has_prev = True
+        # Compute has_next (older pages) conservatively: if we have any items, offer next
+        has_next = True if rows else False
+    else:
+        # direction 'next' or first load
+        has_next = len(rows_db) > page_size
+        rows = rows_db[:page_size]
+        has_prev = True if cursor_ts and cursor_id else False
 
     # Build items
     items = []
@@ -676,19 +808,34 @@ async def view_all(
             }
         )
 
-    # Prev/Next URLs (preserve filters)
-    def _q(page_val: int) -> str:
-        params = {}
-        if dom:
-            params["domain"] = dom
-        if st:
-            params["status"] = st
-        params["page"] = str(page_val)
-        params["page_size"] = str(page_size)
-        return "/all?" + urlencode(params)
+    # Build prev/next URLs using first/last item cursors
+    def _cursor_of(row: Crawl) -> str:
+        ts = int((row.updated_at or datetime.now(timezone.utc)).timestamp())
+        return f"{ts}:{row.id}"
 
-    prev_url = _q(page - 1) if has_prev else None
-    next_url = _q(page + 1) if has_next else None
+    prev_url = None
+    next_url = None
+    if items:
+        first = rows[0]
+        last = rows[-1]
+        base_params = {}
+        if dom:
+            base_params["domain"] = dom
+        if st:
+            base_params["status"] = st
+        base_params["page_size"] = str(page_size)
+
+        # Prev points to newer items than 'first'
+        prev_params = dict(base_params)
+        prev_params["cursor"] = _cursor_of(first)
+        prev_params["dir"] = "prev"
+        prev_url = "/all?" + urlencode(prev_params)
+
+        # Next points to older items than 'last'
+        next_params = dict(base_params)
+        next_params["cursor"] = _cursor_of(last)
+        next_params["dir"] = "next"
+        next_url = "/all?" + urlencode(next_params)
 
     # SEO
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
@@ -708,16 +855,14 @@ async def view_all(
     else:
         page_title = f"All public results — {site_name}"
         meta_description = "Browse all public results. Filter by domain or status, and paginate through the list."
-    # Canonical: keep domain/status; omit page & page_size when page == 1
+
+    # Canonical: keep domain/status only; exclude cursor/page_size
     canonical_params = {}
     if dom:
         canonical_params["domain"] = dom
     if st:
         canonical_params["status"] = st
     canonical_path = "/all"
-    if page > 1:
-        canonical_params["page"] = str(page)
-        canonical_params["page_size"] = str(page_size)
     if canonical_params:
         canonical_path = canonical_path + "?" + urlencode(canonical_params)
     abs_page_url = _abs_url(request, canonical_path)
@@ -735,8 +880,8 @@ async def view_all(
             "items": items,
             "page": page,
             "page_size": page_size,
-            "has_prev": has_prev,
-            "has_next": has_next,
+            "has_prev": has_prev if prev_url else False,
+            "has_next": has_next if next_url else False,
             "prev_url": prev_url,
             "next_url": next_url,
             "abs_prev_url": abs_prev_url,

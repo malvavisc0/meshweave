@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from markdownify_crawler.core import crawl as crawler_run
+
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.logging import log_audit

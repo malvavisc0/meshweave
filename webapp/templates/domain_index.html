@@ -6,6 +6,8 @@
     <title>{{ page_title or ('Domain Index — ' ~ domain) }}</title>
     {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
     {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
+    {% if abs_prev_url %}<link rel="prev" href="{{ abs_prev_url }}">{% endif %}
+    {% if abs_next_url %}<link rel="next" href="{{ abs_next_url }}">{% endif %}
 
     <meta property="og:type" content="website">
     {% if site_name %}<meta property="og:site_name" content="{{ site_name }}">{% endif %}
@@ -34,6 +36,16 @@
     <h1>Public Results for {{ domain }}</h1>
     <p><a href="/">Back to Home</a></p>
 
+    <form method="get" action="/domain/{{ domain }}" style="margin-bottom:12px;">
+      <label for="f-page-size">Page size:</label>
+      <select id="f-page-size" name="page_size">
+        <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
+        <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
+        <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
+      </select>
+      <button type="submit">Apply</button>
+    </form>
+
     {% if items and items|length > 0 %}
       <ul>
         {% for item in items %}
@@ -50,6 +62,20 @@
           </li>
         {% endfor %}
       </ul>
+
+      <div style="margin-top:12px;">
+        {% if has_prev %}
+          <a href="{{ prev_url }}">&larr; Prev</a>
+        {% else %}
+          <span style="color:#999;">&larr; Prev</span>
+        {% endif %}
+        &nbsp;&nbsp;
+        {% if has_next %}
+          <a href="{{ next_url }}">Next &rarr;</a>
+        {% else %}
+          <span style="color:#999;">Next &rarr;</span>
+        {% endif %}
+      </div>
     {% else %}
       <p>No public results found for this domain.</p>
     {% endif %}
