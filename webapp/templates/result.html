@@ -40,6 +40,12 @@
         <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener">Post on X</a> •
         <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener">Share on LinkedIn</a> •
         <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy link</a>
+        <form method="post" action="/submit" style="display:inline-block; margin-left:8px;">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+          <input type="hidden" name="url" value="{{ canonical_url }}">
+          <input type="hidden" name="public" value="on">
+          <button type="submit">Refresh</button>
+        </form>
       </p>
     {% endif %}
     {% if visibility == "private" %}
@@ -53,6 +59,34 @@
       <pre>{{ error }}</pre>
     {% elif status == "succeeded" and payload %}
       <p>Status: succeeded.</p>
+
+      <div style="margin:8px 0;">
+        <a href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a> •
+        {% if emails_csv_url %}<a href="{{ emails_csv_url }}">Emails CSV</a> •{% endif %}
+        {% if links_csv_url %}<a href="{{ links_csv_url }}">Links CSV</a> •{% endif %}
+        {% if top_domains_csv_url %}<a href="{{ top_domains_csv_url }}">Top Domains CSV</a> •{% endif %}
+        <a href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a> •
+        <a href="#" onclick="return downloadMarkdown();">Download Markdown</a> •
+        <a href="#" onclick="return copyLink('{{ api_url }}');">Copy API link</a>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>HTTP Status: {{ summary.metrics.render.response_status if summary and summary.metrics and summary.metrics.render else "" }}</li>
+        <li>Load Time (ms): {{ summary.metrics.render.load_time_ms if summary and summary.metrics and summary.metrics.render else "" }}</li>
+        <li>Content Length: {{ summary.metrics.render.content_length if summary and summary.metrics and summary.metrics.render else "" }}</li>
+        <li>Network Requests: {{ summary.metrics.render.network_requests if summary and summary.metrics and summary.metrics.render else "" }}</li>
+        <li>Emails: {{ summary.emails.unique_count if summary and summary.emails else 0 }}</li>
+        <li>Links — Internal: {{ summary.links.internal_count if summary and summary.links else 0 }}, External: {{ summary.links.external_count if summary and summary.links else 0 }}</li>
+      </ul>
+
+      <h2>SEO Insights</h2>
+      <ul>
+        <li>Title matches OG: {{ 'Yes' if summary and summary.seo_deltas and (not summary.seo_deltas.title_mismatch) else 'No' }}</li>
+        <li>Description matches OG: {{ 'Yes' if summary and summary.seo_deltas and (not summary.seo_deltas.description_mismatch) else 'No' }}</li>
+        <li>Canonical matches: {{ 'Yes' if summary and summary.seo_deltas and (not summary.seo_deltas.canonical_mismatch) else 'No' }}</li>
+        <li>Missing OG fields: {% if summary and summary.seo_deltas and summary.seo_deltas.og_missing and summary.seo_deltas.og_missing|length > 0 %}{{ summary.seo_deltas.og_missing|join(', ') }}{% else %}None{% endif %}</li>
+      </ul>
 
       <h2>Page Metadata</h2>
       <ul>
@@ -101,6 +135,15 @@
       {% endif %}
       {% endif %}
 
+      {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
+      <h3>Top External Domains</h3>
+      <ul>
+        {% for td in summary.links.top_external_domains %}
+          <li>{{ td.domain }} — {{ td.count }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
       <h2>Links</h2>
       <ul>
         <li>Internal: {{ payload.links.internal|length if payload.links and payload.links.internal else 0 }}</li>
@@ -108,7 +151,7 @@
       </ul>
 
       <h2>Markdown</h2>
-      <pre style="white-space: pre-wrap; word-wrap: break-word;">{{ payload.markdown }}</pre>
+      <pre id="markdown-content" style="white-space: pre-wrap; word-wrap: break-word;">{{ payload.markdown }}</pre>
     {% else %}
       <p>No data available.</p>
     {% endif %}
@@ -153,6 +196,26 @@
     } catch (e) {
       prompt('Copy this link:', text);
     }
+  }
+  function downloadMarkdown() {
+    try {
+      var pre = document.getElementById('markdown-content');
+      if (!pre) { alert('No markdown available'); return false; }
+      var md = (pre.textContent || pre.innerText || '').toString();
+      if (!md || md.trim().length === 0) { alert('No markdown available'); return false; }
+      var blob = new Blob([md], {type: 'text/markdown;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'content.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Unable to download markdown');
+    }
+    return false;
   }
   </script>
   </body>

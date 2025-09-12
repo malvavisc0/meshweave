@@ -18,7 +18,13 @@ from webapp.utils.config import _env_bool
 from webapp.utils.http import _client_ip_from_request, _collect_headers_subset
 from webapp.utils.logging import log_audit
 from webapp.utils.security import _hash_ip, _make_csrf_token, _verify_csrf_token
-from webapp.utils.url import _abs_url, _safe_summary, canonicalize_url, generate_short_key
+from webapp.utils.url import (
+    _abs_url,
+    _safe_summary,
+    canonicalize_url,
+    generate_short_key,
+    normalize_domain,
+)
 
 router = APIRouter()
 
@@ -498,6 +504,99 @@ async def view_public_by_key(request: Request, key: str):
         }
     )
 
+    # Compute derived summary for UI (safe defaults)
+    summary = {}
+    try:
+        payload_dict = payload if isinstance(payload, dict) else {}
+        pg = payload_dict.get("page") or {}
+        og = pg.get("og") or {}
+        metrics = payload_dict.get("metrics") or {}
+        render = metrics.get("render") or {}
+        extraction = metrics.get("extraction") or {}
+        lks = payload_dict.get("links") or {}
+        em = payload_dict.get("emails") or {}
+
+        base_domain = (extraction.get("base_domain") or row.domain or "").strip()
+
+        # Top external domains
+        top_ext = {}
+        for u in lks.get("external") or []:
+            dom = normalize_domain(u)
+            if dom:
+                top_ext[dom] = top_ext.get(dom, 0) + 1
+        top_external_domains = [
+            {"domain": d, "count": c}
+            for d, c in sorted(top_ext.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
+
+        def _t(s):
+            try:
+                return (s or "").strip()
+            except Exception:
+                return ""
+
+        seo_deltas = {
+            "title_mismatch": _t(pg.get("title")) != _t(og.get("title")),
+            "description_mismatch": _t(pg.get("description"))
+            != _t(og.get("description")),
+            "canonical_mismatch": _t(pg.get("canonical")) != _t(row.canonical_url),
+            "og_missing": [
+                k for k in ("title", "description", "image", "url") if not _t(og.get(k))
+            ],
+        }
+
+        summary = {
+            "metrics": {
+                "render": {
+                    "final_url": render.get("final_url") or "",
+                    "response_status": render.get("response_status"),
+                    "network_requests": render.get("network_requests"),
+                    "content_length": render.get("content_length"),
+                    "load_time_ms": render.get("load_time_ms"),
+                    "cache_hit": render.get("cache_hit"),
+                },
+                "extraction": {
+                    "base_domain": base_domain,
+                    "internal_count": extraction.get("internal_count"),
+                    "external_count": extraction.get("external_count"),
+                    "total_candidates": extraction.get("total_candidates"),
+                    "unique_total": extraction.get("unique_total"),
+                    "parse_time_ms": extraction.get("parse_time_ms"),
+                },
+            },
+            "emails": {
+                "unique_count": len(em.get("unique") or []),
+                "counts": (em.get("counts") or {}),
+            },
+            "links": {
+                "internal_count": len(lks.get("internal") or []),
+                "external_count": len(lks.get("external") or []),
+                "top_external_domains": top_external_domains,
+            },
+            "seo_deltas": seo_deltas,
+        }
+    except Exception:
+        summary = {}
+
+    # CSV/summary endpoints
+    api_summary_url = f"/api/analysis/public/{row.key}/summary"
+    emails_csv_url = f"/api/analysis/public/{row.key}/emails.csv"
+    links_csv_url = f"/api/analysis/public/{row.key}/links.csv"
+    top_domains_csv_url = f"/api/analysis/public/{row.key}/top-external-domains.csv"
+
+    # CSRF token for refresh form (generate new session if missing and CSRF is enabled)
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    session_id = request.cookies.get(cookie_name)
+    new_session = False
+    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
+        session_id = str(uuid.uuid4())
+        new_session = True
+    csrf_token = (
+        _make_csrf_token(session_id)
+        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
+        else ""
+    )
+
     resp = templates.TemplateResponse(
         "result.html",
         {
@@ -511,6 +610,13 @@ async def view_public_by_key(request: Request, key: str):
             "error": row.error,
             "payload": payload,
             "api_url": f"/api/analysis/public/{row.key}",
+            # Enriched
+            "summary": summary,
+            "api_summary_url": api_summary_url,
+            "emails_csv_url": emails_csv_url,
+            "links_csv_url": links_csv_url,
+            "top_domains_csv_url": top_domains_csv_url,
+            "csrf_token": csrf_token,
             # SEO/Sharing
             "page_title": page_title,
             "meta_description": meta_description,
@@ -520,6 +626,23 @@ async def view_public_by_key(request: Request, key: str):
             "json_ld": json_ld,
         },
     )
+    # Set session cookie if newly created for CSRF
+    if new_session and session_id:
+        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
+        try:
+            log_audit("session_created", request=request)
+        except Exception:
+            pass
+        resp.set_cookie(
+            key=cookie_name,
+            value=str(session_id),
+            max_age=session_ttl,
+            httponly=True,
+            samesite="lax",
+            secure=cookie_secure,
+        )
+
     # Prevent indexing of non-succeeded public pages (avoid thin/placeholder content)
     if row.status != "succeeded":
         resp.headers["X-Robots-Tag"] = "noindex"

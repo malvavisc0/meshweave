@@ -1,6 +1,8 @@
+import csv
 import json
 from datetime import datetime, timezone
-from typing import List
+from io import StringIO
+from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
@@ -8,7 +10,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.logging import log_audit
-from webapp.utils.url import _get_base_url
+from webapp.utils.url import _get_base_url, normalize_domain
 
 router = APIRouter()
 
@@ -195,6 +197,250 @@ async def sitemap_xml(request: Request):
         + "\n</urlset>"
     )
     return Response(content=xml, media_type="application/xml")
+
+
+def _load_public_row_by_key_or_404(key: str) -> Crawl:
+    with get_session() as s:
+        row = (
+            s.query(Crawl)
+            .filter(Crawl.key == key, Crawl.visibility == "public")
+            .one_or_none()
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    return row
+
+
+def _parse_payload_or_500(row: Crawl, key: str = "") -> dict:
+    try:
+        return json.loads(row.payload_json or "{}")
+    except json.JSONDecodeError:
+        try:
+            log_audit("invalid_stored_payload", key=key or row.key, crawl_id=row.id)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.get("/api/analysis/public/{key}/summary")
+async def api_public_summary(key: str):
+    """Computed summary for a public crawl by key."""
+    row = _load_public_row_by_key_or_404(key)
+    if row.status != "succeeded" or not row.payload_json:
+        return JSONResponse(
+            content={
+                "status": row.status,
+                "domain": row.domain,
+                "path": row.path,
+                "query": row.query,
+                "key": row.key,
+            },
+            status_code=202,
+        )
+
+    payload = _parse_payload_or_500(row, key=key)
+
+    # Extract fields safely
+    page = payload.get("page") or {}
+    og = page.get("og") or {}
+    metrics = payload.get("metrics") or {}
+    render = metrics.get("render") or {}
+    extraction = metrics.get("extraction") or {}
+    links = payload.get("links") or {}
+    emails = payload.get("emails") or {}
+
+    base_domain = (extraction.get("base_domain") or row.domain or "").strip()
+
+    # Top external domains
+    top_ext: Dict[str, int] = {}
+    for u in links.get("external") or []:
+        dom = normalize_domain(u)
+        if not dom:
+            continue
+        top_ext[dom] = top_ext.get(dom, 0) + 1
+    top_external_domains = [
+        {"domain": d, "count": c}
+        for d, c in sorted(top_ext.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+    # SEO deltas
+    def _t(s):
+        try:
+            return (s or "").strip()
+        except Exception:
+            return ""
+
+    title_mismatch = _t(page.get("title")) != _t(og.get("title"))
+    description_mismatch = _t(page.get("description")) != _t(og.get("description"))
+    canonical_mismatch = _t(page.get("canonical")) != _t(row.canonical_url)
+    og_missing = []
+    for k in ("title", "description", "image", "url"):
+        if not _t(og.get(k)):
+            og_missing.append(k)
+
+    summary = {
+        "status": row.status,
+        "domain": row.domain,
+        "path": row.path,
+        "query": row.query,
+        "canonical_url": row.canonical_url,
+        "page": {
+            "title": page.get("title") or "",
+            "description": page.get("description") or "",
+            "og": {
+                "title": og.get("title") or "",
+                "description": og.get("description") or "",
+                "image": og.get("image") or "",
+                "url": og.get("url") or "",
+            },
+            "canonical": page.get("canonical") or "",
+        },
+        "metrics": {
+            "render": {
+                "final_url": render.get("final_url") or "",
+                "response_status": render.get("response_status"),
+                "network_requests": render.get("network_requests"),
+                "content_length": render.get("content_length"),
+                "load_time_ms": render.get("load_time_ms"),
+                "cache_hit": render.get("cache_hit"),
+            },
+            "extraction": {
+                "base_domain": base_domain,
+                "internal_count": extraction.get("internal_count"),
+                "external_count": extraction.get("external_count"),
+                "total_candidates": extraction.get("total_candidates"),
+                "unique_total": extraction.get("unique_total"),
+                "parse_time_ms": extraction.get("parse_time_ms"),
+            },
+        },
+        "emails": {
+            "counts": (emails.get("counts") or {}),
+            "unique_count": len(emails.get("unique") or []),
+        },
+        "links": {
+            "internal_count": len(links.get("internal") or []),
+            "external_count": len(links.get("external") or []),
+            "top_external_domains": top_external_domains,
+        },
+        "seo_deltas": {
+            "title_mismatch": title_mismatch,
+            "description_mismatch": description_mismatch,
+            "canonical_mismatch": canonical_mismatch,
+            "og_missing": og_missing,
+        },
+    }
+    return JSONResponse(content=summary)
+
+
+@router.get("/api/analysis/public/{key}/emails.csv", response_class=PlainTextResponse)
+async def api_public_emails_csv(key: str):
+    row = _load_public_row_by_key_or_404(key)
+    if row.status != "succeeded" or not row.payload_json:
+        return JSONResponse(
+            content={
+                "status": row.status,
+                "detail": "Analysis not ready",
+            },
+            status_code=202,
+        )
+    payload = _parse_payload_or_500(row, key=key)
+    emails = (payload.get("emails") or {}).get("unique") or []
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["email"])
+    for e in emails:
+        w.writerow([e])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="emails-{key}.csv"'},
+    )
+
+
+@router.get("/api/analysis/public/{key}/links.csv", response_class=PlainTextResponse)
+async def api_public_links_csv(key: str):
+    row = _load_public_row_by_key_or_404(key)
+    if row.status != "succeeded" or not row.payload_json:
+        return JSONResponse(
+            content={
+                "status": row.status,
+                "detail": "Analysis not ready",
+            },
+            status_code=202,
+        )
+    payload = _parse_payload_or_500(row, key=key)
+    metrics = payload.get("metrics") or {}
+    extraction = metrics.get("extraction") or {}
+    base_domain = (extraction.get("base_domain") or row.domain or "").strip()
+    links = payload.get("links") or {}
+    internal = links.get("internal") or []
+    external = links.get("external") or []
+
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["url", "absolute_url", "type", "domain"])
+
+    # Internal
+    for u in internal:
+        u = (u or "").strip()
+        if not u:
+            continue
+        path = u if u.startswith("/") else f"/{u}"
+        abs_u = f"https://{base_domain}{path}" if base_domain else path
+        w.writerow([u, abs_u, "internal", base_domain])
+
+    # External
+    for u in external:
+        u = (u or "").strip()
+        if not u:
+            continue
+        dom = normalize_domain(u)
+        w.writerow([u, u, "external", dom])
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="links-{key}.csv"'},
+    )
+
+
+@router.get(
+    "/api/analysis/public/{key}/top-external-domains.csv",
+    response_class=PlainTextResponse,
+)
+async def api_public_top_domains_csv(key: str):
+    row = _load_public_row_by_key_or_404(key)
+    if row.status != "succeeded" or not row.payload_json:
+        return JSONResponse(
+            content={
+                "status": row.status,
+                "detail": "Analysis not ready",
+            },
+            status_code=202,
+        )
+    payload = _parse_payload_or_500(row, key=key)
+    links = payload.get("links") or {}
+    external = links.get("external") or []
+    counts: Dict[str, int] = {}
+    for u in external:
+        dom = normalize_domain(u)
+        if not dom:
+            continue
+        counts[dom] = counts.get(dom, 0) + 1
+
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["domain", "count"])
+    for d, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        w.writerow([d, c])
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="top-external-domains-{key}.csv"'
+        },
+    )
 
 
 @router.get("/api/status/{crawl_id}")
