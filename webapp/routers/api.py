@@ -153,7 +153,14 @@ async def robots_txt(request: Request):
         str: robots.txt content.
     """
     base = _get_base_url(request)
-    return f"User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n"
+    return (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /analysis/private/\n"
+        "Disallow: /api/analysis/private/\n"
+        "Disallow: /api/status/\n"
+        f"Sitemap: {base}/sitemap.xml\n"
+    )
 
 
 @router.get("/sitemap.xml")
@@ -170,7 +177,7 @@ async def sitemap_xml(request: Request):
     with get_session() as s:
         rows: List[Crawl] = (
             s.query(Crawl)
-            .filter(Crawl.visibility == "public")
+            .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .order_by(Crawl.updated_at.desc())
             .limit(500)
             .all()

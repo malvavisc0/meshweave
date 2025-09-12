@@ -498,7 +498,7 @@ async def view_public_by_key(request: Request, key: str):
         }
     )
 
-    return templates.TemplateResponse(
+    resp = templates.TemplateResponse(
         "result.html",
         {
             "request": request,
@@ -520,6 +520,10 @@ async def view_public_by_key(request: Request, key: str):
             "json_ld": json_ld,
         },
     )
+    # Prevent indexing of non-succeeded public pages (avoid thin/placeholder content)
+    if row.status != "succeeded":
+        resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
 
 
 @router.get("/domain/{domain}", response_class=HTMLResponse)
@@ -704,7 +708,24 @@ async def view_all(
     else:
         page_title = f"All public results — {site_name}"
         meta_description = "Browse all public results. Filter by domain or status, and paginate through the list."
-    abs_page_url = str(request.url)
+    # Canonical: keep domain/status; omit page & page_size when page == 1
+    canonical_params = {}
+    if dom:
+        canonical_params["domain"] = dom
+    if st:
+        canonical_params["status"] = st
+    canonical_path = "/all"
+    if page > 1:
+        canonical_params["page"] = str(page)
+        canonical_params["page_size"] = str(page_size)
+    if canonical_params:
+        canonical_path = canonical_path + "?" + urlencode(canonical_params)
+    abs_page_url = _abs_url(request, canonical_path)
+
+    # Absolute prev/next URLs for link rel hints
+    abs_prev_url = _abs_url(request, prev_url) if prev_url else None
+    abs_next_url = _abs_url(request, next_url) if next_url else None
+
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
     return templates.TemplateResponse(
@@ -718,6 +739,8 @@ async def view_all(
             "has_next": has_next,
             "prev_url": prev_url,
             "next_url": next_url,
+            "abs_prev_url": abs_prev_url,
+            "abs_next_url": abs_next_url,
             "filter_domain": dom or "",
             "filter_status": st or "",
             # SEO

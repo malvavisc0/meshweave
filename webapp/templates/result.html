@@ -1,7 +1,8 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page_title or ('Result — ' ~ (canonical_url or (domain ~ path ~ (query and ('?' ~ query) or '')))) }}</title>
     {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
     {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}

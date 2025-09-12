@@ -1,10 +1,13 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page_title or 'All public results' }}</title>
     {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
     {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
+    {% if abs_prev_url %}<link rel="prev" href="{{ abs_prev_url }}">{% endif %}
+    {% if abs_next_url %}<link rel="next" href="{{ abs_next_url }}">{% endif %}
 
     <meta property="og:type" content="website">
     {% if site_name %}<meta property="og:site_name" content="{{ site_name }}">{% endif %}
