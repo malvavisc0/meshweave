@@ -67,7 +67,7 @@
         {% if top_domains_csv_url %}<a href="{{ top_domains_csv_url }}">Top Domains CSV</a> •{% endif %}
         <a href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a> •
         <a href="#" onclick="return downloadMarkdown();">Download Markdown</a> •
-        <a href="#" onclick="return copyLink('{{ api_url }}');">Copy API link</a>
+        <a href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
       </div>
 
       <h2>Summary</h2>
@@ -80,13 +80,15 @@
         <li>Links — Internal: {{ summary.links.internal_count if summary and summary.links else 0 }}, External: {{ summary.links.external_count if summary and summary.links else 0 }}</li>
       </ul>
 
+      {% if summary and summary.seo_deltas %}
       <h2>SEO Insights</h2>
       <ul>
-        <li>Title matches OG: {{ 'Yes' if summary and summary.seo_deltas and (not summary.seo_deltas.title_mismatch) else 'No' }}</li>
-        <li>Description matches OG: {{ 'Yes' if summary and summary.seo_deltas and (not summary.seo_deltas.description_mismatch) else 'No' }}</li>
-        <li>Canonical matches: {{ 'Yes' if summary and summary.seo_deltas and (not summary.seo_deltas.canonical_mismatch) else 'No' }}</li>
-        <li>Missing OG fields: {% if summary and summary.seo_deltas and summary.seo_deltas.og_missing and summary.seo_deltas.og_missing|length > 0 %}{{ summary.seo_deltas.og_missing|join(', ') }}{% else %}None{% endif %}</li>
+        <li>Title matches OG: {{ 'Yes' if not summary.seo_deltas.title_mismatch else 'No' }}</li>
+        <li>Description matches OG: {{ 'Yes' if not summary.seo_deltas.description_mismatch else 'No' }}</li>
+        <li>Canonical matches: {{ 'Yes' if not summary.seo_deltas.canonical_mismatch else 'No' }}</li>
+        <li>Missing OG fields: {% if summary.seo_deltas.og_missing and summary.seo_deltas.og_missing|length > 0 %}{{ summary.seo_deltas.og_missing|join(', ') }}{% else %}None{% endif %}</li>
       </ul>
+      {% endif %}
 
       <h2>Page Metadata</h2>
       <ul>
