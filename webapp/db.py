@@ -197,6 +197,46 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS ix_crawls_scope ON crawls(scope)"
         )
 
+    def _unique_indexes_columns(conn, table: str) -> dict:
+        """Return a mapping of unique index name -> ordered list of column names."""
+        rows = conn.exec_driver_sql(f"PRAGMA index_list({table})").all()
+        uniques = [r for r in rows if len(r) >= 3 and bool(r[2])]
+        result = {}
+        for r in uniques:
+            idx_name = r[1]
+            cols = conn.exec_driver_sql(f"PRAGMA index_info({idx_name})").all()
+            ordered_cols = [c[2] for c in cols if len(c) >= 3]
+            result[idx_name] = ordered_cols
+        return result
+
+    def _has_unique_index(conn, table: str, columns: list) -> bool:
+        """Check if a unique index exists on the given table with exactly the provided columns (in order)."""
+        try:
+            idx_cols = _unique_indexes_columns(conn, table)
+            for cols in idx_cols.values():
+                if cols == columns:
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def _has_fk(conn, table: str, from_col: str, ref_table: str, to_col: str) -> bool:
+        """Check if a foreign key exists on table.from_col -> ref_table.to_col."""
+        try:
+            fks = conn.exec_driver_sql(f"PRAGMA foreign_key_list({table})").all()
+            # pragma foreign_key_list columns (positional): id, seq, table, from, to, on_update, on_delete, match
+            for r in fks:
+                if (
+                    len(r) >= 5
+                    and str(r[2]) == ref_table
+                    and str(r[3]) == from_col
+                    and str(r[4]) == to_col
+                ):
+                    return True
+            return False
+        except Exception:
+            return False
+
     # Execute emergency migration with fail-fast semantics
     try:
         with engine.begin() as conn:
@@ -211,6 +251,26 @@ def init_db() -> None:
             _ensure_oauth_states_table(conn)
             # Add/ensure new columns + indexes on crawls
             _ensure_crawls_columns_and_indexes(conn)
+
+            # Constraint validation for legacy installations
+            # Enforce presence of unique indexes and foreign key as per SQLAlchemy models
+            if not _has_unique_index(
+                conn, "crawls", ["visibility", "domain", "path", "query"]
+            ):
+                raise RuntimeError(
+                    "Missing unique index on crawls(visibility, domain, path, query). "
+                    "This ensures deduplication for public entries. A legacy database likely needs a table rebuild."
+                )
+            if not _has_unique_index(conn, "crawls", ["key"]):
+                raise RuntimeError(
+                    "Missing unique index on crawls(key). This ensures uniqueness of public keys. "
+                    "A legacy database likely needs a table rebuild."
+                )
+            if not _has_fk(conn, "crawls", "user_id", "users", "id"):
+                raise RuntimeError(
+                    "Missing foreign key on crawls.user_id -> users(id). "
+                    "A legacy database likely needs a table rebuild to attach FK constraints."
+                )
 
             # Basic validation
             for tbl in ("users", "auth_sessions", "crawls"):
