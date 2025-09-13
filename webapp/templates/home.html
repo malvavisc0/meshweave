@@ -54,12 +54,16 @@
         <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
       </div>
       <label for="url">URL:</label>
-      <input type="url" id="url" name="url" placeholder="https://example.com/path?query=1" required style="width: 520px;">
+      <input type="url" id="url" name="url" placeholder="https://example.com/path?query=1" required style="width: 520px;" aria-describedby="url-help">
+      <p id="url-help" style="color:#555; font-size:0.92em; margin:6px 0 10px;">
+        Analyzes only this page (not the whole site). Outputs Markdown, links, emails, and metrics.
+        "Public" makes the result shareable on the homepage and via a key.
+      </p>
       <label for="public">
         <input type="checkbox" id="public" name="public" checked>
         Public (listed on homepage; accessible by key)
       </label>
-      <button type="submit">Crawl</button>
+      <button type="submit">Analyze Page</button>
     </form>
 
     <h2>Latest 10 Public URLs</h2>
