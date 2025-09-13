@@ -38,10 +38,48 @@ services:
       - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com,apps.apple.com
       - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
       - SITE_NAME=Markdownify
+      # Auth config
+      - WEBAPP_AUTH_ENABLED=true
+      # Public base URL for redirects. For local dev you can leave it unset or set to http://localhost:8080
+      # In production behind HTTPS (Nginx Proxy Manager), set to your https origin, e.g. https://your.domain
+      # - SITE_BASE_URL=
+      - WEBAPP_AUTH_COOKIE_NAME=auth_sid
+      # For local dev (no TLS) set false; in production behind HTTPS set true
+      - WEBAPP_AUTH_COOKIE_SECURE=false
+      - WEBAPP_AUTH_TTL_SECONDS=86400
+      - WEBAPP_AUTH_ABS_MAX_SECONDS=604800
+      - AUTH_USER_MAX_SESSIONS=5
+      # Authenticated user quotas and site crawl defaults/caps
+      - AUTH_USER_DAILY_SITE_CRAWLS=10
+      - AUTH_USER_CONCURRENT_JOBS=3
+      - AUTH_SITE_MAX_PAGES_DEFAULT=200
+      - AUTH_SITE_MAX_DEPTH_DEFAULT=3
+      - AUTH_SITE_TIME_BUDGET_MS_DEFAULT=600000
+      - AUTH_SITE_MAX_PAGES_CAP=500
+      - AUTH_SITE_MAX_DEPTH_CAP=5
+      # OAuth (Google)
+      - OAUTH_PROVIDER=google
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      # Optional email domain allowlist (comma-separated)
+      # - OAUTH_ALLOWED_DOMAINS=yourcompany.com
+      - OAUTH_STATE_TTL=600
+      # Login rate limit
+      - LOGIN_RATE_LIMIT_MAX=5
+      - LOGIN_RATE_LIMIT_WINDOW_SEC=900
+      # CSRF for logout forms
+      - WEBAPP_CSRF_ENABLED=true
+      - WEBAPP_CSRF_MAX_AGE=7200
     volumes:
       - ./.cache:/tmp/markdownify/cache
       - ./data/webapp:/db
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - magics
