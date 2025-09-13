@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -18,6 +18,74 @@ class Base(DeclarativeBase):
     pass
 
 
+# New: Users table (Phase 1 schema)
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_id", name="uq_users_provider_id"),
+        Index("ix_users_email", "email"),
+        Index("ix_users_provider", "provider", "provider_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="google")
+    provider_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationship to crawls (owner)
+    crawls: Mapped[List["Crawl"]] = relationship(
+        "Crawl", back_populates="user", cascade="save-update"
+    )
+
+
+# New: Auth sessions table (Phase 1 schema)
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        Index("ix_auth_sessions_session_id", "session_id"),
+        Index("ix_auth_sessions_user_id", "user_id"),
+        Index("ix_auth_sessions_expires_at", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    session_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_activity: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 class Crawl(Base):
     __tablename__ = "crawls"
     __table_args__ = (
@@ -29,6 +97,8 @@ class Crawl(Base):
         UniqueConstraint("key", name="uq_crawls_key"),
         Index("ix_crawls_updated_at", "updated_at"),
         Index("ix_crawls_domain", "domain"),
+        Index("ix_crawls_user_id", "user_id"),
+        Index("ix_crawls_scope", "scope"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -61,6 +131,13 @@ class Crawl(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Phase 1 schema additions for ownership and site crawling
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    scope: Mapped[str] = mapped_column(String(10), default="page")  # "page" | "site"
+    limits_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -73,7 +150,8 @@ class Crawl(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    # Relationship to submissions (enforce delete orphan on Submission when Crawl is deleted)
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="crawls")
     submissions: Mapped[list["Submission"]] = relationship(
         "Submission",
         back_populates="crawl",

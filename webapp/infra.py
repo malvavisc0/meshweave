@@ -23,6 +23,9 @@ def mount_static(app: FastAPI) -> None:
 
     Args:
         app (FastAPI): The FastAPI application instance.
+
+    Returns:
+        None
     """
     try:
         static_dir = resource_files("webapp") / "static"

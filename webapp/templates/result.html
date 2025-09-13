@@ -50,6 +50,12 @@
     {% endif %}
     {% if visibility == "private" %}
       <p>[Private Result]</p>
+      {% if can_retry %}
+        <form method="post" action="/retry/{{ id }}" style="display:inline-block; margin-left:8px;">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+          <button type="submit">Retry</button>
+        </form>
+      {% endif %}
     {% endif %}
 
     {% if status in ["pending", "running"] %}

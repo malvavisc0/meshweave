@@ -24,6 +24,15 @@ engine = create_engine(
 # Ensure SQLite enforces foreign key constraints
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enable SQLite foreign key enforcement on each new connection.
+
+    Args:
+        dbapi_connection: DB-API connection object for the SQLite database.
+        connection_record: SQLAlchemy connection record (not used).
+
+    Returns:
+        None
+    """
     try:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
@@ -39,14 +48,186 @@ SessionLocal = sessionmaker(
 
 
 def init_db() -> None:
-    """Create database tables if they do not exist.
-
-    Uses SQLAlchemy metadata to create all tables bound to the configured engine.
-
-    Returns:
-        None
-    """
+    # Create any missing tables defined in SQLAlchemy models (does not alter existing tables)
     Base.metadata.create_all(bind=engine)
+
+    # Helpers scoped to init to avoid polluting module namespace
+    def _column_exists(conn, table: str, column: str) -> bool:
+        """Check if a column exists on a SQLite table.
+
+        Args:
+            conn: SQLAlchemy connection.
+            table (str): Table name.
+            column (str): Column name.
+
+        Returns:
+            bool: True if the column exists, otherwise False.
+        """
+        rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").all()
+        return any((len(r) > 1 and r[1] == column) for r in rows)
+
+    def _table_exists(conn, table: str) -> bool:
+        """Check if a SQLite table exists.
+
+        Args:
+            conn: SQLAlchemy connection.
+            table (str): Table name.
+
+        Returns:
+            bool: True if the table exists, otherwise False.
+        """
+        q = "SELECT name FROM sqlite_master WHERE type='table' AND name=:t"
+        res = conn.exec_driver_sql(q, {"t": table}).first()
+        return bool(res)
+
+    def _ensure_users_table(conn) -> None:
+        """Create users table and indexes if they do not exist.
+
+        Args:
+            conn: SQLAlchemy connection.
+
+        Returns:
+            None
+        """
+        # TEXT for datetimes; application uses UTC ISO format
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE,
+                provider TEXT NOT NULL DEFAULT 'google',
+                provider_id TEXT NOT NULL,
+                name TEXT,
+                avatar_url TEXT,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(provider, provider_id)
+            )
+            """
+        )
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)")
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_provider ON users(provider, provider_id)"
+        )
+
+    def _ensure_auth_sessions_table(conn) -> None:
+        """Create auth_sessions table and indexes if they do not exist.
+
+        Args:
+            conn: SQLAlchemy connection.
+
+        Returns:
+            None
+        """
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                session_id TEXT UNIQUE NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_activity TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_auth_sessions_session_id ON auth_sessions(session_id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_auth_sessions_user_id ON auth_sessions(user_id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_auth_sessions_expires_at ON auth_sessions(expires_at)"
+        )
+
+    def _ensure_oauth_states_table(conn) -> None:
+        """Create oauth_states table and indexes if they do not exist.
+
+        Args:
+            conn: SQLAlchemy connection.
+
+        Returns:
+            None
+        """
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS oauth_states (
+                id TEXT PRIMARY KEY,
+                sid TEXT,
+                state TEXT NOT NULL,
+                next_path TEXT,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_oauth_states_expires_at ON oauth_states(expires_at)"
+        )
+
+    def _ensure_crawls_columns_and_indexes(conn) -> None:
+        """Ensure crawls table has required columns and indexes.
+
+        Adds user_id, scope, limits_json columns when missing and creates
+        supporting indexes.
+
+        Args:
+            conn: SQLAlchemy connection.
+
+        Returns:
+            None
+        """
+        # Ensure columns exist on crawls
+        if not _column_exists(conn, "crawls", "user_id"):
+            conn.exec_driver_sql("ALTER TABLE crawls ADD COLUMN user_id TEXT")
+        if not _column_exists(conn, "crawls", "scope"):
+            conn.exec_driver_sql(
+                "ALTER TABLE crawls ADD COLUMN scope TEXT DEFAULT 'page'"
+            )
+        if not _column_exists(conn, "crawls", "limits_json"):
+            conn.exec_driver_sql("ALTER TABLE crawls ADD COLUMN limits_json TEXT")
+        # Indexes (names align with SQLAlchemy model where possible)
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_crawls_user_id ON crawls(user_id)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_crawls_scope ON crawls(scope)"
+        )
+
+    # Execute emergency migration with fail-fast semantics
+    try:
+        with engine.begin() as conn:
+            # Validate that base tables exist before altering (crawls is required by app)
+            if not _table_exists(conn, "crawls"):
+                raise RuntimeError(
+                    "Required table 'crawls' is missing. Database is incompatible."
+                )
+            # Create new tables if missing
+            _ensure_users_table(conn)
+            _ensure_auth_sessions_table(conn)
+            _ensure_oauth_states_table(conn)
+            # Add/ensure new columns + indexes on crawls
+            _ensure_crawls_columns_and_indexes(conn)
+
+            # Basic validation
+            for tbl in ("users", "auth_sessions", "crawls"):
+                if not _table_exists(conn, tbl):
+                    raise RuntimeError(
+                        f"Required table '{tbl}' is missing post-migration"
+                    )
+
+            # Required columns
+            required_crawls_cols = ("user_id", "scope", "limits_json")
+            for c in required_crawls_cols:
+                if not _column_exists(conn, "crawls", c):
+                    raise RuntimeError(f"Column '{c}' missing on 'crawls' post-migration")
+
+    except Exception as exc:
+        # Fail fast with clear message; let startup abort
+        raise RuntimeError(f"Phase 1 emergency migration failed: {exc}") from exc
 
 
 @contextmanager

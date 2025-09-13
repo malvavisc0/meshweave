@@ -1,15 +1,20 @@
 import csv
 import json
+import os
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from sqlalchemy import text
 
 from webapp.db import get_session
 from webapp.models import Crawl
+from webapp.utils.auth import require_ownership
+from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
+from webapp.utils.metrics import metrics_body, metrics_content_type
 from webapp.utils.url import _get_base_url, normalize_domain
 
 router = APIRouter()
@@ -64,7 +69,7 @@ async def api_public_by_key(key: str):
 
 
 @router.get("/api/analysis/private/{crawl_id}")
-async def api_private(crawl_id: str):
+async def api_private(request: Request, crawl_id: str):
     """Private API for a crawl addressed by UUID.
 
     If the crawl is not yet succeeded, returns a 202 with status information; otherwise
@@ -76,6 +81,7 @@ async def api_private(crawl_id: str):
     Returns:
         JSONResponse: JSON payload or status info.
     """
+    await require_ownership(request, crawl_id)
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
     if not row:
@@ -200,6 +206,17 @@ async def sitemap_xml(request: Request):
 
 
 def _load_public_row_by_key_or_404(key: str) -> Crawl:
+    """Load a public Crawl row by short key or raise 404.
+
+    Args:
+        key (str): Short key that identifies a public crawl.
+
+    Returns:
+        Crawl: ORM row for the public crawl.
+
+    Raises:
+        HTTPException: 404 if not found.
+    """
     with get_session() as s:
         row = (
             s.query(Crawl)
@@ -212,6 +229,18 @@ def _load_public_row_by_key_or_404(key: str) -> Crawl:
 
 
 def _parse_payload_or_500(row: Crawl, key: str = "") -> dict:
+    """Parse and return stored JSON payload or raise 500 on parse errors.
+
+    Args:
+        row (Crawl): Crawl row whose payload_json is parsed.
+        key (str, optional): Optional key for audit logging context. Defaults to "".
+
+    Returns:
+        dict: Parsed JSON payload.
+
+    Raises:
+        HTTPException: 500 Internal Server Error if payload_json is invalid.
+    """
     try:
         return json.loads(row.payload_json or "{}")
     except json.JSONDecodeError:
@@ -224,7 +253,19 @@ def _parse_payload_or_500(row: Crawl, key: str = "") -> dict:
 
 @router.get("/api/analysis/public/{key}/summary")
 async def api_public_summary(key: str):
-    """Computed summary for a public crawl by key."""
+    """Computed summary for a public crawl by key.
+
+    Args:
+        key (str): Short key that identifies the public crawl.
+
+    Returns:
+        JSONResponse: Summary object with render/extraction metrics, links, emails,
+        and SEO deltas when ready; or 202 status information when the analysis is
+        not yet complete.
+
+    Raises:
+        HTTPException: 404 if the crawl is not found.
+    """
     row = _load_public_row_by_key_or_404(key)
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
@@ -265,6 +306,14 @@ async def api_public_summary(key: str):
 
     # SEO deltas
     def _t(s):
+        """Normalize a value to a stripped string.
+
+        Args:
+            s: Any value convertible to string.
+
+        Returns:
+            str: Stripped string, or empty string on error.
+        """
         try:
             return (s or "").strip()
         except Exception:
@@ -334,6 +383,14 @@ async def api_public_summary(key: str):
 
 @router.get("/api/analysis/public/{key}/emails.csv", response_class=PlainTextResponse)
 async def api_public_emails_csv(key: str):
+    """Return unique emails for a public crawl as CSV.
+
+    Args:
+        key (str): Short key that identifies the public crawl.
+
+    Returns:
+        Response: text/csv attachment with a single 'email' column.
+    """
     row = _load_public_row_by_key_or_404(key)
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
@@ -359,6 +416,14 @@ async def api_public_emails_csv(key: str):
 
 @router.get("/api/analysis/public/{key}/links.csv", response_class=PlainTextResponse)
 async def api_public_links_csv(key: str):
+    """Return internal/external links for a public crawl as CSV.
+
+    Args:
+        key (str): Short key that identifies the public crawl.
+
+    Returns:
+        Response: text/csv attachment with columns: url, absolute_url, type, domain.
+    """
     row = _load_public_row_by_key_or_404(key)
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
@@ -409,6 +474,14 @@ async def api_public_links_csv(key: str):
     response_class=PlainTextResponse,
 )
 async def api_public_top_domains_csv(key: str):
+    """Return counts of external link domains for a public crawl as CSV.
+
+    Args:
+        key (str): Short key that identifies the public crawl.
+
+    Returns:
+        Response: text/csv attachment with columns: domain, count.
+    """
     row = _load_public_row_by_key_or_404(key)
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
@@ -472,6 +545,45 @@ async def api_status(crawl_id: str):
             "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
         }
     )
+
+
+@router.get("/readyz")
+async def readyz():
+    """Readiness probe: DB connectivity and auth config (when enabled).
+
+    Returns:
+        dict | JSONResponse: {"ok": True} when ready; otherwise a 503 JSON response
+        with a 'reason' field explaining the failure.
+    """
+    # DB connectivity
+    try:
+        with get_session() as s:
+            # Lightweight check
+            _ = s.execute(text("SELECT 1")).scalar()
+    except Exception:
+        return JSONResponse(
+            status_code=503, content={"ok": False, "reason": "db_unavailable"}
+        )
+    # Auth config when enabled and explicitly required
+    # Set WEBAPP_READYZ_REQUIRE_AUTH=true to enforce this in environments where OAuth must be ready
+    if _env_bool("WEBAPP_AUTH_ENABLED", True) and _env_bool(
+        "WEBAPP_READYZ_REQUIRE_AUTH", False
+    ):
+        if not (os.getenv("OAUTH_CLIENT_ID") and os.getenv("OAUTH_CLIENT_SECRET")):
+            return JSONResponse(
+                status_code=503, content={"ok": False, "reason": "auth_config_missing"}
+            )
+    return {"ok": True}
+
+
+@router.get("/metrics")
+async def metrics():
+    """Prometheus metrics exposition.
+
+    Returns:
+        Response: Metrics body in Prometheus exposition format and content type.
+    """
+    return Response(content=metrics_body(), media_type=metrics_content_type())
 
 
 @router.get("/healthz")

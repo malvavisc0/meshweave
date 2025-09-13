@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title or 'My Jobs' }}</title>
+    {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
+    {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
+  </head>
+  <body>
+    <nav style="padding:8px 0; border-bottom:1px solid #ddd; margin-bottom:12px;">
+      <a href="/">Home</a>
+      &nbsp;|&nbsp;
+      <a href="/all">All</a>
+      &nbsp;|&nbsp;
+      <a href="/my">My Jobs</a>
+    </nav>
+
+    <h1>My Jobs</h1>
+
+    {% if items and items|length > 0 %}
+      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:100%; max-width:1000px;">
+        <thead>
+          <tr>
+            <th>Scope</th>
+            <th>URL</th>
+            <th>Status</th>
+            <th>Updated</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td>{{ it.scope }}</td>
+            <td>
+              <a href="/analysis/private/{{ it.id }}">
+                {{ it.canonical_url or (it.domain ~ it.path ~ (it.query and ('?' ~ it.query) or '')) }}
+              </a>
+            </td>
+            <td>{{ it.status }}</td>
+            <td><small>{{ it.updated_at }}</small></td>
+            <td>
+              {% if it.status != 'running' %}
+              <form method="post" action="/retry/{{ it.id }}" style="display:inline;">
+                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+                <button type="submit">Retry</button>
+              </form>
+              {% else %}
+              <em>Running</em>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div style="margin-top:10px;">
+        {% if has_prev and prev_url %}<a href="{{ prev_url }}">&larr; Newer</a>{% endif %}
+        {% if has_prev and has_next %} &nbsp;|&nbsp; {% endif %}
+        {% if has_next and next_url %}<a href="{{ next_url }}">Older &rarr;</a>{% endif %}
+      </div>
+    {% else %}
+      <p>No jobs found.</p>
+    {% endif %}
+  </body>
+</html>

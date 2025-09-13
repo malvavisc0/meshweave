@@ -5,7 +5,7 @@ import sys
 import traceback
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -18,6 +18,14 @@ class JsonFormatter(logging.Formatter):
     """Minimal JSON log formatter to avoid extra deps."""
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format a LogRecord as a JSON string.
+
+        Args:
+            record (logging.LogRecord): The log record to format.
+
+        Returns:
+            str: JSON-encoded string for structured logging.
+        """
         base: Dict[str, Any] = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
@@ -80,11 +88,66 @@ def init_logging(level: str = DEFAULT_LOG_LEVEL) -> None:
 
 
 def get_audit_logger() -> logging.Logger:
-    """Return audit logger."""
+    """Return the configured audit logger.
+
+    Returns:
+        logging.Logger: Logger named 'audit' with INFO level and propagation enabled.
+    """
     logger = logging.getLogger("audit")
     logger.propagate = True
     logger.setLevel(logging.INFO)
     return logger
+
+
+def _redact_sensitive(value):
+    """Redact sensitive values in dicts/lists/strings.
+
+    Removes or masks values for keys like emails, tokens, cookies, and auth headers.
+
+    Args:
+        value: Arbitrary Python object (dict/list/str/scalar) to sanitize.
+
+    Returns:
+        Any: A sanitized copy with sensitive fields redacted where applicable.
+    """
+    SENSITIVE_KEYS = {
+        "email",
+        "authorization",
+        "set-cookie",
+        "cookie",
+        "cookies",
+        "id_token",
+        "access_token",
+        "refresh_token",
+        "oauth_token",
+        "token",
+        "secret",
+    }
+
+    def _sanitize(obj):
+        """Recursively sanitize nested containers and scalars.
+
+        Args:
+            obj: Any JSON-like structure (dict, list, scalar).
+
+        Returns:
+            Any: Sanitized structure with sensitive fields masked.
+        """
+        if isinstance(obj, dict):
+            out = {}
+            for k, v in obj.items():
+                kl = str(k).lower()
+                if kl in SENSITIVE_KEYS:
+                    out[k] = "***REDACTED***"
+                else:
+                    out[k] = _sanitize(v)
+            return out
+        if isinstance(obj, list):
+            return [_sanitize(x) for x in obj]
+        # leave scalars as-is
+        return obj
+
+    return _sanitize(value)
 
 
 def log_audit(
@@ -112,10 +175,20 @@ def log_audit(
             pass
     if fields:
         extra.update(fields)
+    # Redact sensitive information before logging
+    extra = cast(Dict[str, Any], _redact_sensitive(extra))
     logger.log(level, event, extra={"extra": extra})
 
 
 def _client_ip(request: Request) -> Optional[str]:
+    """Best-effort client IP extraction.
+
+    Args:
+        request (Request): Incoming request.
+
+    Returns:
+        Optional[str]: First IP from X-Forwarded-For or client host; None if unavailable.
+    """
     # Mirrors minimal logic; full trust-proxy logic is elsewhere
     xff = request.headers.get("x-forwarded-for")
     if xff:
@@ -127,6 +200,15 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     """Assign a per-request UUID and expose via header."""
 
     async def dispatch(self, request: Request, call_next):
+        """Assign request_id and include it in response header.
+
+        Args:
+            request (Request): Incoming request.
+            call_next: ASGI call-next.
+
+        Returns:
+            Response: Downstream response with X-Request-ID header.
+        """
         rid = str(uuid.uuid4())
         request.state.request_id = rid
         response: Response = await call_next(request)

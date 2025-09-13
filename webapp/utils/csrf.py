@@ -12,6 +12,14 @@ from webapp.utils.logging import log_audit
 
 
 def _host_of(u: Optional[str]) -> str:
+    """Extract netloc host from a URL-like string in lowercase.
+
+    Args:
+        u (Optional[str]): URL or origin string.
+
+    Returns:
+        str: Lowercased host without scheme or path, or empty string on error.
+    """
     try:
         return (urlparse(u or "").netloc or "").lower()
     except Exception:
@@ -26,6 +34,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        """Validate Origin/Referer for state-changing requests.
+
+        Args:
+            request (Request): Incoming request.
+            call_next: ASGI call-next to continue the pipeline.
+
+        Returns:
+            Response: 403 Forbidden when origin/referer mismatch; otherwise downstream response.
+        """
         if request.method in {"POST", "PUT", "PATCH", "DELETE"} and _env_bool(
             "WEBAPP_ENFORCE_ORIGIN", True
         ):
@@ -34,6 +51,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             referer_hdr = request.headers.get("referer")
 
             def reject(reason: str) -> Response:
+                """Return a 403 response (JSON for API paths, text otherwise).
+
+                Args:
+                    reason (str): Reason string to audit log.
+
+                Returns:
+                    Response: JSONResponse for /api/* paths; PlainTextResponse otherwise.
+                """
                 try:
                     log_audit(reason, request=request)
                 except Exception:

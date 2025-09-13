@@ -1,7 +1,7 @@
 # Webapp container for the public FastAPI UI that uses markdownify-crawler library
 # Installs Playwright (Chromium) and required OS dependencies.
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -24,10 +24,13 @@ COPY webapp ./webapp
 # Install python deps:
 # - Install local crawler package with renderer extras (playwright)
 # - Install FastAPI UI deps (fastapi, uvicorn, jinja2, sqlalchemy)
+# - Install auth deps (authlib, cryptography) for Google OIDC
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir ".[renderer]" && \
-    pip install --no-cache-dir fastapi[standard] uvicorn[standard] jinja2 sqlalchemy python-multipart && \
+    pip install --no-cache-dir fastapi[standard] uvicorn[standard] jinja2 sqlalchemy python-multipart httpx authlib cryptography prometheus-client && \
     pip install --no-cache-dir /app/webapp
+# Install curl for container healthchecks and diagnostics
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Install Playwright Chromium and system deps
 RUN python -m playwright install --with-deps chromium

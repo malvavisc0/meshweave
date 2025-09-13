@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -7,9 +8,12 @@ from markdownify_crawler.core import crawl as crawler_run
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.logging import log_audit
+from webapp.utils.metrics import job_duration
 
 
-async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
+async def run_crawl_task(
+    crawl_id: str, force_refresh: bool = False, user_id: Optional[str] = None
+) -> None:
     """Background task to execute a crawl and persist results.
 
     Updates the Crawl row state to 'running', invokes the crawler, and persists
@@ -18,9 +22,11 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
     Args:
         crawl_id (str): Identifier of the Crawl row.
         force_refresh (bool, optional): Disable cache for the crawl run. Defaults to False.
+        user_id (Optional[str], optional): ID of the user who initiated the crawl, used for
+            audit/metrics context. Defaults to None.
 
     Returns:
-        None
+        None: Performs side effects (DB updates and metrics) and does not return a value.
     """
     # Attempt to transition to 'running' atomically to avoid races
     url: Optional[str] = None
@@ -30,6 +36,9 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
         if not row:
             return
         url = row.url
+        # If provided, attach ownership when missing (e.g., from retry)
+        if user_id and not getattr(row, "user_id", None):
+            row.user_id = user_id
         # Only one worker should transition into running; others exit early
         updated = (
             s.query(Crawl)
@@ -43,9 +52,10 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
             return
 
     # Execute crawl
+    started = time.monotonic()
     try:
         try:
-            log_audit("crawl_started", crawl_id=crawl_id)
+            log_audit("crawl_started", crawl_id=crawl_id, user_id=user_id)
         except Exception:
             pass
         payload = await crawler_run(
@@ -67,7 +77,13 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
             row.error = None
             row.updated_at = datetime.now(timezone.utc)
         try:
-            log_audit("crawl_succeeded", crawl_id=crawl_id)
+            log_audit("crawl_succeeded", crawl_id=crawl_id, user_id=user_id)
+        except Exception:
+            pass
+        try:
+            job_duration.labels("page", "succeeded").observe(
+                max(0.0, time.monotonic() - started)
+            )
         except Exception:
             pass
     except Exception as e:
@@ -79,6 +95,12 @@ async def run_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
             row.error = str(e)
             row.updated_at = datetime.now(timezone.utc)
         try:
-            log_audit("crawl_failed", crawl_id=crawl_id)
+            log_audit("crawl_failed", crawl_id=crawl_id, user_id=user_id)
+        except Exception:
+            pass
+        try:
+            job_duration.labels("page", "failed").observe(
+                max(0.0, time.monotonic() - started)
+            )
         except Exception:
             pass
