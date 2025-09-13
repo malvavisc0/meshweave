@@ -15,6 +15,7 @@ services:
       - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
       - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com
       - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
+      - MARKDOWNIFY_DISABLE_CACHE=true
     expose:
       - 8000
     volumes:
@@ -37,6 +38,7 @@ services:
       - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
       - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com,apps.apple.com
       - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
+      - MARKDOWNIFY_DISABLE_CACHE=true
       - SITE_NAME=Markdownify
       # Auth config
       - WEBAPP_AUTH_ENABLED=true

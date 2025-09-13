@@ -716,8 +716,15 @@ async def crawl(
     cache_dir_env = (
         cache_dir or os.getenv("MARKDOWNIFY_CACHE_DIR") or "/tmp/markdownify/cache"
     )
-    # Per-run cache control: when disable_cache=True, bypass HTML cache entirely
-    local_cache_dir = None if disable_cache else cache_dir_env
+    # Per-run cache control: allow env MARKDOWNIFY_DISABLE_CACHE to force bypass
+    disable_cache_env = os.getenv("MARKDOWNIFY_DISABLE_CACHE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    # When disable_cache=True or env disables cache, bypass HTML cache entirely
+    local_cache_dir = None if (disable_cache or disable_cache_env) else cache_dir_env
 
     # Render start page
     html, metrics = await render_page(

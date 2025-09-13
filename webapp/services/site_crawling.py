@@ -180,7 +180,13 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 url=url,
                 cache_dir=(
                     None
-                    if force_refresh
+                    if (
+                        force_refresh
+                        or (
+                            os.getenv("MARKDOWNIFY_DISABLE_CACHE", "").strip().lower()
+                            in ("1", "true", "yes", "on")
+                        )
+                    )
                     else (os.getenv("MARKDOWNIFY_CACHE_DIR") or "/tmp/markdownify/cache")
                 ),
                 timeout=30.0,
