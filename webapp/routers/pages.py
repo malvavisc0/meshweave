@@ -298,6 +298,7 @@ async def submit(
         )
 
     is_public = bool(public)
+    user = getattr(request.state, "current_user", None)
     dom, path, query, canon_url = canonicalize_url(url)
     if not dom:
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
@@ -475,30 +476,66 @@ async def submit(
                 crawl_id = row.id
                 key_val = row.key
         else:
-            row = Crawl(
-                url=url,
-                domain=dom,
-                path=path,
-                query=query,
-                canonical_url=canon_url,
-                key=None,  # not exposed for private rows
-                visibility="private",
-                status="pending",
-                payload_json=None,
-                error=None,
-                created_at=now,
-                updated_at=now,
+            # Upsert behavior for private as well to satisfy unique constraint (visibility, domain, path, query)
+            existing = (
+                s.query(Crawl)
+                .filter(
+                    Crawl.visibility == "private",
+                    Crawl.domain == dom,
+                    Crawl.path == path,
+                    Crawl.query == query,
+                )
+                .one_or_none()
             )
-            s.add(row)
-            s.flush()
-            crawl_id = row.id
+            if existing:
+                # Update existing private row
+                existing.url = url
+                existing.canonical_url = canon_url
+                # Attach ownership if authenticated and not already owned
+                try:
+                    if user and not getattr(existing, "user_id", None):
+                        existing.user_id = getattr(user, "id", None)
+                except Exception:
+                    pass
+                if existing.status not in {"running"}:
+                    existing.status = "pending"
+                    existing.payload_json = None
+                    existing.error = None
+                existing.updated_at = now
+                crawl_id = existing.id
+                # Ensure we refresh on resubmit
+                force_refresh = True
+            else:
+                row = Crawl(
+                    url=url,
+                    domain=dom,
+                    path=path,
+                    query=query,
+                    canonical_url=canon_url,
+                    key=None,  # not exposed for private rows
+                    visibility="private",
+                    status="pending",
+                    payload_json=None,
+                    error=None,
+                    user_id=(getattr(user, "id", None) if user else None),
+                    created_at=now,
+                    updated_at=now,
+                )
+                s.add(row)
+                s.flush()
+                crawl_id = row.id
 
     # Schedule background crawl if not already running
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if row and row.status in {"pending", "failed", "succeeded"}:
             # start a new run when pending/failed/succeeded
-            background_tasks.add_task(run_crawl_task, crawl_id, force_refresh)
+            if user and getattr(user, "id", None):
+                background_tasks.add_task(
+                    run_crawl_task, crawl_id, force_refresh, user_id=user.id
+                )
+            else:
+                background_tasks.add_task(run_crawl_task, crawl_id, force_refresh)
 
     # Capture submission metadata (configurable)
     if _env_bool("WEBAPP_LOG_REQUESTS", True):
@@ -731,9 +768,9 @@ async def submit_site(
     request: Request,
     background_tasks: BackgroundTasks,
     domain: str = Form(...),
-    max_pages: Optional[int] = Form(None),
-    max_depth: Optional[int] = Form(None),
-    time_budget_ms: Optional[int] = Form(None),
+    max_pages: Optional[str] = Form(None),
+    max_depth: Optional[str] = Form(None),
+    time_budget_ms: Optional[str] = Form(None),
     csrf_token: Optional[str] = Form(None),
 ):
     """Start a site crawl (auth required).

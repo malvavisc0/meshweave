@@ -14,8 +14,10 @@ from markdownify_crawler.core import (
     _should_ignore_path,
     extract_emails,
     extract_page_meta,
+    preprocess_soup,
     render_page,
     soup_from_html,
+    to_markdown,
 )
 
 from webapp.db import get_session
@@ -172,6 +174,9 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         visited: Set[str] = set()
         queue: Deque[Tuple[str, int]] = deque()
         stop_reason = "queue_empty"
+        # Aggregate emails across pages
+        all_emails_set: Set[str] = set()
+        emails_by_url: Dict[str, List[str]] = {}
 
         # Render function wrapper
         async def _fetch(url: str):
@@ -205,20 +210,24 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         def _record_page(
             final_url: str,
             meta: Dict[str, Any],
+            markdown: str,
             render_metrics: Dict[str, Any],
+            extraction_metrics: Dict[str, Any],
             emails_unique: List[str],
-            link_internal_count: int,
-            link_external_count: int,
+            internal_links: List[str],
+            external_links: List[str],
         ):
             """Append a normalized page record to the crawl results.
 
             Args:
                 final_url (str): Final URL after redirects.
                 meta (Dict[str, Any]): Extracted page metadata (title, description, og, etc.).
+                markdown (str): Markdown content of the page.
                 render_metrics (Dict[str, Any]): Renderer metrics including status, load time, etc.
+                extraction_metrics (Dict[str, Any]): Link extraction metrics.
                 emails_unique (List[str]): Unique emails extracted from the page HTML.
-                link_internal_count (int): Count of internal links on the page.
-                link_external_count (int): Count of external links on the page.
+                internal_links (List[str]): Internal links on the page.
+                external_links (List[str]): External links on the page.
 
             Returns:
                 None
@@ -227,11 +236,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 {
                     "url": final_url,
                     "page": meta,
-                    "metrics": {"render": render_metrics},
+                    "markdown": markdown,
+                    "metrics": {
+                        "render": render_metrics,
+                        "extraction": extraction_metrics,
+                    },
                     "emails": {"unique": emails_unique},
                     "links": {
-                        "internal_count": int(link_internal_count),
-                        "external_count": int(link_external_count),
+                        "internal": internal_links,
+                        "external": external_links,
                     },
                 }
             )
@@ -241,12 +254,17 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         final0 = str(getattr(m0, "final_url", start_url or "")) or (start_url or "")
         soup0 = soup_from_html(html0)
         meta0 = extract_page_meta(soup0)
-        # classify links from preprocessed soup (use raw soup for meta only)
-        internal0, external0, _ = _classify_links(soup0, base_url=final0)
+        # Preprocess for markdown and classify links on preprocessed soup
+        soup0_pp = preprocess_soup(soup0, base_url=start_url or final0, final_url=final0)
+        md0 = to_markdown(soup0_pp)
+        internal0, external0, extraction0 = _classify_links(soup0_pp, base_url=final0)
 
         # Emails on start page
         emails0_set, src0 = extract_emails(html0, deobfuscate=True)
         emails0 = sorted(list(emails0_set))
+        if emails0:
+            emails_by_url[final0] = emails0
+        all_emails_set |= emails0_set
 
         render_metrics0 = {
             "final_url": final0,
@@ -257,7 +275,14 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             "cache_hit": bool(getattr(m0, "cache_hit", False)),
         }
         _record_page(
-            final0, meta0, render_metrics0, emails0, len(internal0), len(external0)
+            final0,
+            meta0,
+            md0,
+            render_metrics0,
+            extraction0,
+            emails0,
+            internal0,
+            external0,
         )
 
         # Persist start page links/emails
@@ -327,11 +352,18 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             # Emails
             emails_i_set, src_i = extract_emails(html_i, deobfuscate=True)
             emails_i = sorted(list(emails_i_set))
+            if emails_i:
+                emails_by_url[final_i] = emails_i
+            all_emails_set |= emails_i_set
 
-            # Links
+            # Links and markdown
             soup_i = soup_from_html(html_i)
             meta_i = extract_page_meta(soup_i)
-            internal_i, external_i, _ = _classify_links(soup_i, base_url=final_i)
+            soup_i_pp = preprocess_soup(soup_i, base_url=final_i, final_url=final_i)
+            md_i = to_markdown(soup_i_pp)
+            internal_i, external_i, extraction_i = _classify_links(
+                soup_i_pp, base_url=final_i
+            )
 
             # Record page
             render_metrics_i = {
@@ -345,10 +377,12 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             _record_page(
                 final_i,
                 meta_i,
+                md_i,
                 render_metrics_i,
+                extraction_i,
                 emails_i,
-                len(internal_i),
-                len(external_i),
+                internal_i,
+                external_i,
             )
 
             # Persist page links/emails
@@ -399,6 +433,20 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                         "scope": "site",
                         "start_url": start_url,
                         "limits": limits,
+                        "page": meta0,
+                        "markdown": md0,
+                        "links": {"internal": internal0, "external": external0},
+                        "metrics": {"render": render_metrics0, "extraction": extraction0},
+                        "emails": {
+                            "unique": sorted(all_emails_set),
+                            "by_url": emails_by_url,
+                            "counts": {
+                                "total_unique": len(all_emails_set),
+                                "total_mentions": sum(
+                                    len(v) for v in emails_by_url.values()
+                                ),
+                            },
+                        },
                         "pages": pages,
                         "summary": {
                             "visited_count": len(pages),
@@ -439,6 +487,18 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                     "scope": "site",
                     "start_url": start_url,
                     "limits": limits,
+                    "page": meta0,
+                    "markdown": md0,
+                    "links": {"internal": internal0, "external": external0},
+                    "metrics": {"render": render_metrics0, "extraction": extraction0},
+                    "emails": {
+                        "unique": sorted(all_emails_set),
+                        "by_url": emails_by_url,
+                        "counts": {
+                            "total_unique": len(all_emails_set),
+                            "total_mentions": sum(len(v) for v in emails_by_url.values()),
+                        },
+                    },
                     "pages": pages,
                     "summary": {
                         "visited_count": len(pages),

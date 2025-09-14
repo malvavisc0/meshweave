@@ -84,7 +84,7 @@
         "Public" makes the result shareable on the homepage and via a key.
       </p>
       <label for="public">
-        <input type="checkbox" id="public" name="public" checked>
+        <input type="checkbox" id="public" name="public" {% if not request.state.current_user %}checked{% endif %}>
         Public (listed on homepage; accessible by key)
       </label>
       <button type="submit">Analyze Page</button>
