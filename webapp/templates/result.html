@@ -20,9 +20,95 @@
     {% if og_image_url %}<meta name="twitter:image" content="{{ og_image_url }}">{% endif %}
 
     {% if json_ld %}<script type="application/ld+json">{{ json_ld|safe }}</script>{% endif %}
+
+    <style>
+      :root {
+        --gap: 12px;
+        --border: #ddd;
+        --muted: #666;
+        --bg: #f9fafb;
+        --badge-green: #0a7f42;
+        --badge-gray: #6b7280;
+        --badge-orange: #b45309;
+        --badge-red: #b91c1c;
+        --card-bg: #fff;
+      }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.45; margin: 0; padding: 0 12px 24px; }
+      nav { padding:8px 0; border-bottom:1px solid var(--border); margin-bottom:12px; }
+      h1 { margin: 12px 0 6px; font-size: 20px; }
+      .badges { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; }
+      .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--border); background:#fff; }
+      .badge.status-pending { background:#fff7ed; border-color:#fde68a; }
+      .badge.status-running { background:#eff6ff; border-color:#93c5fd; }
+      .badge.status-succeeded { background:#ecfdf5; border-color:#6ee7b7; }
+      .badge.status-failed { background:#fef2f2; border-color:#fecaca; }
+
+      .actions { display:flex; flex-wrap: wrap; gap:8px; align-items:center; margin:8px 0 12px; }
+      .actions a, .actions button { font-size: 13px; padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; text-decoration:none; color:inherit; }
+      .actions .spacer { flex: 1; }
+
+      .quick-stats { display:grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: var(--gap); margin: 10px 0 16px; }
+      .stat-card { background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:10px; }
+      .stat-k { font-size: 12px; color: var(--muted); }
+      .stat-v { font-size: 16px; font-weight: 600; margin-top: 4px; }
+
+      .layout { display:grid; grid-template-columns: 2fr 1fr; gap: var(--gap); align-items: start; }
+      .panel { background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:12px; }
+      .panel h2 { margin:0 0 8px; font-size: 16px; }
+      .panel .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+
+      .leads-filters { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap: wrap; }
+      .leads-filters input[type=text] { padding:6px 8px; border:1px solid var(--border); border-radius:6px; width: 200px; }
+      .leads-actions { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap: wrap; }
+      .table { width:100%; border-collapse: collapse; }
+      .table th, .table td { text-align:left; padding:8px; border-bottom:1px solid var(--border); font-size: 13px; vertical-align: top; }
+      .status-chip { display:inline-block; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:600; color:#fff; }
+      .status-valid { background: var(--badge-green); }
+      .status-unknown { background: var(--badge-gray); }
+      .status-suspicious { background: var(--badge-orange); }
+      .status-disposable, .status-invalid { background: var(--badge-red); }
+
+      .tabs { display:flex; gap:6px; margin-bottom:8px; }
+      .tab { padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:13px; }
+      .tab[aria-selected="true"] { background: #eef2ff; border-color:#c7d2fe; }
+
+      .domain-list { list-style:none; margin:0; padding:0; }
+      .domain-list li { display:flex; justify-content: space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; }
+      .small { font-size:12px; color: var(--muted); }
+
+      .pages-panel { max-height: 60vh; overflow:auto; }
+      .pages-list { list-style:none; margin:8px 0 0; padding:0; }
+      .pages-list li { padding:6px 8px; border-bottom:1px solid var(--border); font-size:13px; display:flex; gap:8px; align-items:center; }
+      .pages-list input[type=checkbox] { pointer-events:none; }
+
+      .summary-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--gap); }
+      .summary-item { font-size: 13px; padding:8px; border:1px dashed var(--border); border-radius:6px; background: #fff; }
+
+      /* Chat drawer */
+      .chat-drawer { position: fixed; right: 12px; bottom: 12px; width: 360px; max-width: calc(100% - 24px); height: 420px; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); display:none; flex-direction: column; }
+      .chat-header { display:flex; justify-content: space-between; align-items:center; padding:8px 10px; border-bottom:1px solid var(--border); }
+      .chat-body { flex:1; padding:10px; overflow:auto; font-size:13px; }
+      .chat-footer { padding:8px; border-top:1px solid var(--border); display:flex; gap:8px; }
+      .chat-footer input[type=text] { flex:1; padding:8px; border:1px solid var(--border); border-radius:6px; }
+
+      /* Hide mobile tabs on desktop */
+      .mobile-tabs { display: none; }
+
+      /* Mobile tabs (<= 768px) */
+      @media (max-width: 768px) {
+        .layout { display:block; }
+        .quick-stats { grid-template-columns: repeat(3, minmax(0,1fr)); }
+        .mobile-tabs { display:flex; gap:6px; flex-wrap:wrap; margin: 8px 0; }
+        .mobile-tab { padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:13px; cursor:pointer; }
+        .mobile-tab[aria-selected="true"] { background:#eef2ff; border-color:#c7d2fe; }
+        .mobile-section { display:none; }
+        .mobile-section.active { display:block; margin-bottom:12px; }
+        .sidebar { margin-top:12px; }
+      }
+    </style>
   </head>
   <body>
-    <nav style="padding:8px 0; border-bottom:1px solid #ddd; margin-bottom:12px;">
+    <nav>
       <a href="/">Home</a>
       &nbsp;|&nbsp;
       <a href="/all">All</a>
@@ -33,29 +119,27 @@
         <button type="submit">Go</button>
       </form>
     </nav>
-    <h1>Result for {% if canonical_url %}{{ canonical_url }}{% else %}{{ domain }}{{ path }}{% if query %}?{{ query }}{% endif %}{% endif %}</h1>
+
+    <h1>
+      Result for {% if canonical_url %}{{ canonical_url }}{% else %}{{ domain }}{{ path }}{% if query %}?{{ query }}{% endif %}{% endif %}
+      <span class="badges" role="group" aria-label="Job state badges">
+        {% if visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
+        <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
+        {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
+      </span>
+    </h1>
+
     {% if visibility == "public" and abs_page_url %}
-      <p>
+      <p class="small">
         <strong>Share:</strong>
         <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener">Post on X</a> •
         <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener">Share on LinkedIn</a> •
-        <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy link</a>
-        <form method="post" action="/submit" style="display:inline-block; margin-left:8px;">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <input type="hidden" name="url" value="{{ canonical_url }}">
-          <input type="hidden" name="public" value="on">
-          <button type="submit">Refresh</button>
-        </form>
+        <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>
       </p>
     {% endif %}
-    {% if visibility == "private" %}
-      <p>[Private Result]</p>
-      {% if can_retry %}
-        <form method="post" action="/retry/{{ id }}" style="display:inline-block; margin-left:8px;">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <button type="submit">Retry</button>
-        </form>
-      {% endif %}
+
+    {% if visibility == "private" and can_retry %}
+      <p class="small">[Private Result]</p>
     {% endif %}
 
     {% if status in ["pending", "running"] %}
@@ -64,146 +148,267 @@
       <p>Status: failed.</p>
       <pre>{{ error }}</pre>
     {% elif status == "succeeded" and payload %}
-      <p>Status: succeeded.</p>
-
-      <div style="margin:8px 0;">
-        <a href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a> •
-        {% if emails_csv_url %}<a href="{{ emails_csv_url }}">Emails CSV</a> •{% endif %}
-        {% if links_csv_url %}<a href="{{ links_csv_url }}">Links CSV</a> •{% endif %}
-        {% if top_domains_csv_url %}<a href="{{ top_domains_csv_url }}">Top Domains CSV</a> •{% endif %}
-        <a href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a> •
-        <a href="#" onclick="return downloadMarkdown();">Download Markdown</a> •
+      <!-- Actions Row -->
+      <div class="actions" role="toolbar" aria-label="Actions">
+        <a href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
+        {% if emails_csv_url %}<a href="{{ emails_csv_url }}">Emails CSV</a>{% endif %}
+        {% if links_csv_url %}<a href="{{ links_csv_url }}">Links CSV</a>{% endif %}
+        {% if top_domains_csv_url %}<a href="{{ top_domains_csv_url }}">Top Domains CSV</a>{% endif %}
+        <a href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
+        <a href="#" onclick="return downloadMarkdown();">Download Markdown</a>
         <a href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
+        {% if visibility == "public" and abs_page_url %}
+          <a href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
+        {% endif %}
+        <span class="spacer"></span>
+        {% if visibility == "public" %}
+          <form method="post" action="/submit" style="display:inline-block;">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+            <input type="hidden" name="url" value="{{ canonical_url }}">
+            <input type="hidden" name="public" value="on">
+            <button type="submit">Refresh</button>
+          </form>
+        {% elif can_retry %}
+          <form method="post" action="/retry/{{ id }}" style="display:inline-block;">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+            <button type="submit">Retry</button>
+          </form>
+        {% endif %}
       </div>
 
-      <h2>Summary</h2>
-      <ul>
-        <li>HTTP Status: {{ summary.metrics.render.response_status if summary and summary.metrics and summary.metrics.render else "" }}</li>
-        <li>Load Time (ms): {{ summary.metrics.render.load_time_ms if summary and summary.metrics and summary.metrics.render else "" }}</li>
-        <li>Content Length: {{ summary.metrics.render.content_length if summary and summary.metrics and summary.metrics.render else "" }}</li>
-        <li>Network Requests: {{ summary.metrics.render.network_requests if summary and summary.metrics and summary.metrics.render else "" }}</li>
-        <li>Emails: {{ summary.emails.unique_count if summary and summary.emails else 0 }}</li>
-        <li>Links — Internal: {{ summary.links.internal_count if summary and summary.links else 0 }}, External: {{ summary.links.external_count if summary and summary.links else 0 }}</li>
-      </ul>
+      <!-- Quick Stats -->
+      <div class="quick-stats" role="region" aria-label="Quick Stats">
+        <div class="stat-card">
+          <div class="stat-k">HTTP</div>
+          <div class="stat-v">{{ summary.metrics.render.response_status if summary and summary.metrics and summary.metrics.render else "" }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-k">Load</div>
+          <div class="stat-v">{{ summary.metrics.render.load_time_ms if summary and summary.metrics and summary.metrics.render else "" }} ms</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-k">Bytes</div>
+          <div class="stat-v">{{ summary.metrics.render.content_length if summary and summary.metrics and summary.metrics.render else "" }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-k">Requests</div>
+          <div class="stat-v">{{ summary.metrics.render.network_requests if summary and summary.metrics and summary.metrics.render else "" }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-k">Emails (U)</div>
+          <div class="stat-v">
+            {% if payload.emails and payload.emails.counts %}{{ payload.emails.counts.total_unique or 0 }}
+            {% elif summary and summary.emails %}{{ summary.emails.unique_count or 0 }}
+            {% else %}0{% endif %}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-k">Top Domains</div>
+          <div class="stat-v">{{ (summary.links.top_external_domains|length) if summary and summary.links and summary.links.top_external_domains else 0 }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-k">{% if payload.pages %}Pages{% else %}Base Domain{% endif %}</div>
+          <div class="stat-v">
+            {% if payload.pages %}{{ payload.pages|length }}{% else %}{{ payload.metrics.extraction.base_domain if payload.metrics and payload.metrics.extraction else "" }}{% endif %}
+          </div>
+        </div>
+      </div>
 
-      {% if summary and summary.seo_deltas %}
-      <h2>SEO Insights</h2>
-      <ul>
-        <li>Title matches OG: {{ 'Yes' if not summary.seo_deltas.title_mismatch else 'No' }}</li>
-        <li>Description matches OG: {{ 'Yes' if not summary.seo_deltas.description_mismatch else 'No' }}</li>
-        <li>Canonical matches: {{ 'Yes' if not summary.seo_deltas.canonical_mismatch else 'No' }}</li>
-        <li>Missing OG fields: {% if summary.seo_deltas.og_missing and summary.seo_deltas.og_missing|length > 0 %}{{ summary.seo_deltas.og_missing|join(', ') }}{% else %}None{% endif %}</li>
-      </ul>
-      {% endif %}
+      <!-- Mobile Tabs -->
+      <div class="mobile-tabs" role="tablist" aria-label="Sections">
+        <button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-stats">Stats</button>
+        <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-leads">Leads</button>
+        <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-links">Links</button>
+        {% if payload.pages %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-pages">Pages</button>{% endif %}
+        <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
+        <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>
+      </div>
 
-      <h2>Page Metadata</h2>
-      <ul>
-        <li>Title: {{ payload.page.title if payload.page and payload.page.title else "" }}</li>
-        <li>Description: {{ payload.page.description if payload.page and payload.page.description else "" }}</li>
-        <li>OG Title: {{ payload.page.og.title if payload.page and payload.page.og and payload.page.og.title else "" }}</li>
-        <li>OG Description: {{ payload.page.og.description if payload.page and payload.page.og and payload.page.og.description else "" }}</li>
-        <li>OG Image: {{ payload.page.og.image if payload.page and payload.page.og and payload.page.og.image else "" }}</li>
-        <li>OG URL: {{ payload.page.og.url if payload.page and payload.page.og and payload.page.og.url else "" }}</li>
-        <li>Canonical: {{ payload.page.canonical if payload.page and payload.page.canonical else "" }}</li>
-      </ul>
+      <!-- Desktop Layout -->
+      <div class="layout">
+        <!-- Main Column -->
+        <div class="main">
+          <section id="m-stats" class="mobile-section active panel" role="region" aria-label="Summary & Metrics">
+            <h2>Summary & Metrics</h2>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <strong>HTTP</strong><br>
+                Status {{ summary.metrics.render.response_status if summary and summary.metrics and summary.metrics.render else "" }},
+                Load {{ summary.metrics.render.load_time_ms if summary and summary.metrics and summary.metrics.render else "" }} ms,
+                Bytes {{ summary.metrics.render.content_length if summary and summary.metrics and summary.metrics.render else "" }},
+                Requests {{ summary.metrics.render.network_requests if summary and summary.metrics and summary.metrics.render else "" }}
+              </div>
+              <div class="summary-item">
+                <strong>Extraction</strong><br>
+                Internal {{ summary.metrics.extraction.internal_count if summary and summary.metrics and summary.metrics.extraction else "" }},
+                External {{ summary.metrics.extraction.external_count if summary and summary.metrics and summary.metrics.extraction else "" }},
+                Candidates {{ summary.metrics.extraction.total_candidates if summary and summary.metrics and summary.metrics.extraction else "" }},
+                Unique {{ summary.metrics.extraction.unique_total if summary and summary.metrics and summary.metrics.extraction else "" }}
+              </div>
+              {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
+              <div class="summary-item" style="grid-column: 1 / -1;">
+                <strong>Top External Domains</strong>
+                <ul class="domain-list">
+                  {% for td in summary.links.top_external_domains %}
+                    <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
+                  {% endfor %}
+                </ul>
+              </div>
+              {% endif %}
+            </div>
+          </section>
 
-      <h2>Metrics</h2>
-      <h3>Render</h3>
-      <ul>
-        <li>Final URL: {{ payload.metrics.render.final_url if payload.metrics and payload.metrics.render else "" }}</li>
-        <li>Status: {{ payload.metrics.render.response_status if payload.metrics and payload.metrics.render else "" }}</li>
-        <li>Network Requests: {{ payload.metrics.render.network_requests if payload.metrics and payload.metrics.render else "" }}</li>
-        <li>Content Length: {{ payload.metrics.render.content_length if payload.metrics and payload.metrics.render else "" }}</li>
-        <li>Load Time (ms): {{ payload.metrics.render.load_time_ms if payload.metrics and payload.metrics.render else "" }}</li>
-        <li>Cache Hit: {{ payload.metrics.render.cache_hit if payload.metrics and payload.metrics.render else "" }}</li>
-      </ul>
-      <h3>Extraction</h3>
-      <ul>
-        <li>Total Candidates: {{ payload.metrics.extraction.total_candidates if payload.metrics and payload.metrics.extraction else "" }}</li>
-        <li>Unique Total: {{ payload.metrics.extraction.unique_total if payload.metrics and payload.metrics.extraction else "" }}</li>
-        <li>Internal Count: {{ payload.metrics.extraction.internal_count if payload.metrics and payload.metrics.extraction else "" }}</li>
-        <li>External Count: {{ payload.metrics.extraction.external_count if payload.metrics and payload.metrics.extraction else "" }}</li>
-        <li>Base Domain: {{ payload.metrics.extraction.base_domain if payload.metrics and payload.metrics.extraction else "" }}</li>
-        <li>Parse Time (ms): {{ payload.metrics.extraction.parse_time_ms if payload.metrics and payload.metrics.extraction else "" }}</li>
-      </ul>
+          <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
+            <h2>Leads (Emails)</h2>
+            <div class="leads-filters">
+              <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain">
+              <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
+              <label class="small"><input type="checkbox" class="lead-type" value="text"> text</label>
+              <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
+              <button onclick="clearLeadFilters()">Clear</button>
+            </div>
+            <div class="leads-actions">
+              <label class="small"><input type="checkbox" id="lead-select-all"> Select All</label>
+              <button onclick="exportSelectedLeads()">Export Selected</button>
+              <button onclick="openAddLead()">Add Lead</button>
+            </div>
+            <table class="table" aria-label="Emails table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Email</th>
+                  <th>Mentions</th>
+                  <th>Found As</th>
+                  <th>Status</th>
+                  <th>Domain</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="leads-tbody">
+                <!-- Rows injected by JS -->
+              </tbody>
+            </table>
+            <!-- Add Lead inline form (hidden by default) -->
+            <div id="add-lead-form" style="display:none; margin-top:8px;">
+              <div class="subtitle">Add lead (client-only; stored locally)</div>
+              <div style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px;">
+                <label>Email<br><input type="text" id="add-email" placeholder="name@example.com"></label>
+                <label>Source URL (optional)<br><input type="text" id="add-source" placeholder="https://..."></label>
+                <label>Tags (comma-separated)<br><input type="text" id="add-tags" placeholder="vip, partner"></label>
+                <label>Notes<br><input type="text" id="add-notes" placeholder="notes..."></label>
+              </div>
+              <div class="leads-actions">
+                <button onclick="saveAddedLead()">Save</button>
+                <button onclick="closeAddLead()">Cancel</button>
+              </div>
+            </div>
+          </section>
 
-      {% if payload.emails %}
-      <h2>Emails</h2>
-      <ul>
-        <li>Total Unique: {{ payload.emails.counts.total_unique if payload.emails.counts else 0 }}</li>
-        <li>Total Mentions: {{ payload.emails.counts.total_mentions if payload.emails.counts else 0 }}</li>
-      </ul>
-      {% if payload.emails.unique and payload.emails.unique|length > 0 %}
-      <p>Unique:</p>
-      <ul>
-        {% for e in payload.emails.unique %}
-          <li>{{ e }}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
-      {% endif %}
+          <section id="m-links" class="mobile-section panel" role="region" aria-label="Links Explorer">
+            <h2>Links Explorer</h2>
+            <div class="tabs" role="tablist" aria-label="Links view">
+              <button type="button" class="tab" role="tab" aria-selected="true" data-target="#links-internal">Internal</button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-target="#links-external">External</button>
+            </div>
+            <div id="links-internal" role="tabpanel" aria-label="Internal links">
+              <ul class="domain-list" id="internal-list"><!-- filled by JS --></ul>
+            </div>
+            <div id="links-external" role="tabpanel" aria-label="External links" style="display:none;">
+              <h3 class="small" style="margin:6px 0;">Top External Domains</h3>
+              <ul class="domain-list" id="external-domain-list"><!-- JS groups --></ul>
+              <div id="external-drilldown" class="small" style="margin-top:8px;"><!-- JS per-domain URLs --></div>
+            </div>
+          </section>
+        </div>
 
-      {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
-      <h3>Top External Domains</h3>
-      <ul>
-        {% for td in summary.links.top_external_domains %}
-          <li>{{ td.domain }} — {{ td.count }}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          {% if payload.pages %}
+          <section id="m-pages" class="mobile-section panel" role="region" aria-label="Pages (Site Scope)">
+            <h2>Pages ({{ payload.pages|length }})</h2>
+            <input type="text" id="pages-search" placeholder="Search pages..." aria-label="Search pages" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+            <div class="pages-panel">
+              <ul class="pages-list" id="pages-list">
+                {% for p in payload.pages %}
+                <li data-url="{{ p.url|e }}">
+                  <input type="checkbox" {% if loop.first %}checked{% endif %} aria-label="Selected page">
+                  <span class="small">{{ p.url }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="small" style="margin-top:6px;">
+              <label><input type="checkbox" id="pages-has-emails"> Show only pages with emails</label>
+              <label style="margin-left:8px;"><input type="checkbox" id="pages-sort-depth"> Sort by path length</label>
+            </div>
+          </section>
+          {% endif %}
 
-      <h2>Links</h2>
-      <ul>
-        <li>Internal: {{ payload.links.internal|length if payload.links and payload.links.internal else 0 }}</li>
-        <li>External: {{ payload.links.external|length if payload.links and payload.links.external else 0 }}</li>
-      </ul>
+          <section id="m-chat" class="mobile-section panel" role="region" aria-label="Chat">
+            <h2>LLM Chat</h2>
+            <div class="small">Sign in to chat with this crawl</div>
+            <button onclick="openChat()">Open Chat</button>
+          </section>
+        </aside>
+      </div>
 
-      <h2>Markdown</h2>
-      <pre id="markdown-content" style="white-space: pre-wrap; word-wrap: break-word;">{{ payload.markdown }}</pre>
+      <!-- Hidden markdown for download only (no inline render) -->
+      <pre id="markdown-content" style="display:none;">{{ payload.markdown }}</pre>
     {% else %}
       <p>No data available.</p>
     {% endif %}
 
     <p>JSON API: <a href="{{ api_url }}">{{ api_url }}</a></p>
     <p><a href="/">Back to Home</a></p>
+
+  <div class="chat-drawer" id="chat-drawer" aria-hidden="true">
+    <div class="chat-header">
+      <strong>Chat with this Crawl</strong>
+      <div>
+        <button onclick="toggleChatSize()" title="Small/Large">⤢</button>
+        <button onclick="closeChat()" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="chat-body">
+      <div class="small">
+        Context:
+        <span>Scope: {{ (payload.scope or 'page') if payload else 'page' }}</span>
+        {% if payload.pages %} • <span>Pages: {{ payload.pages|length }}</span>{% endif %}
+        {% if payload.emails and payload.emails.counts %} • <span>Emails: {{ payload.emails.counts.total_unique or 0 }}</span>{% endif %}
+        {% if payload.links %} • <span>Links: {{ (payload.links.internal|length if payload.links.internal else 0) + (payload.links.external|length if payload.links.external else 0) }}</span>{% endif %}
+      </div>
+      <div style="margin-top:8px;">Sign in to chat with this crawl (coming soon)</div>
+    </div>
+    <div class="chat-footer">
+      <input type="text" placeholder="Enter prompt..." disabled>
+      <button disabled>Send</button>
+    </div>
+  </div>
+
   <script>
+  // Copy helpers (existing approach preserved)
   function copyLink(url) {
     try {
-      // Modern API requires secure context (https or localhost). If available, use it.
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(url).then(function () {
           alert('Link copied');
-        }, function () {
-          legacyCopy(url);
-        });
+        }, function () { legacyCopy(url); });
       } else {
         legacyCopy(url);
       }
-    } catch (e) {
-      legacyCopy(url);
-    }
+    } catch (e) { legacyCopy(url); }
     return false;
   }
   function legacyCopy(text) {
     try {
       var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'absolute';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
+      ta.value = text; ta.setAttribute('readonly','');
+      ta.style.position = 'absolute'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
       var ok = document.execCommand('copy');
       document.body.removeChild(ta);
-      if (ok) {
-        alert('Link copied');
-      } else {
-        // Fallback prompt if copy fails
-        prompt('Copy this link:', text);
-      }
-    } catch (e) {
-      prompt('Copy this link:', text);
-    }
+      if (ok) alert('Link copied'); else prompt('Copy this link:', text);
+    } catch (e) { prompt('Copy this link:', text); }
   }
   function downloadMarkdown() {
     try {
@@ -213,18 +418,347 @@
       if (!md || md.trim().length === 0) { alert('No markdown available'); return false; }
       var blob = new Blob([md], {type: 'text/markdown;charset=utf-8'});
       var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'content.md';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      var a = document.createElement('a'); a.href = url; a.download = 'content.md';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Unable to download markdown');
-    }
+    } catch (e) { alert('Unable to download markdown'); }
     return false;
   }
+
+  // Chat drawer
+  var CHAT_EL = null; var CHAT_LARGE = false;
+  function openChat() {
+    CHAT_EL = CHAT_EL || document.getElementById('chat-drawer');
+    CHAT_EL.style.display = 'flex'; CHAT_EL.setAttribute('aria-hidden','false');
+  }
+  function closeChat() {
+    CHAT_EL = CHAT_EL || document.getElementById('chat-drawer');
+    CHAT_EL.style.display = 'none'; CHAT_EL.setAttribute('aria-hidden','true');
+  }
+  function toggleChatSize() {
+    CHAT_LARGE = !CHAT_LARGE;
+    CHAT_EL = CHAT_EL || document.getElementById('chat-drawer');
+    CHAT_EL.style.height = CHAT_LARGE ? '70vh' : '420px';
+    CHAT_EL.style.width = CHAT_LARGE ? '600px' : '360px';
+  }
+
+  // Tabs (links internal/external)
+  (function() {
+    var tabs = document.querySelectorAll('.tabs .tab');
+    tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        tabs.forEach(function(t){ t.setAttribute('aria-selected','false'); });
+        this.setAttribute('aria-selected','true');
+        var target = this.getAttribute('data-target');
+        document.querySelector('#links-internal').style.display = (target === '#links-internal') ? '' : 'none';
+        document.querySelector('#links-external').style.display = (target === '#links-external') ? '' : 'none';
+      });
+    });
+  })();
+
+  // Mobile tabs
+  (function() {
+    var mtabs = document.querySelectorAll('.mobile-tab');
+    function activate(targetSel, btn) {
+      document.querySelectorAll('.mobile-section').forEach(function(sec){ sec.classList.remove('active'); });
+      var t = document.querySelector(targetSel); if (t) t.classList.add('active');
+      mtabs.forEach(function(b){ b.setAttribute('aria-selected','false'); });
+      btn.setAttribute('aria-selected','true');
+    }
+    mtabs.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        activate(this.getAttribute('data-target'), this);
+      });
+    });
+  })();
+
+  // Simple email validation heuristics
+  var DISPOSABLE_DOMAINS = new Set(['mailinator.com','10minutemail.com','tempmail.email','yopmail.com','guerrillamail.com']);
+  function emailStatus(email, baseDomain) {
+    var re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!re.test(email)) return {label:'Invalid', cls:'status-invalid'};
+    var dom = (email.split('@')[1] || '').toLowerCase();
+    if (DISPOSABLE_DOMAINS.has(dom)) return {label:'Disposable', cls:'status-disposable'};
+    // same-domain or suffix match
+    baseDomain = (baseDomain || '').toLowerCase();
+    if (baseDomain && (dom === baseDomain || dom.endsWith('.' + baseDomain))) return {label:'Valid', cls:'status-valid'};
+    return {label:'Unknown', cls:'status-unknown'};
+  }
+
+  // Build data structures from Jinja-safe outputs
+  var BASE_DOMAIN = "{{ summary.metrics.extraction.base_domain if summary and summary.metrics and summary.metrics.extraction else '' }}";
+  var EMAILS_UNIQUE = [];
+  {% if payload and payload.emails and payload.emails.unique %}
+  {% for _e in payload.emails.unique %}
+  EMAILS_UNIQUE.push("{{ _e|e }}");
+  {% endfor %}
+  {% endif %}
+
+  var EMAILS_BY_URL = {};
+  {% if payload and payload.emails and payload.emails.by_url %}
+  {% for _url, _arr in payload.emails.by_url.items() %}
+    EMAILS_BY_URL["{{ _url|e }}"] = [{% for _ee in _arr %}"{{ _ee|e }}"{% if not loop.last %},{% endif %}{% endfor %}];
+  {% endfor %}
+  {% endif %}
+
+  var EMAILS_SOURCES_RAW = [];
+  {% if payload and payload.emails and payload.emails.sources %}
+  {% for s in payload.emails.sources %}
+  EMAILS_SOURCES_RAW.push({
+    email: "{{ s.email|e }}",
+    url: "{{ s.url|e }}",
+    found_as: [{% for fa in s.found_as %}"{{ fa|e }}"{% if not loop.last %},{% endif %}{% endfor %}]
+  });
+  {% endfor %}
+  {% endif %}
+
+  var LINKS_INTERNAL = [];
+  {% if payload and payload.links and payload.links.internal %}
+  {% for li in payload.links.internal %}
+  LINKS_INTERNAL.push("{{ li|e }}");
+  {% endfor %}
+  {% endif %}
+
+  var LINKS_EXTERNAL = [];
+  {% if payload and payload.links and payload.links.external %}
+  {% for le in payload.links.external %}
+  LINKS_EXTERNAL.push("{{ le|e }}");
+  {% endfor %}
+  {% endif %}
+
+  var TOP_EXTERNAL_DOMAINS = [];
+  {% if summary and summary.links and summary.links.top_external_domains %}
+  {% for td in summary.links.top_external_domains %}
+  TOP_EXTERNAL_DOMAINS.push({domain:"{{ td.domain|e }}", count: {{ td.count }}});
+  {% endfor %}
+  {% endif %}
+
+  // Leads table rendering
+  function buildEmailSourceMap() {
+    var map = {};
+    EMAILS_SOURCES_RAW.forEach(function(x) {
+      var key = x.email;
+      if (!map[key]) map[key] = {foundAs: new Set(), firstUrl: x.url || ''};
+      (x.found_as || []).forEach(function(f){ map[key].foundAs.add(f); });
+      if (!map[key].firstUrl && x.url) map[key].firstUrl = x.url;
+    });
+    // Convert sets to arrays
+    Object.keys(map).forEach(function(k){ map[k].foundAs = Array.from(map[k].foundAs.values()); });
+    return map;
+  }
+
+  function computeMentions(email) {
+    var c = 0;
+    Object.keys(EMAILS_BY_URL).forEach(function(u){
+      var arr = EMAILS_BY_URL[u] || [];
+      if (arr.indexOf(email) !== -1) c += 1;
+    });
+    return c;
+  }
+
+  function firstSourceUrlFallback(email) {
+    // from by_url
+    for (var u in EMAILS_BY_URL) {
+      if ((EMAILS_BY_URL[u] || []).indexOf(email) !== -1) return u;
+    }
+    return "{{ canonical_url or '' }}";
+  }
+
+  function applyLeadFilters(row) {
+    var domainFilter = (document.getElementById('lead-filter-domain').value || '').toLowerCase().trim();
+    var types = Array.from(document.querySelectorAll('.lead-type:checked')).map(function(cb){return cb.value;});
+    var rowDom = (row.getAttribute('data-domain') || '').toLowerCase();
+    var rowFound = (row.getAttribute('data-foundas') || '').split(',').filter(Boolean);
+    if (domainFilter && rowDom.indexOf(domainFilter) === -1) return false;
+    if (types.length > 0) {
+      var any = rowFound.some(function(t){ return types.indexOf(t) !== -1; });
+      if (!any) return false;
+    }
+    return true;
+  }
+
+  function renderLeads() {
+    var tbody = document.getElementById('leads-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    var srcMap = buildEmailSourceMap();
+    EMAILS_UNIQUE.forEach(function(email) {
+      var dom = (email.split('@')[1] || '').toLowerCase();
+      var mentions = computeMentions(email);
+      var foundAs = (srcMap[email] && srcMap[email].foundAs) ? srcMap[email].foundAs : [];
+      var fUrl = (srcMap[email] && srcMap[email].firstUrl) ? srcMap[email].firstUrl : firstSourceUrlFallback(email);
+      var st = emailStatus(email, BASE_DOMAIN);
+
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-email', email);
+      tr.setAttribute('data-domain', dom);
+      tr.setAttribute('data-foundas', foundAs.join(','));
+      tr.innerHTML =
+        '<td><input type="checkbox" class="lead-select"></td>' +
+        '<td><code>'+escapeHtml(email)+'</code></td>' +
+        '<td>'+mentions+'</td>' +
+        '<td title="'+escapeHtml(foundAs.length ? ('Found on: '+fUrl+'; as: '+foundAs.join(',')) : 'N/A')+'">'+(foundAs.join(',')||'-')+'</td>' +
+        '<td><span class="status-chip '+st.cls+'">'+st.label+'</span></td>' +
+        '<td>'+escapeHtml(dom || '-')+'</td>' +
+        '<td><button onclick="copyLink(\''+jsStr(fUrl)+'\')">↗</button> <button onclick="copyLink(\''+jsStr(email)+'\')">Copy</button></td>';
+      if (applyLeadFilters(tr)) tbody.appendChild(tr);
+    });
+    // Hook select all
+    var sa = document.getElementById('lead-select-all');
+    if (sa) {
+      sa.checked = false;
+      sa.onchange = function() {
+        tbody.querySelectorAll('.lead-select').forEach(function(cb){ cb.checked = sa.checked; });
+      };
+    }
+  }
+
+  function clearLeadFilters() {
+    var df = document.getElementById('lead-filter-domain'); if (df) df.value = '';
+    document.querySelectorAll('.lead-type:checked').forEach(function(cb){ cb.checked = false; });
+    renderLeads();
+  }
+
+  // Add Lead (client-only)
+  function openAddLead(){ document.getElementById('add-lead-form').style.display='block'; }
+  function closeAddLead(){ document.getElementById('add-lead-form').style.display='none'; }
+  function saveAddedLead() {
+    var e = (document.getElementById('add-email').value || '').trim();
+    var s = (document.getElementById('add-source').value || '').trim();
+    var t = (document.getElementById('add-tags').value || '').trim();
+    var n = (document.getElementById('add-notes').value || '').trim();
+    if (!e) { alert('Email is required'); return; }
+    // Store locally (merge)
+    var LS_KEY = 'leads:' + "{{ abs_api_url or api_url }}";
+    try {
+      var obj = JSON.parse(localStorage.getItem(LS_KEY) || '{"manual":[]}');
+      obj.manual = obj.manual || [];
+      obj.manual.push({email:e, source:s, tags:t, notes:n, ts:Date.now()});
+      localStorage.setItem(LS_KEY, JSON.stringify(obj));
+    } catch(_) {}
+    if (EMAILS_UNIQUE.indexOf(e) === -1) EMAILS_UNIQUE.push(e);
+    // create minimal source entry so tooltip/first URL work
+    EMAILS_SOURCES_RAW.push({email:e, url:s || '{{ canonical_url or "" }}', found_as: []});
+    closeAddLead();
+    renderLeads();
+  }
+
+  function exportSelectedLeads() {
+    var rows = Array.from(document.querySelectorAll('#leads-tbody tr'));
+    var sel = rows.filter(function(r){ var cb=r.querySelector('.lead-select'); return cb && cb.checked; });
+    if (sel.length === 0) { alert('No rows selected'); return; }
+    var lines = ['email,mentions,found_as,status,domain,first_source_url,tags,notes'];
+    var srcMap = buildEmailSourceMap();
+    sel.forEach(function(r){
+      var email = r.getAttribute('data-email') || '';
+      var mentions = r.children[2].innerText || '0';
+      var foundAs = r.getAttribute('data-foundas') || '';
+      var status = r.children[4].innerText || '';
+      var domain = r.getAttribute('data-domain') || '';
+      var fUrl = (srcMap[email] && srcMap[email].firstUrl) ? srcMap[email].firstUrl : firstSourceUrlFallback(email);
+      // best-effort manual data
+      var tags = ''; var notes = '';
+      lines.push([csv(email), csv(mentions), csv(foundAs), csv(status), csv(domain), csv(fUrl), csv(tags), csv(notes)].join(','));
+    });
+    var blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'leads.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Links Explorer rendering
+  function absInternal(u) {
+    var base = (BASE_DOMAIN || '').replace(/^www\./,'');
+    if (!u) return '';
+    var path = (u[0] === '/') ? u : ('/'+u);
+    return base ? ('https://'+base+path) : path;
+  }
+  function renderLinksInternal() {
+    var ul = document.getElementById('internal-list'); if (!ul) return;
+    ul.innerHTML = '';
+    (LINKS_INTERNAL || []).forEach(function(u){
+      var li = document.createElement('li');
+      var au = absInternal(u);
+      li.innerHTML = '<span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(au)+'" target="_blank" rel="noopener">↗</a></span>';
+      ul.appendChild(li);
+    });
+  }
+  function renderLinksExternal() {
+    var domains = {}; (LINKS_EXTERNAL || []).forEach(function(u){
+      try {
+        var d = (new URL(u)).hostname.toLowerCase();
+        domains[d] = domains[d] || []; domains[d].push(u);
+      } catch(_){}
+    });
+    var list = document.getElementById('external-domain-list'); if (!list) return;
+    list.innerHTML = '';
+    var sorted = Object.keys(domains).sort(function(a,b){ return (domains[b].length - domains[a].length) || a.localeCompare(b); });
+    sorted.forEach(function(d){
+      var li = document.createElement('li');
+      li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+domains[d].length+' <button class="small" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="small" disabled title="Coming soon">Seed Crawl</button></span>';
+      list.appendChild(li);
+    });
+    // Prefer server-computed TOP_EXTERNAL_DOMAINS order when available
+    if ((TOP_EXTERNAL_DOMAINS||[]).length) {
+      list.innerHTML = '';
+      TOP_EXTERNAL_DOMAINS.forEach(function(td){
+        var d = td.domain; var c = (domains[d]||[]).length || td.count;
+        var li = document.createElement('li');
+        li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+c+' <button class="small" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="small" disabled title="Coming soon">Seed Crawl</button></span>';
+        list.appendChild(li);
+      });
+    }
+  }
+  function drillExternal(domain) {
+    var cont = document.getElementById('external-drilldown'); if (!cont) return;
+    cont.innerHTML = '<div class="small"><strong>Drilldown:</strong> '+escapeHtml(domain)+'</div>';
+    var urls = (LINKS_EXTERNAL || []).filter(function(u){ try { return (new URL(u)).hostname.toLowerCase() === domain.toLowerCase(); } catch(_) { return false; } });
+    var ul = document.createElement('ul'); ul.className = 'domain-list';
+    urls.forEach(function(u){
+      var li = document.createElement('li');
+      li.innerHTML = '<span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="small" disabled title="Coming soon">Queue Crawl</button></span>';
+      ul.appendChild(li);
+    });
+    cont.appendChild(ul);
+  }
+
+  // Pages panel interactions (search/filters visual only)
+  (function(){
+    var input = document.getElementById('pages-search');
+    var list = document.getElementById('pages-list');
+    if (input && list) {
+      input.addEventListener('input', function(){
+        var q = (input.value || '').toLowerCase();
+        list.querySelectorAll('li').forEach(function(li){
+          var url = (li.getAttribute('data-url') || '').toLowerCase();
+          li.style.display = url.indexOf(q) !== -1 ? '' : 'none';
+        });
+      });
+    }
+  })();
+
+  // Utilities
+  function escapeHtml(s) {
+    return (s==null?'':String(s))
+      .replace(/&/g,'&')
+      .replace(/</g,'<')
+      .replace(/>/g,'>')
+      .replace(/"/g,'"')
+      .replace(/'/g,'&#39;');
+  }
+  function jsStr(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+  function csv(s){ var t=String(s==null?'':s); if (/[",\n]/.test(t)) return '"'+t.replace(/"/g,'""')+'"'; return t; }
+
+  // Init
+  (function init(){
+    renderLeads();
+    var _lfd = document.getElementById('lead-filter-domain');
+    if (_lfd) { _lfd.addEventListener('input', renderLeads); }
+    document.querySelectorAll('.lead-type').forEach(function(cb){ cb.addEventListener('change', renderLeads); });
+    renderLinksInternal();
+    renderLinksExternal();
+  })();
   </script>
   </body>
 </html>
