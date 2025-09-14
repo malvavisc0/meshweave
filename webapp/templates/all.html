@@ -1,95 +1,61 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ page_title or 'All public results' }}</title>
-    {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
-    {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
-    {% if abs_prev_url %}<link rel="prev" href="{{ abs_prev_url }}">{% endif %}
-    {% if abs_next_url %}<link rel="next" href="{{ abs_next_url }}">{% endif %}
+{% extends "base.html" %}
 
-    <meta property="og:type" content="website">
-    {% if site_name %}<meta property="og:site_name" content="{{ site_name }}">{% endif %}
-    <meta property="og:title" content="{{ page_title or 'All public results' }}">
-    {% if meta_description %}<meta property="og:description" content="{{ meta_description }}">{% endif %}
-    {% if abs_page_url %}<meta property="og:url" content="{{ abs_page_url }}">{% endif %}
-    {% if og_image_url %}<meta property="og:image" content="{{ og_image_url }}">{% endif %}
+{% block content %}
+<h1>All Public Results</h1>
+<p><a href="/">Back to Home</a></p>
 
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ page_title or 'All public results' }}">
-    {% if meta_description %}<meta name="twitter:description" content="{{ meta_description }}">{% endif %}
-    {% if og_image_url %}<meta name="twitter:image" content="{{ og_image_url }}">{% endif %}
-  </head>
-  <body>
-    <nav style="padding:8px 0; border-bottom:1px solid #ddd; margin-bottom:12px;">
-      <a href="/">Home</a>
-      &nbsp;|&nbsp;
-      <a href="/all">All</a>
-      &nbsp;|&nbsp;
-      <form onsubmit="var v=document.getElementById('nav-domain').value.trim(); if(v){ window.location.href='/domain/'+encodeURIComponent(v.toLowerCase()); } return false;" style="display:inline;">
-        <label for="nav-domain">Domain:</label>
-        <input type="text" id="nav-domain" name="domain" placeholder="example.com" style="width:180px;">
-        <button type="submit">Go</button>
-      </form>
-    </nav>
+<form method="get" action="/all" style="margin-bottom:12px;">
+  <label for="f-domain">Domain:</label>
+  <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com" style="width:200px;">
+  <label for="f-status">Status:</label>
+  <select id="f-status" name="status">
+    <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
+    <option value="pending" {% if filter_status=='pending' %}selected{% endif %}>pending</option>
+    <option value="running" {% if filter_status=='running' %}selected{% endif %}>running</option>
+    <option value="succeeded" {% if filter_status=='succeeded' %}selected{% endif %}>succeeded</option>
+    <option value="failed" {% if filter_status=='failed' %}selected{% endif %}>failed</option>
+  </select>
+  <label for="f-page-size">Page size:</label>
+  <select id="f-page-size" name="page_size">
+    <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
+    <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
+    <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
+  </select>
+  <button type="submit">Apply</button>
+</form>
 
-    <h1>All Public Results</h1>
-    <p><a href="/">Back to Home</a></p>
+{% if items and items|length > 0 %}
+  <ul>
+    {% for item in items %}
+      <li>
+        <a href="/analysis/public/{{ item.key }}">
+          {% if item.canonical_url %}
+            {{ item.canonical_url }}
+          {% else %}
+            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
+          {% endif %}
+        </a>
+        {% if item.title %} — {{ item.title }}{% endif %}
+        <br>
+        <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
+      </li>
+    {% endfor %}
+  </ul>
 
-    <form method="get" action="/all" style="margin-bottom:12px;">
-      <label for="f-domain">Domain:</label>
-      <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com" style="width:200px;">
-      <label for="f-status">Status:</label>
-      <select id="f-status" name="status">
-        <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
-        <option value="pending" {% if filter_status=='pending' %}selected{% endif %}>pending</option>
-        <option value="running" {% if filter_status=='running' %}selected{% endif %}>running</option>
-        <option value="succeeded" {% if filter_status=='succeeded' %}selected{% endif %}>succeeded</option>
-        <option value="failed" {% if filter_status=='failed' %}selected{% endif %}>failed</option>
-      </select>
-      <label for="f-page-size">Page size:</label>
-      <select id="f-page-size" name="page_size">
-        <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
-        <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
-        <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
-      </select>
-      <button type="submit">Apply</button>
-    </form>
-
-    {% if items and items|length > 0 %}
-      <ul>
-        {% for item in items %}
-          <li>
-            <a href="/analysis/public/{{ item.key }}">
-              {% if item.canonical_url %}
-                {{ item.canonical_url }}
-              {% else %}
-                {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
-              {% endif %}
-            </a>
-            {% if item.title %} — {{ item.title }}{% endif %}
-            <br>
-            <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
-          </li>
-        {% endfor %}
-      </ul>
-
-      <div style="margin-top:12px;">
-        {% if has_prev %}
-          <a href="{{ prev_url }}">&larr; Prev</a>
-        {% else %}
-          <span style="color:#999;">&larr; Prev</span>
-        {% endif %}
-        &nbsp;&nbsp;
-        {% if has_next %}
-          <a href="{{ next_url }}">Next &rarr;</a>
-        {% else %}
-          <span style="color:#999;">Next &rarr;</span>
-        {% endif %}
-      </div>
+  <div style="margin-top:12px;">
+    {% if has_prev %}
+      <a href="{{ prev_url }}">&larr; Prev</a>
     {% else %}
-      <p>No results found.</p>
+      <span class="small" style="color:#999;">&larr; Prev</span>
     {% endif %}
-  </body>
-</html>
+    &nbsp;&nbsp;
+    {% if has_next %}
+      <a href="{{ next_url }}">Next &rarr;</a>
+    {% else %}
+      <span class="small" style="color:#999;">Next &rarr;</span>
+    {% endif %}
+  </div>
+{% else %}
+  <p>No results found.</p>
+{% endif %}
+{% endblock %}

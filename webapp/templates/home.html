@@ -1,137 +1,76 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ page_title or site_name or 'Markdownify Web App' }}</title>
-    {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
-    {% if abs_page_url %}<link rel="canonical" href="{{ abs_page_url }}">{% endif %}
+{% extends "base.html" %}
 
-    <meta property="og:type" content="website">
-    {% if site_name %}<meta property="og:site_name" content="{{ site_name }}">{% endif %}
-    <meta property="og:title" content="{{ page_title or site_name or 'Markdownify Web App' }}">
-    {% if meta_description %}<meta property="og:description" content="{{ meta_description }}">{% endif %}
-    {% if abs_page_url %}<meta property="og:url" content="{{ abs_page_url }}">{% endif %}
-    {% if og_image_url %}<meta property="og:image" content="{{ og_image_url }}">{% endif %}
+{% block content %}
+<h1>{{ site_name or 'Markdownify Web App' }}</h1>
 
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ page_title or site_name or 'Markdownify Web App' }}">
-    {% if meta_description %}<meta name="twitter:description" content="{{ meta_description }}">{% endif %}
-    {% if og_image_url %}<meta name="twitter:image" content="{{ og_image_url }}">{% endif %}
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "{{ site_name or 'Markdownify Web App' }}",
-      "url": "{{ abs_page_url }}",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "{{ abs_page_url }}domain/{search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
-  </head>
-  <body>
-    <nav style="padding:8px 0; border-bottom:1px solid #ddd; margin-bottom:12px;">
-      <a href="/">Home</a>
-      &nbsp;|&nbsp;
-      <a href="/all">All</a>
-      &nbsp;|&nbsp;
-      <form onsubmit="var v=document.getElementById('nav-domain').value.trim(); if(v){ window.location.href='/domain/'+encodeURIComponent(v.toLowerCase()); } return false;" style="display:inline;">
-        <label for="nav-domain">Domain:</label>
-        <input type="text" id="nav-domain" name="domain" placeholder="example.com" style="width:180px;">
-        <button type="submit">Go</button>
-      </form>
-    </nav>
-    <h1>{{ site_name or 'Markdownify Web App' }}</h1>
+{% if login_error %}
+  <div role="alert" style="background:#fee; color:#900; padding:8px; border:1px solid #f99; margin:8px 0;">
+    Sign-in failed. Please try again.
+  </div>
+{% endif %}
 
-    {% if login_error %}
-      <div role="alert" style="background:#fee; color:#900; padding:8px; border:1px solid #f99; margin:8px 0;">
-        Sign-in failed. Please try again.
-      </div>
-    {% endif %}
 
-    <div style="margin:10px 0 16px;">
-      {% if request.state.current_user %}
-        <span>Signed in{{ request.state.current_user.email and ' as ' ~ request.state.current_user.email }}</span>
-        <form action="/logout" method="post" style="display:inline; margin-left:8px;">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <button type="submit">Sign out</button>
-        </form>
-        <form action="/logout-all" method="post" style="display:inline; margin-left:8px;">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <button type="submit">Sign out of all devices</button>
-        </form>
-      {% else %}
-        <a href="/login?provider=google&next=/" style="display:inline-block; padding:6px 10px; border:1px solid #ccc; border-radius:4px; text-decoration:none;">
-          Sign in with Google
+<h2>Submit a URL</h2>
+<form action="/submit" method="post">
+  {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+  <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+    <label for="website">Website</label>
+    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+  </div>
+  <label for="url">URL:</label>
+  <input type="url" id="url" name="url" placeholder="https://example.com/path?query=1" required style="width: 520px;" aria-describedby="url-help">
+  <p id="url-help" class="small" style="margin:6px 0 10px;">
+    Analyzes only this page (not the whole site). Outputs Markdown, links, emails, and metrics.
+    "Public" makes the result shareable on the homepage and via a key.
+  </p>
+  <label for="public">
+    <input type="checkbox" id="public" name="public" {% if not request.state.current_user %}checked{% endif %}>
+    Public (listed on homepage; accessible by key)
+  </label>
+  <button type="submit">Analyze Page</button>
+</form>
+
+{% if request.state.current_user %}
+<h2>Crawl Site</h2>
+<form action="/submit-site" method="post">
+  {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+  <label for="site-domain">Domain:</label>
+  <input type="text" id="site-domain" name="domain" placeholder="example.com" required style="width: 260px;" aria-describedby="site-help">
+  <div style="margin-top:6px;">
+    <label for="max_pages">Max pages (optional):</label>
+    <input type="number" id="max_pages" name="max_pages" min="1" placeholder="200" style="width: 100px;">
+    <label for="max_depth" style="margin-left:10px;">Max depth (optional):</label>
+    <input type="number" id="max_depth" name="max_depth" min="0" placeholder="3" style="width: 80px;">
+    <label for="time_budget_ms" style="margin-left:10px;">Time budget ms (optional):</label>
+    <input type="number" id="time_budget_ms" name="time_budget_ms" min="60000" step="1000" placeholder="600000" style="width: 120px;">
+  </div>
+  <p id="site-help" class="small" style="margin:6px 0 10px;">
+    Traverses internal links within the same domain using BFS. Defaults and caps are enforced by the server.
+  </p>
+  <button type="submit">Start Crawl</button>
+  <a href="/my" style="margin-left:8px;">My Jobs</a>
+</form>
+{% endif %}
+
+<h2>Latest 10 Public URLs</h2>
+{% if items and items|length > 0 %}
+  <ul>
+    {% for item in items %}
+      <li>
+        <a href="/analysis/public/{{ item.key }}">
+          {% if item.canonical_url %}
+            {{ item.canonical_url }}
+          {% else %}
+            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
+          {% endif %}
         </a>
-      {% endif %}
-    </div>
-
-    <h2>Submit a URL</h2>
-    <form action="/submit" method="post">
-      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-      <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
-        <label for="website">Website</label>
-        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
-      </div>
-      <label for="url">URL:</label>
-      <input type="url" id="url" name="url" placeholder="https://example.com/path?query=1" required style="width: 520px;" aria-describedby="url-help">
-      <p id="url-help" style="color:#555; font-size:0.92em; margin:6px 0 10px;">
-        Analyzes only this page (not the whole site). Outputs Markdown, links, emails, and metrics.
-        "Public" makes the result shareable on the homepage and via a key.
-      </p>
-      <label for="public">
-        <input type="checkbox" id="public" name="public" {% if not request.state.current_user %}checked{% endif %}>
-        Public (listed on homepage; accessible by key)
-      </label>
-      <button type="submit">Analyze Page</button>
-    </form>
-
-    {% if request.state.current_user %}
-    <h2>Crawl Site</h2>
-    <form action="/submit-site" method="post">
-      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-      <label for="site-domain">Domain:</label>
-      <input type="text" id="site-domain" name="domain" placeholder="example.com" required style="width: 260px;" aria-describedby="site-help">
-      <div style="margin-top:6px;">
-        <label for="max_pages">Max pages (optional):</label>
-        <input type="number" id="max_pages" name="max_pages" min="1" placeholder="200" style="width: 100px;">
-        <label for="max_depth" style="margin-left:10px;">Max depth (optional):</label>
-        <input type="number" id="max_depth" name="max_depth" min="0" placeholder="3" style="width: 80px;">
-        <label for="time_budget_ms" style="margin-left:10px;">Time budget ms (optional):</label>
-        <input type="number" id="time_budget_ms" name="time_budget_ms" min="60000" step="1000" placeholder="600000" style="width: 120px;">
-      </div>
-      <p id="site-help" style="color:#555; font-size:0.92em; margin:6px 0 10px;">
-        Traverses internal links within the same domain using BFS. Defaults and caps are enforced by the server.
-      </p>
-      <button type="submit">Start Crawl</button>
-      <a href="/my" style="margin-left:8px;">My Jobs</a>
-    </form>
-    {% endif %}
-
-    <h2>Latest 10 Public URLs</h2>
-    {% if items and items|length > 0 %}
-      <ul>
-        {% for item in items %}
-          <li>
-            <a href="/analysis/public/{{ item.key }}">
-              {% if item.canonical_url %}
-                {{ item.canonical_url }}
-              {% else %}
-                {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
-              {% endif %}
-            </a>
-            {% if item.title %} — {{ item.title }}{% endif %}
-            <br>
-            <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>No public crawls yet.</p>
-    {% endif %}
-  </body>
-</html>
+        {% if item.title %} — {{ item.title }}{% endif %}
+        <br>
+        <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No public crawls yet.</p>
+{% endif %}
+{% endblock %}
