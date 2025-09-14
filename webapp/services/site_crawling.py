@@ -154,6 +154,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         if start_url
         else {"max_pages": 1, "max_depth": 0, "time_budget_ms": 600_000}
     )
+    # Persist effective limits so progress API/UI can display totals (max_pages, etc.)
+    try:
+        with get_session() as s:
+            r = s.get(Crawl, crawl_id)
+            if r:
+                r.limits_json = json.dumps(limits)
+                r.updated_at = datetime.now(timezone.utc)
+    except Exception:
+        pass
     time_budget_s = max(1.0, float(limits.get("time_budget_ms", 600_000)) / 1000.0)
 
     started_monotonic_overall = time.monotonic()
@@ -321,6 +330,61 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
 
         # 2) BFS
         while queue and len(pages) < limits["max_pages"]:
+            # Cooperative cancellation: stop promptly if status changed
+            try:
+                with get_session() as s:
+                    _cur = s.get(Crawl, crawl_id)
+                if not _cur or (str(getattr(_cur, "status", "")).lower() != "running"):
+                    # Persist partial results and mark cancelled
+                    with get_session() as s:
+                        row = s.get(Crawl, crawl_id)
+                        if not row:
+                            return
+                        row.status = "cancelled"
+                        row.error = "cancelled_by_user"
+                        row.payload_json = json.dumps(
+                            {
+                                "scope": "site",
+                                "start_url": start_url,
+                                "limits": limits,
+                                "page": meta0,
+                                "markdown": md0,
+                                "links": {"internal": internal0, "external": external0},
+                                "metrics": {
+                                    "render": render_metrics0,
+                                    "extraction": extraction0,
+                                },
+                                "emails": {
+                                    "unique": sorted(all_emails_set),
+                                    "by_url": emails_by_url,
+                                    "counts": {
+                                        "total_unique": len(all_emails_set),
+                                        "total_mentions": sum(
+                                            len(v) for v in emails_by_url.values()
+                                        ),
+                                    },
+                                },
+                                "pages": pages,
+                                "summary": {
+                                    "visited_count": len(pages),
+                                    "reason_stopped": "cancelled",
+                                },
+                            }
+                        )
+                        row.updated_at = datetime.now(timezone.utc)
+                    try:
+                        log_audit("site_crawl_cancelled", crawl_id=crawl_id)
+                    except Exception:
+                        pass
+                    try:
+                        job_duration.labels("site", "cancelled").observe(
+                            max(0.0, time.monotonic() - started_monotonic_overall)
+                        )
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                pass
             # Time budget check
             if (time.monotonic() - started_monotonic) > time_budget_s:
                 stop_reason = "time_budget_exceeded"

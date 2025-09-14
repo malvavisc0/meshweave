@@ -3,6 +3,34 @@
 {% block content %}
 <h1>My Jobs</h1>
 
+{% if notice %}
+  {% set ok_notices = ['cancelled','retried'] %}
+  <div role="alert" class="notice {% if notice in ok_notices %}notice-ok{% else %}notice-err{% endif %}">
+    {% if notice == 'cancelled' %}
+      <strong>Cancelled.</strong> The running job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was cancelled.
+    {% elif notice == 'retried' %}
+      <strong>Retry started.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is queued to run again.
+    {% elif notice == 'not_running' %}
+      <strong>Not running.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is not currently running.
+    {% elif notice == 'not_authorized' %}
+      <strong>Not authorized.</strong> You do not own job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %}.
+    {% elif notice == 'not_found' %}
+      <strong>Not found.</strong> The requested job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was not found.
+    {% elif notice == 'csrf_failed' %}
+      <strong>Security check failed.</strong> Please try again and ensure your session is valid.
+    {% elif notice == 'cancel_get' %}
+      <strong>Action requires confirmation.</strong> Please use the Cancel button on the job page to cancel.
+    {% else %}
+      <strong>Notice.</strong> An action was performed.
+    {% endif %}
+    {% if notice_job %}
+      {% if notice in ['cancelled','not_running','retried'] %}
+        &nbsp;<a href="/analysis/private/{{ notice_job }}">Open job</a>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endif %}
+
 {% if items and items|length > 0 %}
   <table class="table" aria-label="My Jobs">
     <thead>
@@ -40,11 +68,6 @@
     </tbody>
   </table>
 
-  <div style="margin-top:10px;">
-    {% if has_prev and prev_url %}<a href="{{ prev_url }}">&larr; Newer</a>{% endif %}
-    {% if has_prev and has_next %} &nbsp;|&nbsp; {% endif %}
-    {% if has_next and next_url %}<a href="{{ next_url }}">Older &rarr;</a>{% endif %}
-  </div>
 {% else %}
   <p>No jobs found.</p>
 {% endif %}

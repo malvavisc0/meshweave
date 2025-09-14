@@ -69,6 +69,32 @@ async def run_crawl_task(
             cache_dir=None,  # env MARKDOWNIFY_CACHE_DIR applies in core
         )
 
+        # Best-effort cancellation: if user cancelled while rendering, skip persistence
+        try:
+            with get_session() as s:
+                st_row = s.get(Crawl, crawl_id)
+            if st_row and str(getattr(st_row, "status", "")).lower() == "cancelled":
+                # Do not persist payload; honor cancellation
+                try:
+                    log_audit("page_crawl_cancelled", crawl_id=crawl_id, user_id=user_id)
+                except Exception:
+                    pass
+                try:
+                    job_duration.labels("page", "cancelled").observe(
+                        max(0.0, time.monotonic() - started)
+                    )
+                except Exception:
+                    pass
+                # Touch updated_at for visibility
+                with get_session() as s:
+                    row2 = s.get(Crawl, crawl_id)
+                    if row2:
+                        row2.updated_at = datetime.now(timezone.utc)
+                return
+        except Exception:
+            # On any error, proceed with normal persist flow
+            pass
+
         # Persist links/emails into relational tables (idempotent)
         try:
             # Clear previous persisted rows for this crawl

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -12,7 +13,7 @@ from sqlalchemy import and_, or_
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, Submission
+from webapp.models import Crawl, CrawlLink, Submission
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -228,6 +229,9 @@ async def home(request: Request):
     meta_description = "Render pages to Markdown, extract emails and links. Share public results with short keys and browse recent URLs."
     abs_page_url = _abs_url(request, "/")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
+    # Optional banner when a crawl was just started (anonymous redirect target)
+    submitted_id = request.query_params.get("submitted") or None
+    submitted_status_url = f"/api/status/{submitted_id}" if submitted_id else None
 
     resp = templates.TemplateResponse(
         "home.html",
@@ -236,6 +240,9 @@ async def home(request: Request):
             "items": items,
             "csrf_token": csrf_token,
             "login_error": True if request.query_params.get("error") else False,
+            # Submission banner
+            "submitted_id": submitted_id,
+            "submitted_status_url": submitted_status_url,
             # SEO
             "site_name": site_name,
             "page_title": page_title,
@@ -799,9 +806,9 @@ async def submit_site(
         session_id = request.cookies.get(cookie_name) or ""
         max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
         if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-            raise HTTPException(status_code=403, detail="CSRF validation failed")
+            return RedirectResponse(url="/my?notice=csrf_failed", status_code=303)
 
-    user = await require_auth(request)
+    user = getattr(request.state, "current_user", None)
 
     # Normalize and validate domain
     dom = (domain or "").strip().lower()
@@ -817,9 +824,10 @@ async def submit_site(
     if not dom or "." not in dom or any(c.isspace() for c in dom):
         raise HTTPException(status_code=400, detail="Invalid domain")
 
-    # Enforce quotas (user-owned jobs only)
-    enforce_concurrent_jobs_limit(user.id)
-    enforce_daily_site_crawl_limit(user.id)
+    # Enforce quotas only when authenticated (no rate limits for anonymous)
+    if user and getattr(user, "id", None):
+        enforce_concurrent_jobs_limit(user.id)
+        enforce_daily_site_crawl_limit(user.id)
 
     # Resolve limits and apply caps via env (we store raw requested, caps enforced in service)
     lim_req = {}
@@ -839,35 +847,276 @@ async def submit_site(
         except Exception:
             pass
 
-    # Create crawl row
+    # Upsert crawl row (private, unique on visibility+domain+path+query)
     start_url = f"https://{dom}/"
     now = datetime.now(timezone.utc)
     with get_session() as s:
-        row = Crawl(
-            url=start_url,
-            domain=dom,
-            path="/",
-            query="",
-            canonical_url=start_url,
-            key=None,
-            visibility="private",
-            scope="site",
-            status="pending",
-            payload_json=None,
-            error=None,
-            user_id=user.id,
-            limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
-            created_at=now,
-            updated_at=now,
+        existing = (
+            s.query(Crawl)
+            .filter(
+                Crawl.visibility == "private",
+                Crawl.domain == dom,
+                Crawl.path == "/",
+                Crawl.query == "",
+            )
+            .one_or_none()
         )
-        s.add(row)
-        s.flush()
-        crawl_id = row.id
+        if existing:
+            # Refresh existing private crawl (convert to site scope if needed)
+            # Recover from stale 'running' (e.g., worker died) — flip back to pending if older than threshold
+            try:
+                stale_min = int(os.getenv("SITE_CRAWL_STALE_MINUTES", "10"))
+            except Exception:
+                stale_min = 10
+            if (
+                str(getattr(existing, "status", "")).lower() == "running"
+                and getattr(existing, "updated_at", None)
+                and (now - existing.updated_at) > timedelta(minutes=stale_min)
+            ):
+                existing.status = "pending"
+                existing.payload_json = None
+                existing.error = None
 
-    # Schedule site crawl
+            existing.url = start_url
+            existing.canonical_url = start_url
+            existing.scope = "site"
+            existing.limits_json = json.dumps(lim_req) if lim_req else json.dumps({})
+            # Attach ownership when logged in and missing
+            try:
+                if user and not getattr(existing, "user_id", None):
+                    existing.user_id = getattr(user, "id", None)
+            except Exception:
+                pass
+            if existing.status != "running":
+                existing.status = "pending"
+                existing.payload_json = None
+                existing.error = None
+            existing.updated_at = now
+            crawl_id = existing.id
+        else:
+            row = Crawl(
+                url=start_url,
+                domain=dom,
+                path="/",
+                query="",
+                canonical_url=start_url,
+                key=None,
+                visibility="private",  # Option B: keep anonymous site crawls private
+                scope="site",
+                status="pending",
+                payload_json=None,
+                error=None,
+                user_id=(getattr(user, "id", None) if user else None),
+                limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
+                created_at=now,
+                updated_at=now,
+            )
+            s.add(row)
+            s.flush()
+            crawl_id = row.id
+
+    # Schedule site crawl (robust): BackgroundTasks + immediate task (guarded by DB transition)
     background_tasks.add_task(run_site_crawl_task, crawl_id, False)
+    try:
+        asyncio.create_task(run_site_crawl_task(crawl_id, False))
+    except Exception:
+        pass
+    try:
+        log_audit("site_crawl_enqueued", request=request, crawl_id=crawl_id)
+    except Exception:
+        pass
 
-    return RedirectResponse(url=f"/analysis/private/{crawl_id}", status_code=303)
+    # Redirect:
+    # - Logged-in owners go to private result
+    # - Anonymous users go back to home with a status hint (private page is owner-protected)
+    if user and getattr(user, "id", None):
+        return RedirectResponse(url=f"/analysis/private/{crawl_id}", status_code=303)
+    else:
+        return RedirectResponse(url=f"/?submitted={crawl_id}", status_code=303)
+
+
+@router.get("/api/progress/{crawl_id}")
+async def api_progress(request: Request, crawl_id: str):
+    """Return lightweight progress info for a private crawl (owner only).
+
+    Args:
+        request (Request): Incoming request (used for ownership check).
+        crawl_id (str): UUID of the crawl.
+
+    Returns:
+        dict: {
+          "id": str,
+          "status": str,
+          "scope": "page"|"site",
+          "visited_pages": int,
+          "limits": {...} | {},
+          "elapsed_ms": int | None,
+          "last_updated": ISO timestamp
+        }
+    """
+    row = await require_ownership(request, crawl_id)
+    now = datetime.now(timezone.utc)
+
+    # Count distinct page_url's we have already persisted (works for both page/site)
+    visited_pages = 0
+    with get_session() as s:
+        visited_pages = (
+            s.query(CrawlLink.page_url)
+            .filter(CrawlLink.crawl_id == crawl_id)
+            .distinct()
+            .count()
+        )
+
+    # Limits (for site crawls)
+    limits = {}
+    if (row.scope or "page") == "site":
+        try:
+            limits = json.loads(row.limits_json or "{}")
+        except Exception:
+            limits = {}
+        # Fallback if effective limits not yet persisted
+        if not isinstance(limits, dict):
+            limits = {}
+        if ("max_pages" not in limits) or (not limits.get("max_pages")):
+            try:
+                limits["max_pages"] = int(os.getenv("AUTH_SITE_MAX_PAGES_DEFAULT", "200"))
+            except Exception:
+                limits["max_pages"] = 200
+
+    # Best-effort elapsed: time since updated_at while running (approximation)
+    elapsed_ms = None
+    try:
+        if (row.status or "").lower() == "running" and row.updated_at:
+            elapsed_ms = int((now - row.updated_at).total_seconds() * 1000)
+    except Exception:
+        elapsed_ms = None
+
+    # Estimate remaining time for site crawls
+    est_remaining_ms = None
+    time_budget_ms_val = None
+    time_budget_remaining_ms = None
+    try:
+        if (row.scope or "page") == "site":
+            # ensure integer max_pages
+            total = None
+            v_total = limits.get("max_pages") if isinstance(limits, dict) else None
+            try:
+                total = int(v_total) if v_total is not None else None
+            except Exception:
+                total = None
+            done = int(visited_pages or 0)
+            if elapsed_ms is not None and total and total > 0 and done > 0:
+                avg = float(elapsed_ms) / float(done)
+                rem_pages = max(0, total - done)
+                est_remaining_ms = int(avg * rem_pages)
+            # time budget info if available
+            v_budget = limits.get("time_budget_ms") if isinstance(limits, dict) else None
+            try:
+                time_budget_ms_val = int(v_budget) if v_budget is not None else None
+            except Exception:
+                time_budget_ms_val = None
+            if time_budget_ms_val is not None and elapsed_ms is not None:
+                time_budget_remaining_ms = max(
+                    0, int(time_budget_ms_val) - int(elapsed_ms)
+                )
+    except Exception:
+        est_remaining_ms = None
+        time_budget_remaining_ms = None
+
+    return {
+        "id": row.id,
+        "status": row.status,
+        "scope": row.scope or "page",
+        "visited_pages": visited_pages,
+        "limits": limits,
+        "elapsed_ms": elapsed_ms,
+        "est_remaining_ms": est_remaining_ms,
+        "time_budget_ms": time_budget_ms_val,
+        "time_budget_remaining_ms": time_budget_remaining_ms,
+        "last_updated": (row.updated_at or now).isoformat(),
+    }
+
+
+@router.get("/cancel")
+async def cancel_crawl_no_id(request: Request):
+    return RedirectResponse(url="/my?notice=cancel_get", status_code=303)
+
+
+@router.get("/cancel/{crawl_id}")
+async def cancel_crawl_get(request: Request, crawl_id: str):
+    # Do not perform cancellation on GET to avoid CSRF; just inform user and redirect
+    return RedirectResponse(url=f"/my?notice=cancel_get&job={crawl_id}", status_code=303)
+
+
+@router.post("/cancel/{crawl_id}")
+async def cancel_crawl(
+    request: Request,
+    crawl_id: str,
+    csrf_token: Optional[str] = Form(None),
+):
+    """Cancel a running crawl (owner only).
+
+    - Requires auth + ownership.
+    - CSRF required when enabled.
+    - Sets status='cancelled' and error='cancelled_by_user' if currently running.
+    - Redirects back to the private result page.
+
+    Args:
+        request (Request): Incoming request for CSRF and ownership checks.
+        crawl_id (str): UUID of the crawl to cancel.
+        csrf_token (Optional[str]): CSRF token string when CSRF is enabled.
+
+    Returns:
+        RedirectResponse: 303 redirect to /analysis/private/{crawl_id}.
+
+    Raises:
+        HTTPException: 403 CSRF failure; 400 when job is not running; 404 if not found or not owned.
+    """
+    # CSRF validation
+    if _env_bool("WEBAPP_CSRF_ENABLED", False):
+        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+        session_id = request.cookies.get(cookie_name) or ""
+        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
+        if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
+            return RedirectResponse(
+                url=f"/my?notice=csrf_failed&job={crawl_id}", status_code=303
+            )
+
+    # Auth + owner
+    await require_auth(request)
+    try:
+        row = await require_ownership(request, crawl_id)
+    except HTTPException:
+        return RedirectResponse(
+            url=f"/my?notice=not_authorized&job={crawl_id}", status_code=303
+        )
+
+    if (row.status or "").lower() != "running":
+        return RedirectResponse(
+            url=f"/my?notice=not_running&job={crawl_id}", status_code=303
+        )
+
+    now = datetime.now(timezone.utc)
+    with get_session() as s:
+        db_row = s.get(Crawl, crawl_id)
+        if not db_row:
+            return RedirectResponse(
+                url=f"/my?notice=not_found&job={crawl_id}", status_code=303
+            )
+        # Only transition running -> cancelled
+        if (db_row.status or "").lower() != "running":
+            return RedirectResponse(
+                url=f"/my?notice=not_running&job={crawl_id}", status_code=303
+            )
+        db_row.status = "cancelled"
+        db_row.error = "cancelled_by_user"
+        db_row.updated_at = now
+    try:
+        log_audit("crawl_cancel_requested", request=request, crawl_id=crawl_id)
+    except Exception:
+        pass
+
+    return RedirectResponse(url=f"/my?notice=cancelled&job={crawl_id}", status_code=303)
 
 
 @router.get("/my", response_class=HTMLResponse)
@@ -901,38 +1150,15 @@ async def my_jobs(
     if direction not in ("next", "prev"):
         direction = "next"
 
-    # Parse cursor "epoch:id"
-    cursor_ts = None
-    cursor_id = None
-    if cursor:
-        try:
-            parts = cursor.split(":", 1)
-            cursor_ts = datetime.fromtimestamp(int(parts[0]), tz=timezone.utc)
-            cursor_id = parts[1]
-        except Exception:
-            cursor_ts = None
-            cursor_id = None
 
     with get_session() as s:
-        q = s.query(Crawl).filter(Crawl.user_id == user.id)
-        if cursor_ts and cursor_id:
-            if direction == "next":
-                q = q.filter(
-                    or_(
-                        Crawl.updated_at < cursor_ts,
-                        and_(Crawl.updated_at == cursor_ts, Crawl.id < cursor_id),
-                    )
-                ).order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-            else:
-                q = q.filter(
-                    or_(
-                        Crawl.updated_at > cursor_ts,
-                        and_(Crawl.updated_at == cursor_ts, Crawl.id > cursor_id),
-                    )
-                ).order_by(Crawl.updated_at.asc(), Crawl.id.asc())
-        else:
-            q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-        rows_db: List[Crawl] = q.limit(page_size + 1).all()
+        rows_db: List[Crawl] = (
+            s.query(Crawl)
+            .filter(Crawl.user_id == user.id)
+            .order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+            .limit(500)
+            .all()
+        )
 
     rows = rows_db[:page_size]
 
@@ -966,19 +1192,6 @@ async def my_jobs(
 
     prev_url = None
     next_url = None
-    if items:
-        first = rows[0]
-        last = rows[-1]
-        base_params = {"page_size": str(page_size)}
-        prev_params = dict(base_params)
-        prev_params["cursor"] = _cursor_of(first)
-        prev_params["dir"] = "prev"
-        prev_url = "/my?" + urlencode(prev_params)
-
-        next_params = dict(base_params)
-        next_params["cursor"] = _cursor_of(last)
-        next_params["dir"] = "next"
-        next_url = "/my?" + urlencode(next_params)
 
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     page_title = f"My Jobs — {site_name}"
@@ -1006,6 +1219,9 @@ async def my_jobs(
             "has_next": True if next_url else False,
             "prev_url": prev_url,
             "next_url": next_url,
+            # Notices from query params for user feedback (e.g., after cancel)
+            "notice": request.query_params.get("notice") or None,
+            "notice_job": request.query_params.get("job") or None,
             "site_name": site_name,
             "page_title": page_title,
             "meta_description": meta_description,
@@ -1108,7 +1324,7 @@ async def retry_crawl(
     else:
         background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
 
-    return RedirectResponse(url=f"/analysis/private/{crawl_id}", status_code=303)
+    return RedirectResponse(url=f"/my?notice=retried&job={crawl_id}", status_code=303)
 
 
 @router.get("/domain/{domain}", response_class=HTMLResponse)
@@ -1358,25 +1574,10 @@ async def view_all(
         rows_db: List[Crawl] = q.limit(page_size + 1).all()
 
     # Build current page items and determine cursors
-    has_next = False
     has_prev = False
-
-    if direction == "prev" and cursor_ts and cursor_id:
-        # rows_db are in ASC (newer first) for 'prev' fetch; keep the newest 'page_size'
-        if len(rows_db) > page_size:
-            has_prev = True  # there are even newer pages before this
-            rows_db = rows_db[-page_size:]
-        # reverse to display DESC
-        rows = list(reversed(rows_db))
-        # On any non-first page, prev should be offered
-        has_prev = True
-        # Compute has_next (older pages) conservatively: if we have any items, offer next
-        has_next = True if rows else False
-    else:
-        # direction 'next' or first load
-        has_next = len(rows_db) > page_size
-        rows = rows_db[:page_size]
-        has_prev = True if cursor_ts and cursor_id else False
+    has_next = False
+    # No pagination: show latest up to 500 items
+    rows = rows_db
 
     # Build items
     items = []

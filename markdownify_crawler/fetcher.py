@@ -230,7 +230,7 @@ async def _apply_stealth_measures(page, stealth_mode: bool) -> None:
 
     try:
         await page.add_init_script(stealth_js)
-    except Exception as e:
+    except Exception:
         # Log or handle init script error, but don't crash
         pass
 

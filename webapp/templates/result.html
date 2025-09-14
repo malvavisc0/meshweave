@@ -10,12 +10,16 @@
   </span>
 </h1>
 
+{# Auth/leads gating helpers #}
+{% set _logged_in = request.state.current_user %}
+{% set show_leads = not (visibility == 'public' and not _logged_in) %}
+
 {% if visibility == "public" and abs_page_url %}
   <p class="small">
     <strong>Share:</strong>
     <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener">Post on X</a> •
-    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener">Share on LinkedIn</a> •
-    <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener">Share on LinkedIn</a>
+    {% if _logged_in %} • <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>{% endif %}
   </p>
 {% endif %}
 
@@ -24,13 +28,48 @@
 {% endif %}
 
 {% if status in ["pending", "running"] %}
-  <p>Status: {{ status }}. Processing... Please refresh this page later.</p>
+  <p>Status: {{ status }}. Processing...</p>
+
+  {% if id %}
+  <div id="progress-panel" class="panel" role="status" aria-live="polite" style="margin:8px 0;">
+    <div class="small">
+      <strong>Progress:</strong>
+      <span id="progress-status">{{ status }}</span>
+      <span>•</span>
+      <span id="progress-visited">0</span>
+      <span>/</span>
+      <span id="progress-total">?</span>
+      <span>pages</span>
+      <span>•</span>
+      <span id="progress-elapsed">0s</span>
+      <span>•</span>
+      <span>ETA:</span>
+      <span id="progress-eta">—</span>
+      <span class="small" id="progress-budget" style="margin-left:6px; color: var(--muted);"></span>
+    </div>
+    <div style="height:8px; background:#f3f4f6; border:1px solid var(--border); border-radius:6px; margin-top:6px; overflow:hidden;">
+      <div id="progress-bar" style="height:100%; width:0%; background:#c7d2fe;"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if status == "running" and request.state.current_user and id %}
+    <div class="actions" role="toolbar" aria-label="Job Controls">
+      <button type="button" onclick="openChat()">Chat</button>
+      <form method="post" action="/cancel/{{ id }}" style="display:inline-block;">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+        <button type="submit" style="border-color:#fecaca; background:#fef2f2;">Cancel</button>
+      </form>
+    </div>
+  {% endif %}
 {% elif status == "failed" %}
   <p>Status: failed.</p>
   <pre>{{ error }}</pre>
 {% elif status == "succeeded" and payload %}
   <!-- Actions Row -->
+  {% if _logged_in %}
   <div class="actions" role="toolbar" aria-label="Actions">
+    <button type="button" onclick="openChat()">Chat</button>
     <a href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
     {% if emails_csv_url %}<a href="{{ emails_csv_url }}">Emails CSV</a>{% endif %}
     {% if links_csv_url %}<a href="{{ links_csv_url }}">Links CSV</a>{% endif %}
@@ -38,7 +77,7 @@
     <a href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
     <a href="#" onclick="return downloadMarkdown();">Download Markdown</a>
     <a href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
-    {% if visibility == "public" and abs_page_url %}
+    {% if visibility == "public" and abs_page_url and _logged_in %}
       <a href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
     {% endif %}
     <span class="spacer"></span>
@@ -56,6 +95,7 @@
       </form>
     {% endif %}
   </div>
+  {% endif %}
 
   <!-- Quick Stats -->
   <div class="quick-stats" role="region" aria-label="Quick Stats">
@@ -98,9 +138,8 @@
   <!-- Mobile Tabs (hidden on desktop by base.css) -->
   <div class="mobile-tabs" role="tablist" aria-label="Sections">
     <button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-stats">Stats</button>
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-leads">Leads</button>
+    {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-leads">Leads</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-links">Links</button>
-    {% if payload.pages %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-pages">Pages</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>
   </div>
@@ -125,7 +164,6 @@
       </div>
       {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
       <div class="summary-item" style="grid-column: 1 / -1;">
-        <strong>Top External Domains</strong>
         <ul class="domain-list">
           {% for td in summary.links.top_external_domains %}
             <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
@@ -136,6 +174,7 @@
     </div>
   </section>
 
+  {% if show_leads %}
   <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
     <h2>Leads (Emails)</h2>
     <div class="leads-filters">
@@ -181,7 +220,15 @@
       </div>
     </div>
   </section>
+  {% else %}
+  <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
+    <h2>Leads (Emails)</h2>
+    <div class="small">Sign in to view.</div>
+    <a href="/login?provider=google&next={{ abs_page_url or request.url.path }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;">Sign in</a>
+  </section>
+  {% endif %}
 
+  {% if show_leads %}
   <section id="m-links" class="mobile-section panel" role="region" aria-label="Links Explorer">
     <h2>Links Explorer</h2>
     <div class="tabs" role="tablist" aria-label="Links view">
@@ -197,8 +244,15 @@
       <div id="external-drilldown" class="small" style="margin-top:8px;"><!-- JS per-domain URLs --></div>
     </div>
   </section>
+  {% else %}
+  <section id="m-links" class="mobile-section panel" role="region" aria-label="Links Explorer">
+    <h2>Links Explorer</h2>
+    <div class="small">Sign in to view.</div>
+    <a href="/login?provider=google&next={{ abs_page_url or request.url.path }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;">Sign in</a>
+  </section>
+  {% endif %}
 
-  {% if payload.pages %}
+  {% if false %}
   <section id="m-pages" class="mobile-section panel" role="region" aria-label="Pages (Site Scope)">
     <h2>Pages ({{ payload.pages|length }})</h2>
     <input type="text" id="pages-search" placeholder="Search pages..." aria-label="Search pages" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
@@ -259,7 +313,21 @@
 </div>
 {% endblock %}
 
+// Embed analysis data as JSON to avoid inline Jinja in JS
 {% block scripts %}
+<script id="analysis-data" type="application/json">
+{{ {
+  'base_domain': summary.metrics.extraction.base_domain if summary and summary.metrics and summary.metrics.extraction else '',
+  'emails_unique': payload.emails.unique if payload and payload.emails and payload.emails.unique else [],
+  'emails_by_url': payload.emails.by_url if payload and payload.emails and payload.emails.by_url else {},
+  'emails_sources': payload.emails.sources if payload and payload.emails and payload.emails.sources else [],
+  'links_internal': payload.links.internal if payload and payload.links and payload.links.internal else [],
+  'links_external': payload.links.external if payload and payload.links and payload.links.external else [],
+  'top_external_domains': summary.links.top_external_domains if summary and summary.links and summary.links.top_external_domains else [],
+  'crawl_id': id if id else '',
+  'status': status if status else ''
+} | tojson }}
+</script>
 <script>
 // Download markdown
 function downloadMarkdown() {
@@ -336,53 +404,17 @@ function emailStatus(email, baseDomain) {
   return {label:'Unknown', cls:'status-unknown'};
 }
 
-// Data from server
-var BASE_DOMAIN = "{{ summary.metrics.extraction.base_domain if summary and summary.metrics and summary.metrics.extraction else '' }}";
-var EMAILS_UNIQUE = [];
-{% if payload and payload.emails and payload.emails.unique %}
-{% for _e in payload.emails.unique %}
-EMAILS_UNIQUE.push("{{ _e|e }}");
-{% endfor %}
-{% endif %}
-
-var EMAILS_BY_URL = {};
-{% if payload and payload.emails and payload.emails.by_url %}
-{% for _url, _arr in payload.emails.by_url.items() %}
-  EMAILS_BY_URL["{{ _url|e }}"] = [{% for _ee in _arr %}"{{ _ee|e }}"{% if not loop.last %},{% endif %}{% endfor %}];
-{% endfor %}
-{% endif %}
-
-var EMAILS_SOURCES_RAW = [];
-{% if payload and payload.emails and payload.emails.sources %}
-{% for s in payload.emails.sources %}
-EMAILS_SOURCES_RAW.push({
-  email: "{{ s.email|e }}",
-  url: "{{ s.url|e }}",
-  found_as: [{% for fa in s.found_as %}"{{ fa|e }}"{% if not loop.last %},{% endif %}{% endfor %}]
-});
-{% endfor %}
-{% endif %}
-
-var LINKS_INTERNAL = [];
-{% if payload and payload.links and payload.links.internal %}
-{% for li in payload.links.internal %}
-LINKS_INTERNAL.push("{{ li|e }}");
-{% endfor %}
-{% endif %}
-
-var LINKS_EXTERNAL = [];
-{% if payload and payload.links and payload.links.external %}
-{% for le in payload.links.external %}
-LINKS_EXTERNAL.push("{{ le|e }}");
-{% endfor %}
-{% endif %}
-
-var TOP_EXTERNAL_DOMAINS = [];
-{% if summary and summary.links and summary.links.top_external_domains %}
-{% for td in summary.links.top_external_domains %}
-TOP_EXTERNAL_DOMAINS.push({domain:"{{ td.domain|e }}", count: {{ td.count }}});
-{% endfor %}
-{% endif %}
+// Data from server (loaded from JSON script tag)
+var __dataEl = document.getElementById('analysis-data');
+var __ctx = {};
+try { __ctx = JSON.parse(__dataEl ? (__dataEl.textContent || __dataEl.innerText || '{}') : '{}'); } catch (e) { __ctx = {}; }
+const BASE_DOMAIN = __ctx.base_domain || '';
+const EMAILS_UNIQUE = __ctx.emails_unique || [];
+const EMAILS_BY_URL = __ctx.emails_by_url || {};
+const EMAILS_SOURCES_RAW = __ctx.emails_sources || [];
+const LINKS_INTERNAL = __ctx.links_internal || [];
+const LINKS_EXTERNAL = __ctx.links_external || [];
+const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
 
 // Leads helpers
 function buildEmailSourceMap() {
@@ -539,24 +571,60 @@ function drillExternal(domain) {
   cont.appendChild(ul);
 }
 
-// Pages panel search
-(function(){
-  var input = document.getElementById('pages-search');
-  var list = document.getElementById('pages-list');
-  if (input && list) {
-    input.addEventListener('input', function(){
-      var q = (input.value || '').toLowerCase();
-      list.querySelectorAll('li').forEach(function(li){
-        var url = (li.getAttribute('data-url') || '').toLowerCase();
-        li.style.display = url.indexOf(q) !== -1 ? '' : 'none';
-      });
-    });
-  }
-})();
+// Pages panel removed
 
 // Utilities
 function jsStr(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function csv(s){ var t=String(s==null?'':s); if (/[",\n]/.test(t)) return '"'+t.replace(/"/g,'""')+'"'; return t; }
+
+function fmtMs(ms){
+  if (!ms || ms < 0) return '0s';
+  var s = Math.floor(ms/1000);
+  if (s < 60) return s+'s';
+  var m = Math.floor(s/60), r = s%60;
+  return m+'m '+r+'s';
+}
+var __progressTimer = null;
+function startProgressPolling(crawlId){
+  if (!crawlId) return;
+  function tick(){
+    fetch('/api/progress/'+encodeURIComponent(crawlId), {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        try {
+          var v = Number(j.visited_pages||0), lim = (j.limits&&Number(j.limits.max_pages))||null;
+          document.getElementById('progress-status') && (document.getElementById('progress-status').textContent = String(j.status||''));
+          document.getElementById('progress-visited') && (document.getElementById('progress-visited').textContent = String(v));
+          document.getElementById('progress-total') && (document.getElementById('progress-total').textContent = lim ? String(lim) : '?');
+          document.getElementById('progress-elapsed') && (document.getElementById('progress-elapsed').textContent = fmtMs(Number(j.elapsed_ms||0)));
+          // ETA and budget
+          var etaEl = document.getElementById('progress-eta');
+          if (etaEl) {
+            var etaMs = (j.est_remaining_ms==null ? null : Number(j.est_remaining_ms));
+            etaEl.textContent = (etaMs!=null && !Number.isNaN(etaMs)) ? fmtMs(etaMs) : '—';
+          }
+          var budEl = document.getElementById('progress-budget');
+          if (budEl) {
+            var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
+            budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
+          }
+          var pct = 0;
+          if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v/lim)*100)));
+          var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct+'%';
+          // Stop on terminal states
+          var st = (String(j.status||'').toLowerCase());
+          if (st !== 'running' && st !== 'pending') {
+            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
+            // Soft refresh summary by reloading page
+            setTimeout(function(){ location.reload(); }, 800);
+          }
+        } catch(e){}
+      })
+      .catch(function(){ /* ignore */ });
+  }
+  tick();
+  __progressTimer = setInterval(tick, 2000);
+}
 
 // Init
 (function init(){
@@ -566,6 +634,13 @@ function csv(s){ var t=String(s==null?'':s); if (/[",\n]/.test(t)) return '"'+t.
   document.querySelectorAll('.lead-type').forEach(function(cb){ cb.addEventListener('change', renderLeads); });
   renderLinksInternal();
   renderLinksExternal();
+
+  // Start progress polling when we have a private id and running/pending status
+  const hasId = !!(__ctx.crawl_id);
+  const st = String(__ctx.status || '').toLowerCase();
+  if (hasId && (st === 'running' || st === 'pending')) {
+    startProgressPolling("{{ id }}");
+  }
 })();
 </script>
 {% endblock %}

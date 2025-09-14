@@ -9,6 +9,20 @@
   </div>
 {% endif %}
 
+{% if submitted_id %}
+  <div role="status" style="background:#eff6ff; color:#1e3a8a; padding:8px; border:1px solid #93c5fd; margin:8px 0;">
+    Site crawl started. Status endpoint:
+    {% if submitted_status_url %}
+      <a href="{{ submitted_status_url }}">{{ submitted_status_url }}</a>
+    {% else %}
+      /api/status/{{ submitted_id }}
+    {% endif %}
+    {% if not request.state.current_user %}
+      <br><span class="small">This result is private. Sign in to view when ready.</span>
+    {% endif %}
+  </div>
+{% endif %}
+
 
 <h2>Submit a URL</h2>
 <form action="/submit" method="post">
@@ -30,27 +44,16 @@
   <button type="submit">Analyze Page</button>
 </form>
 
-{% if request.state.current_user %}
 <h2>Crawl Site</h2>
 <form action="/submit-site" method="post">
   {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
   <label for="site-domain">Domain:</label>
   <input type="text" id="site-domain" name="domain" placeholder="example.com" required style="width: 260px;" aria-describedby="site-help">
-  <div style="margin-top:6px;">
-    <label for="max_pages">Max pages (optional):</label>
-    <input type="number" id="max_pages" name="max_pages" min="1" placeholder="200" style="width: 100px;">
-    <label for="max_depth" style="margin-left:10px;">Max depth (optional):</label>
-    <input type="number" id="max_depth" name="max_depth" min="0" placeholder="3" style="width: 80px;">
-    <label for="time_budget_ms" style="margin-left:10px;">Time budget ms (optional):</label>
-    <input type="number" id="time_budget_ms" name="time_budget_ms" min="60000" step="1000" placeholder="600000" style="width: 120px;">
-  </div>
   <p id="site-help" class="small" style="margin:6px 0 10px;">
     Traverses internal links within the same domain using BFS. Defaults and caps are enforced by the server.
   </p>
   <button type="submit">Start Crawl</button>
-  <a href="/my" style="margin-left:8px;">My Jobs</a>
 </form>
-{% endif %}
 
 <h2>Latest 10 Public URLs</h2>
 {% if items and items|length > 0 %}

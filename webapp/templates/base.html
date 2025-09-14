@@ -53,6 +53,11 @@
       .actions a, .actions button { font-size: 13px; padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; text-decoration:none; color:inherit; }
       .actions .spacer { flex: 1; }
 
+      /* Notices */
+      .notice { margin:8px 0; padding:8px; border:1px solid var(--border); border-radius:6px; }
+      .notice-ok { background:#ecfdf5; border-color:#bbf7d0; }
+      .notice-err { background:#fef2f2; border-color:#fecaca; }
+
       .quick-stats { display:grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: var(--gap); margin: 10px 0 16px; }
       .stat-card { background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:10px; }
       .stat-k { font-size: 12px; color: var(--muted); }
@@ -124,6 +129,7 @@
       <div class="nav-right">
         {% if request.state.current_user %}
           <span class="small">Signed in{% if request.state.current_user.email %} as {{ request.state.current_user.email }}{% endif %}</span>
+          <a href="/my" class="small" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none; margin:0 6px;">My Jobs</a>
           <form action="/logout" method="post" style="display:inline;">
             {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
             <button type="submit">Sign out</button>
