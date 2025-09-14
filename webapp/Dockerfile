@@ -20,6 +20,9 @@ COPY markdownify_crawler ./markdownify_crawler
 
 # Copy webapp source
 COPY webapp ./webapp
+# Copy Alembic migration config into the image so we can run commands inside the container
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 
 # Install python deps:
 # - Install local crawler package with renderer extras (playwright)
@@ -27,7 +30,7 @@ COPY webapp ./webapp
 # - Install auth deps (authlib, cryptography) for Google OIDC
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir ".[renderer]" && \
-    pip install --no-cache-dir fastapi[standard] uvicorn[standard] jinja2 sqlalchemy python-multipart httpx authlib cryptography prometheus-client && \
+    pip install --no-cache-dir fastapi[standard] uvicorn[standard] jinja2 sqlalchemy psycopg2-binary python-multipart httpx authlib cryptography prometheus-client alembic && \
     pip install --no-cache-dir /app/webapp
 # Install curl for container healthchecks and diagnostics
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

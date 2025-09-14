@@ -156,7 +156,7 @@ async def _rate_limit_login(sid: Optional[str]) -> None:
     if max_attempts <= 0:
         return
     now = datetime.now(timezone.utc)
-    window_start = (now - timedelta(seconds=window_sec)).isoformat()
+    window_start = now - timedelta(seconds=window_sec)
     # Count recent oauth_states for this sid
     with get_session() as s:
         if sid:
@@ -248,8 +248,8 @@ async def login(request: Request, provider: str = "google", next: Optional[str] 
                 "sid": sid,
                 "state": state,
                 "next_path": next_path,
-                "created_at": now.isoformat(),
-                "expires_at": expires_at.isoformat(),
+                "created_at": now,
+                "expires_at": expires_at,
             },
         )
 
@@ -329,8 +329,15 @@ async def auth_callback(
         if not row:
             raise HTTPException(status_code=400, detail="Invalid state")
         # Expiry check
+        # Expiry check (handle both str and datetime from DB)
+        expires_val = getattr(row, "expires_at", None)  # type: ignore
         try:
-            expires_at = datetime.fromisoformat(row.expires_at)  # type: ignore
+            if isinstance(expires_val, datetime):
+                expires_at = expires_val
+            elif isinstance(expires_val, str):
+                expires_at = datetime.fromisoformat(expires_val)
+            else:
+                expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         except Exception:
             expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         if datetime.now(timezone.utc) > expires_at:
@@ -451,6 +458,14 @@ async def auth_callback(
                 user.updated_at = datetime.now(timezone.utc)
 
         # Create auth session (enforces concurrent limit)
+        # Commit user upsert before creating session in a separate DB transaction
+        try:
+            s.commit()
+        except Exception:
+            # If commit fails, redirect with error
+            return RedirectResponse(
+                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
+            )
         try:
             sess = create_auth_session(user.id)
         except HTTPException:

@@ -60,7 +60,6 @@ class AuthSession(Base):
     __tablename__ = "auth_sessions"
     __table_args__ = (
         Index("ix_auth_sessions_session_id", "session_id"),
-        Index("ix_auth_sessions_user_id", "user_id"),
         Index("ix_auth_sessions_expires_at", "expires_at"),
     )
 
@@ -68,7 +67,7 @@ class AuthSession(Base):
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     session_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
 
@@ -84,6 +83,25 @@ class AuthSession(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class OAuthState(Base):
+    __tablename__ = "oauth_states"
+    __table_args__ = (Index("ix_oauth_states_expires_at", "expires_at"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    sid: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    state: Mapped[str] = mapped_column(String(255), nullable=False)
+    next_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Crawl(Base):
@@ -158,6 +176,18 @@ class Crawl(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    links: Mapped[list["CrawlLink"]] = relationship(
+        "CrawlLink",
+        back_populates="crawl",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    emails: Mapped[list["CrawlEmail"]] = relationship(
+        "CrawlEmail",
+        back_populates="crawl",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Submission(Base):
@@ -170,7 +200,6 @@ class Submission(Base):
         String(36),
         ForeignKey("crawls.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     domain: Mapped[str] = mapped_column(String(255), nullable=False)
     url_at_submit: Mapped[str] = mapped_column(Text, nullable=False)
@@ -211,3 +240,72 @@ class Submission(Base):
         Index("ix_submissions_client_ip", "client_ip"),
         Index("ix_submissions_session_id", "session_id"),
     )
+
+
+class CrawlLink(Base):
+    __tablename__ = "crawl_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "crawl_id", "page_url", "absolute_url", "type", name="uq_crawl_links_unique"
+        ),
+        Index("ix_crawl_links_crawl_id", "crawl_id"),
+        Index("ix_crawl_links_domain", "domain"),
+        Index("ix_crawl_links_type", "type"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    crawl_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("crawls.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    absolute_url: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(
+        String(10), nullable=False
+    )  # "internal" | "external"
+    domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationship back to crawl
+    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="links")
+
+
+class CrawlEmail(Base):
+    __tablename__ = "crawl_emails"
+    __table_args__ = (
+        UniqueConstraint("crawl_id", "page_url", "email", name="uq_crawl_emails_unique"),
+        Index("ix_crawl_emails_crawl_id", "crawl_id"),
+        Index("ix_crawl_emails_email", "email"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    crawl_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("crawls.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)  # lowercased
+    found_as: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )  # e.g. "mailto,text"
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationship back to crawl
+    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="emails")

@@ -7,6 +7,7 @@ from markdownify_crawler.core import crawl as crawler_run
 
 from webapp.db import get_session
 from webapp.models import Crawl
+from webapp.services.persist import clear_crawl_data, persist_page
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
 
@@ -67,6 +68,39 @@ async def run_crawl_task(
             disable_cache=force_refresh,
             cache_dir=None,  # env MARKDOWNIFY_CACHE_DIR applies in core
         )
+
+        # Persist links/emails into relational tables (idempotent)
+        try:
+            # Clear previous persisted rows for this crawl
+            clear_crawl_data(crawl_id)
+
+            final_url = ((payload.get("metrics") or {}).get("render") or {}).get(
+                "final_url"
+            ) or (url or "")
+            extraction = (payload.get("metrics") or {}).get("extraction") or {}
+            base_domain = (extraction.get("base_domain") or "").strip()
+
+            links = payload.get("links") or {}
+            internal_links = links.get("internal") or []
+            external_links = links.get("external") or []
+
+            emails = payload.get("emails") or {}
+            email_sources = emails.get("sources") or None
+            emails_unique = emails.get("unique") or None
+
+            persist_page(
+                crawl_id=crawl_id,
+                page_url=str(final_url),
+                base_domain=str(base_domain),
+                internal_links=internal_links,
+                external_links=external_links,
+                email_sources=email_sources,
+                emails_unique_fallback=emails_unique,
+            )
+        except Exception:
+            # Do not fail the crawl if persistence has issues; it can be retried later
+            pass
+
         payload_json = json.dumps(payload)
         with get_session() as s:
             row = s.get(Crawl, crawl_id)

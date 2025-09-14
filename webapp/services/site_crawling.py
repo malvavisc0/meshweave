@@ -20,6 +20,7 @@ from markdownify_crawler.core import (
 
 from webapp.db import get_session
 from webapp.models import Crawl
+from webapp.services.persist import clear_crawl_data, persist_page
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
 
@@ -160,6 +161,12 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         except Exception:
             pass
 
+        # Clear any previously persisted links/emails for this crawl (idempotent)
+        try:
+            clear_crawl_data(crawl_id)
+        except Exception:
+            pass
+
         # Render the start page
         pages: List[Dict[str, Any]] = []
         visited: Set[str] = set()
@@ -253,6 +260,19 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             final0, meta0, render_metrics0, emails0, len(internal0), len(external0)
         )
 
+        # Persist start page links/emails
+        try:
+            persist_page(
+                crawl_id=crawl_id,
+                page_url=final0,
+                base_domain=_norm_domain_from_url(final0),
+                internal_links=internal0,
+                external_links=external0,
+                email_sources=src0,
+            )
+        except Exception:
+            pass
+
         # Seed queue (depth 1) within domain
         visited.add(final0)
         start_domain_ok = final0
@@ -305,7 +325,7 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 continue
 
             # Emails
-            emails_i_set, _ = extract_emails(html_i, deobfuscate=True)
+            emails_i_set, src_i = extract_emails(html_i, deobfuscate=True)
             emails_i = sorted(list(emails_i_set))
 
             # Links
@@ -330,6 +350,19 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 len(internal_i),
                 len(external_i),
             )
+
+            # Persist page links/emails
+            try:
+                persist_page(
+                    crawl_id=crawl_id,
+                    page_url=final_i,
+                    base_domain=_norm_domain_from_url(final_i),
+                    internal_links=internal_i,
+                    external_links=external_i,
+                    email_sources=src_i,
+                )
+            except Exception:
+                pass
 
             # Enqueue neighbors if capacity remains
             for href2 in internal_i:

@@ -2,6 +2,25 @@ networks:
   magics:
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: markdownify-database
+    hostname: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=markdownify
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d markdownify"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - magics
   markdownify-crawler:
     build:
       context: .
@@ -32,8 +51,8 @@ services:
     hostname: markdownify-webapp
     restart: always
     environment:
-      # - SITE_BASE_URL=
-      - SQLITE_PATH=/db/app.db
+      - SITE_BASE_URL=http://localhost:8080
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/markdownify
       - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
       - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
       - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com,apps.apple.com
@@ -42,9 +61,9 @@ services:
       - SITE_NAME=Markdownify
       # Auth config
       - WEBAPP_AUTH_ENABLED=true
+      - WEBAPP_READYZ_REQUIRE_AUTH=true
       # Public base URL for redirects. For local dev you can leave it unset or set to http://localhost:8080
       # In production behind HTTPS (Nginx Proxy Manager), set to your https origin, e.g. https://your.domain
-      # - SITE_BASE_URL=
       - WEBAPP_AUTH_COOKIE_NAME=auth_sid
       # For local dev (no TLS) set false; in production behind HTTPS set true
       - WEBAPP_AUTH_COOKIE_SECURE=false
@@ -77,6 +96,9 @@ services:
       - ./data/webapp:/db
     ports:
       - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
       interval: 30s

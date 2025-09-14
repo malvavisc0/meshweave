@@ -14,15 +14,28 @@ SQLITE_PATH = os.getenv("SQLITE_PATH", "/db/app.db")
 os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
 # SQLAlchemy engine and session factory (sync)
-engine = create_engine(
-    f"sqlite:///{SQLITE_PATH}",
-    connect_args={"check_same_thread": False},  # needed for SQLite with threads
-    future=True,
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+if DATABASE_URL:
+    # Use external database (e.g., Postgres) when configured
+    engine = create_engine(
+        DATABASE_URL,
+        future=True,
+        pool_pre_ping=True,
+    )
+else:
+    # Default to SQLite
+    engine = create_engine(
+        f"sqlite:///{SQLITE_PATH}",
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30.0,
+        },  # needed for SQLite with threads
+        future=True,
+    )
 
 
-# Ensure SQLite enforces foreign key constraints
-@event.listens_for(engine, "connect")
+# Ensure SQLite enforces foreign key constraints (register only for SQLite)
 def _set_sqlite_pragma(dbapi_connection, connection_record):
     """Enable SQLite foreign key enforcement on each new connection.
 
@@ -35,11 +48,30 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
     """
     try:
         cursor = dbapi_connection.cursor()
+        # Enforce FKs
         cursor.execute("PRAGMA foreign_keys=ON")
+        # Improve concurrency and reduce lock errors
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
+        try:
+            cursor.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            pass
+        # Additional safety: busy timeout in milliseconds
+        try:
+            cursor.execute("PRAGMA busy_timeout=10000")
+        except Exception:
+            pass
         cursor.close()
     except Exception:
         # If this fails, constraints may not be enforced in dev SQLite
         pass
+
+
+if engine.dialect.name == "sqlite":
+    event.listen(engine, "connect", _set_sqlite_pragma)
 
 
 SessionLocal = sessionmaker(
@@ -48,6 +80,10 @@ SessionLocal = sessionmaker(
 
 
 def init_db() -> None:
+    # For non-SQLite backends, rely on Alembic migrations; do not auto-create here
+    if engine.dialect.name != "sqlite":
+        return
+
     # Create any missing tables defined in SQLAlchemy models (does not alter existing tables)
     Base.metadata.create_all(bind=engine)
 
