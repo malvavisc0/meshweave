@@ -2,13 +2,20 @@
 
 {% block content %}
 <h1>
-  Result for {% if canonical_url %}{{ canonical_url }}{% else %}{{ domain }}{{ path }}{% if query %}?{{ query }}{% endif %}{% endif %}
+  Result for {{ domain }}
   <span class="badges" role="group" aria-label="Job state badges">
     {% if visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
     <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
     {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
   </span>
 </h1>
+{% if request.state.current_user %}
+<div class="inline-block small mt-1" role="toolbar" aria-label="Prospect">
+  <button type="button" class="btn btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
+  <span id="prospect-status-chip" class="badge">Shortlisted</span>
+  <button type="button" class="btn btn-sm" onclick="openProspectManage()">Manage Prospect</button>
+</div>
+{% endif %}
 
 {# Auth/leads gating helpers #}
 {% set _logged_in = request.state.current_user %}
@@ -23,9 +30,6 @@
   </p>
 {% endif %}
 
-{% if visibility == "private" and can_retry %}
-  <p class="small">[Private Result]</p>
-{% endif %}
 
 {% if status in ["pending", "running"] %}
   <p>Status: {{ status }}. Processing...</p>
@@ -53,7 +57,7 @@
 
   {% if status == "running" and request.state.current_user and id %}
     <div class="actions" role="toolbar" aria-label="Job Controls">
-      <button type="button" class="btn" onclick="openChat()">Chat</button>
+      <button type="button" class="btn btn-primary" onclick="openChat()">Chat</button>
       <form method="post" action="/cancel/{{ id }}" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <button type="submit" class="btn btn-danger-soft">Cancel</button>
@@ -65,17 +69,12 @@
   <pre>{{ error }}</pre>
 {% elif status == "succeeded" and payload %}
   <!-- Actions Row -->
-  {% if _logged_in %}
   <div class="actions" role="toolbar" aria-label="Actions">
-    <button type="button" class="btn" onclick="openChat()">Chat</button>
+    <button type="button" class="btn btn-primary" onclick="openChat()">Chat</button>
     <a class="btn" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-    {% if emails_csv_url %}<a class="btn" href="{{ emails_csv_url }}">Emails CSV</a>{% endif %}
-    {% if links_csv_url %}<a class="btn" href="{{ links_csv_url }}">Links CSV</a>{% endif %}
-    {% if top_domains_csv_url %}<a class="btn" href="{{ top_domains_csv_url }}">Top Domains CSV</a>{% endif %}
     <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
-    <a class="btn" href="#" onclick="return downloadMarkdown();">Download Markdown</a>
     <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
-    {% if visibility == "public" and abs_page_url and _logged_in %}
+    {% if visibility == "public" and abs_page_url %}
       <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
     {% endif %}
     <span class="spacer"></span>
@@ -93,10 +92,9 @@
       </form>
     {% endif %}
   </div>
-  {% endif %}
 
   <!-- Quick Stats -->
-  <div class="quick-stats" role="region" aria-label="Quick Stats">
+  <div class="quick-stats panel mt-2" role="region" aria-label="Quick Stats">
     <div class="stat-card">
       <div class="stat-k">HTTP</div>
       <div class="stat-v">{{ summary.metrics.render.response_status if summary and summary.metrics and summary.metrics.render else "" }}</div>
@@ -122,10 +120,6 @@
       </div>
     </div>
     <div class="stat-card">
-      <div class="stat-k">Top Domains</div>
-      <div class="stat-v">{{ (summary.links.top_external_domains|length) if summary and summary.links and summary.links.top_external_domains else 0 }}</div>
-    </div>
-    <div class="stat-card">
       <div class="stat-k">{% if payload.pages %}Pages{% else %}Base Domain{% endif %}</div>
       <div class="stat-v">
         {% if payload.pages %}{{ payload.pages|length }}{% else %}{{ payload.metrics.extraction.base_domain if payload.metrics and payload.metrics.extraction else "" }}{% endif %}
@@ -133,17 +127,53 @@
     </div>
   </div>
 
+  <!-- Pages (Enhanced) panel for desktop -->
+  {% if payload and payload.pages %}
+  <section class="panel mt-2" role="region" aria-label="Pages">
+    <h2>Pages (<span id="pages-count">0</span>)</h2>
+    <div class="small">Only pages with content are shown.</div>
+    <div class="layout layout-pages">
+      <div>
+        <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
+      </div>
+      <div>
+        <div class="small mt-2 mb-1">Content (Markdown)</div>
+        <pre id="page-markdown" class="panel pages-panel" aria-label="Markdown content"><!-- filled by JS --></pre>
+
+        <div class="mt-1" role="toolbar" aria-label="Page Actions">
+          <button class="btn btn-sm" onclick="copyCurrentPage()">Copy</button>
+          <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Social panel -->
+  <section class="panel mt-2" role="region" aria-label="Social">
+    <h2>Social</h2>
+    <div id="social-groups"><!-- filled by JS --></div>
+  </section>
+
+  <!-- Claim Analysis panel (public only) -->
+  {% if visibility == 'public' and key %}
+  <section class="panel mt-2" role="region" aria-label="Claim Analysis">
+    <h2>Claim Analysis</h2>
+    <div class="small" id="claim-status">Claimable status coming soon</div>
+    <button class="btn btn-primary" id="claim-btn" disabled title="Coming soon">Claim Analysis</button>
+  </section>
+  {% endif %}
+
   <!-- Mobile Tabs (hidden on desktop by base.css) -->
   <div class="mobile-tabs" role="tablist" aria-label="Sections">
     <button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-stats">Stats</button>
     {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-leads">Leads</button>{% endif %}
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-links">Links</button>
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>
   </div>
 
   <!-- Sections -->
-  <section id="m-stats" class="mobile-section panel" role="region" aria-label="Summary & Metrics">
+  <section id="m-stats" class="mobile-section panel mt-2" role="region" aria-label="Summary & Metrics">
     <h2>Summary & Metrics</h2>
     <div class="summary-grid">
       <div class="summary-item">
@@ -173,24 +203,21 @@
   </section>
 
   {% if show_leads %}
-  <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
-    <h2>Leads (Emails)</h2>
-    <div class="leads-filters">
+  <section id="m-leads" class="mobile-section panel mt-2" role="region" aria-label="Emails">
+    <h2>Emails</h2>
+    <div class="actions" id="emails-toolbar">
       <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain">
       <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
       <label class="small"><input type="checkbox" class="lead-type" value="text"> text</label>
       <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
       <button class="btn" onclick="clearLeadFilters()">Clear</button>
-    </div>
-    <div class="leads-actions">
-      <label class="small"><input type="checkbox" id="lead-select-all"> Select All</label>
-      <button class="btn" onclick="exportSelectedLeads()">Export Selected</button>
-      <button class="btn" onclick="openAddLead()">Add Lead</button>
+      <span class="spacer"></span>
+      <button class="btn" onclick="openAddLead()">Add Email</button>
     </div>
     <table class="table" aria-label="Emails table">
       <thead>
         <tr>
-          <th></th>
+          <th><input type="checkbox" id="lead-select-all"></th>
           <th>Email</th>
           <th>Mentions</th>
           <th>Found As</th>
@@ -219,36 +246,13 @@
     </div>
   </section>
   {% else %}
-  <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
-    <h2>Leads (Emails)</h2>
+  <section id="m-leads" class="mobile-section panel mt-2" role="region" aria-label="Emails">
+    <h2>Emails</h2>
     <div class="small">Sign in to view.</div>
     <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
   </section>
   {% endif %}
 
-  {% if show_leads %}
-  <section id="m-links" class="mobile-section panel" role="region" aria-label="Links Explorer">
-    <h2>Links Explorer</h2>
-    <div class="tabs" role="tablist" aria-label="Links view">
-      <button type="button" class="tab" role="tab" aria-selected="true" data-target="#links-internal">Internal</button>
-      <button type="button" class="tab" role="tab" aria-selected="false" data-target="#links-external">External</button>
-    </div>
-    <div id="links-internal" role="tabpanel" aria-label="Internal links">
-      <ul class="domain-list" id="internal-list"><!-- filled by JS --></ul>
-    </div>
-    <div id="links-external" role="tabpanel" aria-label="External links" class="hidden">
-      <h3 class="small mt-1 mb-1">Top External Domains</h3>
-      <ul class="domain-list" id="external-domain-list"><!-- JS groups --></ul>
-      <div id="external-drilldown" class="small mt-1"><!-- JS per-domain URLs --></div>
-    </div>
-  </section>
-  {% else %}
-  <section id="m-links" class="mobile-section panel" role="region" aria-label="Links Explorer">
-    <h2>Links Explorer</h2>
-    <div class="small">Sign in to view.</div>
-    <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
-  </section>
-  {% endif %}
 
   {% if false %}
   <section id="m-pages" class="mobile-section panel" role="region" aria-label="Pages (Site Scope)">
@@ -271,12 +275,12 @@
   </section>
   {% endif %}
 
-  <section id="m-summary" class="mobile-section panel hidden" role="region" aria-label="Summary Panel"></section>
+  <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel"></section>
 
-  <section id="m-chat" class="mobile-section panel hidden" role="region" aria-label="Chat">
+  <section id="m-chat" class="mobile-section panel mt-2 hidden" role="region" aria-label="Chat">
     <h2>LLM Chat</h2>
     <div class="small">Sign in to chat with this crawl</div>
-    <button class="btn" onclick="openChat()">Open Chat</button>
+    <button class="btn btn-primary" onclick="openChat()">Open Chat</button>
   </section>
 
   <!-- Hidden markdown for download only (no inline render) -->
@@ -309,6 +313,7 @@
     <button disabled>Send</button>
   </div>
 </div>
+
 {% endblock %}
 
 // Embed analysis data as JSON to avoid inline Jinja in JS
@@ -322,12 +327,26 @@
   'links_internal': payload.links.internal if payload and payload.links and payload.links.internal else [],
   'links_external': payload.links.external if payload and payload.links and payload.links.external else [],
   'top_external_domains': summary.links.top_external_domains if summary and summary.links and summary.links.top_external_domains else [],
+  'pages': payload.pages if payload and payload.pages else [],
   'crawl_id': id if id else '',
   'public_key': key if key else '',
   'status': status if status else ''
 } | tojson }}
 </script>
 <script>
+// Data from server (loaded from JSON script tag)
+var __dataEl = document.getElementById('analysis-data');
+var __ctx = {};
+try { __ctx = JSON.parse(__dataEl ? (__dataEl.textContent || __dataEl.innerText || '{}') : '{}'); } catch (e) { __ctx = {}; }
+const BASE_DOMAIN = __ctx.base_domain || '';
+const EMAILS_UNIQUE = __ctx.emails_unique || [];
+const EMAILS_BY_URL = __ctx.emails_by_url || {};
+const EMAILS_SOURCES_RAW = __ctx.emails_sources || [];
+const LINKS_INTERNAL = __ctx.links_internal || [];
+const LINKS_EXTERNAL = __ctx.links_external || [];
+const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
+const PAGES = __ctx.pages || [];
+
 // Download markdown
 function downloadMarkdown() {
   try {
@@ -361,19 +380,137 @@ function toggleChatSize() {
   CHAT_EL.style.width = CHAT_LARGE ? '600px' : '360px';
 }
 
-// Links Explorer tabs
-(function() {
-  var tabs = document.querySelectorAll('.tabs .tab');
-  tabs.forEach(function(tab) {
-    tab.addEventListener('click', function() {
-      tabs.forEach(function(t){ t.setAttribute('aria-selected','false'); });
-      this.setAttribute('aria-selected','true');
-      var target = this.getAttribute('data-target');
-      document.querySelector('#links-internal').style.display = (target === '#links-internal') ? '' : 'none';
-      document.querySelector('#links-external').style.display = (target === '#links-external') ? '' : 'none';
+ /* Prospect helpers (placeholders) */
+function openProspectManage(){ alert('Prospect management coming soon'); }
+function attachProspectSocial(platform,url){ alert('Attach to prospect coming soon: '+platform+' '+url); }
+function attachContactSocial(url){ alert('Attach to contact coming soon: '+url); }
+
+/* Pages helpers */
+function getMainMarkdown() {
+  var pre = document.getElementById('markdown-content');
+  try { return (pre && (pre.textContent || pre.innerText) || '').toString(); } catch(_) { return ''; }
+}
+/* Helpers for Pages filtering and preview */
+function setPreviewHint(msg){
+  try {
+    var id='page-preview-hint';
+    var el=document.getElementById(id);
+    if (!el) {
+      el=document.createElement('div'); el.id=id; el.className='small';
+      var pre=document.getElementById('page-markdown'); var parent = pre ? pre.parentNode : null;
+      if (parent) parent.appendChild(el);
+    }
+    el.textContent = msg || '';
+    el.style.display = msg ? '' : 'none';
+  } catch(_){}
+}
+function setActiveRowByUrl(url){
+  try {
+    document.querySelectorAll('#pages-list li').forEach(function(li){
+      li.classList.toggle('active', (li.getAttribute('data-url')||'') === url);
     });
-  });
-})();
+  } catch(_){}
+}
+function previewPageByUrl(url){
+  try {
+    var p = (PAGES||[]).find(function(x){ return (x && (x.url||'')===url); });
+    var md = (p && (p.markdown||'').trim()) || '';
+    if (md) {
+      renderMarkdown(md);
+      setPreviewHint('');
+    } else {
+      renderMarkdown('');
+      setPreviewHint('No per-page markdown available.');
+    }
+    setActiveRowByUrl(url);
+  } catch(_){}
+}
+function renderPages(){
+  try{
+    var ul=document.getElementById('pages-list'); if(!ul) return;
+    ul.innerHTML='';
+    var rows = (PAGES||[]).filter(function(p){ return p && (p.markdown||'').trim().length; });
+    rows.forEach(function(p,i){
+      var li=document.createElement('li');
+      li.setAttribute('data-url', p.url || '');
+      li.innerHTML = '<input type="checkbox" '+(i===0?'checked':'')+'> <span class="small">'+escapeHtml(p.url||'')+'</span>';
+      li.addEventListener('click', function(e){
+        var cb = li.querySelector('input[type=checkbox]');
+        if (e.target && e.target.tagName && e.target.tagName.toLowerCase() === 'input') {
+          // still preview on checkbox click
+          previewPageByUrl(p.url||'');
+          return;
+        }
+        if (cb) cb.checked = !cb.checked;
+        previewPageByUrl(p.url||'');
+      });
+      ul.appendChild(li);
+    });
+    // Update pages count (content-only)
+    try { var pc=document.getElementById('pages-count'); if (pc) pc.textContent = String(rows.length); } catch(_){}
+    // Initial preview: first page with per-page markdown, otherwise show hint (no fallback)
+    var firstWithMd = rows.find(function(p){ return !!((p.markdown||'').trim().length); });
+    if (firstWithMd) {
+      previewPageByUrl(firstWithMd.url||'');
+    } else {
+      renderMarkdown('');
+      setPreviewHint(rows.length ? 'No per-page markdown available.' : 'No pages to display.');
+    }
+  }catch(_){}
+}
+function renderMarkdown(md){
+  var pre=document.getElementById('page-markdown'); if(pre){ pre.textContent = (md||''); }
+}
+/* Include/copy/download actions for Pages */
+function copyCurrentPage(){
+  try {
+    var pre=document.getElementById('page-markdown'); var text=(pre && (pre.textContent||pre.innerText)||'');
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function(){ alert('Copied'); }, function(){ legacyCopy(text); });
+    } else { legacyCopy(text); }
+  } catch(_) { try{ legacyCopy(''); }catch(__){} }
+}
+function downloadCurrentPage(){
+  try {
+    var pre=document.getElementById('page-markdown'); var md=(pre && (pre.textContent||pre.innerText)||'');
+    if(!md.trim()){ alert('Nothing to download'); return; }
+    var sel = document.querySelector('#pages-list li input[type=checkbox]:checked');
+    var url = sel ? (sel.closest('li').getAttribute('data-url')||'') : '';
+    var fname = (url ? (url.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'')||'page') : 'page') + '.md';
+    var blob=new Blob([md],{type:'text/markdown;charset=utf-8'}); var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+  } catch(_) {}
+}
+
+/* Social grouping (client-side over external links) */
+function renderSocial(){
+  try{
+    var cont=document.getElementById('social-groups'); if(!cont) return;
+    var allow = {
+      'linkedin.com':'LinkedIn', 'www.linkedin.com':'LinkedIn',
+      'x.com':'Twitter', 'twitter.com':'Twitter', 'www.twitter.com':'Twitter',
+      'facebook.com':'Facebook','www.facebook.com':'Facebook',
+      'instagram.com':'Instagram','www.instagram.com':'Instagram',
+      'youtube.com':'YouTube','www.youtube.com':'YouTube',
+      'tiktok.com':'TikTok','www.tiktok.com':'TikTok',
+      'github.com':'GitHub','www.github.com':'GitHub'
+    };
+    var groups={};
+    (LINKS_EXTERNAL||[]).forEach(function(u){
+      try{ var h=(new URL(u)).hostname.toLowerCase(); if(!allow[h]) return; var plat=allow[h]; groups[plat]=groups[plat]||new Set(); groups[plat].add(u); }catch(_){}
+    });
+    var html='';
+    Object.keys(groups).sort().forEach(function(plat){
+      var urls=Array.from(groups[plat].values());
+      html += '<div class="mb-2"><div class="small"><strong>'+plat+'</strong> <span class="small">('+(urls.length)+')</span></div><ul class="domain-list">';
+      urls.forEach(function(u){
+        html += '<li><span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(u)+'\')">Copy</button> <button class="btn btn-sm" onclick="attachProspectSocial(\''+jsStr(plat.toLowerCase())+'\', \''+jsStr(u)+'\')">Attach to Prospect</button> <button class="btn btn-sm" onclick="attachContactSocial(\''+jsStr(u)+'\')">Attach to Contact</button></span></li>';
+      });
+      html += '</ul></div>';
+    });
+    cont.innerHTML = html || '<div class="small">No social links detected.</div>';
+  }catch(_){}
+}
+
 
 // Mobile tabs
 (function() {
@@ -403,19 +540,7 @@ function emailStatus(email, baseDomain) {
   return {label:'Unknown', cls:'status-unknown'};
 }
 
-// Data from server (loaded from JSON script tag)
-var __dataEl = document.getElementById('analysis-data');
-var __ctx = {};
-try { __ctx = JSON.parse(__dataEl ? (__dataEl.textContent || __dataEl.innerText || '{}') : '{}'); } catch (e) { __ctx = {}; }
-const BASE_DOMAIN = __ctx.base_domain || '';
-const EMAILS_UNIQUE = __ctx.emails_unique || [];
-const EMAILS_BY_URL = __ctx.emails_by_url || {};
-const EMAILS_SOURCES_RAW = __ctx.emails_sources || [];
-const LINKS_INTERNAL = __ctx.links_internal || [];
-const LINKS_EXTERNAL = __ctx.links_external || [];
-const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
-
-// Leads helpers
+ // Leads helpers
 function buildEmailSourceMap() {
   var map = {};
   EMAILS_SOURCES_RAW.forEach(function(x) {
@@ -476,7 +601,7 @@ function renderLeads() {
       '<td title="'+escapeHtml(foundAs.length ? ('Found on: '+fUrl+'; as: '+foundAs.join(',')) : 'N/A')+'">'+(foundAs.join(',')||'-')+'</td>' +
       '<td><span class="status-chip '+st.cls+'">'+st.label+'</span></td>' +
       '<td>'+escapeHtml(dom || '-')+'</td>' +
-      '<td><button class="btn btn-sm" onclick="copyLink(\''+jsStr(fUrl)+'\')">↗</button> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(email)+'\')">Copy</button></td>';
+      '<td><button class="btn btn-sm" onclick="copyLink(\''+jsStr(email)+'\')">Copy</button> <button class="btn btn-sm" disabled title="Coming soon">Add to Prospect</button></td>';
     if (applyLeadFilters(tr)) tbody.appendChild(tr);
   });
   // Hook select all
@@ -516,59 +641,6 @@ function saveAddedLead() {
 }
 
 // Links Explorer rendering
-function absInternal(u) {
-  var base = (BASE_DOMAIN || '').replace(/^www\./,'');
-  if (!u) return '';
-  var path = (u[0] === '/') ? u : ('/'+u);
-  return base ? ('https://'+base+path) : path;
-}
-function renderLinksInternal() {
-  var ul = document.getElementById('internal-list'); if (!ul) return;
-  ul.innerHTML = '';
-  (LINKS_INTERNAL || []).forEach(function(u){
-    var li = document.createElement('li');
-    var au = absInternal(u);
-    li.innerHTML = '<span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(au)+'" target="_blank" rel="noopener">↗</a></span>';
-    ul.appendChild(li);
-  });
-}
-function renderLinksExternal() {
-  var domains = {}; (LINKS_EXTERNAL || []).forEach(function(u){
-    try {
-      var d = (new URL(u)).hostname.toLowerCase();
-      domains[d] = domains[d] || []; domains[d].push(u);
-    } catch(_){}
-  });
-  var list = document.getElementById('external-domain-list'); if (!list) return;
-  list.innerHTML = '';
-  var sorted = Object.keys(domains).sort(function(a,b){ return (domains[b].length - domains[a].length) || a.localeCompare(b); });
-  sorted.forEach(function(d){
-    var li = document.createElement('li');
-    li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+domains[d].length+' <button class="btn btn-sm" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="btn btn-sm" disabled title="Coming soon">Seed Crawl</button></span>';
-    list.appendChild(li);
-  });
-  if ((TOP_EXTERNAL_DOMAINS||[]).length) {
-    list.innerHTML = '';
-    TOP_EXTERNAL_DOMAINS.forEach(function(td){
-      var d = td.domain; var c = (domains[d]||[]).length || td.count;
-      var li = document.createElement('li');
-      li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+c+' <button class="btn btn-sm" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="btn btn-sm" disabled title="Coming soon">Seed Crawl</button></span>';
-      list.appendChild(li);
-    });
-  }
-}
-function drillExternal(domain) {
-  var cont = document.getElementById('external-drilldown'); if (!cont) return;
-  cont.innerHTML = '<div class="small"><strong>Drilldown:</strong> '+escapeHtml(domain)+'</div>';
-  var urls = (LINKS_EXTERNAL || []).filter(function(u){ try { return (new URL(u)).hostname.toLowerCase() === domain.toLowerCase(); } catch(_) { return false; } });
-  var ul = document.createElement('ul'); ul.className = 'domain-list';
-  urls.forEach(function(u){
-    var li = document.createElement('li');
-    li.innerHTML = '<span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" disabled title="Coming soon">Queue Crawl</button></span>';
-    ul.appendChild(li);
-  });
-  cont.appendChild(ul);
-}
 
 // Pages panel removed
 
@@ -670,8 +742,8 @@ function startPublicProgressPolling(pubKey){
   var _lfd = document.getElementById('lead-filter-domain');
   if (_lfd) { _lfd.addEventListener('input', renderLeads); }
   document.querySelectorAll('.lead-type').forEach(function(cb){ cb.addEventListener('change', renderLeads); });
-  renderLinksInternal();
-  renderLinksExternal();
+  renderPages();
+  renderSocial();
 
   // Start progress polling (private by id or public by key)
   const hasId = !!(__ctx.crawl_id);

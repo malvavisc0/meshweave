@@ -61,7 +61,7 @@ services:
       - SITE_NAME=Markdownify
       # Auth config
       - WEBAPP_AUTH_ENABLED=true
-      - WEBAPP_READYZ_REQUIRE_AUTH=true
+      - WEBAPP_READYZ_REQUIRE_AUTH=false
       # Public base URL for redirects. For local dev you can leave it unset or set to http://localhost:8080
       # In production behind HTTPS (Nginx Proxy Manager), set to your https origin, e.g. https://your.domain
       - WEBAPP_AUTH_COOKIE_NAME=auth_sid
