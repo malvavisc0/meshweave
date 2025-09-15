@@ -522,7 +522,7 @@ async def api_public_top_domains_csv(key: str):
 
 
 @router.get("/api/status/{crawl_id}")
-async def api_status(crawl_id: str):
+async def api_status(request: Request, crawl_id: str):
     """Return status information for a crawl id.
 
     Args:
@@ -538,6 +538,12 @@ async def api_status(crawl_id: str):
         row = s.get(Crawl, crawl_id)
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
+    base = _get_base_url(request)
+    report_path = (
+        f"/analysis/{row.key}"
+        if (row.visibility == "public" and getattr(row, "key", None))
+        else f"/analysis/{row.id}"
+    )
     return JSONResponse(
         content={
             "id": row.id,
@@ -548,6 +554,8 @@ async def api_status(crawl_id: str):
             "status": row.status,
             "error": row.error,
             "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
+            "key": getattr(row, "key", None),
+            "report_url": f"{base}{report_path}",
         }
     )
 
