@@ -23,44 +23,134 @@
   </div>
 {% endif %}
 
-
-<h2>Submit a URL</h2>
-<form action="/submit" method="post">
+<h2>Get started</h2>
+<form id="unified-form" action="/submit" method="post">
   {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+
+  <!-- Hidden fields mapped on submit based on mode -->
+  <input type="hidden" name="mode" id="hidden-mode" value="page">
+  <input type="hidden" name="url" id="hidden-url">
+  <input type="hidden" name="domain" id="hidden-domain">
+
+
+  <!-- Honeypot -->
   <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
     <label for="website">Website</label>
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
   </div>
-  <label for="url">URL:</label>
-  <input type="url" id="url" name="url" placeholder="https://example.com/path?query=1" required style="width: 520px;" aria-describedby="url-help">
-  <p id="url-help" class="small" style="margin:6px 0 10px;">
-    Analyzes only this page (not the whole site). Outputs Markdown, links, emails, and metrics.
-    "Public" makes the result shareable on the homepage and via a key.
+
+  <!-- Mode toggle -->
+  <fieldset role="radiogroup" aria-label="Action" style="margin:8px 0;">
+    <label><input type="radio" name="mode-choice" value="page" id="mode-page" checked> Analyze page</label>
+    <label style="margin-left:12px;"><input type="radio" name="mode-choice" value="site" id="mode-site"> Crawl site</label>
+  </fieldset>
+
+  <!-- Single input -->
+  <label for="main-input" id="input-label">URL:</label>
+  <input type="text" id="main-input" placeholder="https://example.com/path" required style="width:520px;" aria-describedby="input-help">
+  <p id="input-help" class="small" style="margin:6px 0 10px;">
+    Paste a page URL to analyze Markdown, links, emails, and metrics.
   </p>
-  <label for="public">
-    <input type="checkbox" id="public" name="public" {% if not request.state.current_user %}checked{% endif %}>
-    Public (listed on homepage; accessible by key)
-  </label>
-  <button type="submit">Analyze Page</button>
+
+  <!-- Public only for page mode -->
+  <div id="public-group" style="margin:6px 0 10px;">
+    <label for="public">
+      <input type="checkbox" id="public" name="public" {% if not request.state.current_user %}checked{% endif %}>
+      Public (listed on homepage; accessible by key)
+    </label>
+    {% if not request.state.current_user %}
+      <div class="small" style="color:#555; margin-top:4px;">Public results are listed on the homepage. Sign in to keep them private.</div>
+    {% endif %}
+  </div>
+
+
+  <button type="submit" id="primary-submit" style="margin-top:10px;">Go</button>
 </form>
 
-<h2>Crawl Site</h2>
-<form action="/submit-site" method="post">
-  {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-  <label for="site-domain">Domain:</label>
-  <input type="text" id="site-domain" name="domain" placeholder="example.com" required style="width: 260px;" aria-describedby="site-help">
-  <p id="site-help" class="small" style="margin:6px 0 10px;">
-    Traverses internal links within the same domain using BFS. Defaults and caps are enforced by the server.
-  </p>
-  <button type="submit">Start Crawl</button>
-</form>
+<script>
+(function(){
+  const form = document.getElementById('unified-form');
+  const input = document.getElementById('main-input');
+  const inputLabel = document.getElementById('input-label');
+  const inputHelp = document.getElementById('input-help');
+  const publicGroup = document.getElementById('public-group');
+
+  const hiddenMode = document.getElementById('hidden-mode');
+  const hiddenUrl = document.getElementById('hidden-url');
+  const hiddenDomain = document.getElementById('hidden-domain');
+
+
+  function mode() {
+    const m = document.querySelector('input[name="mode-choice"]:checked')?.value || 'page';
+    hiddenMode.value = m;
+    return m;
+  }
+
+  function toDomain(value) {
+    try {
+      let v = (value || '').trim();
+      if (!v) return '';
+      if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+      const u = new URL(v);
+      let host = (u.hostname || '').toLowerCase();
+      if (host.startsWith('www.')) host = host.slice(4);
+      return host;
+    } catch (e) {
+      return (value || '').trim().toLowerCase();
+    }
+  }
+
+  function onModeChange() {
+    if (mode() === 'page') {
+      inputLabel.textContent = 'URL:';
+      input.placeholder = 'https://example.com/path';
+      inputHelp.textContent = 'Paste a page URL to analyze Markdown, links, emails, and metrics.';
+      publicGroup.style.display = '';
+    } else {
+      inputLabel.textContent = 'Domain:';
+      input.placeholder = 'example.com';
+      inputHelp.textContent = 'Crawl internal links for this domain (BFS) within server caps.';
+      publicGroup.style.display = 'none';
+    }
+  }
+
+  document.getElementById('mode-page').addEventListener('change', onModeChange);
+  document.getElementById('mode-site').addEventListener('change', onModeChange);
+  onModeChange();
+
+  form.addEventListener('submit', function(e){
+    const val = input.value.trim();
+    if (!val) return; // required handles
+
+    if (mode() === 'page') {
+      // Ensure URL
+      const url = /^https?:\/\//i.test(val) ? val : ('https://' + val);
+      form.action = '/submit';
+      hiddenUrl.value = url;
+      hiddenDomain.value = '';
+    } else {
+      const dom = toDomain(val);
+      if (!dom || !dom.includes('.')) {
+        e.preventDefault();
+        input.setCustomValidity('Enter a valid domain like example.com');
+        input.reportValidity();
+        setTimeout(()=>input.setCustomValidity(''), 2000);
+        return;
+      }
+      form.action = '/submit';
+      hiddenDomain.value = dom;
+      hiddenUrl.value = '';
+    }
+  });
+})();
+</script>
 
 <h2>Latest 10 Public URLs</h2>
 {% if items and items|length > 0 %}
   <ul>
     {% for item in items %}
       <li>
-        <a href="/analysis/public/{{ item.key }}">
+        <a href="/analysis/{{ item.key }}">
           {% if item.canonical_url %}
             {{ item.canonical_url }}
           {% else %}

@@ -25,7 +25,7 @@
     {% endif %}
     {% if notice_job %}
       {% if notice in ['cancelled','not_running','retried'] %}
-        &nbsp;<a href="/analysis/private/{{ notice_job }}">Open job</a>
+        &nbsp;<a href="/analysis/{{ notice_job }}">Open job</a>
       {% endif %}
     {% endif %}
   </div>
@@ -47,7 +47,7 @@
       <tr>
         <td>{{ it.scope }}</td>
         <td>
-          <a href="/analysis/private/{{ it.id }}">
+          <a href="/analysis/{{ it.id }}">
             {{ it.canonical_url or (it.domain ~ it.path ~ (it.query and ('?' ~ it.query) or '')) }}
           </a>
         </td>

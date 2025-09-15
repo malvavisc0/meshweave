@@ -164,7 +164,6 @@ async def robots_txt(request: Request):
     return (
         "User-agent: *\n"
         "Allow: /\n"
-        "Disallow: /analysis/private/\n"
         "Disallow: /api/analysis/private/\n"
         "Disallow: /api/status/\n"
         f"Sitemap: {base}/sitemap.xml\n"
@@ -192,7 +191,7 @@ async def sitemap_xml(request: Request):
         )
     parts = []
     for r in rows:
-        loc = f"{base}/analysis/public/{r.key}"
+        loc = f"{base}/analysis/{r.key}"
         lastmod = (r.updated_at or datetime.now(timezone.utc)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )

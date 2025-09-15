@@ -28,7 +28,7 @@
   <ul>
     {% for item in items %}
       <li>
-        <a href="/analysis/public/{{ item.key }}">
+        <a href="/analysis/{{ item.key }}">
           {% if item.canonical_url %}
             {{ item.canonical_url }}
           {% else %}

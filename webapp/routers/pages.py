@@ -273,46 +273,183 @@ async def home(request: Request):
 async def submit(
     request: Request,
     background_tasks: BackgroundTasks,
-    url: str = Form(...),
-    public: Optional[str] = Form(None),  # checkbox presence => public
+    # Unified form fields (page or site)
+    mode: Optional[str] = Form(None),
+    url: Optional[str] = Form(None),
+    domain: Optional[str] = Form(None),
+    public: Optional[str] = Form(None),  # checkbox presence => public (page mode only)
+    # Site optional limits
+    max_pages: Optional[str] = Form(None),
+    max_depth: Optional[str] = Form(None),
+    time_budget_ms: Optional[str] = Form(None),
+    # Shared security
     csrf_token: Optional[str] = Form(None),
-    website: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),  # honeypot
 ):
-    """Handle form submission: upsert a crawl row and schedule a background task.
+    """Unified submit handler for analyzing a page or crawling a site.
 
-    Validates URL, optional origin/referrer, honeypot, CSRF, and simple rate limiting.
-    Public submissions are upserted by (visibility, domain, path, query); private
-    submissions create a new row.
-
-    Args:
-        request (Request): Incoming HTTP request (headers, cookies used for security and logging).
-        background_tasks (BackgroundTasks): FastAPI background task runner.
-        url (str): Absolute URL to crawl (http(s)://).
-        public (Optional[str]): Presence indicates public visibility; None means private.
-        csrf_token (Optional[str]): CSRF token to validate (when enabled).
-        website (Optional[str]): Honeypot field; any non-empty value is rejected.
-
-    Returns:
-        RedirectResponse: 303 redirect to /analysis/public/{key} for public or /analysis/private/{id} for private.
-
-    Raises:
-        HTTPException: 400 invalid URL or honeypot; 403 origin/CSRF violations; 429 rate limiting; 500 key generation failure.
+    Branches by mode ('page' or 'site') or by presence of 'domain' when mode is absent.
     """
-    url = (url or "").strip()
-    if not (url.startswith("http://") or url.startswith("https://")):
+    mode_val = (mode or "").strip().lower()
+
+    # Honeypot field to deter bots (applies to both modes)
+    if (website or "").strip():
+        try:
+            log_audit("honeypot_triggered", request=request, level=logging.WARNING)
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail="Invalid submission")
+
+    # SITE MODE
+    if mode_val == "site" or (domain and not url):
+        # CSRF validation (same as old /submit-site)
+        if _env_bool("WEBAPP_CSRF_ENABLED", False):
+            cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+            session_id = request.cookies.get(cookie_name) or ""
+            max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
+            if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
+                return RedirectResponse(url="/my?notice=csrf_failed", status_code=303)
+
+        user = getattr(request.state, "current_user", None)
+
+        # Normalize and validate domain
+        dom = (domain or "").strip().lower()
+        if dom.startswith("http://") or dom.startswith("https://"):
+            try:
+                from urllib.parse import urlsplit
+
+                dom = (urlsplit(dom).netloc or "").lower()
+            except Exception:
+                pass
+        if dom.startswith("www."):
+            dom = dom[4:]
+        if not dom or "." not in dom or any(c.isspace() for c in dom):
+            raise HTTPException(status_code=400, detail="Invalid domain")
+
+        # Enforce quotas only when authenticated (no rate limits for anonymous)
+        if user and getattr(user, "id", None):
+            enforce_concurrent_jobs_limit(user.id)
+            enforce_daily_site_crawl_limit(user.id)
+
+        # Resolve limits and apply caps via env (we store raw requested, caps enforced in service)
+        lim_req = {}
+        if max_pages is not None:
+            try:
+                lim_req["max_pages"] = int(max_pages)
+            except Exception:
+                pass
+        if max_depth is not None:
+            try:
+                lim_req["max_depth"] = int(max_depth)
+            except Exception:
+                pass
+        if time_budget_ms is not None:
+            try:
+                lim_req["time_budget_ms"] = int(time_budget_ms)
+            except Exception:
+                pass
+
+        # Upsert crawl row (private, unique on visibility+domain+path+query)
+        start_url = f"https://{dom}/"
+        now = datetime.now(timezone.utc)
+        with get_session() as s:
+            existing = (
+                s.query(Crawl)
+                .filter(
+                    Crawl.visibility == "private",
+                    Crawl.domain == dom,
+                    Crawl.path == "/",
+                    Crawl.query == "",
+                )
+                .one_or_none()
+            )
+            if existing:
+                # Refresh existing private crawl (convert to site scope if needed)
+                try:
+                    stale_min = int(os.getenv("SITE_CRAWL_STALE_MINUTES", "10"))
+                except Exception:
+                    stale_min = 10
+                if (
+                    str(getattr(existing, "status", "")).lower() == "running"
+                    and getattr(existing, "updated_at", None)
+                    and (now - existing.updated_at) > timedelta(minutes=stale_min)
+                ):
+                    existing.status = "pending"
+                    existing.payload_json = None
+                    existing.error = None
+
+                existing.url = start_url
+                existing.canonical_url = start_url
+                existing.scope = "site"
+                existing.limits_json = json.dumps(lim_req) if lim_req else json.dumps({})
+                # Attach ownership when logged in and missing
+                try:
+                    if user and not getattr(existing, "user_id", None):
+                        existing.user_id = getattr(user, "id", None)
+                except Exception:
+                    pass
+                if existing.status != "running":
+                    existing.status = "pending"
+                    existing.payload_json = None
+                    existing.error = None
+                existing.updated_at = now
+                crawl_id = existing.id
+            else:
+                row = Crawl(
+                    url=start_url,
+                    domain=dom,
+                    path="/",
+                    query="",
+                    canonical_url=start_url,
+                    key=None,
+                    visibility="private",
+                    scope="site",
+                    status="pending",
+                    payload_json=None,
+                    error=None,
+                    user_id=(getattr(user, "id", None) if user else None),
+                    limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
+                    created_at=now,
+                    updated_at=now,
+                )
+                s.add(row)
+                s.flush()
+                crawl_id = row.id
+
+        # Schedule site crawl (robust): BackgroundTasks + immediate task (guarded by DB transition)
+        background_tasks.add_task(run_site_crawl_task, crawl_id, False)
+        try:
+            asyncio.create_task(run_site_crawl_task(crawl_id, False))
+        except Exception:
+            pass
+        try:
+            log_audit("site_crawl_enqueued", request=request, crawl_id=crawl_id)
+        except Exception:
+            pass
+
+        # Redirect:
+        if user and getattr(user, "id", None):
+            return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
+        else:
+            return RedirectResponse(url=f"/?submitted={crawl_id}", status_code=303)
+
+    # PAGE MODE (default)
+    # Normalize URL
+    uval = (url or "").strip()
+    if not (uval.startswith("http://") or uval.startswith("https://")):
         raise HTTPException(
             status_code=400, detail="Invalid URL. Must start with http(s)://"
         )
 
     is_public = bool(public)
     user = getattr(request.state, "current_user", None)
-    dom, path, query, canon_url = canonicalize_url(url)
+    dom, path, query, canon_url = canonicalize_url(uval)
     if not dom:
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
 
     now = datetime.now(timezone.utc)
 
-    # Security: origin validation, honeypot, CSRF, and simple rate limiting
+    # Security: origin validation, honeypot already handled, CSRF, and simple rate limiting
     enforce_origin = _env_bool("WEBAPP_ENFORCE_ORIGIN", True)
     if enforce_origin:
         host_hdr = (request.headers.get("host") or "").lower()
@@ -320,14 +457,7 @@ async def submit(
         referer_hdr = request.headers.get("referer")
 
         def _host_of(u: Optional[str]) -> str:
-            """Extract lowercase host from a URL-like string.
-
-            Args:
-                u (Optional[str]): URL or origin string.
-
-            Returns:
-                str: Lowercased host without scheme/path, or empty string on error.
-            """
+            """Extract lowercase host from a URL-like string."""
             try:
                 return (urlparse(u or "").netloc or "").lower()
             except Exception:
@@ -359,14 +489,6 @@ async def submit(
                 except Exception:
                     pass
                 raise HTTPException(status_code=403, detail="Referer not allowed")
-
-    # Honeypot field to deter bots
-    if (website or "").strip():
-        try:
-            log_audit("honeypot_triggered", request=request, level=logging.WARNING)
-        except Exception:
-            pass
-        raise HTTPException(status_code=400, detail="Invalid submission")
 
     # CSRF validation
     if _env_bool("WEBAPP_CSRF_ENABLED", False):
@@ -424,7 +546,7 @@ async def submit(
     visibility = "public" if is_public else "private"
     force_refresh = False
 
-    # Upsert behavior:
+    # Upsert behavior for page:
     # - public: upsert by (visibility, domain, path, query)
     # - private: always create a new row (no upsert)
     with get_session() as s:
@@ -443,7 +565,7 @@ async def submit(
                 .one_or_none()
             )
             if existing:
-                existing.url = url
+                existing.url = uval
                 existing.canonical_url = canon_url
                 # If a run is already in progress, keep it running; else reset to pending
                 if existing.status not in {"running"}:
@@ -465,7 +587,7 @@ async def submit(
                     tries += 1
 
                 row = Crawl(
-                    url=url,
+                    url=uval,
                     domain=dom,
                     path=path,
                     query=query,
@@ -496,7 +618,7 @@ async def submit(
             )
             if existing:
                 # Update existing private row
-                existing.url = url
+                existing.url = uval
                 existing.canonical_url = canon_url
                 # Attach ownership if authenticated and not already owned
                 try:
@@ -514,7 +636,7 @@ async def submit(
                 force_refresh = True
             else:
                 row = Crawl(
-                    url=url,
+                    url=uval,
                     domain=dom,
                     path=path,
                     query=query,
@@ -584,7 +706,7 @@ async def submit(
                 Submission(
                     crawl_id=crawl_id,
                     domain=dom,
-                    url_at_submit=url,
+                    url_at_submit=uval,
                     visibility=visibility,
                     force_refresh=force_refresh,
                     status_at_submit=status_at_submit,
@@ -606,14 +728,14 @@ async def submit(
                 )
             )
 
-    # Build redirect response and set cookie if new
+    # Build redirect response and rotate session
     if is_public:
         if not key_val:
             # Should not happen, but guard
             raise HTTPException(status_code=500, detail="Key generation failed")
-        resp = RedirectResponse(url=f"/analysis/public/{key_val}", status_code=303)
+        resp = RedirectResponse(url=f"/analysis/{key_val}", status_code=303)
     else:
-        resp = RedirectResponse(url=f"/analysis/private/{crawl_id}", status_code=303)
+        resp = RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
 
     cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
     session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
@@ -631,24 +753,133 @@ async def submit(
     return resp
 
 
-@router.get("/analysis/public/{key}", response_class=HTMLResponse)
-async def view_public_by_key(request: Request, key: str):
-    """Public result page by short key.
+@router.get("/analysis/{ref}", response_class=HTMLResponse)
+async def view_analysis(request: Request, ref: str):
+    """Unified analysis view.
 
-    Args:
-        request (Request): Incoming HTTP request.
-        key (str): Short public key identifying a Crawl.
-
-    Returns:
-        HTMLResponse: Rendered result page for the public crawl.
-
-    Raises:
-        HTTPException: 404 if not found.
+    If 'ref' is a UUID → private analysis (owner-only).
+    Else treat 'ref' as public short key.
     """
+    # Try UUID → private
+    is_uuid = False
+    try:
+        _ = uuid.UUID(ref)
+        is_uuid = True
+    except Exception:
+        is_uuid = False
+
+    if is_uuid:
+        # Private (owner-only)
+        row = await require_ownership(request, ref)
+
+        payload: Optional[dict] = None
+        if row.payload_json:
+            try:
+                payload = json.loads(row.payload_json)
+            except json.JSONDecodeError:
+                payload = None
+
+        # Compute SEO/meta and summary for private view
+        title_from_payload = ""
+        desc_from_payload = ""
+        try:
+            if payload:
+                pg = payload.get("page") or {}
+                title_from_payload = (pg.get("title") or "").strip()
+                desc_from_payload = (pg.get("description") or "").strip()
+        except Exception:
+            pass
+
+        page_title = title_from_payload or f"Result for {row.canonical_url}"
+        meta_description = _safe_summary(desc_from_payload) or _safe_summary(
+            (payload or {}).get("markdown", "")
+        )
+        abs_page_url = _abs_url(request, f"/analysis/{row.id}")
+        og_image_url = os.getenv("OG_IMAGE_URL") or None
+        site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "WebPage",
+                "name": page_title,
+                "description": meta_description,
+                "url": abs_page_url,
+                "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            }
+        )
+
+        summary = _build_summary(row, payload)
+        api_url = f"/api/analysis/private/{row.id}"
+        abs_api_url = _abs_url(request, api_url)
+
+        # CSRF token for retry form (generate new session if missing and CSRF is enabled)
+        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+        session_id = request.cookies.get(cookie_name)
+        new_session = False
+        if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
+            session_id = str(uuid.uuid4())
+            new_session = True
+        csrf_token = (
+            _make_csrf_token(session_id)
+            if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
+            else ""
+        )
+
+        resp = templates.TemplateResponse(
+            "result.html",
+            {
+                "request": request,
+                "id": row.id,
+                "domain": row.domain,
+                "path": row.path,
+                "query": row.query,
+                "canonical_url": row.canonical_url,
+                "visibility": row.visibility,
+                "status": row.status,
+                "error": row.error,
+                "payload": payload,
+                "summary": summary,
+                "api_url": api_url,
+                "abs_api_url": abs_api_url,
+                "can_retry": (row.status != "running"),
+                "csrf_token": csrf_token,
+                # SEO/Sharing
+                "page_title": page_title,
+                "meta_description": meta_description,
+                "abs_page_url": abs_page_url,
+                "og_image_url": og_image_url,
+                "site_name": site_name,
+                "json_ld": json_ld,
+            },
+        )
+        # Prevent indexing of private results
+        resp.headers["X-Robots-Tag"] = "noindex"
+
+        # Set session cookie if newly created for CSRF
+        if new_session and session_id:
+            cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+            session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
+            try:
+                log_audit("session_created", request=request)
+            except Exception:
+                pass
+            resp.set_cookie(
+                key=cookie_name,
+                value=str(session_id),
+                max_age=session_ttl,
+                httponly=True,
+                samesite="lax",
+                secure=cookie_secure,
+            )
+        return resp
+
+    # Public by short key
     with get_session() as s:
         row = (
             s.query(Crawl)
-            .filter(Crawl.key == key, Crawl.visibility == "public")
+            .filter(Crawl.key == ref, Crawl.visibility == "public")
             .one_or_none()
         )
     if not row:
@@ -677,7 +908,7 @@ async def view_public_by_key(request: Request, key: str):
         (payload or {}).get("markdown", "")
     )
 
-    abs_page_url = _abs_url(request, f"/analysis/public/{row.key}")
+    abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
 
@@ -768,171 +999,6 @@ async def view_public_by_key(request: Request, key: str):
     if row.status != "succeeded":
         resp.headers["X-Robots-Tag"] = "noindex"
     return resp
-
-
-@router.post("/submit-site")
-async def submit_site(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    domain: str = Form(...),
-    max_pages: Optional[str] = Form(None),
-    max_depth: Optional[str] = Form(None),
-    time_budget_ms: Optional[str] = Form(None),
-    csrf_token: Optional[str] = Form(None),
-):
-    """Start a site crawl (auth required).
-
-    Validates CSRF, enforces user quotas, creates a private 'site' scope crawl owned by the user,
-    and schedules a site crawl background task.
-
-    Args:
-        request (Request): Incoming request used for CSRF, auth, and metadata logging.
-        background_tasks (BackgroundTasks): FastAPI background task runner.
-        domain (str): Base domain to crawl (e.g., "example.com").
-        max_pages (Optional[int]): Optional requested page limit.
-        max_depth (Optional[int]): Optional requested crawl depth (0 means start page only).
-        time_budget_ms (Optional[int]): Optional time budget in milliseconds.
-        csrf_token (Optional[str]): CSRF token to validate when CSRF is enabled.
-
-    Returns:
-        RedirectResponse: 303 redirect to /analysis/private/{id} for the created job.
-
-    Raises:
-        HTTPException: 403 CSRF failure; 400 invalid domain; 429 quota violations.
-    """
-    # CSRF validation (same as other POSTs)
-    if _env_bool("WEBAPP_CSRF_ENABLED", False):
-        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-        session_id = request.cookies.get(cookie_name) or ""
-        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-        if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-            return RedirectResponse(url="/my?notice=csrf_failed", status_code=303)
-
-    user = getattr(request.state, "current_user", None)
-
-    # Normalize and validate domain
-    dom = (domain or "").strip().lower()
-    if dom.startswith("http://") or dom.startswith("https://"):
-        try:
-            from urllib.parse import urlsplit
-
-            dom = (urlsplit(dom).netloc or "").lower()
-        except Exception:
-            pass
-    if dom.startswith("www."):
-        dom = dom[4:]
-    if not dom or "." not in dom or any(c.isspace() for c in dom):
-        raise HTTPException(status_code=400, detail="Invalid domain")
-
-    # Enforce quotas only when authenticated (no rate limits for anonymous)
-    if user and getattr(user, "id", None):
-        enforce_concurrent_jobs_limit(user.id)
-        enforce_daily_site_crawl_limit(user.id)
-
-    # Resolve limits and apply caps via env (we store raw requested, caps enforced in service)
-    lim_req = {}
-    if max_pages is not None:
-        try:
-            lim_req["max_pages"] = int(max_pages)
-        except Exception:
-            pass
-    if max_depth is not None:
-        try:
-            lim_req["max_depth"] = int(max_depth)
-        except Exception:
-            pass
-    if time_budget_ms is not None:
-        try:
-            lim_req["time_budget_ms"] = int(time_budget_ms)
-        except Exception:
-            pass
-
-    # Upsert crawl row (private, unique on visibility+domain+path+query)
-    start_url = f"https://{dom}/"
-    now = datetime.now(timezone.utc)
-    with get_session() as s:
-        existing = (
-            s.query(Crawl)
-            .filter(
-                Crawl.visibility == "private",
-                Crawl.domain == dom,
-                Crawl.path == "/",
-                Crawl.query == "",
-            )
-            .one_or_none()
-        )
-        if existing:
-            # Refresh existing private crawl (convert to site scope if needed)
-            # Recover from stale 'running' (e.g., worker died) — flip back to pending if older than threshold
-            try:
-                stale_min = int(os.getenv("SITE_CRAWL_STALE_MINUTES", "10"))
-            except Exception:
-                stale_min = 10
-            if (
-                str(getattr(existing, "status", "")).lower() == "running"
-                and getattr(existing, "updated_at", None)
-                and (now - existing.updated_at) > timedelta(minutes=stale_min)
-            ):
-                existing.status = "pending"
-                existing.payload_json = None
-                existing.error = None
-
-            existing.url = start_url
-            existing.canonical_url = start_url
-            existing.scope = "site"
-            existing.limits_json = json.dumps(lim_req) if lim_req else json.dumps({})
-            # Attach ownership when logged in and missing
-            try:
-                if user and not getattr(existing, "user_id", None):
-                    existing.user_id = getattr(user, "id", None)
-            except Exception:
-                pass
-            if existing.status != "running":
-                existing.status = "pending"
-                existing.payload_json = None
-                existing.error = None
-            existing.updated_at = now
-            crawl_id = existing.id
-        else:
-            row = Crawl(
-                url=start_url,
-                domain=dom,
-                path="/",
-                query="",
-                canonical_url=start_url,
-                key=None,
-                visibility="private",  # Option B: keep anonymous site crawls private
-                scope="site",
-                status="pending",
-                payload_json=None,
-                error=None,
-                user_id=(getattr(user, "id", None) if user else None),
-                limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
-                created_at=now,
-                updated_at=now,
-            )
-            s.add(row)
-            s.flush()
-            crawl_id = row.id
-
-    # Schedule site crawl (robust): BackgroundTasks + immediate task (guarded by DB transition)
-    background_tasks.add_task(run_site_crawl_task, crawl_id, False)
-    try:
-        asyncio.create_task(run_site_crawl_task(crawl_id, False))
-    except Exception:
-        pass
-    try:
-        log_audit("site_crawl_enqueued", request=request, crawl_id=crawl_id)
-    except Exception:
-        pass
-
-    # Redirect:
-    # - Logged-in owners go to private result
-    # - Anonymous users go back to home with a status hint (private page is owner-protected)
-    if user and getattr(user, "id", None):
-        return RedirectResponse(url=f"/analysis/private/{crawl_id}", status_code=303)
-    else:
-        return RedirectResponse(url=f"/?submitted={crawl_id}", status_code=303)
 
 
 @router.get("/api/progress/{crawl_id}")
@@ -1067,7 +1133,7 @@ async def cancel_crawl(
         csrf_token (Optional[str]): CSRF token string when CSRF is enabled.
 
     Returns:
-        RedirectResponse: 303 redirect to /analysis/private/{crawl_id}.
+        RedirectResponse: 303 redirect to /analysis/{crawl_id}.
 
     Raises:
         HTTPException: 403 CSRF failure; 400 when job is not running; 404 if not found or not owned.
@@ -1149,7 +1215,6 @@ async def my_jobs(
     direction = (dir or "next").lower()
     if direction not in ("next", "prev"):
         direction = "next"
-
 
     with get_session() as s:
         rows_db: List[Crawl] = (
@@ -1273,7 +1338,7 @@ async def retry_crawl(
         csrf_token (Optional[str]): CSRF token string when CSRF is enabled.
 
     Returns:
-        RedirectResponse: 303 redirect to /analysis/private/{crawl_id}.
+        RedirectResponse: 303 redirect to /analysis/{crawl_id}.
 
     Raises:
         HTTPException: 403 CSRF failure; 400 when job is already running; 404 if not found.
@@ -1698,123 +1763,3 @@ async def view_all(
             "og_image_url": og_image_url,
         },
     )
-
-
-@router.get("/analysis/private/{crawl_id}", response_class=HTMLResponse)
-async def view_private(request: Request, crawl_id: str):
-    """Private result page by crawl UUID.
-
-    Args:
-        request (Request): Incoming HTTP request.
-        crawl_id (str): UUID of the Crawl row.
-
-    Returns:
-        HTMLResponse: Rendered result page for the private crawl.
-
-    Raises:
-        HTTPException: 404 if not found.
-    """
-    row = await require_ownership(request, crawl_id)
-
-    payload: Optional[dict] = None
-    if row.payload_json:
-        try:
-            payload = json.loads(row.payload_json)
-        except json.JSONDecodeError:
-            payload = None
-
-    # Compute SEO/meta and summary for private view
-    title_from_payload = ""
-    desc_from_payload = ""
-    try:
-        if payload:
-            pg = payload.get("page") or {}
-            title_from_payload = (pg.get("title") or "").strip()
-            desc_from_payload = (pg.get("description") or "").strip()
-    except Exception:
-        pass
-
-    page_title = title_from_payload or f"Result for {row.canonical_url}"
-    meta_description = _safe_summary(desc_from_payload) or _safe_summary(
-        (payload or {}).get("markdown", "")
-    )
-    abs_page_url = _abs_url(request, f"/analysis/private/{row.id}")
-    og_image_url = os.getenv("OG_IMAGE_URL") or None
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
-    json_ld = json.dumps(
-        {
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            "name": page_title,
-            "description": meta_description,
-            "url": abs_page_url,
-            "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-        }
-    )
-
-    summary = _build_summary(row, payload)
-    api_url = f"/api/analysis/private/{row.id}"
-    abs_api_url = _abs_url(request, api_url)
-
-    # CSRF token for retry form (generate new session if missing and CSRF is enabled)
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name)
-    new_session = False
-    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
-        session_id = str(uuid.uuid4())
-        new_session = True
-    csrf_token = (
-        _make_csrf_token(session_id)
-        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
-        else ""
-    )
-
-    resp = templates.TemplateResponse(
-        "result.html",
-        {
-            "request": request,
-            "id": row.id,
-            "domain": row.domain,
-            "path": row.path,
-            "query": row.query,
-            "canonical_url": row.canonical_url,
-            "visibility": row.visibility,
-            "status": row.status,
-            "error": row.error,
-            "payload": payload,
-            "summary": summary,
-            "api_url": api_url,
-            "abs_api_url": abs_api_url,
-            "can_retry": (row.status != "running"),
-            "csrf_token": csrf_token,
-            # SEO/Sharing
-            "page_title": page_title,
-            "meta_description": meta_description,
-            "abs_page_url": abs_page_url,
-            "og_image_url": og_image_url,
-            "site_name": site_name,
-            "json_ld": json_ld,
-        },
-    )
-    # Prevent indexing of private results
-    resp.headers["X-Robots-Tag"] = "noindex"
-
-    # Set session cookie if newly created for CSRF
-    if new_session and session_id:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
-        try:
-            log_audit("session_created", request=request)
-        except Exception:
-            pass
-        resp.set_cookie(
-            key=cookie_name,
-            value=str(session_id),
-            max_age=session_ttl,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
-    return resp
