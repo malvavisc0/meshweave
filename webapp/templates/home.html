@@ -1,8 +1,17 @@
 {% extends "base.html" %}
+{% block head_extra %}
+<style>
+@media (max-width: 640px) {
+  #url-input { max-width: 100%; display: block; }
+  #analyze-btn { display: block; width: 100%; margin: 8px 0 0 0 !important; }
+}
+.chips { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.chips .chip { display:inline-block; padding:4px 8px; border:1px solid var(--border); border-radius:999px; background:#fff; cursor:pointer; font-size:13px; }
+.chips .chip:focus { outline: 2px solid #c7d2fe; outline-offset: 2px; }
+</style>
+{% endblock %}
 
 {% block content %}
-<h1>{{ site_name or 'Markdownify Web App' }}</h1>
-
 {% if login_error %}
   <div role="alert" style="background:#fee; color:#900; padding:8px; border:1px solid #f99; margin:8px 0;">
     Sign-in failed. Please try again.
@@ -10,7 +19,7 @@
 {% endif %}
 
 {% if submitted_id %}
-  <div role="status" style="background:#eff6ff; color:#1e3a8a; padding:8px; border:1px solid #93c5fd; margin:8px 0;">
+  <div role="status" aria-live="polite" style="background:#eff6ff; color:#1e3a8a; padding:8px; border:1px solid #93c5fd; margin:8px 0;">
     Site crawl started. Status endpoint:
     {% if submitted_status_url %}
       <a href="{{ submitted_status_url }}">{{ submitted_status_url }}</a>
@@ -23,15 +32,20 @@
   </div>
 {% endif %}
 
-<h2>Get started</h2>
-<form id="unified-form" action="/submit" method="post">
-  {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+<h1 style="font-size: 2.5em; margin: 20px 0;">Analyze any URL instantly</h1>
+{% if request.state.current_user %}
+<p style="margin-bottom: 20px;">Keep analyses private or share publicly.</p>
+{% else %}
+<p style="margin-bottom: 20px;">Turn any page into clean Markdown, extract emails and links, and generate sales outreach—free and shareable.</p>
+{% endif %}
 
-  <!-- Hidden fields mapped on submit based on mode -->
+<form id="analyze-form" action="/submit" method="post">
+  {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+  {% if not request.state.current_user %}<input type="hidden" name="public" value="1">{% endif %}
+
   <input type="hidden" name="mode" id="hidden-mode" value="page">
   <input type="hidden" name="url" id="hidden-url">
   <input type="hidden" name="domain" id="hidden-domain">
-
 
   <!-- Honeypot -->
   <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
@@ -39,53 +53,118 @@
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
   </div>
 
-  <!-- Mode toggle -->
-  <fieldset role="radiogroup" aria-label="Action" style="margin:8px 0;">
-    <label><input type="radio" name="mode-choice" value="page" id="mode-page" checked> Analyze page</label>
-    <label style="margin-left:12px;"><input type="radio" name="mode-choice" value="site" id="mode-site"> Crawl site</label>
-  </fieldset>
+  <label for="url-input" style="display:block; margin-bottom:5px;">URL:</label>
+  <input type="text" id="url-input" placeholder="https://example.com/path" required style="width:100%; max-width:400px; padding:8px;" aria-describedby="url-help">
+  <button type="submit" id="analyze-btn" style="margin-left:10px; padding:8px 16px;">Analyze</button>
+  <div class="chips" aria-label="Try an example"><span class="small" style="margin-right:6px;">Try an example:</span> <button type="button" class="chip" onclick="setExample('https://example.com')">example.com</button> <button type="button" class="chip" onclick="setExample('https://indiehackers.com')">indiehackers.com</button></div>
+  <a href="#" id="advanced-toggle" role="button" aria-expanded="false" aria-controls="advanced-section" style="margin-top:10px; display:block; color:#007bff;">Advanced: Crawl an entire site →</a>
 
-  <!-- Single input -->
-  <label for="main-input" id="input-label">URL:</label>
-  <input type="text" id="main-input" placeholder="https://example.com/path" required style="width:520px;" aria-describedby="input-help">
-  <p id="input-help" class="small" style="margin:6px 0 10px;">
-    Paste a page URL to analyze Markdown, links, emails, and metrics.
+  <p id="url-help" style="font-size:0.9em; margin:10px 0;">
+  {% if request.state.current_user %}
+  Private by default. Check 'Public' to share on the homepage.
+  {% else %}
+  Hint: Public by default. Sign in to keep private.
+  {% endif %}
   </p>
 
-  <!-- Public only for page mode -->
-  <div id="public-group" style="margin:6px 0 10px;">
-    <label for="public">
-      <input type="checkbox" id="public" name="public" {% if not request.state.current_user %}checked{% endif %}>
-      Public (listed on homepage; accessible by key)
-    </label>
-    {% if not request.state.current_user %}
-      <div class="small" style="color:#555; margin-top:4px;">Public results are listed on the homepage. Sign in to keep them private.</div>
-    {% endif %}
+  {% if request.state.current_user %}
+  <div id="public-group" style="margin:10px 0;">
+  <label for="public">
+  <input type="checkbox" id="public" name="public"> Public (share on homepage)
+  </label>
   </div>
+  <p style="font-size:0.9em; margin:10px 0;">Tip: Private results appear in My Jobs.</p>
+  {% endif %}
 
-
-  <button type="submit" id="primary-submit" style="margin-top:10px;">Go</button>
 </form>
+
+<div id="advanced-section" role="region" aria-labelledby="advanced-heading" style="display:none; margin:20px 0; padding:10px; border:1px solid #ddd;">
+  <h2 id="advanced-heading">Advanced Site Crawl</h2>
+  <form id="site-form" action="/submit" method="post">
+    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+    <input type="hidden" name="mode" value="site">
+    <input type="hidden" name="domain" id="site-domain">
+    <input type="hidden" name="url" value="">
+
+    <label for="site-input" style="display:block; margin-bottom:5px;">Domain:</label>
+    <input type="text" id="site-input" placeholder="example.com" required style="width:50%; padding:8px;">
+    <button type="submit" id="site-btn" style="margin-left:10px; padding:8px 16px;">Start crawl</button>
+    <p style="font-size:0.9em; margin-top:10px;">
+    {% if request.state.current_user %}
+    Crawls are private by default, view progress in My Jobs.
+    {% else %}
+    Crawls are private by default—sign in to view progress in My Jobs.
+    {% endif %}
+    </p>
+  </form>
+</div>
+
+<p style="margin:20px 0;">Use for competitor research, content ideas, or sales outreach.</p>
+
+<h2>Latest public analyses</h2>
+{% if items and items|length > 0 %}
+  <ul>
+    {% for item in items %}
+      <li>
+        <a href="/analysis/{{ item.key }}">
+          {% if item.canonical_url %}
+            {{ item.canonical_url }}
+          {% else %}
+            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
+          {% endif %}
+        </a>
+        {% if item.title %} — "{{ item.title }}"{% endif %}
+        <br><small>Updated: <time datetime="{{ item.updated_at }}">{{ item.updated_at }}</time></small>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No public analyses yet.</p>
+{% endif %}
 
 <script>
 (function(){
-  const form = document.getElementById('unified-form');
-  const input = document.getElementById('main-input');
-  const inputLabel = document.getElementById('input-label');
-  const inputHelp = document.getElementById('input-help');
-  const publicGroup = document.getElementById('public-group');
-
+  const analyzeForm = document.getElementById('analyze-form');
+  const urlInput = document.getElementById('url-input');
   const hiddenMode = document.getElementById('hidden-mode');
   const hiddenUrl = document.getElementById('hidden-url');
   const hiddenDomain = document.getElementById('hidden-domain');
 
+  const siteForm = document.getElementById('site-form');
+  const siteInput = document.getElementById('site-input');
+  const siteDomain = document.getElementById('site-domain');
 
-  function mode() {
-    const m = document.querySelector('input[name="mode-choice"]:checked')?.value || 'page';
-    hiddenMode.value = m;
-    return m;
+  const advancedToggle = document.getElementById('advanced-toggle');
+  const advancedSection = document.getElementById('advanced-section');
+
+  // Toggle advanced section (accessibility: manage aria-expanded)
+  advancedToggle.addEventListener('click', function(e){
+    e.preventDefault();
+    const willOpen = advancedSection.style.display === 'none';
+    advancedSection.style.display = willOpen ? 'block' : 'none';
+    advancedToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    advancedToggle.textContent = willOpen ? 'Advanced: Crawl an entire site ▼' : 'Advanced: Crawl an entire site →';
+    try { trackEvent('advanced_toggle', willOpen ? 'open' : 'close'); } catch(err) {}
+  });
+  // Keyboard support for Space/Enter on the toggle
+  advancedToggle.addEventListener('keydown', function(e){
+    const key = e.key || e.code;
+    if (key === ' ' || key === 'Spacebar' || key === 'Enter') {
+      e.preventDefault();
+      advancedToggle.click();
+    }
+  });
+
+  // Quick-fill and submit example
+  function setExample(u){
+    try {
+      urlInput.value = u;
+      if (analyzeForm && typeof analyzeForm.requestSubmit === 'function') analyzeForm.requestSubmit();
+      else analyzeForm.submit();
+    } catch (e) { urlInput.value = u; }
   }
 
+  // Function to extract domain
   function toDomain(value) {
     try {
       let v = (value || '').trim();
@@ -100,70 +179,30 @@
     }
   }
 
-  function onModeChange() {
-    if (mode() === 'page') {
-      inputLabel.textContent = 'URL:';
-      input.placeholder = 'https://example.com/path';
-      inputHelp.textContent = 'Paste a page URL to analyze Markdown, links, emails, and metrics.';
-      publicGroup.style.display = '';
-    } else {
-      inputLabel.textContent = 'Domain:';
-      input.placeholder = 'example.com';
-      inputHelp.textContent = 'Crawl internal links for this domain (BFS) within server caps.';
-      publicGroup.style.display = 'none';
+  // Analyze form submit
+  analyzeForm.addEventListener('submit', function(e){
+    const val = urlInput.value.trim();
+    if (!val) return;
+    const url = /^https?:\/\//i.test(val) ? val : ('https://' + val);
+    hiddenMode.value = 'page';
+    hiddenUrl.value = url;
+    hiddenDomain.value = '';
+  });
+
+  // Site form submit
+  siteForm.addEventListener('submit', function(e){
+    const val = siteInput.value.trim();
+    const dom = toDomain(val);
+    if (!dom || !dom.includes('.')) {
+      e.preventDefault();
+      siteInput.setCustomValidity('Enter a valid domain like example.com');
+      siteInput.reportValidity();
+      setTimeout(()=>siteInput.setCustomValidity(''), 2000);
+      return;
     }
-  }
-
-  document.getElementById('mode-page').addEventListener('change', onModeChange);
-  document.getElementById('mode-site').addEventListener('change', onModeChange);
-  onModeChange();
-
-  form.addEventListener('submit', function(e){
-    const val = input.value.trim();
-    if (!val) return; // required handles
-
-    if (mode() === 'page') {
-      // Ensure URL
-      const url = /^https?:\/\//i.test(val) ? val : ('https://' + val);
-      form.action = '/submit';
-      hiddenUrl.value = url;
-      hiddenDomain.value = '';
-    } else {
-      const dom = toDomain(val);
-      if (!dom || !dom.includes('.')) {
-        e.preventDefault();
-        input.setCustomValidity('Enter a valid domain like example.com');
-        input.reportValidity();
-        setTimeout(()=>input.setCustomValidity(''), 2000);
-        return;
-      }
-      form.action = '/submit';
-      hiddenDomain.value = dom;
-      hiddenUrl.value = '';
-    }
+    siteDomain.value = dom;
   });
 })();
 </script>
 
-<h2>Latest 10 Public URLs</h2>
-{% if items and items|length > 0 %}
-  <ul>
-    {% for item in items %}
-      <li>
-        <a href="/analysis/{{ item.key }}">
-          {% if item.canonical_url %}
-            {{ item.canonical_url }}
-          {% else %}
-            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
-          {% endif %}
-        </a>
-        {% if item.title %} — {{ item.title }}{% endif %}
-        <br>
-        <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
-      </li>
-    {% endfor %}
-  </ul>
-{% else %}
-  <p>No public crawls yet.</p>
-{% endif %}
 {% endblock %}

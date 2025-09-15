@@ -1,50 +1,6 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Public Results for {{ domain }}</h1>
-<p><a href="/">Back to Home</a></p>
-
-<form method="get" action="/domain/{{ domain }}" style="margin-bottom:12px;">
-  <label for="f-page-size">Page size:</label>
-  <select id="f-page-size" name="page_size">
-    <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
-    <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
-    <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
-  </select>
-  <button type="submit">Apply</button>
-</form>
-
-{% if items and items|length > 0 %}
-  <ul>
-    {% for item in items %}
-      <li>
-        <a href="/analysis/{{ item.key }}">
-          {% if item.canonical_url %}
-            {{ item.canonical_url }}
-          {% else %}
-            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
-          {% endif %}
-        </a>
-        <br>
-        <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
-      </li>
-    {% endfor %}
-  </ul>
-
-  <div style="margin-top:12px;">
-    {% if has_prev %}
-      <a href="{{ prev_url }}">&larr; Prev</a>
-    {% else %}
-      <span class="small" style="color:#999;">&larr; Prev</span>
-    {% endif %}
-    &nbsp;&nbsp;
-    {% if has_next %}
-      <a href="{{ next_url }}">Next &rarr;</a>
-    {% else %}
-      <span class="small" style="color:#999;">Next &rarr;</span>
-    {% endif %}
-  </div>
-{% else %}
-  <p>No public results found for this domain.</p>
-{% endif %}
+<h1>Page removed</h1>
+<p>This page has been removed. Use <a href="/all">All</a> to browse public results and filter by domain/status.</p>
 {% endblock %}

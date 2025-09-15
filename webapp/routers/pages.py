@@ -20,6 +20,7 @@ from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.http import _client_ip_from_request, _collect_headers_subset
 from webapp.utils.logging import log_audit
+from webapp.utils.metrics import homepage_analyze_submits
 from webapp.utils.quotas import (
     enforce_concurrent_jobs_limit,
     enforce_daily_site_crawl_limit,
@@ -226,7 +227,7 @@ async def home(request: Request):
     # SEO meta for home
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     page_title = f"{site_name} — Turn any page into clean Markdown"
-    meta_description = "Render pages to Markdown, extract emails and links. Share public results with short keys and browse recent URLs."
+    meta_description = "Render pages to clean Markdown, extract emails and links. Share public results with short keys and browse recent URLs."
     abs_page_url = _abs_url(request, "/")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
     # Optional banner when a crawl was just started (anonymous redirect target)
@@ -311,6 +312,9 @@ async def submit(
                 return RedirectResponse(url="/my?notice=csrf_failed", status_code=303)
 
         user = getattr(request.state, "current_user", None)
+        # Site crawls are private by default (both anon and authed)
+        visibility = "private"
+        key = None
 
         # Normalize and validate domain
         dom = (domain or "").strip().lower()
@@ -356,7 +360,7 @@ async def submit(
             existing = (
                 s.query(Crawl)
                 .filter(
-                    Crawl.visibility == "private",
+                    Crawl.visibility == visibility,
                     Crawl.domain == dom,
                     Crawl.path == "/",
                     Crawl.query == "",
@@ -401,8 +405,8 @@ async def submit(
                     path="/",
                     query="",
                     canonical_url=start_url,
-                    key=None,
-                    visibility="private",
+                    key=key,
+                    visibility=visibility,
                     scope="site",
                     status="pending",
                     payload_json=None,
@@ -431,6 +435,7 @@ async def submit(
         if user and getattr(user, "id", None):
             return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
         else:
+            # Anonymous: show submitted banner on home
             return RedirectResponse(url=f"/?submitted={crawl_id}", status_code=303)
 
     # PAGE MODE (default)
@@ -441,11 +446,21 @@ async def submit(
             status_code=400, detail="Invalid URL. Must start with http(s)://"
         )
 
-    is_public = bool(public)
     user = getattr(request.state, "current_user", None)
+    # Public by default for anonymous users (freemium)
+    is_public = bool(public) if user else True
     dom, path, query, canon_url = canonicalize_url(uval)
     if not dom:
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
+
+    # Metrics: count homepage Analyze submissions (page mode)
+    try:
+        homepage_analyze_submits.labels(
+            authed="true" if user else "false",
+            public="true" if is_public else "false",
+        ).inc()
+    except Exception:
+        pass
 
     now = datetime.now(timezone.utc)
 
@@ -1390,160 +1405,6 @@ async def retry_crawl(
         background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
 
     return RedirectResponse(url=f"/my?notice=retried&job={crawl_id}", status_code=303)
-
-
-@router.get("/domain/{domain}", response_class=HTMLResponse)
-async def view_domain_index(
-    request: Request,
-    domain: str,
-    page_size: int = 50,
-    cursor: Optional[str] = None,
-    dir: Optional[str] = "next",
-):
-    """List public results for a given domain.
-
-    Args:
-        request (Request): Incoming HTTP request.
-        domain (str): Domain (host) to filter results by.
-
-    Returns:
-        HTMLResponse: Rendered domain index page.
-
-    Raises:
-        HTTPException: 404 if no public results exist for the domain.
-    """
-    # Normalize inputs
-    dom = (domain or "").lower()
-    try:
-        page_size = int(page_size)
-    except Exception:
-        page_size = 50
-    if page_size not in (25, 50, 100):
-        page_size = 50
-
-    direction = (dir or "next").lower()
-    if direction not in ("next", "prev"):
-        direction = "next"
-
-    # Parse cursor "epoch:id"
-    cursor_ts = None
-    cursor_id = None
-    if cursor:
-        try:
-            parts = cursor.split(":", 1)
-            cursor_ts = datetime.fromtimestamp(int(parts[0]), tz=timezone.utc)
-            cursor_id = parts[1]
-        except Exception:
-            cursor_ts = None
-            cursor_id = None
-
-    # Query rows with keyset filters
-    with get_session() as s:
-        q = s.query(Crawl).filter(Crawl.domain == dom, Crawl.visibility == "public")
-        if cursor_ts and cursor_id:
-            if direction == "next":
-                q = q.filter(
-                    or_(
-                        Crawl.updated_at < cursor_ts,
-                        and_(Crawl.updated_at == cursor_ts, Crawl.id < cursor_id),
-                    )
-                ).order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-            else:
-                q = q.filter(
-                    or_(
-                        Crawl.updated_at > cursor_ts,
-                        and_(Crawl.updated_at == cursor_ts, Crawl.id > cursor_id),
-                    )
-                ).order_by(Crawl.updated_at.asc(), Crawl.id.asc())
-        else:
-            q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-        rows_db: List[Crawl] = q.limit(page_size + 1).all()
-
-    if direction == "prev" and cursor_ts and cursor_id:
-        if len(rows_db) > page_size:
-            rows_db = rows_db[-page_size:]
-        rows_dom = list(reversed(rows_db))
-    else:
-        rows_dom = rows_db[:page_size]
-
-    # Build items
-    items = []
-    for r in rows_dom:
-        items.append(
-            {
-                "domain": r.domain,
-                "path": r.path,
-                "query": r.query,
-                "canonical_url": r.canonical_url,
-                "key": r.key,
-                "status": r.status,
-                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
-            }
-        )
-
-    # Build cursors and URLs
-    def _cursor_of(row: Crawl) -> str:
-        """Build a stable cursor string for keyset pagination.
-
-        Args:
-            row (Crawl): Crawl row whose updated_at and id are used.
-
-        Returns:
-            str: Cursor of the form "epoch:id".
-        """
-        ts = int((row.updated_at or datetime.now(timezone.utc)).timestamp())
-        return f"{ts}:{row.id}"
-
-    prev_url = None
-    next_url = None
-    if rows_dom:
-        first = rows_dom[0]
-        last = rows_dom[-1]
-        base_params = {"page_size": str(page_size)}
-        prev_params = dict(base_params)
-        prev_params["cursor"] = _cursor_of(first)
-        prev_params["dir"] = "prev"
-        prev_url = f"/domain/{dom}?" + urlencode(prev_params)
-
-        next_params = dict(base_params)
-        next_params["cursor"] = _cursor_of(last)
-        next_params["dir"] = "next"
-        next_url = f"/domain/{dom}?" + urlencode(next_params)
-
-    # SEO meta for domain index
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
-    page_title = f"Public results for {dom} — {site_name}"
-    meta_description = (
-        f"Latest crawls for {dom}. View shareable Markdown, links, emails, and metrics."
-    )
-    abs_page_url = _abs_url(request, f"/domain/{dom}")
-
-    # Absolute prev/next for link rel
-    abs_prev_url = _abs_url(request, prev_url) if prev_url else None
-    abs_next_url = _abs_url(request, next_url) if next_url else None
-    og_image_url = os.getenv("OG_IMAGE_URL") or None
-
-    return templates.TemplateResponse(
-        "domain_index.html",
-        {
-            "request": request,
-            "domain": dom,
-            "items": items,
-            "page_size": page_size,
-            "has_prev": True if prev_url else False,
-            "has_next": True if next_url else False,
-            "prev_url": prev_url,
-            "next_url": next_url,
-            "abs_prev_url": abs_prev_url,
-            "abs_next_url": abs_next_url,
-            # SEO
-            "site_name": site_name,
-            "page_title": page_title,
-            "meta_description": meta_description,
-            "abs_page_url": abs_page_url,
-            "og_image_url": og_image_url,
-        },
-    )
 
 
 @router.get("/all", response_class=HTMLResponse)

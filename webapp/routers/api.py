@@ -14,7 +14,13 @@ from webapp.models import Crawl
 from webapp.utils.auth import require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
-from webapp.utils.metrics import metrics_body, metrics_content_type
+from webapp.utils.metrics import (
+    homepage_advanced_toggle_clicks,
+    homepage_signin_cta_clicks,
+    metrics_body,
+    metrics_content_type,
+    result_share_clicks,
+)
 from webapp.utils.url import _get_base_url, normalize_domain
 
 router = APIRouter()
@@ -583,6 +589,36 @@ async def metrics():
         Response: Metrics body in Prometheus exposition format and content type.
     """
     return Response(content=metrics_body(), media_type=metrics_content_type())
+
+
+@router.get("/api/track")
+async def track_get(event: str = "", action: str = "", type: str = ""):
+    """Lightweight tracking endpoint (GET) for client beacons."""
+    try:
+        if event == "advanced_toggle" and action in ("open", "close"):
+            homepage_advanced_toggle_clicks.labels(action=action).inc()
+        elif event == "signin_click":
+            homepage_signin_cta_clicks.inc()
+        elif event == "share_click" and type in ("copy", "link", "other"):
+            result_share_clicks.labels(type=type).inc()
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@router.post("/api/track")
+async def track_post(event: str = "", action: str = "", type: str = ""):
+    """Lightweight tracking endpoint (POST) for client beacons."""
+    try:
+        if event == "advanced_toggle" and action in ("open", "close"):
+            homepage_advanced_toggle_clicks.labels(action=action).inc()
+        elif event == "signin_click":
+            homepage_signin_cta_clicks.inc()
+        elif event == "share_click" and type in ("copy", "link", "other"):
+            result_share_clicks.labels(type=type).inc()
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 @router.get("/healthz")

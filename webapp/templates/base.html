@@ -119,12 +119,6 @@
         <a href="/">Home</a>
         &nbsp;|&nbsp;
         <a href="/all">All</a>
-        &nbsp;|&nbsp;
-        <form onsubmit="var v=document.getElementById('nav-domain').value.trim(); if(v){ window.location.href='/domain/'+encodeURIComponent(v.toLowerCase()); } return false;" style="display:inline;">
-          <label for="nav-domain">Domain:</label>
-          <input type="text" id="nav-domain" name="domain" placeholder="example.com" style="width:180px;">
-          <button type="submit">Go</button>
-        </form>
       </div>
       <div class="nav-right">
         {% if request.state.current_user %}
@@ -139,7 +133,7 @@
             <button type="submit">Sign out of all devices</button>
           </form>
         {% else %}
-          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;">
+          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;" onclick="try{trackEvent('signin_click');}catch(e){}">
             Sign in with Google
           </a>
         {% endif %}
@@ -164,6 +158,7 @@
           legacyCopy(url);
         }
       } catch (e) { legacyCopy(url); }
+      try { trackEvent('share_click', null, 'copy'); } catch (err) {}
       return false;
     }
     function legacyCopy(text) {
@@ -184,6 +179,22 @@
         .replace(/>/g,'>')
         .replace(/"/g,'"')
         .replace(/'/g,'&#39;');
+    }
+    // Lightweight tracking helper using Beacon API when available
+    function trackEvent(event, action, type) {
+      try {
+        var params = new URLSearchParams();
+        if (event) params.set('event', event);
+        if (action) params.set('action', action);
+        if (type) params.set('type', type);
+        var url = '/api/track?' + params.toString();
+        if (navigator.sendBeacon) {
+          var blob = new Blob([], {type: 'text/plain'});
+          navigator.sendBeacon(url, blob);
+        } else {
+          fetch(url, {method:'GET', credentials:'same-origin'});
+        }
+      } catch (e) {}
     }
     </script>
 

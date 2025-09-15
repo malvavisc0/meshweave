@@ -26,6 +26,27 @@ job_duration = Histogram(
     ["scope", "status"],  # scope: page|site; status: succeeded|failed
 )
 
+# Homepage and sharing metrics
+homepage_analyze_submits = Counter(
+    "homepage_analyze_submits_total",
+    "Homepage Analyze submissions",
+    ["authed", "public"],  # authed: true|false, public: true|false
+)
+homepage_advanced_toggle_clicks = Counter(
+    "homepage_advanced_toggle_clicks_total",
+    "Homepage Advanced toggle clicks",
+    ["action"],  # action: open|close
+)
+homepage_signin_cta_clicks = Counter(
+    "homepage_signin_cta_clicks_total",
+    "Homepage Sign-in CTA clicks",
+)
+result_share_clicks = Counter(
+    "result_share_clicks_total",
+    "Result page share/copy clicks",
+    ["type"],  # type: copy|link|other
+)
+
 
 def metrics_body() -> bytes:
     """Return Prometheus metrics exposition as bytes."""

@@ -17,8 +17,8 @@
 {% if visibility == "public" and abs_page_url %}
   <p class="small">
     <strong>Share:</strong>
-    <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener">Post on X</a> •
-    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener">Share on LinkedIn</a>
+    <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Post on X</a> •
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Share on LinkedIn</a>
     {% if _logged_in %} • <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>{% endif %}
   </p>
 {% endif %}
