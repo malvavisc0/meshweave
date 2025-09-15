@@ -13,7 +13,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates
-from webapp.routers import api, auth, pages
+from webapp.routers import (
+    all_public,
+    analysis,
+    api,
+    auth,
+    home,
+    jobs,
+    progress,
+    submissions,
+)
 from webapp.utils.auth import AuthSessionMiddleware
 from webapp.utils.csrf import CSRFMiddleware
 from webapp.utils.logging import RequestIDMiddleware, init_logging, log_audit
@@ -288,7 +297,14 @@ def create_app() -> FastAPI:
 
     # Include route modules
     app.include_router(auth.router)
-    app.include_router(pages.router)
+    # Split routers (replaces pages.router)
+    app.include_router(home.router)
+    app.include_router(submissions.router)
+    app.include_router(analysis.router)
+    app.include_router(progress.router)
+    app.include_router(jobs.router)
+    app.include_router(all_public.router)
+    # API router remains last
     app.include_router(api.router)
 
     return app
