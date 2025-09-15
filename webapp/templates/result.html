@@ -31,7 +31,7 @@
   <p>Status: {{ status }}. Processing...</p>
 
   {% if id %}
-  <div id="progress-panel" class="panel" role="status" aria-live="polite" style="margin:8px 0;">
+  <div id="progress-panel" class="panel mt-1 mb-2" role="status" aria-live="polite">
     <div class="small">
       <strong>Progress:</strong>
       <span id="progress-status">{{ status }}</span>
@@ -45,20 +45,20 @@
       <span>•</span>
       <span>ETA:</span>
       <span id="progress-eta">—</span>
-      <span class="small" id="progress-budget" style="margin-left:6px; color: var(--muted);"></span>
+      <span class="small ml-1" id="progress-budget"></span>
     </div>
-    <div style="height:8px; background:#f3f4f6; border:1px solid var(--border); border-radius:6px; margin-top:6px; overflow:hidden;">
-      <div id="progress-bar" style="height:100%; width:0%; background:#c7d2fe;"></div>
+    <div class="progress">
+      <div id="progress-bar" class="progress-bar"></div>
     </div>
   </div>
   {% endif %}
 
   {% if status == "running" and request.state.current_user and id %}
     <div class="actions" role="toolbar" aria-label="Job Controls">
-      <button type="button" onclick="openChat()">Chat</button>
-      <form method="post" action="/cancel/{{ id }}" style="display:inline-block;">
+      <button type="button" class="btn" onclick="openChat()">Chat</button>
+      <form method="post" action="/cancel/{{ id }}" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" style="border-color:#fecaca; background:#fef2f2;">Cancel</button>
+        <button type="submit" class="btn btn-danger-soft">Cancel</button>
       </form>
     </div>
   {% endif %}
@@ -69,29 +69,29 @@
   <!-- Actions Row -->
   {% if _logged_in %}
   <div class="actions" role="toolbar" aria-label="Actions">
-    <button type="button" onclick="openChat()">Chat</button>
-    <a href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-    {% if emails_csv_url %}<a href="{{ emails_csv_url }}">Emails CSV</a>{% endif %}
-    {% if links_csv_url %}<a href="{{ links_csv_url }}">Links CSV</a>{% endif %}
-    {% if top_domains_csv_url %}<a href="{{ top_domains_csv_url }}">Top Domains CSV</a>{% endif %}
-    <a href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
-    <a href="#" onclick="return downloadMarkdown();">Download Markdown</a>
-    <a href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
+    <button type="button" class="btn" onclick="openChat()">Chat</button>
+    <a class="btn" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
+    {% if emails_csv_url %}<a class="btn" href="{{ emails_csv_url }}">Emails CSV</a>{% endif %}
+    {% if links_csv_url %}<a class="btn" href="{{ links_csv_url }}">Links CSV</a>{% endif %}
+    {% if top_domains_csv_url %}<a class="btn" href="{{ top_domains_csv_url }}">Top Domains CSV</a>{% endif %}
+    <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
+    <a class="btn" href="#" onclick="return downloadMarkdown();">Download Markdown</a>
+    <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
     {% if visibility == "public" and abs_page_url and _logged_in %}
-      <a href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
+      <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
     {% endif %}
     <span class="spacer"></span>
     {% if visibility == "public" %}
-      <form method="post" action="/submit" style="display:inline-block;">
+      <form method="post" action="/submit" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <input type="hidden" name="url" value="{{ canonical_url }}">
         <input type="hidden" name="public" value="on">
-        <button type="submit">Refresh</button>
+        <button type="submit" class="btn">Refresh</button>
       </form>
     {% elif can_retry %}
-      <form method="post" action="/retry/{{ id }}" style="display:inline-block;">
+      <form method="post" action="/retry/{{ id }}" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit">Retry</button>
+        <button type="submit" class="btn">Retry</button>
       </form>
     {% endif %}
   </div>
@@ -163,7 +163,7 @@
         Unique {{ summary.metrics.extraction.unique_total if summary and summary.metrics and summary.metrics.extraction else "" }}
       </div>
       {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
-      <div class="summary-item" style="grid-column: 1 / -1;">
+      <div class="summary-item col-span-all">
         <ul class="domain-list">
           {% for td in summary.links.top_external_domains %}
             <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
@@ -178,16 +178,16 @@
   <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
     <h2>Leads (Emails)</h2>
     <div class="leads-filters">
-      <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px; width:200px;">
+      <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain">
       <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
       <label class="small"><input type="checkbox" class="lead-type" value="text"> text</label>
       <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
-      <button onclick="clearLeadFilters()">Clear</button>
+      <button class="btn" onclick="clearLeadFilters()">Clear</button>
     </div>
     <div class="leads-actions">
       <label class="small"><input type="checkbox" id="lead-select-all"> Select All</label>
-      <button onclick="exportSelectedLeads()">Export Selected</button>
-      <button onclick="openAddLead()">Add Lead</button>
+      <button class="btn" onclick="exportSelectedLeads()">Export Selected</button>
+      <button class="btn" onclick="openAddLead()">Add Lead</button>
     </div>
     <table class="table" aria-label="Emails table">
       <thead>
@@ -206,7 +206,7 @@
       </tbody>
     </table>
     <!-- Add Lead inline form (hidden by default) -->
-    <div id="add-lead-form" style="display:none; margin-top:8px;">
+    <div id="add-lead-form" class="hidden mt-1">
       <div class="subtitle">Add lead (client-only; stored locally)</div>
       <div style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px;">
         <label>Email<br><input type="text" id="add-email" placeholder="name@example.com"></label>
@@ -215,8 +215,8 @@
         <label>Notes<br><input type="text" id="add-notes" placeholder="notes..."></label>
       </div>
       <div class="leads-actions">
-        <button onclick="saveAddedLead()">Save</button>
-        <button onclick="closeAddLead()">Cancel</button>
+        <button class="btn" onclick="saveAddedLead()">Save</button>
+        <button class="btn" onclick="closeAddLead()">Cancel</button>
       </div>
     </div>
   </section>
@@ -224,7 +224,7 @@
   <section id="m-leads" class="mobile-section panel" role="region" aria-label="Leads (Emails)">
     <h2>Leads (Emails)</h2>
     <div class="small">Sign in to view.</div>
-    <a href="/login?provider=google&next={{ abs_page_url or request.url.path }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;">Sign in</a>
+    <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
   </section>
   {% endif %}
 
@@ -238,17 +238,17 @@
     <div id="links-internal" role="tabpanel" aria-label="Internal links">
       <ul class="domain-list" id="internal-list"><!-- filled by JS --></ul>
     </div>
-    <div id="links-external" role="tabpanel" aria-label="External links" style="display:none;">
-      <h3 class="small" style="margin:6px 0;">Top External Domains</h3>
+    <div id="links-external" role="tabpanel" aria-label="External links" class="hidden">
+      <h3 class="small mt-1 mb-1">Top External Domains</h3>
       <ul class="domain-list" id="external-domain-list"><!-- JS groups --></ul>
-      <div id="external-drilldown" class="small" style="margin-top:8px;"><!-- JS per-domain URLs --></div>
+      <div id="external-drilldown" class="small mt-1"><!-- JS per-domain URLs --></div>
     </div>
   </section>
   {% else %}
   <section id="m-links" class="mobile-section panel" role="region" aria-label="Links Explorer">
     <h2>Links Explorer</h2>
     <div class="small">Sign in to view.</div>
-    <a href="/login?provider=google&next={{ abs_page_url or request.url.path }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;">Sign in</a>
+    <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
   </section>
   {% endif %}
 
@@ -273,16 +273,16 @@
   </section>
   {% endif %}
 
-  <section id="m-summary" class="mobile-section panel" role="region" aria-label="Summary Panel" style="display:none;"></section>
+  <section id="m-summary" class="mobile-section panel hidden" role="region" aria-label="Summary Panel"></section>
 
-  <section id="m-chat" class="mobile-section panel" role="region" aria-label="Chat" style="display:none;">
+  <section id="m-chat" class="mobile-section panel hidden" role="region" aria-label="Chat">
     <h2>LLM Chat</h2>
     <div class="small">Sign in to chat with this crawl</div>
-    <button onclick="openChat()">Open Chat</button>
+    <button class="btn" onclick="openChat()">Open Chat</button>
   </section>
 
   <!-- Hidden markdown for download only (no inline render) -->
-  <pre id="markdown-content" style="display:none;">{{ payload.markdown }}</pre>
+  <pre id="markdown-content" class="hidden">{{ payload.markdown }}</pre>
 {% else %}
   <p>No data available.</p>
 {% endif %}
@@ -304,7 +304,7 @@
       {% if payload.emails and payload.emails.counts %} • <span>Emails: {{ payload.emails.counts.total_unique or 0 }}</span>{% endif %}
       {% if payload.links %} • <span>Links: {{ (payload.links.internal|length if payload.links.internal else 0) + (payload.links.external|length if payload.links.external else 0) }}</span>{% endif %}
     </div>
-    <div style="margin-top:8px;">Sign in to chat with this crawl (coming soon)</div>
+    <div class="mt-1">Sign in to chat with this crawl (coming soon)</div>
   </div>
   <div class="chat-footer">
     <input type="text" placeholder="Enter prompt..." disabled>
@@ -477,7 +477,7 @@ function renderLeads() {
       '<td title="'+escapeHtml(foundAs.length ? ('Found on: '+fUrl+'; as: '+foundAs.join(',')) : 'N/A')+'">'+(foundAs.join(',')||'-')+'</td>' +
       '<td><span class="status-chip '+st.cls+'">'+st.label+'</span></td>' +
       '<td>'+escapeHtml(dom || '-')+'</td>' +
-      '<td><button onclick="copyLink(\''+jsStr(fUrl)+'\')">↗</button> <button onclick="copyLink(\''+jsStr(email)+'\')">Copy</button></td>';
+      '<td><button class="btn btn-sm" onclick="copyLink(\''+jsStr(fUrl)+'\')">↗</button> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(email)+'\')">Copy</button></td>';
     if (applyLeadFilters(tr)) tbody.appendChild(tr);
   });
   // Hook select all
@@ -545,7 +545,7 @@ function renderLinksExternal() {
   var sorted = Object.keys(domains).sort(function(a,b){ return (domains[b].length - domains[a].length) || a.localeCompare(b); });
   sorted.forEach(function(d){
     var li = document.createElement('li');
-    li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+domains[d].length+' <button class="small" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="small" disabled title="Coming soon">Seed Crawl</button></span>';
+    li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+domains[d].length+' <button class="btn btn-sm" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="btn btn-sm" disabled title="Coming soon">Seed Crawl</button></span>';
     list.appendChild(li);
   });
   if ((TOP_EXTERNAL_DOMAINS||[]).length) {
@@ -553,7 +553,7 @@ function renderLinksExternal() {
     TOP_EXTERNAL_DOMAINS.forEach(function(td){
       var d = td.domain; var c = (domains[d]||[]).length || td.count;
       var li = document.createElement('li');
-      li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+c+' <button class="small" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="small" disabled title="Coming soon">Seed Crawl</button></span>';
+      li.innerHTML = '<span>'+escapeHtml(d)+'</span><span class="small">'+c+' <button class="btn btn-sm" onclick="drillExternal(\''+jsStr(d)+'\')">View</button> <button class="btn btn-sm" disabled title="Coming soon">Seed Crawl</button></span>';
       list.appendChild(li);
     });
   }
@@ -565,7 +565,7 @@ function drillExternal(domain) {
   var ul = document.createElement('ul'); ul.className = 'domain-list';
   urls.forEach(function(u){
     var li = document.createElement('li');
-    li.innerHTML = '<span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="small" disabled title="Coming soon">Queue Crawl</button></span>';
+    li.innerHTML = '<span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" disabled title="Coming soon">Queue Crawl</button></span>';
     ul.appendChild(li);
   });
   cont.appendChild(ul);

@@ -233,6 +233,7 @@ async def home(request: Request):
     # Optional banner when a crawl was just started (anonymous redirect target)
     submitted_id = request.query_params.get("submitted") or None
     submitted_status_url = f"/api/status/{submitted_id}" if submitted_id else None
+    submitted_is_private = True if request.query_params.get("private") else False
 
     resp = templates.TemplateResponse(
         "home.html",
@@ -244,6 +245,7 @@ async def home(request: Request):
             # Submission banner
             "submitted_id": submitted_id,
             "submitted_status_url": submitted_status_url,
+            "submitted_is_private": submitted_is_private,
             # SEO
             "site_name": site_name,
             "page_title": page_title,
@@ -312,8 +314,11 @@ async def submit(
                 return RedirectResponse(url="/my?notice=csrf_failed", status_code=303)
 
         user = getattr(request.state, "current_user", None)
-        # Site crawls are private by default (both anon and authed)
-        visibility = "private"
+        # Default visibility: private when signed-in, public when signed-out (overridable by 'public' param)
+        visibility = "private" if user else "public"
+        # If client provided an explicit 'public' param, honor it for both anon and authed users
+        if public is not None:
+            visibility = "public" if bool(public) else "private"
         key = None
 
         # Normalize and validate domain
@@ -368,37 +373,89 @@ async def submit(
                 .one_or_none()
             )
             if existing:
-                # Refresh existing private crawl (convert to site scope if needed)
+                # Guard against updating private rows owned by another user.
+                can_update = True
                 try:
-                    stale_min = int(os.getenv("SITE_CRAWL_STALE_MINUTES", "10"))
+                    ex_owner = getattr(existing, "user_id", None)
+                    if ex_owner:
+                        if (user and ex_owner != getattr(user, "id", None)) or (not user):
+                            can_update = False
                 except Exception:
-                    stale_min = 10
-                if (
-                    str(getattr(existing, "status", "")).lower() == "running"
-                    and getattr(existing, "updated_at", None)
-                    and (now - existing.updated_at) > timedelta(minutes=stale_min)
-                ):
-                    existing.status = "pending"
-                    existing.payload_json = None
-                    existing.error = None
+                    can_update = False
 
-                existing.url = start_url
-                existing.canonical_url = start_url
-                existing.scope = "site"
-                existing.limits_json = json.dumps(lim_req) if lim_req else json.dumps({})
-                # Attach ownership when logged in and missing
-                try:
-                    if user and not getattr(existing, "user_id", None):
-                        existing.user_id = getattr(user, "id", None)
-                except Exception:
-                    pass
-                if existing.status != "running":
-                    existing.status = "pending"
-                    existing.payload_json = None
-                    existing.error = None
-                existing.updated_at = now
-                crawl_id = existing.id
+                if can_update:
+                    # Refresh existing crawl (convert to site scope if needed)
+                    try:
+                        stale_min = int(os.getenv("SITE_CRAWL_STALE_MINUTES", "10"))
+                    except Exception:
+                        stale_min = 10
+                    if (
+                        str(getattr(existing, "status", "")).lower() == "running"
+                        and getattr(existing, "updated_at", None)
+                        and (now - existing.updated_at) > timedelta(minutes=stale_min)
+                    ):
+                        existing.status = "pending"
+                        existing.payload_json = None
+                        existing.error = None
+
+                    existing.url = start_url
+                    existing.canonical_url = start_url
+                    existing.scope = "site"
+                    existing.limits_json = (
+                        json.dumps(lim_req) if lim_req else json.dumps({})
+                    )
+                    # Attach ownership when logged in and missing
+                    try:
+                        if user and not getattr(existing, "user_id", None):
+                            existing.user_id = getattr(user, "id", None)
+                    except Exception:
+                        pass
+                    if existing.status != "running":
+                        existing.status = "pending"
+                        existing.payload_json = None
+                        existing.error = None
+                    existing.updated_at = now
+                    crawl_id = existing.id
+                else:
+                    # Create a new row to avoid mutating another user's private crawl
+                    if visibility == "public":
+                        key = generate_short_key()
+                        dup = s.query(Crawl).filter(Crawl.key == key).one_or_none()
+                        tries = 0
+                        while dup is not None and tries < 3:
+                            key = generate_short_key()
+                            dup = s.query(Crawl).filter(Crawl.key == key).one_or_none()
+                            tries += 1
+                    row = Crawl(
+                        url=start_url,
+                        domain=dom,
+                        path="/",
+                        query="",
+                        canonical_url=start_url,
+                        key=key,
+                        visibility=visibility,
+                        scope="site",
+                        status="pending",
+                        payload_json=None,
+                        error=None,
+                        user_id=(getattr(user, "id", None) if user else None),
+                        limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    s.add(row)
+                    s.flush()
+                    crawl_id = row.id
             else:
+                # Generate a short key for public site crawls
+                if visibility == "public":
+                    key = generate_short_key()
+                    dup = s.query(Crawl).filter(Crawl.key == key).one_or_none()
+                    tries = 0
+                    while dup is not None and tries < 3:
+                        key = generate_short_key()
+                        dup = s.query(Crawl).filter(Crawl.key == key).one_or_none()
+                        tries += 1
                 row = Crawl(
                     url=start_url,
                     domain=dom,
@@ -435,8 +492,11 @@ async def submit(
         if user and getattr(user, "id", None):
             return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
         else:
-            # Anonymous: show submitted banner on home
-            return RedirectResponse(url=f"/?submitted={crawl_id}", status_code=303)
+            # Anonymous: show submitted banner on home, mark private if applicable
+            suffix = "&private=1" if visibility == "private" else ""
+            return RedirectResponse(
+                url=f"/?submitted={crawl_id}{suffix}", status_code=303
+            )
 
     # PAGE MODE (default)
     # Normalize URL
@@ -447,8 +507,13 @@ async def submit(
         )
 
     user = getattr(request.state, "current_user", None)
-    # Public by default for anonymous users (freemium)
-    is_public = bool(public) if user else True
+    # Visibility defaults:
+    # - Signed-in: default private unless 'public' provided
+    # - Signed-out: default public unless 'public' explicitly provided and falsy
+    if user:
+        is_public = bool(public)
+    else:
+        is_public = True if (public is None) else bool(public)
     dom, path, query, canon_url = canonicalize_url(uval)
     if not dom:
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
@@ -632,23 +697,54 @@ async def submit(
                 .one_or_none()
             )
             if existing:
-                # Update existing private row
-                existing.url = uval
-                existing.canonical_url = canon_url
-                # Attach ownership if authenticated and not already owned
+                # Guard against updating private rows owned by another user.
+                can_update = True
                 try:
-                    if user and not getattr(existing, "user_id", None):
-                        existing.user_id = getattr(user, "id", None)
+                    ex_owner = getattr(existing, "user_id", None)
+                    if ex_owner:
+                        if (user and ex_owner != getattr(user, "id", None)) or (not user):
+                            can_update = False
                 except Exception:
-                    pass
-                if existing.status not in {"running"}:
-                    existing.status = "pending"
-                    existing.payload_json = None
-                    existing.error = None
-                existing.updated_at = now
-                crawl_id = existing.id
-                # Ensure we refresh on resubmit
-                force_refresh = True
+                    can_update = False
+
+                if can_update:
+                    # Update existing private row
+                    existing.url = uval
+                    existing.canonical_url = canon_url
+                    # Attach ownership if authenticated and not already owned
+                    try:
+                        if user and not getattr(existing, "user_id", None):
+                            existing.user_id = getattr(user, "id", None)
+                    except Exception:
+                        pass
+                    if existing.status not in {"running"}:
+                        existing.status = "pending"
+                        existing.payload_json = None
+                        existing.error = None
+                    existing.updated_at = now
+                    crawl_id = existing.id
+                    # Ensure we refresh on resubmit
+                    force_refresh = True
+                else:
+                    # Create a new private row for different owner/anonymous
+                    row = Crawl(
+                        url=uval,
+                        domain=dom,
+                        path=path,
+                        query=query,
+                        canonical_url=canon_url,
+                        key=None,  # not exposed for private rows
+                        visibility="private",
+                        status="pending",
+                        payload_json=None,
+                        error=None,
+                        user_id=(getattr(user, "id", None) if user else None),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    s.add(row)
+                    s.flush()
+                    crawl_id = row.id
             else:
                 row = Crawl(
                     url=uval,
@@ -750,7 +846,13 @@ async def submit(
             raise HTTPException(status_code=500, detail="Key generation failed")
         resp = RedirectResponse(url=f"/analysis/{key_val}", status_code=303)
     else:
-        resp = RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
+        if user and getattr(user, "id", None):
+            resp = RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
+        else:
+            # Anonymous private -> show banner on home; result is owner-restricted
+            resp = RedirectResponse(
+                url=f"/?submitted={crawl_id}&private=1", status_code=303
+            )
 
     cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
     session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
@@ -785,7 +887,19 @@ async def view_analysis(request: Request, ref: str):
 
     if is_uuid:
         # Private (owner-only)
-        row = await require_ownership(request, ref)
+        # If this private job was created anonymously (no owner), allow the first authenticated
+        # user reaching this page to claim ownership. Otherwise, enforce ownership.
+        with get_session() as s:
+            db_row = s.get(Crawl, ref)
+            if not db_row:
+                raise HTTPException(status_code=404, detail="Not found")
+            if not getattr(db_row, "user_id", None):
+                user = await require_auth(request)
+                db_row.user_id = user.id
+                s.flush()
+                row = db_row
+            else:
+                row = await require_ownership(request, ref)
 
         payload: Optional[dict] = None
         if row.payload_json:

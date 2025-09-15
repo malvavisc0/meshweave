@@ -4,9 +4,9 @@
 <h1>All Public Results</h1>
 <p><a href="/">Back to Home</a></p>
 
-<form method="get" action="/all" style="margin-bottom:12px;">
+<form method="get" action="/all" class="mb-2">
   <label for="f-domain">Domain:</label>
-  <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com" style="width:200px;">
+  <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com">
   <label for="f-status">Status:</label>
   <select id="f-status" name="status">
     <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
@@ -21,7 +21,7 @@
     <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
     <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
   </select>
-  <button type="submit">Apply</button>
+  <button type="submit" class="btn">Apply</button>
 </form>
 
 {% if items and items|length > 0 %}
@@ -42,17 +42,17 @@
     {% endfor %}
   </ul>
 
-  <div style="margin-top:12px;">
+  <div class="mt-2">
     {% if has_prev %}
       <a href="{{ prev_url }}">&larr; Prev</a>
     {% else %}
-      <span class="small" style="color:#999;">&larr; Prev</span>
+      <span class="small">&larr; Prev</span>
     {% endif %}
     &nbsp;&nbsp;
     {% if has_next %}
       <a href="{{ next_url }}">Next &rarr;</a>
     {% else %}
-      <span class="small" style="color:#999;">Next &rarr;</span>
+      <span class="small">Next &rarr;</span>
     {% endif %}
   </div>
 {% else %}

@@ -21,95 +21,7 @@
 
     {% if json_ld %}<script type="application/ld+json">{{ json_ld|safe }}</script>{% endif %}
 
-    <style>
-      :root {
-        --gap: 12px;
-        --border: #ddd;
-        --muted: #666;
-        --bg: #f9fafb;
-        --badge-green: #0a7f42;
-        --badge-gray: #6b7280;
-        --badge-orange: #b45309;
-        --badge-red: #b91c1c;
-        --card-bg: #fff;
-      }
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.45; margin: 0; padding: 0 12px 24px; background: #fff; color: #111; }
-      nav { padding:8px 0; border-bottom:1px solid var(--border); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-      .topnav .nav-left, .topnav .nav-right { display:flex; align-items:center; gap:8px; }
-      .topnav form { margin:0; }
-      h1 { margin: 12px 0 6px; font-size: 20px; }
-      h2 { margin: 10px 0 8px; font-size: 16px; }
-      a { color: #0a58ca; }
-      code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
-
-      .badges { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; }
-      .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--border); background:#fff; }
-      .badge.status-pending { background:#fff7ed; border-color:#fde68a; }
-      .badge.status-running { background:#eff6ff; border-color:#93c5fd; }
-      .badge.status-succeeded { background:#ecfdf5; border-color:#6ee7b7; }
-      .badge.status-failed { background:#fef2f2; border-color:#fecaca; }
-
-      .actions { display:flex; flex-wrap: wrap; gap:8px; align-items:center; margin:8px 0 12px; }
-      .actions a, .actions button { font-size: 13px; padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; text-decoration:none; color:inherit; }
-      .actions .spacer { flex: 1; }
-
-      /* Notices */
-      .notice { margin:8px 0; padding:8px; border:1px solid var(--border); border-radius:6px; }
-      .notice-ok { background:#ecfdf5; border-color:#bbf7d0; }
-      .notice-err { background:#fef2f2; border-color:#fecaca; }
-
-      .quick-stats { display:grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: var(--gap); margin: 10px 0 16px; }
-      .stat-card { background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:10px; }
-      .stat-k { font-size: 12px; color: var(--muted); }
-      .stat-v { font-size: 16px; font-weight: 600; margin-top: 4px; }
-
-      .layout { display:grid; grid-template-columns: 2fr 1fr; gap: var(--gap); align-items: start; }
-      .panel { background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:12px; }
-      .panel .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
-      .small { font-size:12px; color: var(--muted); }
-      .table { width:100%; border-collapse: collapse; }
-      .table th, .table td { text-align:left; padding:8px; border-bottom:1px solid var(--border); font-size: 13px; vertical-align: top; }
-
-      .tabs { display:flex; gap:6px; margin-bottom:8px; }
-      .tab { padding:6px 10px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:13px; }
-      .tab[aria-selected="true"] { background: #eef2ff; border-color:#c7d2fe; }
-
-      .domain-list { list-style:none; margin:0; padding:0; }
-      .domain-list li { display:flex; justify-content: space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; }
-
-      .pages-panel { max-height: 60vh; overflow:auto; }
-      .pages-list { list-style:none; margin:8px 0 0; padding:0; }
-      .pages-list li { padding:6px 8px; border-bottom:1px solid var(--border); font-size:13px; display:flex; gap:8px; align-items:center; }
-      .pages-list input[type=checkbox] { pointer-events:none; }
-
-      .status-chip { display:inline-block; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:600; color:#fff; }
-      .status-valid { background: var(--badge-green); }
-      .status-unknown { background: var(--badge-gray); }
-      .status-suspicious { background: var(--badge-orange); }
-      .status-disposable, .status-invalid { background: var(--badge-red); }
-
-      /* Chat drawer */
-      .chat-drawer { position: fixed; right: 12px; bottom: 12px; width: 360px; max-width: calc(100% - 24px); height: 420px; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); display:none; flex-direction: column; }
-      .chat-header { display:flex; justify-content: space-between; align-items:center; padding:8px 10px; border-bottom:1px solid var(--border); }
-      .chat-body { flex:1; padding:10px; overflow:auto; font-size:13px; }
-      .chat-footer { padding:8px; border-top:1px solid var(--border); display:flex; gap:8px; }
-      .chat-footer input[type=text] { flex:1; padding:8px; border:1px solid var(--border); border-radius:6px; }
-
-      /* Hide mobile tabs on desktop */
-      .mobile-tabs { display: none; }
-
-      /* Mobile tabs (<= 768px) */
-      @media (max-width: 768px) {
-        .layout { display:block; }
-        .quick-stats { grid-template-columns: repeat(3, minmax(0,1fr)); }
-        .mobile-tabs { display:flex; gap:6px; flex-wrap:wrap; margin: 8px 0; }
-        .mobile-tab { padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:13px; cursor:pointer; }
-        .mobile-tab[aria-selected="true"] { background:#eef2ff; border-color:#c7d2fe; }
-        .mobile-section { display:none; }
-        .mobile-section.active { display:block; margin-bottom:12px; }
-        .sidebar { margin-top:12px; }
-      }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 
     {% block head_extra %}{% endblock %}
   </head>
@@ -123,17 +35,13 @@
       <div class="nav-right">
         {% if request.state.current_user %}
           <span class="small">Signed in{% if request.state.current_user.email %} as {{ request.state.current_user.email }}{% endif %}</span>
-          <a href="/my" class="small" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none; margin:0 6px;">My Jobs</a>
-          <form action="/logout" method="post" style="display:inline;">
+          <a href="/my" class="small btn ml-1 mr-1">My Jobs</a>
+          <form action="/logout" method="post" class="inline">
             {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-            <button type="submit">Sign out</button>
-          </form>
-          <form action="/logout-all" method="post" style="display:inline;">
-            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-            <button type="submit">Sign out of all devices</button>
+            <button type="submit" class="btn btn-danger-soft">Sign out</button>
           </form>
         {% else %}
-          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" style="display:inline-block; padding:6px 10px; border:1px solid var(--border); border-radius:6px; text-decoration:none;" onclick="try{trackEvent('signin_click');}catch(e){}">
+          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary" onclick="try{trackEvent('signin_click');}catch(e){}">
             Sign in with Google
           </a>
         {% endif %}

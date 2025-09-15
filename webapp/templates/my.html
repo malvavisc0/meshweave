@@ -55,9 +55,9 @@
         <td><small>{{ it.updated_at }}</small></td>
         <td>
           {% if it.status != 'running' %}
-          <form method="post" action="/retry/{{ it.id }}" style="display:inline;">
+          <form method="post" action="/retry/{{ it.id }}" class="inline">
             {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-            <button type="submit">Retry</button>
+            <button type="submit" class="btn">Retry</button>
           </form>
           {% else %}
           <em>Running</em>

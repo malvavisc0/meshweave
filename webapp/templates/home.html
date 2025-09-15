@@ -1,25 +1,15 @@
 {% extends "base.html" %}
-{% block head_extra %}
-<style>
-@media (max-width: 640px) {
-  #url-input { max-width: 100%; display: block; }
-  #analyze-btn { display: block; width: 100%; margin: 8px 0 0 0 !important; }
-}
-.chips { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-.chips .chip { display:inline-block; padding:4px 8px; border:1px solid var(--border); border-radius:999px; background:#fff; cursor:pointer; font-size:13px; }
-.chips .chip:focus { outline: 2px solid #c7d2fe; outline-offset: 2px; }
-</style>
-{% endblock %}
+{% block head_extra %}{% endblock %}
 
 {% block content %}
 {% if login_error %}
-  <div role="alert" style="background:#fee; color:#900; padding:8px; border:1px solid #f99; margin:8px 0;">
+  <div role="alert" class="alert alert-err">
     Sign-in failed. Please try again.
   </div>
 {% endif %}
 
 {% if submitted_id %}
-  <div role="status" aria-live="polite" style="background:#eff6ff; color:#1e3a8a; padding:8px; border:1px solid #93c5fd; margin:8px 0;">
+  <div role="status" aria-live="polite" class="alert alert-info">
     Site crawl started. Status endpoint:
     {% if submitted_status_url %}
       <a href="{{ submitted_status_url }}">{{ submitted_status_url }}</a>
@@ -27,21 +17,25 @@
       /api/status/{{ submitted_id }}
     {% endif %}
     {% if not request.state.current_user %}
-      <br><span class="small">This result is private. Sign in to view when ready.</span>
+      {% if request.query_params.get('private') %}
+        <br><span class="small">This result is private. Sign in to view when ready.</span>
+      {% else %}
+        <br><span class="small">This result is public. You can follow status via the endpoint above.</span>
+      {% endif %}
     {% endif %}
   </div>
 {% endif %}
 
-<h1 style="font-size: 2.5em; margin: 20px 0;">Analyze any URL instantly</h1>
+<h1 class="hero-title">Analyze any URL instantly</h1>
 {% if request.state.current_user %}
-<p style="margin-bottom: 20px;">Keep analyses private or share publicly.</p>
+<p class="mb-3">Keep analyses private or share publicly.</p>
 {% else %}
-<p style="margin-bottom: 20px;">Turn any page into clean Markdown, extract emails and links, and generate sales outreach—free and shareable.</p>
+<p class="mb-3">Turn any page into clean Markdown, extract emails and links, and generate sales outreach—free and shareable.</p>
 {% endif %}
 
 <form id="analyze-form" action="/submit" method="post">
   {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-  {% if not request.state.current_user %}<input type="hidden" name="public" value="1">{% endif %}
+  {% if not request.state.current_user %}<input type="hidden" name="public" id="public-flag" value="1">{% endif %}
 
   <input type="hidden" name="mode" id="hidden-mode" value="page">
   <input type="hidden" name="url" id="hidden-url">
@@ -53,13 +47,12 @@
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
   </div>
 
-  <label for="url-input" style="display:block; margin-bottom:5px;">URL:</label>
-  <input type="text" id="url-input" placeholder="https://example.com/path" required style="width:100%; max-width:400px; padding:8px;" aria-describedby="url-help">
-  <button type="submit" id="analyze-btn" style="margin-left:10px; padding:8px 16px;">Analyze</button>
-  <div class="chips" aria-label="Try an example"><span class="small" style="margin-right:6px;">Try an example:</span> <button type="button" class="chip" onclick="setExample('https://example.com')">example.com</button> <button type="button" class="chip" onclick="setExample('https://indiehackers.com')">indiehackers.com</button></div>
-  <a href="#" id="advanced-toggle" role="button" aria-expanded="false" aria-controls="advanced-section" style="margin-top:10px; display:block; color:#007bff;">Advanced: Crawl an entire site →</a>
+  <label for="url-input" class="mb-1 block">URL:</label>
+  <input type="text" id="url-input" placeholder="https://example.com/path" required aria-describedby="url-help">
+  <button type="submit" id="analyze-btn" class="btn btn-primary ml-2">Analyze</button>
+  <a href="#" id="advanced-toggle" role="button" aria-expanded="false" aria-controls="advanced-section" class="mt-2 block">Advanced: Crawl an entire site →</a>
 
-  <p id="url-help" style="font-size:0.9em; margin:10px 0;">
+  <p id="url-help" class="small mt-2 mb-2">
   {% if request.state.current_user %}
   Private by default. Check 'Public' to share on the homepage.
   {% else %}
@@ -67,39 +60,48 @@
   {% endif %}
   </p>
 
+  {% if not request.state.current_user %}
+  <div id="anon-privacy" class="mt-2 mb-2">
+    <label for="anon-private">
+      <input type="checkbox" id="anon-private"> Keep private
+    </label>
+  </div>
+  {% endif %}
+
   {% if request.state.current_user %}
-  <div id="public-group" style="margin:10px 0;">
+  <div id="public-group" class="mt-2 mb-2">
   <label for="public">
   <input type="checkbox" id="public" name="public"> Public (share on homepage)
   </label>
   </div>
-  <p style="font-size:0.9em; margin:10px 0;">Tip: Private results appear in My Jobs.</p>
   {% endif %}
 
 </form>
 
-<div id="advanced-section" role="region" aria-labelledby="advanced-heading" style="display:none; margin:20px 0; padding:10px; border:1px solid #ddd;">
+<div id="advanced-section" role="region" aria-labelledby="advanced-heading" class="panel mt-3 hidden">
   <h2 id="advanced-heading">Advanced Site Crawl</h2>
   <form id="site-form" action="/submit" method="post">
     {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
     <input type="hidden" name="mode" value="site">
     <input type="hidden" name="domain" id="site-domain">
     <input type="hidden" name="url" value="">
+    {% if not request.state.current_user %}<input type="hidden" name="public" id="site-public" value="1">{% endif %}
 
-    <label for="site-input" style="display:block; margin-bottom:5px;">Domain:</label>
-    <input type="text" id="site-input" placeholder="example.com" required style="width:50%; padding:8px;">
-    <button type="submit" id="site-btn" style="margin-left:10px; padding:8px 16px;">Start crawl</button>
-    <p style="font-size:0.9em; margin-top:10px;">
+    <label for="site-input" class="mb-1 block">Domain:</label>
+    <input type="text" id="site-input" placeholder="example.com" required>
+    <button type="submit" id="site-btn" class="btn ml-2">Start crawl</button>
+    {% if not request.state.current_user %}<div class="mt-2 mb-2"><label for="site-private"><input type="checkbox" id="site-private"> Keep private</label></div>{% endif %}
+    <p class="small mt-2">
     {% if request.state.current_user %}
-    Crawls are private by default, view progress in My Jobs.
+    Crawls are private by default.
     {% else %}
-    Crawls are private by default—sign in to view progress in My Jobs.
+    Crawls are public by default. Sign in to keep them private and view progress.
     {% endif %}
     </p>
   </form>
 </div>
 
-<p style="margin:20px 0;">Use for competitor research, content ideas, or sales outreach.</p>
+<p class="mt-3 mb-3">Use for competitor research, content ideas, or sales outreach.</p>
 
 <h2>Latest public analyses</h2>
 {% if items and items|length > 0 %}
@@ -129,10 +131,14 @@
   const hiddenMode = document.getElementById('hidden-mode');
   const hiddenUrl = document.getElementById('hidden-url');
   const hiddenDomain = document.getElementById('hidden-domain');
+  const anonPrivate = document.getElementById('anon-private');
+  const publicFlag = document.getElementById('public-flag');
 
   const siteForm = document.getElementById('site-form');
   const siteInput = document.getElementById('site-input');
   const siteDomain = document.getElementById('site-domain');
+  const sitePrivate = document.getElementById('site-private');
+  const sitePublic = document.getElementById('site-public');
 
   const advancedToggle = document.getElementById('advanced-toggle');
   const advancedSection = document.getElementById('advanced-section');
@@ -140,8 +146,8 @@
   // Toggle advanced section (accessibility: manage aria-expanded)
   advancedToggle.addEventListener('click', function(e){
     e.preventDefault();
-    const willOpen = advancedSection.style.display === 'none';
-    advancedSection.style.display = willOpen ? 'block' : 'none';
+    const willOpen = advancedSection.classList.contains('hidden');
+    if (willOpen) { advancedSection.classList.remove('hidden'); } else { advancedSection.classList.add('hidden'); }
     advancedToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     advancedToggle.textContent = willOpen ? 'Advanced: Crawl an entire site ▼' : 'Advanced: Crawl an entire site →';
     try { trackEvent('advanced_toggle', willOpen ? 'open' : 'close'); } catch(err) {}
@@ -155,14 +161,6 @@
     }
   });
 
-  // Quick-fill and submit example
-  function setExample(u){
-    try {
-      urlInput.value = u;
-      if (analyzeForm && typeof analyzeForm.requestSubmit === 'function') analyzeForm.requestSubmit();
-      else analyzeForm.submit();
-    } catch (e) { urlInput.value = u; }
-  }
 
   // Function to extract domain
   function toDomain(value) {
@@ -187,6 +185,8 @@
     hiddenMode.value = 'page';
     hiddenUrl.value = url;
     hiddenDomain.value = '';
+    // For anonymous users allow private override
+    if (publicFlag) { publicFlag.value = (anonPrivate && anonPrivate.checked) ? '' : '1'; }
   });
 
   // Site form submit
@@ -201,6 +201,8 @@
       return;
     }
     siteDomain.value = dom;
+    // For anonymous users allow private override
+    if (sitePublic) { sitePublic.value = (sitePrivate && sitePrivate.checked) ? '' : '1'; }
   });
 })();
 </script>
