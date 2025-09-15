@@ -30,7 +30,6 @@
 {% if status in ["pending", "running"] %}
   <p>Status: {{ status }}. Processing...</p>
 
-  {% if id %}
   <div id="progress-panel" class="panel mt-1 mb-2" role="status" aria-live="polite">
     <div class="small">
       <strong>Progress:</strong>
@@ -51,7 +50,6 @@
       <div id="progress-bar" class="progress-bar"></div>
     </div>
   </div>
-  {% endif %}
 
   {% if status == "running" and request.state.current_user and id %}
     <div class="actions" role="toolbar" aria-label="Job Controls">
@@ -325,6 +323,7 @@
   'links_external': payload.links.external if payload and payload.links and payload.links.external else [],
   'top_external_domains': summary.links.top_external_domains if summary and summary.links and summary.links.top_external_domains else [],
   'crawl_id': id if id else '',
+  'public_key': key if key else '',
   'status': status if status else ''
 } | tojson }}
 </script>
@@ -626,6 +625,45 @@ function startProgressPolling(crawlId){
   __progressTimer = setInterval(tick, 2000);
 }
 
+/* Public progress polling by short key */
+function startPublicProgressPolling(pubKey){
+  if (!pubKey) return;
+  function tick(){
+    fetch('/api/progress/public/'+encodeURIComponent(pubKey))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        try {
+          var v = Number(j.visited_pages||0), lim = (j.limits&&Number(j.limits.max_pages))||null;
+          document.getElementById('progress-status') && (document.getElementById('progress-status').textContent = String(j.status||''));
+          document.getElementById('progress-visited') && (document.getElementById('progress-visited').textContent = String(v));
+          document.getElementById('progress-total') && (document.getElementById('progress-total').textContent = lim ? String(lim) : '?');
+          document.getElementById('progress-elapsed') && (document.getElementById('progress-elapsed').textContent = fmtMs(Number(j.elapsed_ms||0)));
+          var etaEl = document.getElementById('progress-eta');
+          if (etaEl) {
+            var etaMs = (j.est_remaining_ms==null ? null : Number(j.est_remaining_ms));
+            etaEl.textContent = (etaMs!=null && !Number.isNaN(etaMs)) ? fmtMs(etaMs) : '—';
+          }
+          var budEl = document.getElementById('progress-budget');
+          if (budEl) {
+            var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
+            budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
+          }
+          var pct = 0;
+          if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v/lim)*100)));
+          var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct+'%';
+          var st = (String(j.status||'').toLowerCase());
+          if (st !== 'running' && st !== 'pending') {
+            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
+            setTimeout(function(){ location.reload(); }, 800);
+          }
+        } catch(e){}
+      })
+      .catch(function(){ /* ignore */ });
+  }
+  tick();
+  __progressTimer = setInterval(tick, 2000);
+}
+
 // Init
 (function init(){
   renderLeads();
@@ -635,11 +673,16 @@ function startProgressPolling(crawlId){
   renderLinksInternal();
   renderLinksExternal();
 
-  // Start progress polling when we have a private id and running/pending status
+  // Start progress polling (private by id or public by key)
   const hasId = !!(__ctx.crawl_id);
+  const hasKey = !!(__ctx.public_key);
   const st = String(__ctx.status || '').toLowerCase();
-  if (hasId && (st === 'running' || st === 'pending')) {
-    startProgressPolling("{{ id }}");
+  if (st === 'running' || st === 'pending') {
+    if (hasId) {
+      startProgressPolling("{{ id }}");
+    } else if (hasKey) {
+      startPublicProgressPolling("{{ key }}");
+    }
   }
 })();
 </script>

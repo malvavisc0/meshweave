@@ -237,6 +237,7 @@ async def view_analysis(request: Request, ref: str):
             "query": row.query,
             "canonical_url": row.canonical_url,
             "visibility": row.visibility,
+            "key": row.key,
             "status": row.status,
             "error": row.error,
             "payload": payload,
