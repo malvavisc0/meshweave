@@ -302,13 +302,6 @@ def _classify_links(soup: BeautifulSoup, base_url: str):
         parts = urlsplit(absu)
         link_domain = _strip_www(parts.netloc or "")
 
-        # Skip absolute site root (same-domain) to avoid loops
-        if (
-            base_domain
-            and link_domain == base_domain
-            and (parts.path == "" or parts.path == "/")
-        ):
-            continue
 
         # Same-domain -> internal (store as normalized path)
         if base_domain and link_domain == base_domain or (not parts.netloc and not parts.scheme):
@@ -743,7 +736,7 @@ async def crawl(
     soup_raw = soup_from_html(html)
     page_meta = extract_page_meta(soup_raw)
     # Use preprocessed DOM only for markdown conversion
-    soup_pre = preprocess_soup(soup_raw, base_url=url, final_url=final_url)
+    soup_pre = preprocess_soup(soup_from_html(html), base_url=url, final_url=final_url)
 
     # Markdown
     md = to_markdown(soup_pre)
@@ -856,7 +849,7 @@ async def crawl(
             # Expand further links
             # Use raw DOM for classification; preprocessed DOM only for markdown upstream (if needed)
             soup2_raw = soup_from_html(html2)
-            soup2_pre = preprocess_soup(soup2_raw, base_url=final_u, final_url=final_u)
+            soup2_pre = preprocess_soup(soup_from_html(html2), base_url=final_u, final_url=final_u)
             new_internal, _, _ = _classify_links(soup2_raw, base_url=final_u)
             for href2 in new_internal:
                 abs2 = _normalize_abs_url(href2, final_u)

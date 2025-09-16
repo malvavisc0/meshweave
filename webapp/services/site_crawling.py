@@ -268,10 +268,10 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         base_domain_val = _norm_domain_from_url(final0)
         soup0 = soup_from_html(html0)
         meta0 = extract_page_meta(soup0)
-        # Preprocess for markdown and classify links on preprocessed soup
+        # Classify links on original soup, then preprocess for markdown
+        internal0, external0, extraction0 = _classify_links(soup0, base_url=final0)
         soup0_pp = preprocess_soup(soup0, base_url=start_url or final0, final_url=final0)
         md0 = to_markdown(soup0_pp)
-        internal0, external0, extraction0 = _classify_links(soup0_pp, base_url=final0)
 
         # Aggregate links for site-level summary
         try:
@@ -450,11 +450,11 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             # Links and markdown
             soup_i = soup_from_html(html_i)
             meta_i = extract_page_meta(soup_i)
+            internal_i, external_i, extraction_i = _classify_links(
+                soup_i, base_url=final_i
+            )
             soup_i_pp = preprocess_soup(soup_i, base_url=final_i, final_url=final_i)
             md_i = to_markdown(soup_i_pp)
-            internal_i, external_i, extraction_i = _classify_links(
-                soup_i_pp, base_url=final_i
-            )
 
             # Aggregate links for site-level summary
             try:
