@@ -1,7 +1,7 @@
 # Build a containerized API service for markdownify-crawler using FastAPI CLI (`fastapi run`)
 # Includes Playwright with Chromium and required OS dependencies.
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

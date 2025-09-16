@@ -1,7 +1,7 @@
 import csv
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Dict, List
 
@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from webapp.db import get_session
 from webapp.models import Crawl
-from webapp.utils.auth import require_ownership
+from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import (
@@ -290,12 +290,19 @@ async def api_public_summary(key: str):
     page = payload.get("page") or {}
     og = page.get("og") or {}
     metrics = payload.get("metrics") or {}
-    render = metrics.get("render") or {}
+    pages_arr = payload.get("pages") or []
+    # Derive render metrics strictly from the first page (home "/")
+    try:
+        first_page_metrics = (pages_arr[0].get("metrics") or {}) if (isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict)) else {}
+    except Exception:
+        first_page_metrics = {}
+    render = first_page_metrics.get("render") or {}
     extraction = metrics.get("extraction") or {}
     links = payload.get("links") or {}
     emails = payload.get("emails") or {}
 
     base_domain = (extraction.get("base_domain") or row.domain or "").strip()
+    is_site = ((payload.get("scope") or getattr(row, "scope", "") or "").strip().lower() == "site")
 
     # Top external domains
     top_ext: Dict[str, int] = {}
@@ -383,6 +390,19 @@ async def api_public_summary(key: str):
             "og_missing": og_missing,
         },
     }
+    if is_site:
+        try:
+            summary["site"] = {
+                "domain": row.domain,
+                "canonical_url": row.canonical_url,
+                "base_domain": base_domain,
+            }
+        except Exception:
+            pass
+        try:
+            summary.pop("page", None)
+        except Exception:
+            pass
     return JSONResponse(content=summary)
 
 
@@ -519,6 +539,60 @@ async def api_public_top_domains_csv(key: str):
             "Content-Disposition": f'attachment; filename="top-external-domains-{key}.csv"'
         },
     )
+
+
+@router.post("/api/claim/public/{key}")
+async def claim_public(request: Request, key: str):
+    """Claim a public anonymous analysis by short key when eligible.
+
+    Preconditions:
+      - visibility='public'
+      - user_id IS NULL
+      - created_at <= now - CLAIM_PUBLIC_MIN_AGE_HOURS (default 24)
+    Concurrency-safety: single UPDATE with conditions; 409 when already claimed.
+    """
+    user = await require_auth(request)
+
+    try:
+        min_age_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
+    except Exception:
+        min_age_hours = 24
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=min_age_hours)
+
+    with get_session() as s:
+        row = (
+            s.query(Crawl)
+            .filter(Crawl.key == key, Crawl.visibility == "public")
+            .one_or_none()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Fast checks (informative)
+        if getattr(row, "user_id", None):
+            return JSONResponse(status_code=409, content={"detail": "already_claimed"})
+        created = getattr(row, "created_at", None) or now
+        if created > cutoff:
+            return JSONResponse(status_code=400, content={"detail": "ineligible"})
+
+        # Concurrency-safe claim
+        updated = (
+            s.query(Crawl)
+            .filter(
+                Crawl.key == key,
+                Crawl.visibility == "public",
+                Crawl.user_id.is_(None),
+                Crawl.created_at <= cutoff,
+            )
+            .update({"user_id": user.id, "updated_at": now}, synchronize_session=False)
+        )
+        if updated != 1:
+            return JSONResponse(status_code=409, content={"detail": "not_claimed"})
+
+        # Return claimed id
+        claimed = s.query(Crawl).filter(Crawl.key == key).one_or_none()
+        return {"ok": True, "id": getattr(claimed, "id", None), "key": key}
 
 
 @router.get("/api/status/{crawl_id}")

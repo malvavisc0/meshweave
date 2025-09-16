@@ -187,6 +187,10 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         all_emails_set: Set[str] = set()
         emails_by_url: Dict[str, List[str]] = {}
 
+        # Aggregate links across pages
+        all_internal_paths: Set[str] = set()
+        all_external_abs: Set[str] = set()
+
         # Render function wrapper
         async def _fetch(url: str):
             """Render a URL and return the HTML and render metrics.
@@ -261,12 +265,29 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         # 1) Start page
         html0, m0 = await _fetch(start_url)  # type: ignore
         final0 = str(getattr(m0, "final_url", start_url or "")) or (start_url or "")
+        base_domain_val = _norm_domain_from_url(final0)
         soup0 = soup_from_html(html0)
         meta0 = extract_page_meta(soup0)
         # Preprocess for markdown and classify links on preprocessed soup
         soup0_pp = preprocess_soup(soup0, base_url=start_url or final0, final_url=final0)
         md0 = to_markdown(soup0_pp)
         internal0, external0, extraction0 = _classify_links(soup0_pp, base_url=final0)
+
+        # Aggregate links for site-level summary
+        try:
+            for href in internal0:
+                absu = _normalize_abs_url(href, final0)
+                if absu:
+                    pth = urlsplit(absu).path or "/"
+                    if not pth.startswith("/"):
+                        pth = "/" + pth
+                    all_internal_paths.add(pth)
+            for href in external0:
+                absu = _normalize_abs_url(href, final0)
+                if absu:
+                    all_external_abs.add(absu)
+        except Exception:
+            pass
 
         # Emails on start page
         emails0_set, src0 = extract_emails(html0, deobfuscate=True)
@@ -347,12 +368,18 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                                 "scope": "site",
                                 "start_url": start_url,
                                 "limits": limits,
-                                "page": meta0,
-                                "markdown": md0,
-                                "links": {"internal": internal0, "external": external0},
+                                "domain": base_domain_val,
+                                "canonical_url": final0,
+                                "links": {
+                                    "internal": sorted(list(all_internal_paths)),
+                                    "external": sorted(list(all_external_abs)),
+                                },
                                 "metrics": {
-                                    "render": render_metrics0,
-                                    "extraction": extraction0,
+                                    "extraction": {
+                                        "base_domain": base_domain_val,
+                                        "internal_count": len(all_internal_paths),
+                                        "external_count": len(all_external_abs),
+                                    }
                                 },
                                 "emails": {
                                     "unique": sorted(all_emails_set),
@@ -429,6 +456,22 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 soup_i_pp, base_url=final_i
             )
 
+            # Aggregate links for site-level summary
+            try:
+                for href in internal_i:
+                    absu2 = _normalize_abs_url(href, final_i)
+                    if absu2:
+                        p2 = urlsplit(absu2).path or "/"
+                        if not p2.startswith("/"):
+                            p2 = "/" + p2
+                        all_internal_paths.add(p2)
+                for href in external_i:
+                    absu3 = _normalize_abs_url(href, final_i)
+                    if absu3:
+                        all_external_abs.add(absu3)
+            except Exception:
+                pass
+
             # Record page
             render_metrics_i = {
                 "final_url": final_i,
@@ -497,10 +540,19 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                         "scope": "site",
                         "start_url": start_url,
                         "limits": limits,
-                        "page": meta0,
-                        "markdown": md0,
-                        "links": {"internal": internal0, "external": external0},
-                        "metrics": {"render": render_metrics0, "extraction": extraction0},
+                        "domain": base_domain_val,
+                        "canonical_url": final0,
+                        "links": {
+                            "internal": sorted(list(all_internal_paths)),
+                            "external": sorted(list(all_external_abs)),
+                        },
+                        "metrics": {
+                            "extraction": {
+                                "base_domain": base_domain_val,
+                                "internal_count": len(all_internal_paths),
+                                "external_count": len(all_external_abs),
+                            }
+                        },
                         "emails": {
                             "unique": sorted(all_emails_set),
                             "by_url": emails_by_url,
@@ -551,10 +603,19 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                     "scope": "site",
                     "start_url": start_url,
                     "limits": limits,
-                    "page": meta0,
-                    "markdown": md0,
-                    "links": {"internal": internal0, "external": external0},
-                    "metrics": {"render": render_metrics0, "extraction": extraction0},
+                    "domain": base_domain_val,
+                    "canonical_url": final0,
+                    "links": {
+                        "internal": sorted(list(all_internal_paths)),
+                        "external": sorted(list(all_external_abs)),
+                    },
+                    "metrics": {
+                        "extraction": {
+                            "base_domain": base_domain_val,
+                            "internal_count": len(all_internal_paths),
+                            "external_count": len(all_external_abs),
+                        }
+                    },
                     "emails": {
                         "unique": sorted(all_emails_set),
                         "by_url": emails_by_url,

@@ -309,3 +309,112 @@ class CrawlEmail(Base):
 
     # Relationship back to crawl
     crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="emails")
+
+
+# --- Phase 1B Models ---
+
+
+class Prospect(Base):
+    __tablename__ = "prospects"
+    __table_args__ = (
+        UniqueConstraint("user_id", "domain", name="uq_prospects_user_domain"),
+        Index("ix_prospects_user_id", "user_id"),
+        Index("ix_prospects_domain", "domain"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    crawl_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("crawls.id", ondelete="SET NULL"), nullable=True
+    )
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="shortlisted"
+    )  # shortlisted|contacted|replied|won|lost
+    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comma-separated
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    socials_json: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # JSON [{"platform":"linkedin","url":"...","handle":"..."}]
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ProspectContact(Base):
+    __tablename__ = "prospect_contacts"
+    __table_args__ = (
+        UniqueConstraint("prospect_id", "email", name="uq_prospect_contacts_email"),
+        Index("ix_prospect_contacts_prospect_id", "prospect_id"),
+        Index("ix_prospect_contacts_email", "email"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    prospect_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("prospects.id", ondelete="CASCADE"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)  # lowercased
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    social_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    role_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Product(Base):
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_products_user_name"),
+        Index("ix_products_user_id", "user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    website: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    icp: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pricing: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # or JSON text
+    tone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    contact_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    defaults_json: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # {"tone":"...","cta":"...","length":"..."}
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

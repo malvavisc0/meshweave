@@ -54,10 +54,7 @@ services:
       - SITE_BASE_URL=http://localhost:8080
       - DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/markdownify
       - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
-      - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
-      - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com,apps.apple.com
-      - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
-      - MARKDOWNIFY_DISABLE_CACHE=false
+      - MARKDOWNIFY_DISABLE_CACHE=true
       - SITE_NAME=Markdownify
       # Auth config
       - WEBAPP_AUTH_ENABLED=true
@@ -74,7 +71,7 @@ services:
       - AUTH_USER_DAILY_SITE_CRAWLS=10
       - AUTH_USER_CONCURRENT_JOBS=3
       - AUTH_SITE_MAX_PAGES_DEFAULT=100
-      - AUTH_SITE_MAX_DEPTH_DEFAULT=3
+      - AUTH_SITE_MAX_DEPTH_DEFAULT=2
       - AUTH_SITE_TIME_BUDGET_MS_DEFAULT=900000
       - AUTH_SITE_MAX_PAGES_CAP=500
       - AUTH_SITE_MAX_DEPTH_CAP=5

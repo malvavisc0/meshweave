@@ -48,6 +48,14 @@ result_share_clicks = Counter(
 )
 
 
+# Phase 1B API metrics (owner-scoped resources)
+prospects_upsert = Counter("prospects_upsert_total", "Prospects upsert/create operations")
+prospects_patch = Counter("prospects_patch_total", "Prospects partial update operations")
+contacts_create = Counter("contacts_create_total", "Prospect contacts created")
+products_create = Counter("products_create_total", "Products created")
+products_update = Counter("products_update_total", "Products updated")
+
+
 def metrics_body() -> bytes:
     """Return Prometheus metrics exposition as bytes."""
     return generate_latest()

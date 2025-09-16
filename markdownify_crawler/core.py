@@ -295,17 +295,11 @@ def _classify_links(soup: BeautifulSoup, base_url: str):
             continue
 
         total_candidates += 1
-        normalized = _remove_query_and_fragment(str(href).strip())
-
-        # Skip root path to avoid crawl loops
-        if normalized == "/":
-            continue
-
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-
-        parts = urlsplit(normalized)
+        raw = str(href).strip()
+        normalized = _remove_query_and_fragment(raw)
+        # Always resolve to absolute for robust classification and external list
+        absu = _normalize_abs_url(normalized, base_url)
+        parts = urlsplit(absu)
         link_domain = _strip_www(parts.netloc or "")
 
         # Skip absolute site root (same-domain) to avoid loops
@@ -316,19 +310,27 @@ def _classify_links(soup: BeautifulSoup, base_url: str):
         ):
             continue
 
-        # Absolute (http/https) or protocol-relative (//host)
-        if parts.scheme in ("http", "https") or link_domain:
-            if base_domain and link_domain == base_domain:
-                if not _should_ignore_path(parts.path or ""):
-                    internal.append(normalized)
-            else:
-                # Filter out ignored domains from links if configured
-                if not (filter_ignored and _is_ignored_domain(link_domain)):
-                    external.append(normalized)
+        # Same-domain -> internal (store as normalized path)
+        if base_domain and link_domain == base_domain or (not parts.netloc and not parts.scheme):
+            path = parts.path or "/"
+            if not path.startswith("/"):
+                path = "/" + path
+            if _should_ignore_path(path or ""):
+                continue
+            key = ("int", path)
+            if key in seen:
+                continue
+            seen.add(key)
+            internal.append(path)
         else:
-            # Relative URL -> internal
-            if not _should_ignore_path(parts.path or ""):
-                internal.append(normalized)
+            # External: optionally filter ignored domains and store absolute URL
+            if filter_ignored and _is_ignored_domain(link_domain):
+                continue
+            key = ("ext", absu)
+            if key in seen:
+                continue
+            seen.add(key)
+            external.append(absu)
 
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     extraction_metrics = {
@@ -737,16 +739,18 @@ async def crawl(
     final_url = str(getattr(metrics, "final_url", ""))
 
     # Prepare soup -> metadata -> preprocessing
-    soup = soup_from_html(html)
-    page_meta = extract_page_meta(soup)
-    soup = preprocess_soup(soup, base_url=url, final_url=final_url)
+    # Use raw DOM for metadata and link discovery
+    soup_raw = soup_from_html(html)
+    page_meta = extract_page_meta(soup_raw)
+    # Use preprocessed DOM only for markdown conversion
+    soup_pre = preprocess_soup(soup_raw, base_url=url, final_url=final_url)
 
     # Markdown
-    md = to_markdown(soup)
+    md = to_markdown(soup_pre)
 
-    # Extract and classify links
+    # Extract and classify links from RAW DOM to keep nav/social anchors
     internal_links, external_links, extraction_metrics = _classify_links(
-        soup, base_url=final_url
+        soup_raw, base_url=final_url
     )
 
     # Render metrics payload
@@ -850,9 +854,10 @@ async def crawl(
                     )
 
             # Expand further links
-            soup2 = soup_from_html(html2)
-            soup2 = preprocess_soup(soup2, base_url=final_u, final_url=final_u)
-            new_internal, _, _ = _classify_links(soup2, base_url=final_u)
+            # Use raw DOM for classification; preprocessed DOM only for markdown upstream (if needed)
+            soup2_raw = soup_from_html(html2)
+            soup2_pre = preprocess_soup(soup2_raw, base_url=final_u, final_url=final_u)
+            new_internal, _, _ = _classify_links(soup2_raw, base_url=final_u)
             for href2 in new_internal:
                 abs2 = _normalize_abs_url(href2, final_u)
                 if not abs2:
