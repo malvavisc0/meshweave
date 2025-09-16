@@ -186,6 +186,8 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         # Aggregate emails across pages
         all_emails_set: Set[str] = set()
         emails_by_url: Dict[str, List[str]] = {}
+        # Track sources per (email,url) with modes like 'mailto'|'text'|'obfuscated'
+        email_sources_map: Dict[Tuple[str, str], Set[str]] = {}
 
         # Aggregate links across pages
         all_internal_paths: Set[str] = set()
@@ -295,6 +297,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         if emails0:
             emails_by_url[final0] = emails0
         all_emails_set |= emails0_set
+        # Record sources for start page
+        try:
+            for s in (src0 or []):
+                e = (s.get("email") or "").lower()
+                mode = (s.get("found_as") or "text")
+                if e:
+                    email_sources_map.setdefault((e, final0), set()).add(mode)
+        except Exception:
+            pass
 
         render_metrics0 = {
             "final_url": final0,
@@ -363,6 +374,14 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                             return
                         row.status = "cancelled"
                         row.error = "cancelled_by_user"
+                        # Build deduped sources list
+                        try:
+                            email_sources_list = [
+                                {"email": k[0], "url": k[1], "found_as": sorted(list(v))}
+                                for (k, v) in email_sources_map.items()
+                            ]
+                        except Exception:
+                            email_sources_list = []
                         row.payload_json = json.dumps(
                             {
                                 "scope": "site",
@@ -384,6 +403,7 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                                 "emails": {
                                     "unique": sorted(all_emails_set),
                                     "by_url": emails_by_url,
+                                    "sources": email_sources_list,
                                     "counts": {
                                         "total_unique": len(all_emails_set),
                                         "total_mentions": sum(
@@ -446,6 +466,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             if emails_i:
                 emails_by_url[final_i] = emails_i
             all_emails_set |= emails_i_set
+            # Record sources for this page
+            try:
+                for s in (src_i or []):
+                    e = (s.get("email") or "").lower()
+                    mode = (s.get("found_as") or "text")
+                    if e:
+                        email_sources_map.setdefault((e, final_i), set()).add(mode)
+            except Exception:
+                pass
 
             # Links and markdown
             soup_i = soup_from_html(html_i)
@@ -535,6 +564,14 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                     return
                 row.status = "failed"
                 row.error = "time_budget_exceeded"
+                # Build deduped sources list
+                try:
+                    email_sources_list = [
+                        {"email": k[0], "url": k[1], "found_as": sorted(list(v))}
+                        for (k, v) in email_sources_map.items()
+                    ]
+                except Exception:
+                    email_sources_list = []
                 row.payload_json = json.dumps(
                     {
                         "scope": "site",
@@ -556,6 +593,7 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                         "emails": {
                             "unique": sorted(all_emails_set),
                             "by_url": emails_by_url,
+                            "sources": email_sources_list,
                             "counts": {
                                 "total_unique": len(all_emails_set),
                                 "total_mentions": sum(
@@ -598,6 +636,14 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 return
             row.status = "succeeded"
             row.error = None
+            # Build deduped sources list
+            try:
+                email_sources_list = [
+                    {"email": k[0], "url": k[1], "found_as": sorted(list(v))}
+                    for (k, v) in email_sources_map.items()
+                ]
+            except Exception:
+                email_sources_list = []
             row.payload_json = json.dumps(
                 {
                     "scope": "site",
@@ -619,6 +665,7 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                     "emails": {
                         "unique": sorted(all_emails_set),
                         "by_url": emails_by_url,
+                        "sources": email_sources_list,
                         "counts": {
                             "total_unique": len(all_emails_set),
                             "total_mentions": sum(len(v) for v in emails_by_url.values()),
