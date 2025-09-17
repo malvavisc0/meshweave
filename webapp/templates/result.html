@@ -135,7 +135,6 @@
     </div>
   </div>
 
-
   <!-- Social panel -->
   <section class="panel mt-2" role="region" aria-label="Social">
     <h2>Social</h2>
@@ -162,6 +161,12 @@
       <label class="ml-1"><input type="radio" name="pages-length" value="all" checked> All</label>
       <label class="ml-1"><input type="radio" name="pages-length" value="short"> Short</label>
       <label class="ml-1"><input type="radio" name="pages-length" value="long"> Long</label>
+    </div>
+    <div class="small mb-1" role="toolbar" aria-label="Pages Controls">
+      <input type="search" id="page-search" placeholder="Search pages..." oninput="filterPages(this.value)">
+      <button class="btn btn-sm" onclick="selectAllPages()">Select All</button>
+      <button class="btn btn-sm" onclick="clearAllPages()">Clear</button>
+      <span class="selection-summary ml-1">Selected: <span id="selected-count">0</span></span>
     </div>
     <div class="layout layout-pages">
       <div>
@@ -210,16 +215,51 @@
       <label>Length<br><input type="text" id="mini-length" placeholder="150-200 words"></label>
       <label class="small" style="align-self:end;"><input type="checkbox" id="mini-shorten"> Shorten</label>
     </div>
-    <div class="mb-1" role="toolbar" aria-label="Compose Shortcuts">
-      <button type="button" class="btn btn-primary" onclick="generateAndOpenChat('sales_pitch')">Generate Sales Pitch</button>
-      <button type="button" class="btn" onclick="generateAndOpenChat('outreach_email')">Generate Outreach Email</button>
-      <button type="button" class="btn" onclick="generateAndOpenChat('weaknesses')">Generate W&O</button>
-      <button type="button" class="btn" onclick="generateAndOpenChat('clarity_check')">Clarity Check</button>
-    </div>
-    <textarea id="chat-input" rows="10" placeholder="Draft will appear here..." style="width:100%;"></textarea>
-    <div class="mt-1" role="toolbar" aria-label="Chat Actions">
-      <button class="btn" onclick="copyChatDraft()">Copy draft</button>
-      <button class="btn" disabled title="Coming soon">Send</button>
+    <div class="content-generation">
+      <div class="generation-options">
+        <!-- Structured Actions (left) -->
+        <div class="structured-actions">
+          <h3>Structured Actions</h3>
+          <div class="small mb-1">Use Product/Tone/CTA/Length above</div>
+          <div>
+            <button class="btn btn-primary btn-action" onclick="runStructured('sales_pitch')">Sales Pitch</button>
+            <button class="btn btn-action" onclick="runStructured('outreach_email')">Outreach Email</button>
+            <button class="btn btn-action" onclick="runStructured('weaknesses')">Weaknesses & Opportunities</button>
+            <button class="btn btn-action" onclick="runStructured('clarity_check')">Clarity Assessment</button>
+          </div>
+        </div>
+
+        <!-- Free Chat (right) -->
+        <div class="free-chat">
+          <h3>Chat with Site</h3>
+          <div class="selected-pages-indicator mb-1">
+            <span class="small">Chatting with <span id="chat-page-count">0</span> pages</span>
+          </div>
+          <div class="chat-area">
+            <div class="chat-messages" id="chat-messages">
+              <div class="chat-message ai"><div class="message-bubble">
+                Select pages then ask a question. (Chat coming soon)
+              </div></div>
+            </div>
+            <div class="chat-input-container">
+              <input type="text" id="chat-question" placeholder="What's their pricing model?" maxlength="500">
+              <button class="btn btn-primary" onclick="sendChatMessage()" id="chat-send" disabled>Ask</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results area for structured actions -->
+      <div class="generation-results" id="structured-results" style="display: none;">
+        <div class="results-header">
+          <strong>Generated Content</strong>
+          <div class="results-actions">
+            <button class="btn btn-sm" onclick="copyStructuredContent()" id="copy-btn" disabled>Copy</button>
+            <button class="btn btn-sm" onclick="downloadStructuredContent()" id="download-btn" disabled>Download</button>
+          </div>
+        </div>
+        <textarea id="structured-content" rows="12" placeholder="Generated content will appear here..." readonly></textarea>
+      </div>
     </div>
   </section>
 
@@ -413,7 +453,7 @@ function openChat() {
   try {
     var sec = document.getElementById('compose-chat');
     if (sec && sec.scrollIntoView) sec.scrollIntoView({behavior:'smooth', block:'start'});
-    var input = document.getElementById('chat-input');
+    var input = document.getElementById('chat-question');
     if (input && input.focus) input.focus();
   } catch(_){}
 }
@@ -1112,16 +1152,197 @@ function tryPresetAutoGenerate(){
   try{
     var preset = getQueryParam('preset');
     if (preset && BUILTIN_TEMPLATES[preset]) {
-      // Load products then generate
+      // Load products then generate structured output into results panel
       if (!PB_PRODUCTS || PB_PRODUCTS.length===0) {
         miniLoadProducts();
-        setTimeout(function(){ generateAndOpenChat(preset); }, 300);
+        setTimeout(function(){ runStructured(preset); }, 300);
       } else {
-        generateAndOpenChat(preset);
+        runStructured(preset);
       }
     }
   }catch(_){}
 }
+
+/* ----- Emails preview helpers ----- */
+function scrollToFullEmails() {
+  try {
+    var el = document.getElementById('m-leads') || document.getElementById('leads-tbody');
+    if (el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
+  } catch(_) {}
+}
+function copyEmail(email) {
+  try { navigator.clipboard.writeText(email); showToast('Email copied'); } catch(_) {}
+}
+function copyAllEmails() {
+  try {
+    var all = (EMAILS_UNIQUE || []).join('\\n');
+    navigator.clipboard.writeText(all).then(function(){ showToast('All emails copied'); });
+  } catch(_) {}
+}
+function exportEmailsCsv() {
+  try {
+    var rows = [['email','first_url','found_as','domain']];
+    var srcMap = buildEmailSourceMap();
+    (EMAILS_UNIQUE || []).forEach(function(e){
+      var dom = (e.split('@')[1] || '').toLowerCase();
+      var src = srcMap[e] || {foundAs:[], firstUrl:''};
+      rows.push([e, src.firstUrl || '', (src.foundAs||[]).join(','), dom]);
+    });
+    var csv = rows.map(function(r){ return r.map(csvCell).join(','); }).join('\\n');
+    downloadBlob(csv, 'emails.csv', 'text/csv;charset=utf-8');
+  } catch(_) { alert('Unable to export'); }
+}
+function csvCell(s){ var t=String(s==null?'':s); return /[",\\n]/.test(t) ? '"' + t.replace(/"/g,'""') + '"' : t; }
+function downloadBlob(text, filename, mime){
+  var blob=new Blob([text], {type: mime||'text/plain;charset=utf-8'});
+  var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=filename||'download.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+}
+function showAddEmailForm(){
+  var el = document.getElementById('add-email-inline'); if (el) el.classList.remove('hidden');
+}
+function hideAddEmailForm(){
+  var el = document.getElementById('add-email-inline'); if (el) el.classList.add('hidden');
+}
+function addInlineEmail(){
+  var e = (document.getElementById('new-email-inline').value || '').trim().toLowerCase();
+  if (!e) { alert('Email is required'); return; }
+  saveAddedLeadInline(e);
+}
+function saveAddedLeadInline(email) {
+  prospectEnsure().then(function(pid){
+    return apiJson('/api/prospects/'+encodeURIComponent(pid)+'/contacts','POST',{ email: email });
+  }).then(function(){
+    alert('Email added');
+    hideAddEmailForm();
+  }).catch(function(err){
+    if (err && err.status === 401) alert('Sign in to add');
+    else alert('Unable to add email');
+  });
+}
+
+/* ----- Pages enhancements ----- */
+function filterPages(term){
+  term = String(term||'').toLowerCase();
+  document.querySelectorAll('#pages-list li').forEach(function(li){
+    var txt = (li.textContent || '').toLowerCase();
+    li.style.display = (term==='' || txt.indexOf(term) !== -1) ? '' : 'none';
+  });
+}
+function selectAllPages(){
+  document.querySelectorAll('#pages-list li').forEach(function(li){
+    var url = li.getAttribute('data-url') || '';
+    if (!url) return;
+    SELECTED_PAGES.add(url);
+    var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = true;
+    li.classList.add('selected');
+  });
+  updateSelectionCount();
+}
+function clearAllPages(){
+  document.querySelectorAll('#pages-list li').forEach(function(li){
+    var url = li.getAttribute('data-url') || '';
+    if (!url) return;
+    SELECTED_PAGES.delete(url);
+    var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = false;
+    li.classList.remove('selected');
+  });
+  updateSelectionCount();
+}
+function updateSelectionCount(){
+  var count = Array.from(SELECTED_PAGES.values()).length;
+  try { var el=document.getElementById('selected-count'); if (el) el.textContent = String(count); } catch(_){}
+  try { var ce=document.getElementById('chat-page-count'); if (ce) ce.textContent = String(count); } catch(_){}
+  // Row selected styles based on checkbox state
+  document.querySelectorAll('#pages-list li').forEach(function(li){
+    var cb = li.querySelector('input[type=checkbox]');
+    li.classList.toggle('selected', !!(cb && cb.checked));
+  });
+}
+
+/* ----- Structured results & actions ----- */
+function runStructured(templateId) {
+  try {
+    var txt = buildPromptFromMini(templateId);
+    showGeneratedContent(txt);
+  } catch(e) { alert('Unable to generate content'); }
+}
+function showGeneratedContent(content){
+  try {
+    var cont = document.getElementById('structured-content');
+    var wrap = document.getElementById('structured-results');
+    var copy = document.getElementById('copy-btn');
+    var down = document.getElementById('download-btn');
+    if (cont && wrap) {
+      cont.value = content || '';
+      wrap.style.display = content ? 'block' : 'none';
+      if (copy) copy.disabled = !content;
+      if (down) down.disabled = !content;
+      wrap.scrollIntoView({behavior:'smooth'});
+    }
+  } catch(_){}
+}
+function copyStructuredContent(){
+  try{
+    var t = (document.getElementById('structured-content').value || '');
+    navigator.clipboard.writeText(t).then(function(){ alert('Content copied'); });
+  } catch(_) {}
+}
+function downloadStructuredContent(){
+  try {
+    var t = (document.getElementById('structured-content').value || '');
+    downloadBlob(t, 'generated-content.txt', 'text/plain;charset=utf-8');
+  } catch(_) {}
+}
+
+/* ----- Chat skeleton (Pass 1 = coming soon) ----- */
+function addChatMessage(sender, text){
+  var messages = document.getElementById('chat-messages'); if (!messages) return;
+  var d = document.createElement('div'); d.className = 'chat-message '+sender;
+  d.innerHTML = '<div class="message-bubble">'+escapeHtml(text||'')+'</div>';
+  messages.appendChild(d);
+  messages.scrollTop = messages.scrollHeight;
+}
+function showTypingIndicator(){
+  var messages = document.getElementById('chat-messages'); if (!messages) return;
+  var d = document.createElement('div'); d.id='typing-indicator'; d.className='chat-message ai';
+  d.innerHTML = '<div class="message-bubble"><em>Thinking...</em></div>';
+  messages.appendChild(d);
+  messages.scrollTop = messages.scrollHeight;
+}
+function hideTypingIndicator(){
+  var t = document.getElementById('typing-indicator'); if (t) t.remove();
+}
+function sendChatMessage(){
+  var q = (document.getElementById('chat-question').value || '').trim();
+  if (!q) return;
+  var n = Array.from(SELECTED_PAGES.values()).length;
+  addChatMessage('user', q);
+  if (n === 0) {
+    addChatMessage('ai', 'Please select some pages first.');
+    return;
+  }
+  // Coming soon in Pass 1
+  addChatMessage('ai', 'Chat is coming soon. Use Structured Actions for now.');
+}
+
+/* Small helpers */
+function showToast(message) {
+  try {
+    var toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = 'position:fixed;top:20px;right:20px;background:var(--brand);color:white;padding:8px 16px;border-radius:4px;z-index:1000';
+    document.body.appendChild(toast);
+    setTimeout(function(){ toast.remove(); }, 1600);
+  } catch(_) {}
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return ({'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'}[c]);
+  });
+}
+
+/* Keep existing code below */
 
 // Mobile tabs
 (function() {

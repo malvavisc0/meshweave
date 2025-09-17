@@ -241,3 +241,66 @@ label { font-size: 13px; }
   #url-input { max-width: 100%; display: block; }
   #analyze-btn { display: block; width: 100%; margin: 8px 0 0 0 !important; }
 }
+
+/* ===== Pass 1 UI polish additions ===== */
+
+/* Email preview list */
+.email-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.email-item:hover { background: var(--bg); }
+
+/* Page selection feedback (separate from .active) */
+.pages-list li.selected {
+  background: var(--brand-weak);
+  border-left: 3px solid var(--brand);
+}
+.selection-summary {
+  font-weight: 600;
+  color: var(--brand);
+}
+
+/* Generation module emphasis */
+.content-generation { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.config-grid label { font-weight: 600; font-size: 13px; }
+
+/* Two-column for structured vs chat */
+.generation-options { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.structured-actions, .free-chat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.btn-action { min-height: 46px; margin-right: 8px; margin-bottom: 8px; font-weight: 600; }
+
+/* Simple chat interface */
+.chat-area { border: 1px solid var(--border); border-radius: var(--radius); height: 300px; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 12px; border-bottom: 1px solid var(--border); background: #fafbfc; }
+.chat-message { margin-bottom: 12px; }
+.chat-message.user { text-align: right; }
+.chat-message.user .message-bubble {
+  background: var(--brand); color: #fff; display: inline-block; padding: 8px 12px;
+  border-radius: var(--radius); max-width: 80%;
+}
+.chat-message.ai .message-bubble {
+  background: var(--card-bg); color: var(--fg); display: inline-block; padding: 8px 12px;
+  border-radius: var(--radius); border: 1px solid var(--border); max-width: 80%;
+}
+.chat-input-container { padding: 12px; display: flex; gap: 8px; }
+.chat-input-container input { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.selected-pages-indicator { font-weight: 600; color: var(--brand); }
+
+/* Results area */
+.generation-results { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: var(--bg); margin-top: 16px; }
+.results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+
+/* Responsive tweaks for the new blocks */
+@media (max-width: 768px) {
+  .generation-options { grid-template-columns: 1fr; gap: 16px; }
+  .chat-area { height: 250px; }
+}
