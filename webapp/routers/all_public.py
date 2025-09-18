@@ -5,11 +5,11 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func, distinct
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl
+from webapp.models import Crawl, CrawlEmail, CrawlLink
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
@@ -24,14 +24,19 @@ async def view_all(
     status: Optional[str] = None,
     cursor: Optional[str] = None,
     dir: Optional[str] = "next",
+    has_emails: bool = False,
+    sort: Optional[str] = None,
 ):
     """Paginated listing of public results with optional filters.
 
     Query parameters:
       - domain: exact host (lowercase, 'www.' stripped)
       - status: one of {'pending','running','succeeded','failed'}
+      - has_emails: boolean; if true only show rows with email_count > 0
+      - sort: one of {'recent','emails','pages'}
+      - cursor/dir: keyset pagination for 'recent' sort only
     """
-    # Normalize inputs (keyset pagination)
+    # Normalize inputs
     try:
         page_size = int(page_size)
     except Exception:
@@ -48,11 +53,16 @@ async def view_all(
     allowed_status = {"pending", "running", "succeeded", "failed"}
     st = status if (status and status in allowed_status) else None
 
+    allowed_sorts = {"recent", "emails", "pages"}
+    srt = (sort or "recent").lower()
+    if srt not in allowed_sorts:
+        srt = "recent"
+
     direction = (dir or "next").lower()
     if direction not in ("next", "prev"):
         direction = "next"
 
-    # Parse cursor of form "epoch:id"
+    # Parse cursor of form "epoch:id" (used for 'recent' only)
     cursor_ts = None
     cursor_id = None
     if cursor:
@@ -64,122 +74,269 @@ async def view_all(
             cursor_ts = None
             cursor_id = None
 
-    # Query rows with keyset filters
-    with get_session() as s:
-        q = s.query(Crawl).filter(Crawl.visibility == "public")
-        if dom:
-            q = q.filter(Crawl.domain == dom)
-        if st:
-            q = q.filter(Crawl.status == st)
-
-        if cursor_ts and cursor_id:
-            if direction == "next":
-                # Older than cursor (since we order DESC by default)
-                q = q.filter(
-                    or_(
-                        Crawl.updated_at < cursor_ts,
-                        and_(Crawl.updated_at == cursor_ts, Crawl.id < cursor_id),
-                    )
-                )
-                q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-            else:
-                # Newer than cursor, fetch ASC then reverse for display
-                q = q.filter(
-                    or_(
-                        Crawl.updated_at > cursor_ts,
-                        and_(Crawl.updated_at == cursor_ts, Crawl.id > cursor_id),
-                    )
-                )
-                q = q.order_by(Crawl.updated_at.asc(), Crawl.id.asc())
-        else:
-            q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-
-        rows_db: List[Crawl] = q.limit(page_size).all()
-
-    rows = rows_db
-
-    # Build items
     items = []
-    for r in rows:
-        title = ""
-        try:
-            if r.payload_json:
-                import json
-
-                payload = json.loads(r.payload_json)
-                title = (payload.get("page") or {}).get("title") or ""
-        except Exception:
-            title = ""
-        items.append(
-            {
-                "key": r.key,
-                "domain": r.domain,
-                "path": r.path,
-                "query": r.query,
-                "canonical_url": r.canonical_url,
-                "title": title,
-                "status": r.status,
-                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
-            }
-        )
-
-    # Build prev/next URLs using first/last item cursors
-    def _cursor_of(row: Crawl) -> str:
-        """Build a stable cursor string for keyset pagination.
-
-        Args:
-            row (Crawl): Crawl row whose updated_at and id are used.
-
-        Returns:
-            str: Cursor of the form "epoch:id".
-        """
-        ts = int((row.updated_at or datetime.now(timezone.utc)).timestamp())
-        return f"{ts}:{row.id}"
-
     prev_url = None
     next_url = None
-    if rows:
-        first = rows[0]
-        last = rows[-1]
-        base_params = {}
-        if dom:
-            base_params["domain"] = dom
-        if st:
-            base_params["status"] = st
-        base_params["page_size"] = str(page_size)
 
-        # Prev points to newer items than 'first'
-        prev_params = dict(base_params)
-        prev_params["cursor"] = _cursor_of(first)
-        prev_params["dir"] = "prev"
-        prev_url = "/all?" + urlencode(prev_params)
+    with get_session() as s:
+        if srt != "recent" and not cursor:
+            # Aggregation ordering (no keyset cursor support in this branch)
+            q = (
+                s.query(
+                    Crawl,
+                    func.count(distinct(CrawlEmail.email)).label("email_count"),
+                    func.count(distinct(CrawlLink.page_url)).label("page_count"),
+                )
+                .outerjoin(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
+                .outerjoin(CrawlLink, CrawlLink.crawl_id == Crawl.id)
+                .filter(Crawl.visibility == "public")
+            )
+            if dom:
+                q = q.filter(Crawl.domain == dom)
+            if st:
+                q = q.filter(Crawl.status == st)
 
-        # Next points to older items than 'last'
-        next_params = dict(base_params)
-        next_params["cursor"] = _cursor_of(last)
-        next_params["dir"] = "next"
-        next_url = "/all?" + urlencode(next_params)
+            q = q.group_by(Crawl.id)
+
+            if has_emails:
+                q = q.having(func.count(distinct(CrawlEmail.email)) > 0)
+
+            if srt == "emails":
+                q = q.order_by(
+                    func.count(distinct(CrawlEmail.email)).desc(),
+                    Crawl.updated_at.desc(),
+                )
+            elif srt == "pages":
+                q = q.order_by(
+                    func.count(distinct(CrawlLink.page_url)).desc(),
+                    Crawl.updated_at.desc(),
+                )
+
+            rows_db = q.limit(page_size).all()
+
+            for row, email_count, page_count in rows_db:
+                title = ""
+                try:
+                    if row.payload_json:
+                        import json
+
+                        payload = json.loads(row.payload_json)
+                        title = (payload.get("page") or {}).get("title") or ""
+                except Exception:
+                    title = ""
+                items.append(
+                    {
+                        "key": row.key,
+                        "domain": row.domain,
+                        "path": row.path,
+                        "query": row.query,
+                        "canonical_url": row.canonical_url,
+                        "title": title,
+                        "status": row.status,
+                        "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
+                        "email_count": int(email_count or 0),
+                        "page_count": int(page_count or 0),
+                    }
+                )
+            # For this branch, we omit keyset prev/next (could add page-based later)
+            has_prev = False
+            has_next = False
+        else:
+            # Keyset pagination (recent)
+            q = s.query(Crawl).filter(Crawl.visibility == "public")
+            if dom:
+                q = q.filter(Crawl.domain == dom)
+            if st:
+                q = q.filter(Crawl.status == st)
+
+            if cursor_ts and cursor_id:
+                if direction == "next":
+                    # Older than cursor (order DESC)
+                    q = q.filter(
+                        or_(
+                            Crawl.updated_at < cursor_ts,
+                            and_(Crawl.updated_at == cursor_ts, Crawl.id < cursor_id),
+                        )
+                    )
+                    q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+                else:
+                    # Newer than cursor; fetch ASC then reverse for display
+                    q = q.filter(
+                        or_(
+                            Crawl.updated_at > cursor_ts,
+                            and_(Crawl.updated_at == cursor_ts, Crawl.id > cursor_id),
+                        )
+                    )
+                    q = q.order_by(Crawl.updated_at.asc(), Crawl.id.asc())
+            else:
+                q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+
+            rows_db = q.limit(page_size).all()
+
+            # Compute counts in bulk
+            ids = [r.id for r in rows_db] or ["-"]
+            email_counts_map = {}
+            page_counts_map = {}
+
+            if ids:
+                for cid, cnt in (
+                    s.query(CrawlEmail.crawl_id, func.count(distinct(CrawlEmail.email)))
+                    .filter(CrawlEmail.crawl_id.in_(ids))
+                    .group_by(CrawlEmail.crawl_id)
+                    .all()
+                ):
+                    email_counts_map[cid] = int(cnt or 0)
+
+                for cid, cnt in (
+                    s.query(
+                        CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url))
+                    )
+                    .filter(CrawlLink.crawl_id.in_(ids))
+                    .group_by(CrawlLink.crawl_id)
+                    .all()
+                ):
+                    page_counts_map[cid] = int(cnt or 0)
+
+            # Build items
+            rows = rows_db
+            for r in rows:
+                # Optional filter by has_emails in this branch
+                if has_emails and email_counts_map.get(r.id, 0) <= 0:
+                    continue
+
+                title = ""
+                try:
+                    if r.payload_json:
+                        import json
+
+                        payload = json.loads(r.payload_json)
+                        title = (payload.get("page") or {}).get("title") or ""
+                except Exception:
+                    title = ""
+
+                items.append(
+                    {
+                        "key": r.key,
+                        "domain": r.domain,
+                        "path": r.path,
+                        "query": r.query,
+                        "canonical_url": r.canonical_url,
+                        "title": title,
+                        "status": r.status,
+                        "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+                        "email_count": email_counts_map.get(r.id, 0),
+                        "page_count": page_counts_map.get(r.id, 0),
+                    }
+                )
+
+            # Build prev/next URLs using first/last item cursors
+            def _cursor_of(row: Crawl) -> str:
+                """Build a stable cursor string for keyset pagination.
+
+                Args:
+                    row (Crawl): Crawl row whose updated_at and id are used.
+
+                Returns:
+                    str: Cursor of the form "epoch:id".
+                """
+                ts = int((row.updated_at or datetime.now(timezone.utc)).timestamp())
+                return f"{ts}:{row.id}"
+
+            prev_url = None
+            next_url = None
+            if rows_db:
+                # Ensure display order matches our returned items
+                rows_for_nav = list(rows_db)
+                if cursor_ts and cursor_id and direction == "prev":
+                    # We fetched ASC; reverse for display
+                    rows_for_nav = list(reversed(rows_for_nav))
+                first = rows_for_nav[0]
+                last = rows_for_nav[-1]
+                base_params = {}
+                if dom:
+                    base_params["domain"] = dom
+                if st:
+                    base_params["status"] = st
+                base_params["page_size"] = str(page_size)
+
+                # Prev points to newer items than 'first'
+                prev_params = dict(base_params)
+                prev_params["cursor"] = _cursor_of(first)
+                prev_params["dir"] = "prev"
+                prev_url = "/all?" + urlencode(prev_params)
+
+                # Next points to older items than 'last'
+                next_params = dict(base_params)
+                next_params["cursor"] = _cursor_of(last)
+                next_params["dir"] = "next"
+                next_url = "/all?" + urlencode(next_params)
+
+            has_prev = True if prev_url else False
+            has_next = True if next_url else False
+
+        # Trending (approximate): top by email_count then updated_at
+        trending = []
+        try:
+            tq = (
+                s.query(
+                    Crawl,
+                    func.count(distinct(CrawlEmail.email)).label("email_count"),
+                )
+                .outerjoin(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
+                .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
+                .group_by(Crawl.id)
+                .order_by(func.count(distinct(CrawlEmail.email)).desc(), Crawl.updated_at.desc())
+                .limit(5)
+            )
+            trend_rows = tq.all()
+            if trend_rows:
+                trend_ids = [tr[0].id for tr in trend_rows]
+                page_counts_map_tr = {}
+                for cid, cnt in (
+                    s.query(
+                        CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url))
+                    )
+                    .filter(CrawlLink.crawl_id.in_(trend_ids))
+                    .group_by(CrawlLink.crawl_id)
+                    .all()
+                ):
+                    page_counts_map_tr[cid] = int(cnt or 0)
+
+                for row, email_count in trend_rows:
+                    trending.append(
+                        {
+                            "key": row.key,
+                            "domain": row.domain,
+                            "canonical_url": row.canonical_url,
+                            "email_count": int(email_count or 0),
+                            "page_count": page_counts_map_tr.get(row.id, 0),
+                            "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
+                        }
+                    )
+        except Exception:
+            trending = []
 
     # SEO
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
-    if dom and st:
-        page_title = f"All public results for {dom} ({st}) — {site_name}"
-        meta_description = (
-            f"Browse public results for {dom} with status {st}. Filter and paginate."
-        )
-    elif dom:
-        page_title = f"All public results for {dom} — {site_name}"
-        meta_description = f"Browse public results for {dom}. Filter and paginate."
-    elif st:
-        page_title = f"All public results — status {st} — {site_name}"
-        meta_description = (
-            f"Browse public results filtered by status {st}. Filter and paginate."
-        )
-    else:
-        page_title = f"All public results — {site_name}"
-        meta_description = "Browse all public results. Filter by domain or status, and paginate through the list."
+    title_bits = ["All public results"]
+    if dom:
+        title_bits.append(f"for {dom}")
+    if st:
+        title_bits.append(f"(status {st})")
+    if srt and srt != "recent":
+        title_bits.append(f"— sorted by {srt}")
+    page_title = " ".join(title_bits) + f" — {site_name}"
 
-    # Canonical: keep domain/status only; exclude cursor/page_size
+    if dom and st:
+        meta_description = f"Browse public results for {dom} with status {st}. Filter, sort, and paginate."
+    elif dom:
+        meta_description = f"Browse public results for {dom}. Filter, sort, and paginate."
+    elif st:
+        meta_description = f"Browse public results filtered by status {st}. Filter, sort, and paginate."
+    else:
+        meta_description = "Explore public website analyses. Filter by domain/status, sort by recency/emails/pages, and browse trending sites."
+
+    # Canonical: keep domain/status only; exclude cursor/page_size/sort/has_emails
     canonical_params = {}
     if dom:
         canonical_params["domain"] = dom
@@ -197,17 +354,19 @@ async def view_all(
         {
             "request": request,
             "items": items,
+            "trending": trending,
             "page": page,
             "page_size": page_size,
-            # UX: we do not compute true has_prev/has_next here; templates tolerate this
-            "has_prev": True if prev_url else False,
-            "has_next": True if next_url else False,
+            "has_prev": has_prev,
+            "has_next": has_next,
             "prev_url": prev_url,
             "next_url": next_url,
             "abs_prev_url": _abs_url(request, prev_url) if prev_url else None,
             "abs_next_url": _abs_url(request, next_url) if next_url else None,
             "filter_domain": dom or "",
             "filter_status": st or "",
+            "filter_has_emails": bool(has_emails),
+            "sort": srt,
             # SEO
             "site_name": site_name,
             "page_title": page_title,

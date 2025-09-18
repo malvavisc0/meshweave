@@ -2,6 +2,7 @@
 {% block head_extra %}{% endblock %}
 
 {% block content %}
+<div class="container">
 {% if login_error %}
   <div role="alert" class="alert alert-err">
     Sign-in failed. Please try again.
@@ -28,10 +29,20 @@
 
 <h1 class="hero-title">Crawl a website</h1>
 {% if request.state.current_user %}
-<p class="mb-3">Submit a domain to crawl. Results are private by default.</p>
+<p class="mb-3">Submit a domain to crawl. Results are private by default. Track progress in <a href="/my">My Jobs</a>.</p>
 {% else %}
-<p class="mb-3">Submit a domain to crawl. Public by default; sign in to keep private.</p>
+<p class="mb-3">Submit a domain to crawl. Public by default. Sign in to keep private and track progress.</p>
 {% endif %}
+
+<section class="panel hero mt-2">
+  <ul class="benefits small m0">
+    <li>✓ Find emails instantly</li>
+    <li>✓ View site structure</li>
+    <li>✓ AI-powered insights (preview)</li>
+  </ul>
+  <div class="social-proof small mt-1">Recent public analyses listed below provide social proof.</div>
+  <div class="small mt-1">Open source on <a href="{{ FOOTER_REPO_URL }}" target="_blank" rel="noopener">GitHub</a>.</div>
+</section>
 
 <section class="panel mt-3">
   <h2 id="site-heading">Site Crawl</h2>
@@ -48,9 +59,10 @@
       <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
     </div>
 
-    <label for="site-input" class="mb-1 block">Domain:</label>
-    <input type="text" id="site-input" placeholder="example.com" required aria-describedby="site-help">
+    <label for="site-input" class="mb-1 block">Domain (e.g., example.com):</label>
+    <input type="text" id="site-input" placeholder="example.com" required aria-describedby="site-help domain-feedback" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" aria-invalid="false">
     <button type="submit" id="site-btn" class="btn btn-primary ml-2">Start crawl</button>
+    <div id="domain-feedback" class="small mt-1" aria-live="polite"></div>
 
     {% if not request.state.current_user %}
       <div class="mt-2 mb-2"><label for="site-private"><input type="checkbox" id="site-private"> Keep private</label></div>
@@ -97,6 +109,8 @@
   const siteDomain = document.getElementById('site-domain');
   const sitePrivate = document.getElementById('site-private');
   const sitePublic = document.getElementById('site-public');
+  const siteFeedback = document.getElementById('domain-feedback');
+  let __firedValidEvent = false;
 
 
 
@@ -115,23 +129,63 @@
     }
   }
 
+  // Autofocus input on load
+  try { if (siteInput && siteInput.focus) siteInput.focus(); } catch(_){}
+
+  // Analytics: focus event
+  try {
+    if (siteInput) {
+      siteInput.addEventListener('focus', function(){ try { trackEvent('domain_focus'); } catch(_) {} });
+    }
+  } catch(_){}
+
+  // Real-time validation feedback
+  try {
+    if (siteInput && siteFeedback) {
+      siteInput.addEventListener('input', function(e){
+        const raw = String(e.target.value || '');
+        const dom = toDomain(raw);
+        if (dom && dom.includes('.')) {
+          siteFeedback.className = 'small validation-success';
+          siteFeedback.textContent = '✓ Valid domain';
+          try { siteInput.setAttribute('aria-invalid','false'); } catch(_){}
+          if (!__firedValidEvent) { try { trackEvent('domain_valid_input'); } catch(_) {} __firedValidEvent = true; }
+        } else if (raw.trim().length > 0) {
+          siteFeedback.className = 'small validation-error';
+          siteFeedback.textContent = 'Enter a valid domain like example.com';
+          try { siteInput.setAttribute('aria-invalid','true'); } catch(_){}
+        } else {
+          siteFeedback.className = 'small';
+          siteFeedback.textContent = '';
+          try { siteInput.setAttribute('aria-invalid','false'); } catch(_){}
+        }
+      });
+    }
+  } catch(_){}
+
 
   // Site form submit
   siteForm.addEventListener('submit', function(e){
+    try { trackEvent('submit_click'); } catch(_) {}
     const val = siteInput.value.trim();
     const dom = toDomain(val);
     if (!dom || !dom.includes('.')) {
       e.preventDefault();
       siteInput.setCustomValidity('Enter a valid domain like example.com');
       siteInput.reportValidity();
-      setTimeout(()=>siteInput.setCustomValidity(''), 2000);
+      try { siteInput.setAttribute('aria-invalid','true'); } catch(_){}
+      setTimeout(()=>{
+        try { siteInput.setCustomValidity(''); siteInput.setAttribute('aria-invalid','false'); } catch(_){}
+      }, 2000);
       return;
     }
     siteDomain.value = dom;
+    try { siteInput.setAttribute('aria-invalid','false'); } catch(_){}
     // For anonymous users allow private override
     if (sitePublic) { sitePublic.value = (sitePrivate && sitePrivate.checked) ? '' : '1'; }
   });
 })();
 </script>
 
+</div>
 {% endblock %}

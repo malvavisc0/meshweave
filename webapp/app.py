@@ -23,6 +23,7 @@ from webapp.routers import (
     progress,
     prospects,
     submissions,
+    legal,
 )
 from webapp.utils.auth import AuthSessionMiddleware
 from webapp.utils.csrf import CSRFMiddleware
@@ -300,6 +301,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     # Split routers (replaces pages.router)
     app.include_router(home.router)
+    # Legal pages
+    app.include_router(legal.router)
     app.include_router(submissions.router)
     app.include_router(analysis.router)
     app.include_router(progress.router)
@@ -309,5 +312,18 @@ def create_app() -> FastAPI:
     app.include_router(prospects.router)
     # API router remains last
     app.include_router(api.router)
+
+    # Expose footer links and version as Jinja globals
+    try:
+        templates.env.globals.update({
+            "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
+            "FOOTER_REPO_URL": os.getenv("FOOTER_REPO_URL", "https://github.com/your-org/markdownify-crawler").strip(),
+            "FOOTER_CONTACT_EMAIL": os.getenv("FOOTER_CONTACT_EMAIL", "hello@acme.com").strip(),
+            "FOOTER_PRIVACY_URL": os.getenv("FOOTER_PRIVACY_URL", "/privacy").strip(),
+            "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
+        })
+    except Exception:
+        # If templates are not initialized for some reason, do not crash app startup
+        pass
 
     return app

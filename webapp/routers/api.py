@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import text
 
 from webapp.db import get_session
-from webapp.models import Crawl
+from webapp.models import Crawl, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
@@ -305,6 +305,12 @@ async def api_public_summary(key: str):
     is_site = ((payload.get("scope") or getattr(row, "scope", "") or "").strip().lower() == "site")
 
     # Top external domains
+    def _t(s):
+        try:
+            return (s or "").strip()
+        except Exception:
+            return ""
+
     top_ext: Dict[str, int] = {}
     for u in links.get("external") or []:
         dom = normalize_domain(u)
@@ -317,20 +323,6 @@ async def api_public_summary(key: str):
     ]
 
     # SEO deltas
-    def _t(s):
-        """Normalize a value to a stripped string.
-
-        Args:
-            s: Any value convertible to string.
-
-        Returns:
-            str: Stripped string, or empty string on error.
-        """
-        try:
-            return (s or "").strip()
-        except Exception:
-            return ""
-
     title_mismatch = _t(page.get("title")) != _t(og.get("title"))
     description_mismatch = _t(page.get("description")) != _t(og.get("description"))
     canonical_mismatch = _t(page.get("canonical")) != _t(row.canonical_url)
@@ -711,3 +703,97 @@ async def healthz():
         dict: {"ok": True}
     """
     return {"ok": True}
+
+
+# ===== Products API (functional, minimal fields) =====
+
+def _product_to_dict(p: Product) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name or "",
+        "description": p.description or "",
+        "website": p.website or None,
+        "contact_info": p.contact_info or None,
+        "created_at": (p.created_at or datetime.now(timezone.utc)).isoformat(),
+        "updated_at": (p.updated_at or datetime.now(timezone.utc)).isoformat(),
+    }
+
+
+@router.get("/api/products")
+async def list_products(request: Request):
+    user = await require_auth(request)
+    with get_session() as s:
+        rows = (
+            s.query(Product)
+            .filter(Product.user_id == user.id)
+            .order_by(Product.updated_at.desc())
+            .all()
+        )
+    items = [_product_to_dict(p) for p in rows]
+    return {"items": items}
+
+
+@router.post("/api/products")
+async def create_product(request: Request):
+    user = await require_auth(request)
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    name = (data.get("name") or "").strip()
+    description = (data.get("description") or "").strip()
+    website = (data.get("website") or "").strip() or None
+    contact_info = (data.get("contact_info") or "").strip() or None
+
+    if not name or not description:
+        raise HTTPException(status_code=400, detail="name and description are required")
+
+    with get_session() as s:
+        # Enforce unique per user (by model constraint)
+        p = Product(
+            user_id=user.id,
+            name=name,
+            description=description,
+            website=website,
+            contact_info=contact_info,
+        )
+        s.add(p)
+        s.flush()
+        return JSONResponse(status_code=201, content={"item": _product_to_dict(p)})
+
+
+@router.put("/api/products/{product_id}")
+async def update_product(request: Request, product_id: str):
+    user = await require_auth(request)
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    name = (data.get("name") or "").strip()
+    description = (data.get("description") or "").strip()
+    website = (data.get("website") or "").strip() or None
+    contact_info = (data.get("contact_info") or "").strip() or None
+
+    if not name or not description:
+        raise HTTPException(status_code=400, detail="name and description are required")
+
+    now = datetime.now(timezone.utc)
+    with get_session() as s:
+        row = (
+            s.query(Product)
+            .filter(Product.id == product_id, Product.user_id == user.id)
+            .one_or_none()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        row.name = name
+        row.description = description
+        row.website = website
+        row.contact_info = contact_info
+        row.updated_at = now
+
+        s.flush()
+        return {"item": _product_to_dict(row)}

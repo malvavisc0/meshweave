@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>All Public Results</h1>
+<div class="container">
+<h1>Explore Public Website Analyses</h1>
 <p><a href="/">Back to Home</a></p>
 
-<form method="get" action="/all" class="mb-2">
+<form method="get" action="/all" class="mb-2" onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
   <label for="f-domain">Domain:</label>
   <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com">
-  <label for="f-status">Status:</label>
+
+  <label for="f-status" class="ml-2">Status:</label>
   <select id="f-status" name="status">
     <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
     <option value="pending" {% if filter_status=='pending' %}selected{% endif %}>pending</option>
@@ -15,29 +17,63 @@
     <option value="succeeded" {% if filter_status=='succeeded' %}selected{% endif %}>succeeded</option>
     <option value="failed" {% if filter_status=='failed' %}selected{% endif %}>failed</option>
   </select>
-  <label for="f-page-size">Page size:</label>
+
+  <label class="ml-2 small">
+    <input type="checkbox" id="f-has-emails" name="has_emails" value="1" {% if filter_has_emails %}checked{% endif %}>
+    Has emails
+  </label>
+
+  <label for="f-sort" class="ml-2">Sort:</label>
+  <select id="f-sort" name="sort">
+    <option value="recent" {% if sort=='recent' %}selected{% endif %}>Most Recent</option>
+    <option value="emails" {% if sort=='emails' %}selected{% endif %}>Most Emails</option>
+    <option value="pages" {% if sort=='pages' %}selected{% endif %}>Pages</option>
+  </select>
+
+  <label for="f-page-size" class="ml-2">Page size:</label>
   <select id="f-page-size" name="page_size">
     <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
     <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
     <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
   </select>
-  <button type="submit" class="btn">Apply</button>
+
+  <button type="submit" class="btn ml-2">Apply</button>
 </form>
 
-{% if items and items|length > 0 %}
-  <ul>
-    {% for item in items %}
+{% if trending and trending|length > 0 %}
+<section class="panel mt-2" role="region" aria-label="Trending Analyses">
+  <h2>Trending Analyses</h2>
+  <ul class="domain-list">
+    {% for t in trending %}
       <li>
-        <a href="/analysis/{{ item.key }}">
+        <span><a href="/analysis/{{ t.key }}">{{ t.domain }}</a></span>
+        <span class="small">{{ t.page_count or 0 }} pages • {{ t.email_count or 0 }} emails</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if items and items|length > 0 %}
+  <ul class="card-list mt-2">
+    {% for item in items %}
+      <li class="card">
+        <div class="card-title">
+          <a href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">
           {% if item.canonical_url %}
             {{ item.canonical_url }}
           {% else %}
             {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
           {% endif %}
-        </a>
-        {% if item.title %} — {{ item.title }}{% endif %}
-        <br>
-        <small>Updated: {{ item.updated_at }} • Status: {{ item.status }}</small>
+          </a>
+        </div>
+        <div class="card-meta small">
+          {{ item.page_count or 0 }} pages • {{ item.email_count or 0 }} emails • Updated: {{ item.updated_at }}
+        </div>
+        <div class="actions mt-1" role="toolbar" aria-label="Card actions">
+          <a class="btn btn-sm" href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">View Analysis</a>
+          <a class="btn btn-sm" href="/analysis/{{ item.key }}#m-summary" onclick="try{trackEvent('all_quick_summary_click');}catch(_){ }">Quick Summary</a>
+        </div>
       </li>
     {% endfor %}
   </ul>
@@ -58,4 +94,5 @@
 {% else %}
   <p>No results found.</p>
 {% endif %}
+</div>
 {% endblock %}

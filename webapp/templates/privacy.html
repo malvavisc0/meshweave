@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block head_extra %}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>Privacy Policy</h1>
+  <p class="small">Last updated: <time datetime="{{ (request.headers.get('date') or '') }}">{{ (request.headers.get('date') or '') }}</time></p>
+
+  <section class="panel mt-2">
+    <p>This is a placeholder Privacy Policy for {{ site_name or 'the site' }}. Replace this content with your actual policy.</p>
+    <ul>
+      <li>We collect input URLs and related metadata to perform requested crawls.</li>
+      <li>Session cookies are used for authentication and CSRF protection.</li>
+      <li>Public results may be displayed in “Latest public analyses”.</li>
+    </ul>
+    <p>For questions, contact us at <a href="mailto:{{ FOOTER_CONTACT_EMAIL }}">{{ FOOTER_CONTACT_EMAIL }}</a>.</p>
+  </section>
+</div>
+{% endblock %}

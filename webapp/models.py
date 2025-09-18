@@ -399,9 +399,6 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     website: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    icp: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    pricing: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # or JSON text
-    tone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     contact_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     defaults_json: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True

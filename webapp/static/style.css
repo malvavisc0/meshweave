@@ -304,3 +304,40 @@ label { font-size: 13px; }
   .generation-options { grid-template-columns: 1fr; gap: 16px; }
   .chat-area { height: 250px; }
 }
+
+/* ===== Additive hooks for Home Submission Journey (non-destructive) ===== */
+
+/* Container wrapper for wide pages */
+.container { max-width: var(--container, 1100px); margin: 0 auto; padding: 0 12px; }
+
+/* Inline validation feedback colors */
+.validation-success { color: var(--green); }
+.validation-error { color: var(--red); }
+
+/* Strategic gating visuals (light) */
+.gate-locked { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.gate-preview { margin-bottom: 8px; }
+
+/* Optional hero helper (inherits .panel styles if used together) */
+.hero .benefits { margin-top: 8px; }
+.hero .social-proof { margin-top: 8px; color: var(--muted); font-size: 12px; }
+
+/* Discovery cards */
+.card-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--gap); }
+.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.card-title { font-size: 14px; font-weight: 600; }
+.card-meta { color: var(--muted); margin-top: 4px; }
+
+/* Pills (optional) */
+.pill { display: inline-block; border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+.pill + .pill { margin-left: 6px; }
+
+/* Footer */
+.site-footer { border-top: 1px solid var(--border); margin-top: 24px; padding: 12px 0; color: var(--muted); background: #fff; }
+.site-footer .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.site-footer a { color: var(--muted); }
+.site-footer a:hover { color: var(--fg); text-decoration: underline; }
+.site-footer .sep { opacity: 0.6; margin: 0 6px; }
+@media (max-width: 768px) {
+  .site-footer .footer-inner { flex-direction: column; align-items: flex-start; }
+}

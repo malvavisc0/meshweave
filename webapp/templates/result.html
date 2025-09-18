@@ -53,6 +53,14 @@
     <div class="progress">
       <div id="progress-bar" class="progress-bar"></div>
     </div>
+    <div class="small mt-1">
+      <strong>Found so far:</strong>
+      <span>Emails:</span> <span id="progress-emails">0</span>
+      <span>•</span>
+      <span>Internal links:</span> <span id="progress-links-int">0</span>
+      <span>•</span>
+      <span>External domains:</span> <span id="progress-domains-ext">0</span>
+    </div>
   </div>
 
   {% if status == "running" and request.state.current_user and id %}
@@ -135,6 +143,25 @@
     </div>
   </div>
 
+  {% if visibility == 'public' and not request.state.current_user %}
+  <section class="panel gate-locked mt-2" role="region" aria-label="Email Contacts (Preview)">
+    <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ PREMIUM FEATURE</h2>
+    {% if email_preview and email_preview|length > 0 %}
+    <div class="gate-preview small">
+      Preview ({{ email_preview|length }} of {{ email_count or 0 }}):
+      <ul class="domain-list">
+        {% for e in email_preview %}
+          <li><span><code>{{ e }}</code></span> <span class="small"></span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <div class="actions cta-row">
+      <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}" onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
+    </div>
+  </section>
+  {% endif %}
+
   <!-- Social panel -->
   <section class="panel mt-2" role="region" aria-label="Social">
     <h2>Social</h2>
@@ -150,10 +177,10 @@
   </section>
   {% endif %}
 
-  <!-- Pages (Enhanced) panel for desktop -->
+  <!-- Pages (Collapsible) panel for desktop -->
   {% if payload and payload.pages %}
-  <section class="panel mt-2" role="region" aria-label="Pages">
-    <h2>Pages (<span id="pages-count">0</span>)</h2>
+  <details open class="panel mt-2" role="region" aria-label="Pages">
+    <summary><h2>Pages (<span id="pages-count">0</span>)</h2></summary>
     <div class="small">Only pages with content are shown.</div>
     <div class="small mb-1" role="toolbar" aria-label="Pages Filters">
       <label class="mr-1"><input type="checkbox" id="pages-filter-emails"> Has emails</label>
@@ -187,79 +214,80 @@
         </div>
       </div>
     </div>
-  </section>
+  </details>
   {% endif %}
 
-  <!-- Compose & Chat (inline, replaces popup) -->
+  <!-- Compose & Chat (tabbed, flat/Slack-inspired) -->
   <section class="panel mt-2" id="compose-chat" role="region" aria-label="Compose & Chat">
     <h2>Compose & Chat</h2>
     <div class="small mb-1">Use the Generate buttons to create a draft from your selections, then edit or copy below.</div>
-    <!-- Compose mini-bar (moved here from Actions row) -->
-    <div class="inline-block small mb-1" style="display:inline-grid; grid-template-columns: repeat(5, minmax(0,220px)); gap:8px; vertical-align:middle;">
-      <label>Product<br><select id="mini-product"></select></label>
-      <label>Tone<br>
-        <select id="mini-tone">
-          <option value="Professional">Professional</option>
-          <option value="Friendly">Friendly</option>
-          <option value="Conversational">Conversational</option>
-          <option value="Enthusiastic">Enthusiastic</option>
-          <option value="Concise">Concise</option>
-          <option value="Analytical">Analytical</option>
-          <option value="Persuasive">Persuasive</option>
-          <option value="Empathetic">Empathetic</option>
-          <option value="Confident">Confident</option>
-          <option value="Playful">Playful</option>
-        </select>
-      </label>
-      <label>CTA<br><input type="text" id="mini-cta" placeholder="Request a demo"></label>
-      <label>Length<br><input type="text" id="mini-length" placeholder="150-200 words"></label>
-      <label class="small" style="align-self:end;"><input type="checkbox" id="mini-shorten"> Shorten</label>
+    <div class="tabs">
+      <button class="tab active" onclick="tabSwitch('structured-tab')" aria-selected="true">Structured</button>
+      <button class="tab" onclick="tabSwitch('free-chat-tab')" aria-selected="false">Free Chat</button>
     </div>
-    <div class="content-generation">
-      <div class="generation-options">
-        <!-- Structured Actions (left) -->
-        <div class="structured-actions">
-          <h3>Structured Actions</h3>
-          <div class="small mb-1">Use Product/Tone/CTA/Length above</div>
-          <div>
-            <button class="btn btn-primary btn-action" onclick="runStructured('sales_pitch')">Sales Pitch</button>
-            <button class="btn btn-action" onclick="runStructured('outreach_email')">Outreach Email</button>
-            <button class="btn btn-action" onclick="runStructured('weaknesses')">Weaknesses & Opportunities</button>
-            <button class="btn btn-action" onclick="runStructured('clarity_check')">Clarity Assessment</button>
-          </div>
+    <div id="structured-tab" class="tab-content active">
+      <!-- Compose mini-bar (vertical stack for flat design) -->
+      <div class="config-grid">
+        <label>Product<br><select id="mini-product"></select></label>
+        <label>Tone<br>
+          <select id="mini-tone">
+            <option value="Professional">Professional</option>
+            <option value="Friendly">Friendly</option>
+            <option value="Conversational">Conversational</option>
+            <option value="Enthusiastic">Enthusiastic</option>
+            <option value="Concise">Concise</option>
+            <option value="Analytical">Analytical</option>
+            <option value="Persuasive">Persuasive</option>
+            <option value="Empathetic">Empathetic</option>
+            <option value="Confident">Confident</option>
+            <option value="Playful">Playful</option>
+          </select>
+        </label>
+        <label>CTA<br><input type="text" id="mini-cta" placeholder="Request a demo"></label>
+        <label>Length<br><input type="text" id="mini-length" placeholder="150-200 words"></label>
+        <label><input type="checkbox" id="mini-shorten"> Shorten</label>
+      </div>
+      <!-- Structured Actions -->
+      <div class="structured-actions">
+        <h3>Structured Actions</h3>
+        <div class="small mb-1">Use Product/Tone/CTA/Length above</div>
+        <div>
+          <button class="btn btn-primary btn-action" onclick="runStructured('sales_pitch')">Sales Pitch</button>
+          <button class="btn btn-action" onclick="runStructured('outreach_email')">Outreach Email</button>
+          <button class="btn btn-action" onclick="runStructured('weaknesses')">Weaknesses & Opportunities</button>
+          <button class="btn btn-action" onclick="runStructured('clarity_check')">Clarity Assessment</button>
         </div>
-
-        <!-- Free Chat (right) -->
-        <div class="free-chat">
-          <h3>Chat with Site</h3>
-          <div class="selected-pages-indicator mb-1">
-            <span class="small">Chatting with <span id="chat-page-count">0</span> pages</span>
+      </div>
+    </div>
+    <div id="free-chat-tab" class="tab-content">
+      <div class="free-chat">
+        <h3>Chat with Site</h3>
+        <div class="selected-pages-indicator mb-1">
+          <span class="small">Chatting with <span id="chat-page-count">0</span> pages</span>
+        </div>
+        <div class="chat-area">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-message ai"><div class="message-bubble">
+              Select pages then ask a question. (Chat coming soon)
+            </div></div>
           </div>
-          <div class="chat-area">
-            <div class="chat-messages" id="chat-messages">
-              <div class="chat-message ai"><div class="message-bubble">
-                Select pages then ask a question. (Chat coming soon)
-              </div></div>
-            </div>
-            <div class="chat-input-container">
-              <input type="text" id="chat-question" placeholder="What's their pricing model?" maxlength="500">
-              <button class="btn btn-primary" onclick="sendChatMessage()" id="chat-send" disabled>Ask</button>
-            </div>
+          <div class="chat-input-container">
+            <input type="text" id="chat-question" placeholder="What's their pricing model?" maxlength="500">
+            <button class="btn btn-primary" onclick="sendChatMessage()" id="chat-send" disabled>Ask</button>
           </div>
         </div>
       </div>
-
-      <!-- Results area for structured actions -->
-      <div class="generation-results" id="structured-results" style="display: none;">
-        <div class="results-header">
-          <strong>Generated Content</strong>
-          <div class="results-actions">
-            <button class="btn btn-sm" onclick="copyStructuredContent()" id="copy-btn" disabled>Copy</button>
-            <button class="btn btn-sm" onclick="downloadStructuredContent()" id="download-btn" disabled>Download</button>
-          </div>
+    </div>
+    <!-- Results area (shared, shown on generate) -->
+    <div class="generation-results" id="structured-results" style="display: none;">
+      <div class="results-header">
+        <strong>Generated Content</strong>
+        <div class="results-actions">
+          <button class="btn btn-sm" onclick="copyStructuredContent()" id="copy-btn" disabled>Copy</button>
+          <button class="btn btn-sm" onclick="downloadStructuredContent()" id="download-btn" disabled>Download</button>
         </div>
-        <textarea id="structured-content" rows="12" placeholder="Generated content will appear here..." readonly></textarea>
       </div>
+      <textarea id="structured-content" rows="12" placeholder="Generated content will appear here..." readonly></textarea>
     </div>
   </section>
 
@@ -304,8 +332,8 @@
   </section>
 
   {% if show_leads %}
-  <section id="m-leads" class="mobile-section panel mt-2" role="region" aria-label="Emails">
-    <h2>Emails</h2>
+  <details open class="mobile-section panel mt-2" role="region" aria-label="Emails">
+    <summary><h2>Emails</h2></summary>
     <div class="actions" id="emails-toolbar">
       <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain">
       <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
@@ -346,7 +374,7 @@
         <button class="btn" onclick="closeAddLead()">Cancel</button>
       </div>
     </div>
-  </section>
+  </details>
   {% else %}
   <section id="m-leads" class="mobile-section panel mt-2" role="region" aria-label="Emails">
     <h2>Emails</h2>
@@ -492,6 +520,24 @@ function setProspectStatusChip(text){
     if (chip) chip.textContent = text || 'Shortlisted';
   } catch(_){}
 }
+function tabSwitch(tabId) {
+  // Hide all tab contents
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  // Show selected
+  document.getElementById(tabId).classList.add('active');
+  // Update tab buttons
+  document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+  event.target.classList.add('active');
+  // ARIA
+  event.target.setAttribute('aria-selected', 'true');
+  document.querySelectorAll('.tab:not(.active)').forEach(tab => tab.setAttribute('aria-selected', 'false'));
+  // Focus chat input if free chat
+  if (tabId === 'free-chat-tab') {
+    var input = document.getElementById('chat-question');
+    if (input) input.focus();
+  }
+}
+
 function prospectEnsure(){
   if (PROSPECT_ID) return Promise.resolve(PROSPECT_ID);
   var domain = (BASE_DOMAIN || '').toLowerCase();
@@ -1520,6 +1566,13 @@ function startProgressPolling(crawlId){
             var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
             budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
           }
+          // Found-so-far counters (best-effort)
+          try {
+            var el;
+            el = document.getElementById('progress-emails'); if (el) el.textContent = String(j.emails_so_far || 0);
+            el = document.getElementById('progress-links-int'); if (el) el.textContent = String(j.links_internal_so_far || 0);
+            el = document.getElementById('progress-domains-ext'); if (el) el.textContent = String(j.external_domains_so_far || 0);
+          } catch(_) {}
           var pct = 0;
           if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v/lim)*100)));
           var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct+'%';
@@ -1561,6 +1614,13 @@ function startPublicProgressPolling(pubKey){
             var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
             budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
           }
+          // Found-so-far counters (best-effort)
+          try {
+            var el;
+            el = document.getElementById('progress-emails'); if (el) el.textContent = String(j.emails_so_far || 0);
+            el = document.getElementById('progress-links-int'); if (el) el.textContent = String(j.links_internal_so_far || 0);
+            el = document.getElementById('progress-domains-ext'); if (el) el.textContent = String(j.external_domains_so_far || 0);
+          } catch(_) {}
           var pct = 0;
           if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v/lim)*100)));
           var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct+'%';

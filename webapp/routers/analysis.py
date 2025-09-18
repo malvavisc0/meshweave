@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl
+from webapp.models import Crawl, CrawlEmail
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.security import _make_csrf_token
@@ -93,6 +93,7 @@ async def view_analysis(request: Request, ref: str):
         )
 
         summary = build_summary(row, payload)
+
         api_url = f"/api/analysis/private/{row.id}"
         abs_api_url = _abs_url(request, api_url)
 
@@ -207,6 +208,23 @@ async def view_analysis(request: Request, ref: str):
 
     summary = build_summary(row, payload)
 
+    # Email preview/count for anonymous gating (public view)
+    email_preview = []
+    email_count = 0
+    try:
+        with get_session() as s:
+            q = (
+                s.query(CrawlEmail.email)
+                .filter(CrawlEmail.crawl_id == row.id)
+                .distinct()
+            )
+            email_count = q.count()
+            preview_rows = q.limit(3).all()
+            email_preview = [r[0] for r in preview_rows]
+    except Exception:
+        email_preview = []
+        email_count = 0
+
     # CSV/summary endpoints
     api_summary_url = f"/api/analysis/public/{row.key}/summary"
     emails_csv_url = f"/api/analysis/public/{row.key}/emails.csv"
@@ -257,6 +275,9 @@ async def view_analysis(request: Request, ref: str):
             "og_image_url": og_image_url,
             "site_name": site_name,
             "json_ld": json_ld,
+            # Gating helpers for anonymous public
+            "email_preview": email_preview,
+            "email_count": email_count,
         },
     )
     # Set session cookie if newly created for CSRF

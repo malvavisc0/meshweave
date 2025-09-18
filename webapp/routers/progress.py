@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 
 from webapp.db import get_session
-from webapp.models import Crawl, CrawlLink
+from webapp.models import Crawl, CrawlLink, CrawlEmail
 from webapp.utils.auth import require_ownership
 
 router = APIRouter()
@@ -104,6 +104,35 @@ async def api_progress(request: Request, crawl_id: str):
     except Exception:
         est_remaining_ms = None
         time_budget_remaining_ms = None
+
+    # Incremental counters (best-effort; cheap counts)
+    try:
+        with get_session() as s:
+            emails_so_far = (
+                s.query(CrawlEmail.email)
+                .filter(CrawlEmail.crawl_id == row.id)
+                .distinct()
+                .count()
+            )
+            links_internal_so_far = (
+                s.query(CrawlLink.id)
+                .filter(CrawlLink.crawl_id == row.id, CrawlLink.type == "internal")
+                .count()
+            )
+            external_domains_so_far = (
+                s.query(CrawlLink.domain)
+                .filter(
+                    CrawlLink.crawl_id == row.id,
+                    CrawlLink.type == "external",
+                    CrawlLink.domain.isnot(None),
+                )
+                .distinct()
+                .count()
+            )
+    except Exception:
+        emails_so_far = 0
+        links_internal_so_far = 0
+        external_domains_so_far = 0
 
     return {
         "id": row.id,
@@ -206,6 +235,35 @@ async def api_progress_public(key: str):
         est_remaining_ms = None
         time_budget_remaining_ms = None
 
+    # Incremental counters (best-effort; cheap counts)
+    try:
+        with get_session() as s:
+            emails_so_far = (
+                s.query(CrawlEmail.email)
+                .filter(CrawlEmail.crawl_id == row.id)
+                .distinct()
+                .count()
+            )
+            links_internal_so_far = (
+                s.query(CrawlLink.id)
+                .filter(CrawlLink.crawl_id == row.id, CrawlLink.type == "internal")
+                .count()
+            )
+            external_domains_so_far = (
+                s.query(CrawlLink.domain)
+                .filter(
+                    CrawlLink.crawl_id == row.id,
+                    CrawlLink.type == "external",
+                    CrawlLink.domain.isnot(None),
+                )
+                .distinct()
+                .count()
+            )
+    except Exception:
+        emails_so_far = 0
+        links_internal_so_far = 0
+        external_domains_so_far = 0
+
     return {
         "status": row.status,
         "scope": row.scope or "page",
@@ -216,4 +274,7 @@ async def api_progress_public(key: str):
         "time_budget_ms": time_budget_ms_val,
         "time_budget_remaining_ms": time_budget_remaining_ms,
         "last_updated": (row.updated_at or now).isoformat(),
+        "emails_so_far": emails_so_far,
+        "links_internal_so_far": links_internal_so_far,
+        "external_domains_so_far": external_domains_so_far,
     }

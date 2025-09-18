@@ -85,7 +85,7 @@
         <th>Name</th>
         <th>Website</th>
         <th>Updated</th>
-        <th>Defaults</th>
+        <th>Contact Info</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -98,19 +98,11 @@
   <div id="product-form" class="panel mt-2 hidden" aria-hidden="true" aria-label="Product Form">
     <h3 id="pf-title">New Product</h3>
     <div class="small">Fields marked “required” must be filled.</div>
-    <div style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; margin-top:8px;">
+    <div style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px; margin-top:8px;">
       <label>Name (required)<br><input type="text" id="pf-name" placeholder="Product Name"></label>
       <label>Website<br><input type="text" id="pf-website" placeholder="https://example.com"></label>
+      <label>Contact Info<br><input type="text" id="pf-contact" placeholder="Jane Doe <jane@example.com>" pattern="^[^<>\\n]+ <[^<>\\s@]+@[^<>\\s@]+\\.[^<>\\s@]+>$" title="Format: Name <email@example.com>" style="width:100%"></label>
       <label class="col-span-all">Description (required)<br><textarea id="pf-description" rows="3" style="width:100%"></textarea></label>
-      <label>ICP<br><textarea id="pf-icp" rows="2" style="width:100%"></textarea></label>
-      <label>Pricing<br><textarea id="pf-pricing" rows="2" style="width:100%"></textarea></label>
-      <label>Contact Info<br><textarea id="pf-contact" rows="2" style="width:100%"></textarea></label>
-    </div>
-    <div class="small mt-1">Defaults for Prompt Builder</div>
-    <div style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px;">
-      <label>Tone<br><input type="text" id="pf-default-tone" placeholder="e.g., Professional"></label>
-      <label>CTA<br><input type="text" id="pf-default-cta" placeholder="e.g., Request a demo"></label>
-      <label>Length<br><input type="text" id="pf-default-length" placeholder="e.g., 150-200 words"></label>
     </div>
     <div class="mt-1" role="toolbar" aria-label="Product Form Actions">
       <button class="btn" onclick="saveProduct()">Save</button>
@@ -144,13 +136,7 @@ function openProductForm(p){
   document.getElementById('pf-name').value = (p && p.name) || '';
   document.getElementById('pf-website').value = (p && p.website) || '';
   document.getElementById('pf-description').value = (p && p.description) || '';
-  document.getElementById('pf-icp').value = (p && p.icp) || '';
-  document.getElementById('pf-pricing').value = (p && p.pricing) || '';
   document.getElementById('pf-contact').value = (p && p.contact_info) || '';
-  var d = (p && p.defaults) || {};
-  document.getElementById('pf-default-tone').value = d.tone || '';
-  document.getElementById('pf-default-cta').value = d.cta || '';
-  document.getElementById('pf-default-length').value = d.length || '';
 }
 function closeProductForm(){
   document.getElementById('product-form').classList.add('hidden');
@@ -165,13 +151,12 @@ function renderProducts(items){
   }
   tb.innerHTML = '';
   items.forEach(function(p){
-    var d = p.defaults || {};
     var tr = document.createElement('tr');
     tr.innerHTML =
       '<td>'+escapeHtml(p.name||'')+'</td>'+
       '<td>'+(p.website ? ('<a href="'+encodeURI(p.website)+'" target="_blank" rel="noopener">'+escapeHtml(p.website)+'</a>') : '-')+'</td>'+
-      '<td><small>'+escapeHtml(p.created_at || '')+'</small></td>'+
-      '<td><small>'+(d.tone||'-')+' / '+(d.cta||'-')+' / '+(d.length||'-')+'</small></td>'+
+      '<td><small>'+escapeHtml(p.updated_at || '')+'</small></td>'+
+      '<td><small>'+escapeHtml(p.contact_info || '-')+'</small></td>'+
       '<td><button class="btn btn-sm" onclick="openProductFormFromJson(\''+encodeURIComponent(JSON.stringify(p))+'\')">Edit</button></td>';
     tb.appendChild(tr);
   });
@@ -192,28 +177,20 @@ function saveProduct(){
   var name = document.getElementById('pf-name').value.trim();
   var website = document.getElementById('pf-website').value.trim();
   var description = document.getElementById('pf-description').value.trim();
-  var icp = document.getElementById('pf-icp').value.trim();
-  var pricing = document.getElementById('pf-pricing').value.trim();
   var contact = document.getElementById('pf-contact').value.trim();
-  var d_tone = document.getElementById('pf-default-tone').value.trim();
-  var d_cta = document.getElementById('pf-default-cta').value.trim();
-  var d_length = document.getElementById('pf-default-length').value.trim();
 
   if (!name || !description) { alert('Name and Description are required'); return; }
+  // Validate contact info if provided (format: Name <email@example.com>)
+  if (contact && !/^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/.test(contact)) {
+    alert('Contact Info must look like: Name <email@example.com>');
+    return;
+  }
 
   var body = {
     name: name,
     website: website || null,
     description: description,
-    icp: icp || null,
-    pricing: pricing || null,
-    tone: null, // keep optional; Prompt Builder uses defaults + per-template fields
-    contact_info: contact || null,
-    defaults: {
-      tone: d_tone || null,
-      cta: d_cta || null,
-      length: d_length || null
-    }
+    contact_info: contact || null
   };
 
   var url = '/api/products' + (id ? ('/' + encodeURIComponent(id)) : '');
