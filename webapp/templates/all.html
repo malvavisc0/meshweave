@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container">
 <h1>Explore Public Website Analyses</h1>
-<p><a href="/">Back to Home</a></p>
+<!-- Removed redundant Back to Home link (header already provides Home) -->
 
 <form method="get" action="/all" class="mb-2" onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
   <label for="f-domain">Domain:</label>
@@ -40,19 +40,6 @@
   <button type="submit" class="btn ml-2">Apply</button>
 </form>
 
-{% if trending and trending|length > 0 %}
-<section class="panel mt-2" role="region" aria-label="Trending Analyses">
-  <h2>Trending Analyses</h2>
-  <ul class="domain-list">
-    {% for t in trending %}
-      <li>
-        <span><a href="/analysis/{{ t.key }}">{{ t.domain }}</a></span>
-        <span class="small">{{ t.page_count or 0 }} pages • {{ t.email_count or 0 }} emails</span>
-      </li>
-    {% endfor %}
-  </ul>
-</section>
-{% endif %}
 
 {% if items and items|length > 0 %}
   <ul class="card-list mt-2">
@@ -72,25 +59,18 @@
         </div>
         <div class="actions mt-1" role="toolbar" aria-label="Card actions">
           <a class="btn btn-sm" href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">View Analysis</a>
-          <a class="btn btn-sm" href="/analysis/{{ item.key }}#m-summary" onclick="try{trackEvent('all_quick_summary_click');}catch(_){ }">Quick Summary</a>
         </div>
       </li>
     {% endfor %}
   </ul>
 
-  <div class="mt-2">
-    {% if has_prev %}
-      <a href="{{ prev_url }}">&larr; Prev</a>
-    {% else %}
-      <span class="small">&larr; Prev</span>
-    {% endif %}
-    &nbsp;&nbsp;
-    {% if has_next %}
-      <a href="{{ next_url }}">Next &rarr;</a>
-    {% else %}
-      <span class="small">Next &rarr;</span>
-    {% endif %}
-  </div>
+  {% if has_prev or has_next %}
+  <nav class="mt-2" aria-label="Pagination">
+    {% if has_prev %}<a href="{{ prev_url }}">&larr; Prev</a>{% endif %}
+    {% if has_prev and has_next %}&nbsp;&nbsp;{% endif %}
+    {% if has_next %}<a href="{{ next_url }}">Next &rarr;</a>{% endif %}
+  </nav>
+  {% endif %}
 {% else %}
   <p>No results found.</p>
 {% endif %}

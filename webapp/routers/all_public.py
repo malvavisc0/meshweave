@@ -148,6 +148,12 @@ async def view_all(
                 q = q.filter(Crawl.domain == dom)
             if st:
                 q = q.filter(Crawl.status == st)
+            if has_emails:
+                q = (
+                    q.join(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
+                    .group_by(Crawl.id)
+                    .having(func.count(distinct(CrawlEmail.email)) > 0)
+                )
 
             if cursor_ts and cursor_id:
                 if direction == "next":
@@ -171,7 +177,7 @@ async def view_all(
             else:
                 q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
 
-            rows_db = q.limit(page_size).all()
+            rows_db = q.limit(page_size + 1).all()
 
             # Compute counts in bulk
             ids = [r.id for r in rows_db] or ["-"]
@@ -198,11 +204,9 @@ async def view_all(
                     page_counts_map[cid] = int(cnt or 0)
 
             # Build items
-            rows = rows_db
+            more = len(rows_db) > page_size
+            rows = rows_db[:page_size]
             for r in rows:
-                # Optional filter by has_emails in this branch
-                if has_emails and email_counts_map.get(r.id, 0) <= 0:
-                    continue
 
                 title = ""
                 try:
@@ -244,9 +248,11 @@ async def view_all(
 
             prev_url = None
             next_url = None
-            if rows_db:
-                # Ensure display order matches our returned items
-                rows_for_nav = list(rows_db)
+            has_prev = False
+            has_next = False
+            if rows:
+                # Ensure display order matches returned items
+                rows_for_nav = list(rows)
                 if cursor_ts and cursor_id and direction == "prev":
                     # We fetched ASC; reverse for display
                     rows_for_nav = list(reversed(rows_for_nav))
@@ -258,63 +264,49 @@ async def view_all(
                 if st:
                     base_params["status"] = st
                 base_params["page_size"] = str(page_size)
+                if has_emails:
+                    base_params["has_emails"] = "1"
+                if srt:
+                    base_params["sort"] = srt
 
-                # Prev points to newer items than 'first'
-                prev_params = dict(base_params)
-                prev_params["cursor"] = _cursor_of(first)
-                prev_params["dir"] = "prev"
-                prev_url = "/all?" + urlencode(prev_params)
+                if not (cursor_ts and cursor_id):
+                    # Initial page: no "Prev", "Next" only if there are more
+                    if more:
+                        next_params = dict(base_params)
+                        next_params["cursor"] = _cursor_of(last)
+                        next_params["dir"] = "next"
+                        next_url = "/all?" + urlencode(next_params)
+                        has_next = True
+                elif direction == "next":
+                    # Older than cursor; always allow navigating back to newer via Prev
+                    prev_params = dict(base_params)
+                    prev_params["cursor"] = _cursor_of(first)
+                    prev_params["dir"] = "prev"
+                    prev_url = "/all?" + urlencode(prev_params)
+                    has_prev = True
+                    # Next only if we fetched more than a full page (more older exist)
+                    if more:
+                        next_params = dict(base_params)
+                        next_params["cursor"] = _cursor_of(last)
+                        next_params["dir"] = "next"
+                        next_url = "/all?" + urlencode(next_params)
+                        has_next = True
+                else:  # direction == "prev"
+                    # Newer than cursor; always allow navigating to older via Next
+                    next_params = dict(base_params)
+                    next_params["cursor"] = _cursor_of(last)
+                    next_params["dir"] = "next"
+                    next_url = "/all?" + urlencode(next_params)
+                    has_next = True
+                    # Prev only if we fetched more than a full page (more newer exist)
+                    if more:
+                        prev_params = dict(base_params)
+                        prev_params["cursor"] = _cursor_of(first)
+                        prev_params["dir"] = "prev"
+                        prev_url = "/all?" + urlencode(prev_params)
+                        has_prev = True
 
-                # Next points to older items than 'last'
-                next_params = dict(base_params)
-                next_params["cursor"] = _cursor_of(last)
-                next_params["dir"] = "next"
-                next_url = "/all?" + urlencode(next_params)
-
-            has_prev = True if prev_url else False
-            has_next = True if next_url else False
-
-        # Trending (approximate): top by email_count then updated_at
-        trending = []
-        try:
-            tq = (
-                s.query(
-                    Crawl,
-                    func.count(distinct(CrawlEmail.email)).label("email_count"),
-                )
-                .outerjoin(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
-                .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
-                .group_by(Crawl.id)
-                .order_by(func.count(distinct(CrawlEmail.email)).desc(), Crawl.updated_at.desc())
-                .limit(5)
-            )
-            trend_rows = tq.all()
-            if trend_rows:
-                trend_ids = [tr[0].id for tr in trend_rows]
-                page_counts_map_tr = {}
-                for cid, cnt in (
-                    s.query(
-                        CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url))
-                    )
-                    .filter(CrawlLink.crawl_id.in_(trend_ids))
-                    .group_by(CrawlLink.crawl_id)
-                    .all()
-                ):
-                    page_counts_map_tr[cid] = int(cnt or 0)
-
-                for row, email_count in trend_rows:
-                    trending.append(
-                        {
-                            "key": row.key,
-                            "domain": row.domain,
-                            "canonical_url": row.canonical_url,
-                            "email_count": int(email_count or 0),
-                            "page_count": page_counts_map_tr.get(row.id, 0),
-                            "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
-                        }
-                    )
-        except Exception:
-            trending = []
+        # Trending section removed to avoid duplication on the All page.
 
     # SEO
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
@@ -334,7 +326,7 @@ async def view_all(
     elif st:
         meta_description = f"Browse public results filtered by status {st}. Filter, sort, and paginate."
     else:
-        meta_description = "Explore public website analyses. Filter by domain/status, sort by recency/emails/pages, and browse trending sites."
+        meta_description = "Explore public website analyses. Filter by domain/status, sort by recency/emails/pages."
 
     # Canonical: keep domain/status only; exclude cursor/page_size/sort/has_emails
     canonical_params = {}
@@ -354,7 +346,6 @@ async def view_all(
         {
             "request": request,
             "items": items,
-            "trending": trending,
             "page": page,
             "page_size": page_size,
             "has_prev": has_prev,
