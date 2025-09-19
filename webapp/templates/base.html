@@ -21,6 +21,7 @@
 
     {% if json_ld %}<script type="application/ld+json">{{ json_ld|safe }}</script>{% endif %}
 
+    <meta name="csrf-token" content="{{ csrf_token or '' }}">
     <link rel="stylesheet" href="/static/style.css">
 
     {% block head_extra %}{% endblock %}
@@ -41,7 +42,7 @@
             <button type="submit" class="btn btn-danger-soft">Sign out</button>
           </form>
         {% else %}
-          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary" onclick="try{trackEvent('signin_click');}catch(e){}">
+          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary" data-track="signin_click">
             Sign in with Google
           </a>
         {% endif %}
@@ -73,55 +74,7 @@
         </div>
       </div>
     </footer>
-    <script>
-    // Copy helpers available globally
-    function copyLink(url) {
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(url).then(function () { alert('Link copied'); }, function () { legacyCopy(url); });
-        } else {
-          legacyCopy(url);
-        }
-      } catch (e) { legacyCopy(url); }
-      try { trackEvent('share_click', null, 'copy'); } catch (err) {}
-      return false;
-    }
-    function legacyCopy(text) {
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = text; ta.setAttribute('readonly','');
-        ta.style.position = 'absolute'; ta.style.left = '-9999px';
-        document.body.appendChild(ta); ta.select();
-        var ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) alert('Link copied'); else prompt('Copy this link:', text);
-      } catch (e) { prompt('Copy this link:', text); }
-    }
-    function escapeHtml(s) {
-      return (s==null?'':String(s))
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-    }
-    // Lightweight tracking helper using Beacon API when available
-    function trackEvent(event, action, type) {
-      try {
-        var params = new URLSearchParams();
-        if (event) params.set('event', event);
-        if (action) params.set('action', action);
-        if (type) params.set('type', type);
-        var url = '/api/track?' + params.toString();
-        if (navigator.sendBeacon) {
-          var blob = new Blob([], {type: 'text/plain'});
-          navigator.sendBeacon(url, blob);
-        } else {
-          fetch(url, {method:'GET', credentials:'same-origin'});
-        }
-      } catch (e) {}
-    }
-    </script>
+    <script src="/static/js/base.js"></script>
 
     {% block scripts %}{% endblock %}
   </body>
