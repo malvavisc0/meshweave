@@ -20,16 +20,16 @@ from webapp.routers import (
     auth,
     home,
     jobs,
+    legal,
     progress,
     prospects,
     submissions,
-    legal,
 )
 from webapp.utils.auth import AuthSessionMiddleware
+from webapp.utils.config import _env_bool
 from webapp.utils.csrf import CSRFMiddleware
 from webapp.utils.logging import RequestIDMiddleware, init_logging, log_audit
 from webapp.utils.metrics import active_sessions
-from webapp.utils.config import _env_bool
 
 
 async def _sleep_until(event: asyncio.Event, seconds: float):
@@ -316,13 +316,19 @@ def create_app() -> FastAPI:
 
     # Expose footer links and version as Jinja globals
     try:
-        templates.env.globals.update({
-            "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
-            "FOOTER_REPO_URL": os.getenv("FOOTER_REPO_URL", "https://github.com/your-org/markdownify-crawler").strip(),
-            "FOOTER_CONTACT_EMAIL": os.getenv("FOOTER_CONTACT_EMAIL", "hello@acme.com").strip(),
-            "FOOTER_PRIVACY_URL": os.getenv("FOOTER_PRIVACY_URL", "/privacy").strip(),
-            "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
-        })
+        templates.env.globals.update(
+            {
+                "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
+                "FOOTER_REPO_URL": os.getenv(
+                    "FOOTER_REPO_URL", "https://github.com/your-org/markdownify-crawler"
+                ).strip(),
+                "FOOTER_CONTACT_EMAIL": os.getenv(
+                    "FOOTER_CONTACT_EMAIL", "hello@acme.com"
+                ).strip(),
+                "FOOTER_PRIVACY_URL": os.getenv("FOOTER_PRIVACY_URL", "/privacy").strip(),
+                "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
+            }
+        )
     except Exception:
         # If templates are not initialized for some reason, do not crash app startup
         pass

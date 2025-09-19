@@ -61,10 +61,18 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
         pages_arr: List[Dict] = payload_dict.get("pages") or []
         # Derive render metrics strictly from the first page (home "/")
         try:
-            first_page_metrics: Dict = (pages_arr[0].get("metrics") or {}) if (isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict)) else {}
+            first_page_metrics: Dict = (
+                (pages_arr[0].get("metrics") or {})
+                if (
+                    isinstance(pages_arr, list)
+                    and len(pages_arr) > 0
+                    and isinstance(pages_arr[0], dict)
+                )
+                else {}
+            )
         except Exception:
             first_page_metrics = {}
-        render: Dict = (first_page_metrics.get("render") or {})
+        render: Dict = first_page_metrics.get("render") or {}
         extraction: Dict = metrics.get("extraction") or {}
         lks: Dict = payload_dict.get("links") or {}
         em: Dict = payload_dict.get("emails") or {}

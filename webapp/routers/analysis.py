@@ -213,11 +213,7 @@ async def view_analysis(request: Request, ref: str):
     email_count = 0
     try:
         with get_session() as s:
-            q = (
-                s.query(CrawlEmail.email)
-                .filter(CrawlEmail.crawl_id == row.id)
-                .distinct()
-            )
+            q = s.query(CrawlEmail.email).filter(CrawlEmail.crawl_id == row.id).distinct()
             email_count = q.count()
             preview_rows = q.limit(3).all()
             email_preview = [r[0] for r in preview_rows]

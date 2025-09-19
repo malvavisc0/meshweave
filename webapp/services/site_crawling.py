@@ -299,9 +299,9 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         all_emails_set |= emails0_set
         # Record sources for start page
         try:
-            for s in (src0 or []):
+            for s in src0 or []:
                 e = (s.get("email") or "").lower()
-                mode = (s.get("found_as") or "text")
+                mode = s.get("found_as") or "text"
                 if e:
                     email_sources_map.setdefault((e, final0), set()).add(mode)
         except Exception:
@@ -468,9 +468,9 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             all_emails_set |= emails_i_set
             # Record sources for this page
             try:
-                for s in (src_i or []):
+                for s in src_i or []:
                     e = (s.get("email") or "").lower()
-                    mode = (s.get("found_as") or "text")
+                    mode = s.get("found_as") or "text"
                     if e:
                         email_sources_map.setdefault((e, final_i), set()).add(mode)
             except Exception:

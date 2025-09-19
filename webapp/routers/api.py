@@ -294,7 +294,15 @@ async def api_public_summary(key: str):
     pages_arr = payload.get("pages") or []
     # Derive render metrics strictly from the first page (home "/")
     try:
-        first_page_metrics = (pages_arr[0].get("metrics") or {}) if (isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict)) else {}
+        first_page_metrics = (
+            (pages_arr[0].get("metrics") or {})
+            if (
+                isinstance(pages_arr, list)
+                and len(pages_arr) > 0
+                and isinstance(pages_arr[0], dict)
+            )
+            else {}
+        )
     except Exception:
         first_page_metrics = {}
     render = first_page_metrics.get("render") or {}
@@ -303,7 +311,9 @@ async def api_public_summary(key: str):
     emails = payload.get("emails") or {}
 
     base_domain = (extraction.get("base_domain") or row.domain or "").strip()
-    is_site = ((payload.get("scope") or getattr(row, "scope", "") or "").strip().lower() == "site")
+    is_site = (
+        payload.get("scope") or getattr(row, "scope", "") or ""
+    ).strip().lower() == "site"
 
     # Top external domains
     def _t(s):
@@ -707,6 +717,7 @@ async def healthz():
 
 
 # ===== Products API (functional, minimal fields) =====
+
 
 def _product_to_dict(p: Product) -> dict:
     return {

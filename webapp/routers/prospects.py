@@ -13,11 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from webapp.db import get_session
 from webapp.models import Prospect, ProspectContact
 from webapp.utils.auth import require_auth
-from webapp.utils.metrics import (
-    contacts_create,
-    prospects_patch,
-    prospects_upsert,
-)
+from webapp.utils.metrics import contacts_create, prospects_patch, prospects_upsert
 
 router = APIRouter()
 

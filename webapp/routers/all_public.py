@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import and_, or_, func, distinct
+from sqlalchemy import and_, distinct, func, or_
 
 from webapp.db import get_session
 from webapp.infra import templates
@@ -133,7 +133,9 @@ async def view_all(
                         "canonical_url": row.canonical_url,
                         "title": title,
                         "status": row.status,
-                        "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
+                        "updated_at": (
+                            row.updated_at or datetime.now(timezone.utc)
+                        ).isoformat(),
                         "email_count": int(email_count or 0),
                         "page_count": int(page_count or 0),
                     }
@@ -194,9 +196,7 @@ async def view_all(
                     email_counts_map[cid] = int(cnt or 0)
 
                 for cid, cnt in (
-                    s.query(
-                        CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url))
-                    )
+                    s.query(CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url)))
                     .filter(CrawlLink.crawl_id.in_(ids))
                     .group_by(CrawlLink.crawl_id)
                     .all()
@@ -227,7 +227,9 @@ async def view_all(
                         "canonical_url": r.canonical_url,
                         "title": title,
                         "status": r.status,
-                        "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+                        "updated_at": (
+                            r.updated_at or datetime.now(timezone.utc)
+                        ).isoformat(),
                         "email_count": email_counts_map.get(r.id, 0),
                         "page_count": page_counts_map.get(r.id, 0),
                     }
@@ -324,7 +326,9 @@ async def view_all(
     elif dom:
         meta_description = f"Browse public results for {dom}. Filter, sort, and paginate."
     elif st:
-        meta_description = f"Browse public results filtered by status {st}. Filter, sort, and paginate."
+        meta_description = (
+            f"Browse public results filtered by status {st}. Filter, sort, and paginate."
+        )
     else:
         meta_description = "Explore public website analyses. Filter by domain/status, sort by recency/emails/pages."
 

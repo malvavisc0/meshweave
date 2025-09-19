@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 
 from webapp.db import get_session
-from webapp.models import Crawl, CrawlLink, CrawlEmail
+from webapp.models import Crawl, CrawlEmail, CrawlLink
 from webapp.utils.auth import require_ownership
 
 router = APIRouter()

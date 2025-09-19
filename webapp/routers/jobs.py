@@ -1,14 +1,15 @@
 import os
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import func
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, Prospect, CrawlEmail
+from webapp.models import Crawl, CrawlEmail, Prospect
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -19,7 +20,6 @@ from webapp.utils.quotas import (
 )
 from webapp.utils.security import _make_csrf_token, _verify_csrf_token
 from webapp.utils.url import _abs_url
-from sqlalchemy import func
 
 router = APIRouter()
 
@@ -28,8 +28,6 @@ router = APIRouter()
 async def my_jobs(
     request: Request,
     page_size: int = 25,
-    cursor: Optional[str] = None,
-    dir: Optional[str] = "next",
 ):
     """List current user's jobs with pagination (newest first)."""
     user = await require_auth(request)
@@ -41,10 +39,6 @@ async def my_jobs(
     if page_size not in (25, 50, 100):
         page_size = 25
 
-    direction = (dir or "next").lower()
-    if direction not in ("next", "prev"):
-        direction = "next"
-
     with get_session() as s:
         rows_db: List[Crawl] = (
             s.query(Crawl)
@@ -53,7 +47,7 @@ async def my_jobs(
             .limit(500)
             .all()
         )
-    # Basic-first page subset (keyset scaffolding retained)
+    # First page subset
     rows = rows_db[:page_size]
 
     items = []
@@ -348,6 +342,7 @@ async def api_my_jobs(
         try:
             ts_s, pid = str(cursor).split("|", 1)
             from datetime import datetime as _dt
+
             cur_ts = _dt.fromisoformat(ts_s)
             # If tz-naive, assume UTC
             if not getattr(cur_ts, "tzinfo", None):
@@ -396,7 +391,9 @@ async def api_my_jobs(
                     "canonical_url": r.canonical_url,
                     "visibility": r.visibility,
                     "status": r.status,
-                    "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+                    "updated_at": (
+                        r.updated_at or datetime.now(timezone.utc)
+                    ).isoformat(),
                 }
             )
 
