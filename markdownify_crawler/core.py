@@ -304,10 +304,14 @@ def _classify_links(soup: BeautifulSoup, base_url: str):
 
 
         # Same-domain -> internal (store as normalized path)
-        if base_domain and link_domain == base_domain or (not parts.netloc and not parts.scheme):
+        # Internal link = same normalized domain as base_url
+        if base_domain and (link_domain == base_domain):
             path = parts.path or "/"
             if not path.startswith("/"):
                 path = "/" + path
+            # Skip root paths to reduce noise per docstring
+            if path == "/":
+                continue
             if _should_ignore_path(path or ""):
                 continue
             key = ("int", path)
@@ -411,6 +415,13 @@ def _extract_emails_from_text(html: str, deobfuscate: bool) -> Tuple[Set[str], b
         tuple[set[str], bool]: (emails, had_obfuscated_text)
     """
     soup = BeautifulSoup(html, "lxml")
+    # Remove non-visible/scripted content before text extraction to reduce false positives
+    for t in ("script", "style", "noscript"):
+        for n in soup.find_all(t):
+            try:
+                n.decompose()
+            except Exception:
+                pass
     text = soup.get_text(" ")
     found_obfuscated = False
 
@@ -849,7 +860,6 @@ async def crawl(
             # Expand further links
             # Use raw DOM for classification; preprocessed DOM only for markdown upstream (if needed)
             soup2_raw = soup_from_html(html2)
-            soup2_pre = preprocess_soup(soup_from_html(html2), base_url=final_u, final_url=final_u)
             new_internal, _, _ = _classify_links(soup2_raw, base_url=final_u)
             for href2 in new_internal:
                 abs2 = _normalize_abs_url(href2, final_u)

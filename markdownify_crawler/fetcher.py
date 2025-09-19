@@ -21,6 +21,8 @@ Notes:
 import hashlib
 import json
 import logging
+import os
+import inspect
 import random
 import time
 from dataclasses import dataclass
@@ -284,7 +286,7 @@ async def get_rendered_html(
     extra_headers: Optional[Dict[str, str]] = None,
     wait_for_selector: Optional[str] = None,
     referer: Optional[str] = None,
-    ignore_https_errors: bool = True,
+    ignore_https_errors: bool = False,
     block_resources: Optional[List[str]] = None,
     scroll_for_lazy_load: bool = False,
     progressive_scroll: bool = False,
@@ -368,31 +370,6 @@ async def get_rendered_html(
         retries_used=0,
     )
 
-    # Check cache first
-    cache_hit = False
-    cache_path = None
-    if cache_dir:
-        cache_params = {
-            "wait_until": wait_until,
-            "device_type": device_type,
-            "viewport": viewport,
-            "execute_js": execute_js,
-            "progressive_scroll": progressive_scroll,
-        }
-        params_hash = _get_params_hash(cache_params)
-        cache_path = _get_cache_path(cache_dir, url, params_hash)
-
-        if cache_path.exists():
-            try:
-                html = cache_path.read_text(encoding="utf-8")
-                metrics.cache_hit = True
-                metrics.content_length = len(html)
-
-                if return_metrics:
-                    return html, metrics
-                return html
-            except Exception as e:
-                metrics.errors.append(f"Cache read error: {e}")
 
     # Setup parameters
     timeout_ms = int(max(timeout, 0) * 1000)
@@ -407,6 +384,45 @@ async def get_rendered_html(
     start_time = time.time()
     logger = logging.getLogger(__name__)
     logger.info(f"Starting HTML rendering for URL: {url}")
+
+    # Resolve effective viewport for consistency in cache keys and rendering
+    vp = _select_viewport(device_type, viewport)
+
+    # Check cache first (skip when a custom intercept_requests handler is provided)
+    cache_hit = False
+    cache_path = None
+    if cache_dir and not intercept_requests:
+        cache_params = {
+            "wait_until": wait_until,
+            "device_type": device_type,
+            "viewport": vp,  # effective viewport used
+            "user_agent": ua,  # resolved UA used
+            "execute_js": execute_js,
+            "progressive_scroll": progressive_scroll,
+            "scroll_for_lazy_load": scroll_for_lazy_load,
+            "timeout": timeout,
+            "render_wait": render_wait,
+            "extra_headers": extra_headers or {},
+            "referer": referer,
+            "ignore_https_errors": ignore_https_errors,
+            "block_resources": block_resources if block_resources is not None else _DEFAULT_BLOCKED_RESOURCES,
+            "stealth_mode": stealth_mode,
+            "capture_screenshot": bool(capture_screenshot),
+            "intercept_requests": False,
+        }
+        params_hash = _get_params_hash(cache_params)
+        cache_path = _get_cache_path(cache_dir, url, params_hash)
+
+        if cache_path.exists():
+            try:
+                html = cache_path.read_text(encoding="utf-8")
+                metrics.cache_hit = True
+                metrics.content_length = len(html)
+                if return_metrics:
+                    return html, metrics
+                return html
+            except Exception as e:
+                metrics.errors.append(f"Cache read error: {e}")
 
     try:
         async with async_playwright() as p:
@@ -437,13 +453,14 @@ async def get_rendered_html(
                 browser = await p.chromium.launch(
                     headless=True,
                     args=browser_args,
-                    slow_mo=50,  # Add small delay between actions for debugging
+                    slow_mo=int(os.getenv("MARKDOWNIFY_DEBUG_SLOWMO_MS", "0") or "0"),
                     devtools=False,  # Set to True for debugging if needed
                 )
                 logger.info("Browser launched successfully")
 
                 context = await browser.new_context(
                     user_agent=ua,
+                    viewport={"width": vp[0], "height": vp[1]},
                     java_script_enabled=True,
                     extra_http_headers=extra_headers or {},
                     ignore_https_errors=ignore_https_errors,
@@ -458,25 +475,41 @@ async def get_rendered_html(
                 # Apply stealth measures
                 await _apply_stealth_measures(page, stealth_mode)
 
-                # Resource blocking
-                if block_resources:
-                    block_patterns = []
-                    for resource_type in block_resources:
-                        if resource_type == "image":
-                            block_patterns.append("**/*.{png,jpg,jpeg,gif,svg,ico,webp}")
-                        elif resource_type == "stylesheet":
-                            block_patterns.append("**/*.css")
-                        elif resource_type == "font":
-                            block_patterns.append("**/*.{woff,woff2,ttf,otf}")
-                        elif resource_type == "media":
-                            block_patterns.append("**/*.{mp4,mp3,avi,mov}")
+                # Unified network routing: resource blocking and optional custom interception
+                blocked_types = set(block_resources or [])
 
-                    for pattern in block_patterns:
-                        await page.route(pattern, lambda route: route.abort())
+                async def _route_handler(route):
+                    try:
+                        req = route.request
+                        if blocked_types and req.resource_type in blocked_types:
+                            await route.abort()
+                            return
+                        if intercept_requests:
+                            # Delegate to user-supplied handler (supports sync or async; 1 or 2 params)
+                            try:
+                                sig = None
+                                try:
+                                    sig = inspect.signature(intercept_requests)  # type: ignore[arg-type]
+                                except Exception:
+                                    sig = None
+                                if sig and len(sig.parameters) >= 2:
+                                    res = intercept_requests(route, req)  # type: ignore[misc]
+                                else:
+                                    res = intercept_requests(route)  # type: ignore[misc]
+                                if inspect.isawaitable(res):
+                                    await res  # type: ignore[func-returns-value]
+                                return
+                            except Exception as e:
+                                metrics.errors.append(f"Intercept error: {e}")
+                                # fall through to continue request
+                        await route.continue_()
+                    except Exception:
+                        try:
+                            await route.continue_()
+                        except Exception:
+                            pass
 
-                # Network request interception
-                if intercept_requests:
-                    await page.route("**/*", intercept_requests)
+                await page.route("**/*", _route_handler)
 
                 # Track network requests
                 request_count = 0
@@ -566,7 +599,7 @@ async def get_rendered_html(
                 )
 
                 # Cache the result
-                if cache_dir and cache_path and not cache_hit:
+                if cache_dir and cache_path and not cache_hit and not intercept_requests:
                     try:
                         Path(cache_dir).mkdir(parents=True, exist_ok=True)
                         cache_path.write_text(html, encoding="utf-8")

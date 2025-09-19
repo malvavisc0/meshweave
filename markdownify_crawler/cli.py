@@ -171,6 +171,12 @@ def main_crawl() -> None:
         help="Timeout per crawled page (default: 15.0)",
     )
     p.add_argument(
+        "--disable-cache",
+        type=_bool_flag,
+        default=False,
+        help="Bypass HTML cache for this run (default: false)",
+    )
+    p.add_argument(
         "--cache-dir",
         default=None,
         help="Override MARKDOWNIFY_CACHE_DIR (default: env or /tmp/markdownify/cache)",
@@ -194,6 +200,7 @@ def main_crawl() -> None:
             deobfuscate_emails=bool(args.deobfuscate),
             throttle_ms=int(args.throttle_ms),
             per_page_timeout=float(args.per_page_timeout),
+            disable_cache=bool(args.disable_cache),
             cache_dir=args.cache_dir,
         )
         _write_output(payload, args.output)
