@@ -29,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 renderer = ["playwright"]
 server = ["fastapi[standard]", "uvicorn[standard]"]
+test = ["pytest>=7", "pytest-asyncio>=0.21"]
 
 [project.urls]
 Homepage = "https://example.com/markdownify-crawler"
@@ -40,3 +41,31 @@ markdownify-serve = "markdownify_crawler.cli:main_serve"
 
 [tool.setuptools.packages.find]
 include = ["markdownify_crawler*"]
+
+[tool.pytest.ini_options]
+# Only collect tests from the tests/ directory
+testpaths = [
+  "tests",
+]
+
+# Prevent pytest from recursing into data volumes and other non-test dirs
+norecursedirs = [
+  ".git",
+  ".cache",
+  "data",
+  "data/postgres",
+  "data/webapp",
+  "alembic",
+  "alembic/versions",
+  "docs",
+  "webapp/static",
+  "webapp/templates"
+]
+
+# Standard discovery patterns
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Default options: quiet output
+addopts = "-q"

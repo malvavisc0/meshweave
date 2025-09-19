@@ -19,10 +19,10 @@ Notes:
 """
 
 import hashlib
+import inspect
 import json
 import logging
 import os
-import inspect
 import random
 import time
 from dataclasses import dataclass
@@ -370,7 +370,6 @@ async def get_rendered_html(
         retries_used=0,
     )
 
-
     # Setup parameters
     timeout_ms = int(max(timeout, 0) * 1000)
     extra_wait_ms = int(max(render_wait, 0) * 1000)
@@ -405,7 +404,11 @@ async def get_rendered_html(
             "extra_headers": extra_headers or {},
             "referer": referer,
             "ignore_https_errors": ignore_https_errors,
-            "block_resources": block_resources if block_resources is not None else _DEFAULT_BLOCKED_RESOURCES,
+            "block_resources": (
+                block_resources
+                if block_resources is not None
+                else _DEFAULT_BLOCKED_RESOURCES
+            ),
             "stealth_mode": stealth_mode,
             "capture_screenshot": bool(capture_screenshot),
             "intercept_requests": False,

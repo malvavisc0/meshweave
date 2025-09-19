@@ -302,7 +302,6 @@ def _classify_links(soup: BeautifulSoup, base_url: str):
         parts = urlsplit(absu)
         link_domain = _strip_www(parts.netloc or "")
 
-
         # Same-domain -> internal (store as normalized path)
         # Internal link = same normalized domain as base_url
         if base_domain and (link_domain == base_domain):
@@ -362,12 +361,18 @@ def _deobfuscate_text(text: str) -> str:
         str: Deobfuscated text.
     """
     s = text
-    s = re.sub(r"(?i)\b\[\s*at\s*\]|\(\s*at\s*\)|\{\s*at\s*\}", "@", s)
-    s = re.sub(r"(?i)\b\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\}", ".", s)
+    # Replace bracketed/parenthesized tokens like [at], (at), {at} and [dot], etc.
+    s = re.sub(r"(?i)\[\s*at\s*\]|\(\s*at\s*\)|\{\s*at\s*\}", "@", s)
+    s = re.sub(r"(?i)\[\s*dot\s*\]|\(\s*dot\s*\)|\{\s*dot\s*\}", ".", s)
+    # Replace plain 'at'/'dot' when surrounded by common separators or whitespace
     s = re.sub(r"(?i)(?<=[\s,;:/\\\|<>\-\_])at(?=[\s,;:/\\\|<>\-\_])", "@", s)
     s = re.sub(r"(?i)(?<=[\s,;:/\\\|<>\-\_])dot(?=[\s,;:/\\\|<>\-\_])", ".", s)
+    # Normalize spaced tokens like " at " and " dot "
     s = re.sub(r"(?i)\s+at\s+", " @ ", s)
     s = re.sub(r"(?i)\s+dot\s+", " . ", s)
+    # Collapse whitespace around email separators to form valid addresses
+    s = re.sub(r"\s*@\s*", "@", s)
+    s = re.sub(r"\s*\.\s*", ".", s)
     return s
 
 
