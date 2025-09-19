@@ -11,12 +11,10 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from webapp.db import get_session
-from webapp.models import Product, Prospect, ProspectContact
+from webapp.models import Prospect, ProspectContact
 from webapp.utils.auth import require_auth
 from webapp.utils.metrics import (
     contacts_create,
-    products_create,
-    products_update,
     prospects_patch,
     prospects_upsert,
 )
@@ -329,143 +327,5 @@ async def export_contacts_csv(request: Request, prospect_id: str):
     )
 
 
-# Products minimal CRUD (owner-scoped)
-@router.get("/api/products")
-async def list_products(request: Request):
-    user = await require_auth(request)
-    with get_session() as s:
-        rows = (
-            s.query(Product)
-            .filter(Product.user_id == user.id)
-            .order_by(Product.created_at.desc())
-            .all()
-        )
-    items = []
-    for r in rows:
-        items.append(
-            {
-                "id": r.id,
-                "name": r.name,
-                "website": r.website,
-                "description": r.description,
-                "icp": r.icp,
-                "pricing": r.pricing,
-                "tone": r.tone,
-                "contact_info": r.contact_info,
-                "defaults": json.loads(r.defaults_json) if r.defaults_json else {},
-                "created_at": (r.created_at or datetime.now(timezone.utc)).isoformat(),
-            }
-        )
-    return {"items": items}
-
-
-@router.post("/api/products")
-async def create_product(request: Request):
-    user = await require_auth(request)
-    body = await request.json()
-    name = (body.get("name") or "").strip()
-    description = (body.get("description") or "").strip()
-    if not name or not description:
-        raise HTTPException(status_code=400, detail="Missing required fields")
-    website = (body.get("website") or "").strip() or None
-    icp = (body.get("icp") or "").strip() or None
-    pricing = body.get("pricing")
-    tone = (body.get("tone") or "").strip() or None
-    contact_info = (body.get("contact_info") or "").strip() or None
-    defaults = body.get("defaults") or {}
-    defaults_json = None
-    try:
-        defaults_json = json.dumps(defaults or {})
-    except Exception:
-        defaults_json = None
-
-    with get_session() as s:
-        r = Product(
-            id=str(uuid.uuid4()),
-            user_id=user.id,
-            name=name,
-            website=website,
-            description=description,
-            icp=icp,
-            pricing=(
-                json.dumps(pricing)
-                if isinstance(pricing, (dict, list))
-                else (pricing or None)
-            ),
-            tone=tone,
-            contact_info=contact_info,
-            defaults_json=defaults_json,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-        s.add(r)
-        s.flush()
-        try:
-            products_create.inc()
-        except Exception:
-            pass
-        return {
-            "id": r.id,
-            "name": r.name,
-            "website": r.website,
-            "description": r.description,
-            "icp": r.icp,
-            "pricing": r.pricing,
-            "tone": r.tone,
-            "contact_info": r.contact_info,
-            "defaults": json.loads(r.defaults_json) if r.defaults_json else {},
-        }
-
-
-@router.put("/api/products/{product_id}")
-async def update_product(request: Request, product_id: str):
-    user = await require_auth(request)
-    body = await request.json()
-    with get_session() as s:
-        r = (
-            s.query(Product)
-            .filter(Product.id == product_id, Product.user_id == user.id)
-            .one_or_none()
-        )
-        if not r:
-            raise HTTPException(status_code=404, detail="Not found")
-        changed = False
-        for key in (
-            "name",
-            "website",
-            "description",
-            "icp",
-            "pricing",
-            "tone",
-            "contact_info",
-        ):
-            if key in body:
-                val = body.get(key)
-                if key == "pricing" and isinstance(val, (dict, list)):
-                    val = json.dumps(val)
-                setattr(r, key, val)
-                changed = True
-        if "defaults" in body:
-            try:
-                r.defaults_json = json.dumps(body.get("defaults") or {})
-                changed = True
-            except Exception:
-                pass
-        if changed:
-            r.updated_at = datetime.now(timezone.utc)
-        s.flush()
-        try:
-            products_update.inc()
-        except Exception:
-            pass
-        return {
-            "id": r.id,
-            "name": r.name,
-            "website": r.website,
-            "description": r.description,
-            "icp": r.icp,
-            "pricing": r.pricing,
-            "tone": r.tone,
-            "contact_info": r.contact_info,
-            "defaults": json.loads(r.defaults_json) if r.defaults_json else {},
-        }
+# Products API endpoints removed from prospects router to avoid duplication.
+# Use the canonical implementations in webapp.routers.api for /api/products.

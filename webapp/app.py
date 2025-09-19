@@ -29,6 +29,7 @@ from webapp.utils.auth import AuthSessionMiddleware
 from webapp.utils.csrf import CSRFMiddleware
 from webapp.utils.logging import RequestIDMiddleware, init_logging, log_audit
 from webapp.utils.metrics import active_sessions
+from webapp.utils.config import _env_bool
 
 
 async def _sleep_until(event: asyncio.Event, seconds: float):
@@ -325,5 +326,34 @@ def create_app() -> FastAPI:
     except Exception:
         # If templates are not initialized for some reason, do not crash app startup
         pass
+
+    # Baseline Content Security Policy (scaffold)
+    # Controlled by WEBAPP_ENABLE_CSP=true and optional WEBAPP_CSP override.
+    # Note: Current templates use inline scripts; default includes 'unsafe-inline' to avoid breakage.
+    # Tighten to nonced CSP in a subsequent phase.
+    @app.middleware("http")
+    async def _csp_middleware(request, call_next):
+        resp = await call_next(request)
+        try:
+            if _env_bool("WEBAPP_ENABLE_CSP", False):
+                default_csp = (
+                    "default-src 'self'; "
+                    "img-src 'self' data: blob:; "
+                    "style-src 'self' 'unsafe-inline'; "
+                    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "
+                    "connect-src 'self'; "
+                    "font-src 'self' data:; "
+                    "frame-ancestors 'none'; "
+                    "base-uri 'self'; "
+                    "form-action 'self'"
+                )
+                csp = os.getenv("WEBAPP_CSP", default_csp)
+                # Do not override if already set upstream
+                if "Content-Security-Policy" not in resp.headers:
+                    resp.headers["Content-Security-Policy"] = csp
+        except Exception:
+            # Never fail requests due to CSP header wiring
+            pass
+        return resp
 
     return app

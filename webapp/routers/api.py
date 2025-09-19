@@ -8,6 +8,7 @@ from typing import Dict, List
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from webapp.db import get_session
 from webapp.models import Crawl, Product
@@ -759,7 +760,11 @@ async def create_product(request: Request):
             contact_info=contact_info,
         )
         s.add(p)
-        s.flush()
+        try:
+            s.flush()
+        except IntegrityError:
+            # Unique constraint (user_id, name) violated
+            raise HTTPException(status_code=409, detail="duplicate_name")
         return JSONResponse(status_code=201, content={"item": _product_to_dict(p)})
 
 
@@ -795,5 +800,9 @@ async def update_product(request: Request, product_id: str):
         row.contact_info = contact_info
         row.updated_at = now
 
-        s.flush()
+        try:
+            s.flush()
+        except IntegrityError:
+            # Unique constraint on (user_id, name) when renaming to an existing product name
+            raise HTTPException(status_code=409, detail="duplicate_name")
         return {"item": _product_to_dict(row)}

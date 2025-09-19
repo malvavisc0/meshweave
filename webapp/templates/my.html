@@ -31,22 +31,66 @@
   </div>
 {% endif %}
 
+<section class="panel mt-2" role="region" aria-label="Quick Stats">
+  <h2>Quick Stats (last 30 days)</h2>
+  <div id="quick-stats" class="grid-3">
+    <div class="card"><div class="label">Analyses</div><div class="value" id="qs-analyses">–</div></div>
+    <div class="card"><div class="label">Emails</div><div class="value" id="qs-emails">–</div></div>
+    <div class="card"><div class="label">Prospects</div><div class="value" id="qs-prospects">–</div></div>
+  </div>
+</section>
+
+<section class="panel mt-2" role="region" aria-label="Active Jobs">
+  <h2>Active Jobs</h2>
+  <div id="active-jobs-empty" class="small"><em>No active jobs.</em></div>
+  <div id="active-jobs-list"></div>
+</section>
+
+<section class="panel mt-2" role="region" aria-label="Recent Completions">
+  <h2>Recent Completions</h2>
+  <table class="table" aria-label="Recent Completions">
+    <thead><tr><th>Domain</th><th>URL</th><th>Updated</th><th>Actions</th></tr></thead>
+    <tbody id="recent-completions-tbody"><tr><td colspan="4"><em class="small">Loading…</em></td></tr></tbody>
+  </table>
+</section>
+
 <section class="panel mt-2" role="region" aria-label="My Jobs">
   <h2>My Jobs</h2>
-  {% if items and items|length > 0 %}
-    <table class="table" aria-label="My Jobs">
-      <thead>
-        <tr>
-          <th>Scope</th>
-          <th>URL</th>
-          <th>Status</th>
-          <th>Updated</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
+
+  <div class="actions" role="toolbar" aria-label="Job Filters" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <label class="small">Status
+      <select id="jobs-status">
+        <option value="">All</option>
+        <option value="running">Running</option>
+        <option value="succeeded">Completed</option>
+        <option value="failed">Failed</option>
+        <option value="cancelled">Cancelled</option>
+        <option value="pending">Pending</option>
+      </select>
+    </label>
+    <label class="small">Search
+      <input id="jobs-q" type="search" placeholder="domain or url" style="min-width:220px">
+    </label>
+    <button class="btn" id="jobs-apply">Apply</button>
+    <span class="small" id="jobs-status-msg" role="status" aria-live="polite"></span>
+  </div>
+
+  <table class="table mt-1" aria-label="My Jobs">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="jobs-select-all" aria-label="Select All Jobs"></th>
+        <th>Scope</th>
+        <th>URL</th>
+        <th>Status</th>
+        <th>Updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="my-jobs-tbody">
+      {% if items and items|length > 0 %}
         {% for it in items %}
-        <tr>
+        <tr data-crawl-id="{{ it.id }}" data-status="{{ it.status }}">
+          <td><input type="checkbox" class="jobs-select" data-id="{{ it.id }}" aria-label="Select job {{ it.id }}"></td>
           <td>{{ it.scope }}</td>
           <td>
             <a href="/analysis/{{ it.id }}">
@@ -67,11 +111,21 @@
           </td>
         </tr>
         {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No jobs found.</p>
-  {% endif %}
+      {% else %}
+        <tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="mt-1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button class="btn" id="jobs-next">Next</button>
+    <small id="jobs-page-msg" role="status" aria-live="polite"></small>
+  </div>
+
+  <div id="jobs-bulk-bar" class="mt-1 hidden" role="region" aria-label="Bulk Actions" style="display:flex;gap:8px;align-items:center;">
+    <span class="small" id="jobs-bulk-count">0 selected</span>
+    <button class="btn" id="jobs-bulk-retry">Retry selected</button>
+  </div>
 </section>
 
 <section class="panel mt-2" role="region" aria-label="Products">
@@ -97,12 +151,13 @@
   <!-- Product Form Drawer -->
   <div id="product-form" class="panel mt-2 hidden" aria-hidden="true" aria-label="Product Form">
     <h3 id="pf-title">New Product</h3>
+    <div id="pf-global" class="small" role="status" aria-live="polite" style="color:#b00020;"></div>
     <div class="small">Fields marked “required” must be filled.</div>
     <div style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px; margin-top:8px;">
-      <label>Name (required)<br><input type="text" id="pf-name" placeholder="Product Name"></label>
+      <label>Name (required)<br><input type="text" id="pf-name" placeholder="Product Name" aria-describedby="pf-name-err" aria-invalid="false"><br><small id="pf-name-err" class="small" style="color:#b00020;"></small></label>
       <label>Website<br><input type="text" id="pf-website" placeholder="https://example.com"></label>
       <label>Contact Info<br><input type="text" id="pf-contact" placeholder="Jane Doe <jane@example.com>" pattern="^[^<>\\n]+ <[^<>\\s@]+@[^<>\\s@]+\\.[^<>\\s@]+>$" title="Format: Name <email@example.com>" style="width:100%"></label>
-      <label class="col-span-all">Description (required)<br><textarea id="pf-description" rows="3" style="width:100%"></textarea></label>
+      <label class="col-span-all">Description (required)<br><textarea id="pf-description" rows="3" style="width:100%" aria-describedby="pf-description-err" aria-invalid="false"></textarea><br><small id="pf-description-err" class="small" style="color:#b00020;"></small></label>
     </div>
     <div class="mt-1" role="toolbar" aria-label="Product Form Actions">
       <button class="btn" onclick="saveProduct()">Save</button>
@@ -115,6 +170,7 @@
 
 {% block scripts %}
 <script>
+var CSRF_TOKEN = "{{ csrf_token or '' }}";
 function apiJson(url, method, body) {
   return fetch(url, {
     method: method || 'GET',
@@ -129,18 +185,37 @@ function apiJson(url, method, body) {
 }
 
 function openProductForm(p){
-  document.getElementById('product-form').classList.remove('hidden');
-  document.getElementById('product-form').setAttribute('aria-hidden','false');
+  _pfLastTrigger = document.activeElement || null;
+  var pf = document.getElementById('product-form');
+  pf.classList.remove('hidden');
+  pf.setAttribute('aria-hidden','false');
   document.getElementById('pf-title').textContent = p ? 'Edit Product' : 'New Product';
   document.getElementById('pf-id').value = (p && p.id) || '';
   document.getElementById('pf-name').value = (p && p.name) || '';
   document.getElementById('pf-website').value = (p && p.website) || '';
   document.getElementById('pf-description').value = (p && p.description) || '';
   document.getElementById('pf-contact').value = (p && p.contact_info) || '';
+  var nameInput = document.getElementById('pf-name');
+  var nameErr = document.getElementById('pf-name-err');
+  var descInput = document.getElementById('pf-description');
+  var descErr = document.getElementById('pf-description-err');
+  var pfGlobal = document.getElementById('pf-global');
+  if (nameInput) nameInput.setAttribute('aria-invalid','false');
+  if (nameErr) nameErr.textContent = '';
+  if (descInput) descInput.setAttribute('aria-invalid','false');
+  if (descErr) descErr.textContent = '';
+  if (pfGlobal) pfGlobal.textContent = '';
+  try{ nameInput && nameInput.focus(); }catch(_){}
+  try{ pf.addEventListener('keydown', _productFormKeydown); }catch(_){}
 }
 function closeProductForm(){
-  document.getElementById('product-form').classList.add('hidden');
-  document.getElementById('product-form').setAttribute('aria-hidden','true');
+  var pf = document.getElementById('product-form');
+  pf.classList.add('hidden');
+  pf.setAttribute('aria-hidden','true');
+  try{ pf.removeEventListener('keydown', _productFormKeydown); }catch(_){}
+  if (_pfLastTrigger && typeof _pfLastTrigger.focus === 'function') {
+    try{ _pfLastTrigger.focus(); }catch(_){}
+  }
 }
 
 function renderProducts(items){
@@ -154,7 +229,7 @@ function renderProducts(items){
     var tr = document.createElement('tr');
     tr.innerHTML =
       '<td>'+escapeHtml(p.name||'')+'</td>'+
-      '<td>'+(p.website ? ('<a href="'+encodeURI(p.website)+'" target="_blank" rel="noopener">'+escapeHtml(p.website)+'</a>') : '-')+'</td>'+
+      '<td>'+((safeUrl(p.website||'') && p.website) ? ('<a href="'+safeUrl(p.website)+'" target="_blank" rel="noopener noreferrer">'+escapeHtml(p.website)+'</a>') : '-')+'</td>'+
       '<td><small>'+escapeHtml(p.updated_at || '')+'</small></td>'+
       '<td><small>'+escapeHtml(p.contact_info || '-')+'</small></td>'+
       '<td><button class="btn btn-sm" onclick="openProductFormFromJson(\''+encodeURIComponent(JSON.stringify(p))+'\')">Edit</button></td>';
@@ -179,10 +254,32 @@ function saveProduct(){
   var description = document.getElementById('pf-description').value.trim();
   var contact = document.getElementById('pf-contact').value.trim();
 
-  if (!name || !description) { alert('Name and Description are required'); return; }
+  var pfGlobal = document.getElementById('pf-global');
+  var nameInput = document.getElementById('pf-name');
+  var nameErr = document.getElementById('pf-name-err');
+  var descInput = document.getElementById('pf-description');
+  var descErr = document.getElementById('pf-description-err');
+  if (pfGlobal) pfGlobal.textContent = '';
+  if (nameErr) nameErr.textContent = '';
+  if (descErr) descErr.textContent = '';
+  if (nameInput) nameInput.setAttribute('aria-invalid','false');
+  if (descInput) descInput.setAttribute('aria-invalid','false');
+
+  var firstInvalid = null;
+  if (!name) {
+    if (nameErr) nameErr.textContent = 'Name is required.';
+    if (nameInput) nameInput.setAttribute('aria-invalid','true');
+    firstInvalid = firstInvalid || nameInput;
+  }
+  if (!description) {
+    if (descErr) descErr.textContent = 'Description is required.';
+    if (descInput) descInput.setAttribute('aria-invalid','true');
+    firstInvalid = firstInvalid || descInput;
+  }
+  if (firstInvalid) { try{ firstInvalid.focus(); }catch(_){}; if (pfGlobal) pfGlobal.textContent = 'Please correct the highlighted fields.'; return; }
   // Validate contact info if provided (format: Name <email@example.com>)
   if (contact && !/^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/.test(contact)) {
-    alert('Contact Info must look like: Name <email@example.com>');
+    if (pfGlobal) pfGlobal.textContent = 'Contact Info must look like: Name <email@example.com>';
     return;
   }
 
@@ -199,12 +296,21 @@ function saveProduct(){
   apiJson(url, method, body).then(function(){
     closeProductForm();
     loadProducts();
-    alert('Product saved');
+    try{ trackEvent(method === 'POST' ? 'product_create_success' : 'product_update_success'); }catch(_){}
   }).catch(function(e){
-    if (e && e.status === 400) alert('Invalid fields. Please check required fields.');
-    else if (e && e.status === 401) alert('Sign in to save products.');
-    else if (e && e.status === 409) alert('Product with this name already exists.');
-    else alert('Unable to save product.');
+    var nameInput = document.getElementById('pf-name');
+    var nameErr = document.getElementById('pf-name-err');
+    var pfGlobal = document.getElementById('pf-global');
+    if (e && e.status === 409) {
+      if (nameErr) nameErr.textContent = (e.body && e.body.detail) ? String(e.body.detail).replace(/_/g,' ') : 'Product with this name already exists.';
+      if (nameInput) { nameInput.setAttribute('aria-invalid','true'); try{nameInput.focus();}catch(_){ } }
+    } else if (e && e.status === 400) {
+      if (pfGlobal) pfGlobal.textContent = 'Invalid fields. Please check required fields.';
+    } else if (e && e.status === 401) {
+      if (pfGlobal) pfGlobal.textContent = 'Sign in to save products.';
+    } else {
+      if (pfGlobal) pfGlobal.textContent = 'Unable to save product.';
+    }
   });
 }
 
@@ -216,12 +322,411 @@ function openProductFormFromJson(js){
     openProductForm(null);
   }
 }
-// Minimal HTML escape (reused)
-function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return ({'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'}[c]);}); }
+// escapeHtml is provided globally by base.html
+
+// Safe URL helper: allow only http/https
+function safeUrl(u){
+  try {
+    var s = String(u||'').trim();
+    if (!s) return '';
+    var l = s.toLowerCase();
+    if (l.startsWith('http://') || l.startsWith('https://')) return s;
+    return '';
+  } catch(_) { return ''; }
+}
+
+// Quick Stats
+function loadQuickStats(){
+  apiJson('/api/my/quick-stats','GET').then(function(d){
+    var a = document.getElementById('qs-analyses');
+    var e = document.getElementById('qs-emails');
+    var p = document.getElementById('qs-prospects');
+    if (a) a.textContent = (d && typeof d.analyses_completed==='number') ? d.analyses_completed : '0';
+    if (e) e.textContent = (d && typeof d.emails_extracted==='number') ? d.emails_extracted : '0';
+    if (p) p.textContent = (d && typeof d.prospects_added==='number') ? d.prospects_added : '0';
+    try{ trackEvent('quick_stats_loaded'); }catch(_){}
+  }).catch(function(){ /* silent */ });
+}
+
+// Recent Completions
+function loadRecentCompletions(){
+  apiJson('/api/my/recent-completions?limit=10','GET').then(function(d){
+    var tb = document.getElementById('recent-completions-tbody');
+    if (!tb) return;
+    var items = (d && d.items) || [];
+    if (!items.length) {
+      tb.innerHTML = '<tr><td colspan="4"><em class="small">No recent completions.</em></td></tr>';
+      return;
+    }
+    tb.innerHTML = '';
+    items.forEach(function(it){
+      var tr = document.createElement('tr');
+      var urlText = it.canonical_url || ('https://' + (it.domain||''));
+      var href = '/analysis/' + it.id;
+      tr.innerHTML =
+        '<td>'+escapeHtml(it.domain||'')+'</td>'+
+        '<td><a href="'+href+'">'+escapeHtml(urlText)+'</a></td>'+
+        '<td><small>'+escapeHtml(it.updated_at||'')+'</small></td>'+
+        '<td><a class="btn btn-sm" href="'+href+'">View</a></td>';
+      tb.appendChild(tr);
+    });
+  }).catch(function(){
+    var tb = document.getElementById('recent-completions-tbody');
+    if (tb) tb.innerHTML = '<tr><td colspan="4"><em class="small">Unable to load.</em></td></tr>';
+  });
+}
+
+// Active Jobs polling
+var _activeJobsTimer = null;
+function collectActiveJobs(){
+  var list = document.getElementById('active-jobs-list');
+  var empty = document.getElementById('active-jobs-empty');
+  if (!list) return [];
+  list.innerHTML = '';
+  var rows = document.querySelectorAll('tbody tr[data-crawl-id][data-status="running"]');
+  var ids = [];
+  rows.forEach(function(row){
+    var id = row.getAttribute('data-crawl-id');
+    if (!id) return;
+    ids.push(id);
+    var item = document.createElement('div');
+    item.setAttribute('data-crawl-id', id);
+    item.innerHTML =
+      '<div class="small"><code>'+escapeHtml(id)+'</code></div>'+
+      '<div class="progress" style="background:#eee;height:10px;border-radius:4px;overflow:hidden;margin:4px 0;">'+
+        '<div id="pb-'+id+'" class="progress-bar" style="width:0%;height:10px;background:#4caf50;"></div>'+
+      '</div>'+
+      '<div class="small">Last updated: <span id="pbt-'+id+'">—</span></div>';
+    list.appendChild(item);
+  });
+  if (empty) empty.style.display = ids.length ? 'none' : '';
+  return ids;
+}
+
+function tickActiveJobs(ids){
+  if (!ids || !ids.length) return;
+  ids.forEach(function(id){
+    apiJson('/api/progress/'+encodeURIComponent(id),'GET').then(function(d){
+      var pb = document.getElementById('pb-'+id);
+      var pbt = document.getElementById('pbt-'+id);
+      if (pb) {
+        var visited = (d && typeof d.visited_pages==='number') ? d.visited_pages : 0;
+        var maxp =  (d && d.limits && typeof d.limits.max_pages==='number') ? d.limits.max_pages : null;
+        var pct = (maxp && maxp>0) ? Math.min(100, Math.floor((visited/maxp)*100)) : 0;
+        pb.style.width = pct+'%';
+      }
+      if (pbt) { pbt.textContent = (d && d.last_updated) ? d.last_updated : ''; }
+    }).catch(function(){ /* ignore */ });
+  });
+}
+
+function setupActiveJobsPolling(){
+  var ids = collectActiveJobs();
+  if (_activeJobsTimer) { clearInterval(_activeJobsTimer); _activeJobsTimer = null; }
+  if (ids.length) {
+    tickActiveJobs(ids);
+    _activeJobsTimer = setInterval(function(){ tickActiveJobs(ids); try{ trackEvent('job_poll_tick'); }catch(_){} }, 4000);
+  }
+}
+
+// Jobs (Phase 2) — filters, keyset pagination, and bulk retry
+var _jobsState = { status:'', q:'', cursor:null, limit:25 };
+function _qsSet(params){
+  try{
+    var usp = new URLSearchParams(window.location.search);
+    Object.keys(params||{}).forEach(function(k){
+      var v = params[k];
+      if (v==null || v==='') usp.delete(k); else usp.set(k, v);
+    });
+    var url = window.location.pathname + '?' + usp.toString();
+    window.history.replaceState({}, '', url);
+  }catch(_){}
+}
+function _readInitialJobsState(){
+  try{
+    var usp = new URLSearchParams(window.location.search);
+    _jobsState.status = usp.get('status') || '';
+    _jobsState.q = usp.get('q') || '';
+    _jobsState.cursor = usp.get('cursor') || null;
+    var sel = document.getElementById('jobs-status'); if (sel) sel.value = _jobsState.status;
+    var q = document.getElementById('jobs-q'); if (q) q.value = _jobsState.q;
+  }catch(_){}
+}
+function renderJobsList(items){
+  var tb = document.getElementById('my-jobs-tbody'); if (!tb) return;
+  if (!items || !items.length) {
+    tb.innerHTML = '<tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>';
+    var selAll = document.getElementById('jobs-select-all'); if (selAll) selAll.checked = false;
+    updateJobsBulkBar();
+    return;
+  }
+  tb.innerHTML = '';
+  items.forEach(function(it){
+    var tr = document.createElement('tr');
+    tr.setAttribute('data-crawl-id', it.id || '');
+    tr.setAttribute('data-status', it.status || '');
+    var urlText = it.canonical_url || ((it.domain||'') + (it.path||'') + ((it.query && ('?'+it.query)) || ''));
+    tr.innerHTML =
+      '<td><input type="checkbox" class="jobs-select" data-id="'+escapeHtml(it.id||'')+'" aria-label="Select job '+escapeHtml(it.id||'')+'"></td>'+
+      '<td>'+escapeHtml(it.scope||'')+'</td>'+
+      '<td><a href="/analysis/'+escapeHtml(it.id||'')+'">'+escapeHtml(urlText)+'</a></td>'+
+      '<td>'+escapeHtml(it.status||'')+'</td>'+
+      '<td><small>'+escapeHtml(it.updated_at||'')+'</small></td>'+
+      '<td>'+((it.status||'')!=='running'
+        ? '<form method="post" action="/retry/'+escapeHtml(it.id||'')+'" class="inline">'
+          + (CSRF_TOKEN ? '<input type="hidden" name="csrf_token" value="'+escapeHtml(CSRF_TOKEN)+'">' : '')
+          + '<button type="submit" class="btn">Retry</button></form>'
+        : '<em>Running</em>')+'</td>';
+    tb.appendChild(tr);
+  });
+  attachJobsSelectionHandlers();
+  setupActiveJobsPolling();
+}
+function attachJobsSelectionHandlers(){
+  var selAll = document.getElementById('jobs-select-all');
+  var boxes = document.querySelectorAll('input.jobs-select');
+  if (selAll){
+    selAll.onchange = function(){ boxes.forEach(function(b){ b.checked = !!selAll.checked; }); updateJobsBulkBar(); };
+  }
+  boxes.forEach(function(b){ b.onchange = updateJobsBulkBar; });
+  updateJobsBulkBar();
+}
+function updateJobsBulkBar(){
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input.jobs-select'));
+  var selected = boxes.filter(function(b){ return b.checked; });
+  var bar = document.getElementById('jobs-bulk-bar');
+  var cnt = document.getElementById('jobs-bulk-count');
+  if (cnt) cnt.textContent = (selected.length || 0) + ' selected';
+  if (bar) {
+    if (selected.length > 0) { bar.classList.remove('hidden'); }
+    else { bar.classList.add('hidden'); }
+  }
+}
+function fetchJobs(next){
+  var msg = document.getElementById('jobs-status-msg');
+  var pageMsg = document.getElementById('jobs-page-msg');
+  if (msg) msg.textContent = 'Loading…';
+  var url = new URL('/api/my/jobs', window.location.origin);
+  var status = _jobsState.status || '';
+  var q = _jobsState.q || '';
+  var cursor = (next===true) ? (_jobsState.cursor || null) : null; // when applying filters, reset cursor
+  if (status) url.searchParams.set('status', status);
+  if (q) url.searchParams.set('q', q);
+  if (cursor) url.searchParams.set('cursor', cursor);
+  url.searchParams.set('limit', String(_jobsState.limit||25));
+  apiJson(url.pathname + '?' + url.searchParams.toString(), 'GET').then(function(res){
+    var items = (res && res.items) || [];
+    renderJobsList(items);
+    var nc = (res && res.next_cursor) || null;
+    _jobsState.cursor = nc;
+    if (msg) msg.textContent = items.length + ' jobs';
+    if (pageMsg) pageMsg.textContent = nc ? 'More available' : '';
+    _qsSet({ status: status || null, q: q || null, cursor: null });
+  }).catch(function(){
+    if (msg) msg.textContent = 'Unable to load jobs.';
+  });
+}
+function applyJobFilters(){
+  var sel = document.getElementById('jobs-status');
+  var q = document.getElementById('jobs-q');
+  _jobsState.status = (sel && sel.value) || '';
+  _jobsState.q = (q && q.value) || '';
+  _jobsState.cursor = null;
+  fetchJobs(false);
+}
+function nextJobsPage(){
+  if (!_jobsState.cursor) return;
+  // Keep current filters; fetch next page and update cursor
+  var msg = document.getElementById('jobs-status-msg'); if (msg) msg.textContent = 'Loading…';
+  var url = new URL('/api/my/jobs', window.location.origin);
+  if (_jobsState.status) url.searchParams.set('status', _jobsState.status);
+  if (_jobsState.q) url.searchParams.set('q', _jobsState.q);
+  if (_jobsState.cursor) url.searchParams.set('cursor', _jobsState.cursor);
+  url.searchParams.set('limit', String(_jobsState.limit||25));
+  apiJson(url.pathname + '?' + url.searchParams.toString(), 'GET').then(function(res){
+    var items = (res && res.items) || [];
+    renderJobsList(items);
+    _jobsState.cursor = (res && res.next_cursor) || null;
+    var pageMsg = document.getElementById('jobs-page-msg');
+    if (pageMsg) pageMsg.textContent = _jobsState.cursor ? 'More available' : '';
+    var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = items.length + ' jobs';
+    _qsSet({ status: _jobsState.status || null, q: _jobsState.q || null, cursor: _jobsState.cursor || null });
+  }).catch(function(){
+    var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = 'Unable to load jobs.';
+  });
+}
+function bulkRetry(){
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input.jobs-select'));
+  var ids = boxes.filter(function(b){ return b.checked; }).map(function(b){ return b.getAttribute('data-id'); });
+  if (!ids.length) return;
+  try{ trackEvent('bulk_retry_click'); }catch(_){}
+  apiJson('/api/my/jobs/bulk','POST',{ operation:'retry', ids: ids }).then(function(res){
+    // Refresh list to reflect pending statuses
+    fetchJobs(false);
+  }).catch(function(){ /* ignore */ });
+}
+
+// Drawer focus management (basic)
+var _pfLastTrigger = null;
+function _productFormKeydown(e){
+  if (e.key === 'Escape') { try{ closeProductForm(); }catch(_){} }
+  if (e.key === 'Tab') {
+    var pf = document.getElementById('product-form');
+    var focusable = pf.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
+    focusable = Array.prototype.slice.call(focusable).filter(function(el){ return !el.disabled && el.offsetParent !== null; });
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+  }
+}
+
+// Jobs (Phase 2) — filters, keyset pagination, and bulk retry
+var _jobsState = { status:'', q:'', cursor:null, limit:25 };
+function _qsSet(params){
+  try{
+    var usp = new URLSearchParams(window.location.search);
+    Object.keys(params||{}).forEach(function(k){
+      var v = params[k];
+      if (v==null || v==='') usp.delete(k); else usp.set(k, v);
+    });
+    var url = window.location.pathname + '?' + usp.toString();
+    window.history.replaceState({}, '', url);
+  }catch(_){}
+}
+function _readInitialJobsState(){
+  try{
+    var usp = new URLSearchParams(window.location.search);
+    _jobsState.status = usp.get('status') || '';
+    _jobsState.q = usp.get('q') || '';
+    _jobsState.cursor = usp.get('cursor') || null;
+    var sel = document.getElementById('jobs-status'); if (sel) sel.value = _jobsState.status;
+    var q = document.getElementById('jobs-q'); if (q) q.value = _jobsState.q;
+  }catch(_){}
+}
+function renderJobsList(items){
+  var tb = document.getElementById('my-jobs-tbody'); if (!tb) return;
+  if (!items || !items.length) {
+    tb.innerHTML = '<tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>';
+    document.getElementById('jobs-select-all').checked = false;
+    updateJobsBulkBar();
+    return;
+  }
+  tb.innerHTML = '';
+  items.forEach(function(it){
+    var tr = document.createElement('tr');
+    tr.setAttribute('data-crawl-id', it.id || '');
+    tr.setAttribute('data-status', it.status || '');
+    var urlText = it.canonical_url || ((it.domain||'') + (it.path||'') + ((it.query && ('?'+it.query)) || ''));
+    tr.innerHTML =
+      '<td><input type="checkbox" class="jobs-select" data-id="'+escapeHtml(it.id||'')+'" aria-label="Select job '+escapeHtml(it.id||'')+'"></td>'+
+      '<td>'+escapeHtml(it.scope||'')+'</td>'+
+      '<td><a href="/analysis/'+escapeHtml(it.id||'')+'">'+escapeHtml(urlText)+'</a></td>'+
+      '<td>'+escapeHtml(it.status||'')+'</td>'+
+      '<td><small>'+escapeHtml(it.updated_at||'')+'</small></td>'+
+      '<td>'+((it.status||'')!=='running' ? '<form method="post" action="/retry/'+escapeHtml(it.id||'')+'" class="inline"><button type="submit" class="btn">Retry</button></form>' : '<em>Running</em>')+'</td>';
+    tb.appendChild(tr);
+  });
+  attachJobsSelectionHandlers();
+  setupActiveJobsPolling();
+}
+function attachJobsSelectionHandlers(){
+  var selAll = document.getElementById('jobs-select-all');
+  var boxes = document.querySelectorAll('input.jobs-select');
+  if (selAll){
+    selAll.onchange = function(){ boxes.forEach(function(b){ b.checked = !!selAll.checked; }); updateJobsBulkBar(); };
+  }
+  boxes.forEach(function(b){ b.onchange = updateJobsBulkBar; });
+  updateJobsBulkBar();
+}
+function updateJobsBulkBar(){
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input.jobs-select'));
+  var selected = boxes.filter(function(b){ return b.checked; });
+  var bar = document.getElementById('jobs-bulk-bar');
+  var cnt = document.getElementById('jobs-bulk-count');
+  if (cnt) cnt.textContent = (selected.length || 0) + ' selected';
+  if (bar) {
+    if (selected.length > 0) { bar.classList.remove('hidden'); }
+    else { bar.classList.add('hidden'); }
+  }
+}
+function fetchJobs(next){
+  var msg = document.getElementById('jobs-status-msg');
+  var pageMsg = document.getElementById('jobs-page-msg');
+  if (msg) msg.textContent = 'Loading…';
+  var url = new URL('/api/my/jobs', window.location.origin);
+  var status = _jobsState.status || '';
+  var q = _jobsState.q || '';
+  var cursor = (next===true) ? (_jobsState.cursor || null) : null; // when applying filters, reset cursor
+  if (status) url.searchParams.set('status', status);
+  if (q) url.searchParams.set('q', q);
+  if (cursor) url.searchParams.set('cursor', cursor);
+  url.searchParams.set('limit', String(_jobsState.limit||25));
+  apiJson(url.pathname + '?' + url.searchParams.toString(), 'GET').then(function(res){
+    var items = (res && res.items) || [];
+    renderJobsList(items);
+    var nc = (res && res.next_cursor) || null;
+    _jobsState.cursor = nc;
+    if (msg) msg.textContent = items.length + ' jobs';
+    if (pageMsg) pageMsg.textContent = nc ? 'More available' : '';
+    _qsSet({ status: status || null, q: q || null, cursor: null });
+  }).catch(function(){
+    if (msg) msg.textContent = 'Unable to load jobs.';
+  });
+}
+function applyJobFilters(){
+  var sel = document.getElementById('jobs-status');
+  var q = document.getElementById('jobs-q');
+  _jobsState.status = (sel && sel.value) || '';
+  _jobsState.q = (q && q.value) || '';
+  _jobsState.cursor = null;
+  fetchJobs(false);
+}
+function nextJobsPage(){
+  if (!_jobsState.cursor) return;
+  // Keep current filters; fetch next page and update cursor
+  var msg = document.getElementById('jobs-status-msg'); if (msg) msg.textContent = 'Loading…';
+  var url = new URL('/api/my/jobs', window.location.origin);
+  if (_jobsState.status) url.searchParams.set('status', _jobsState.status);
+  if (_jobsState.q) url.searchParams.set('q', _jobsState.q);
+  if (_jobsState.cursor) url.searchParams.set('cursor', _jobsState.cursor);
+  url.searchParams.set('limit', String(_jobsState.limit||25));
+  apiJson(url.pathname + '?' + url.searchParams.toString(), 'GET').then(function(res){
+    var items = (res && res.items) || [];
+    renderJobsList(items);
+    _jobsState.cursor = (res && res.next_cursor) || null;
+    var pageMsg = document.getElementById('jobs-page-msg');
+    if (pageMsg) pageMsg.textContent = _jobsState.cursor ? 'More available' : '';
+    var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = items.length + ' jobs';
+    _qsSet({ status: _jobsState.status || null, q: _jobsState.q || null, cursor: _jobsState.cursor || null });
+  }).catch(function(){
+    var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = 'Unable to load jobs.';
+  });
+}
+function bulkRetry(){
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input.jobs-select'));
+  var ids = boxes.filter(function(b){ return b.checked; }).map(function(b){ return b.getAttribute('data-id'); });
+  if (!ids.length) return;
+  try{ trackEvent('bulk_retry_click'); }catch(_){}
+  apiJson('/api/my/jobs/bulk','POST',{ operation:'retry', ids: ids }).then(function(res){
+    // Refresh list to reflect pending statuses
+    fetchJobs(false);
+  }).catch(function(){ /* ignore */ });
+}
 
 // Init
 (function(){
+  try{ trackEvent('dashboard_view'); }catch(_){}
   loadProducts();
+  loadQuickStats();
+  loadRecentCompletions();
+  _readInitialJobsState();
+  var applyBtn = document.getElementById('jobs-apply'); if (applyBtn) applyBtn.addEventListener('click', applyJobFilters);
+  var nextBtn = document.getElementById('jobs-next'); if (nextBtn) nextBtn.addEventListener('click', nextJobsPage);
+  var bulkBtn = document.getElementById('jobs-bulk-retry'); if (bulkBtn) bulkBtn.addEventListener('click', bulkRetry);
+  // Initial fetch to ensure server-side table is synced with filters (if any)
+  fetchJobs(false);
+  setupActiveJobsPolling();
 })();
 </script>
 {% endblock %}
