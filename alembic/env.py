@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 # Import target metadata from the app
 from webapp import models as app_models
+
+from alembic import context
 
 # This is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
