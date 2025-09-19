@@ -1,7 +1,7 @@
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -10,6 +10,11 @@ from sqlalchemy import func
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl, CrawlEmail, Prospect
+
+# Treat SQLAlchemy declarative models as Any for type checkers to avoid circular/forward-ref analysis issues
+Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
+CrawlEmail = cast(Any, CrawlEmail)  # pyright: ignore[reportGeneralTypeIssues]
+Prospect = cast(Any, Prospect)  # pyright: ignore[reportGeneralTypeIssues]
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -40,7 +45,7 @@ async def my_jobs(
         page_size = 25
 
     with get_session() as s:
-        rows_db: List[Crawl] = (
+        rows_db: List[Any] = (
             s.query(Crawl)
             .filter(Crawl.user_id == user.id)
             .order_by(Crawl.updated_at.desc(), Crawl.id.desc())
@@ -271,42 +276,6 @@ async def my_quick_stats(request: Request):
         "emails_extracted": int(emails_extracted or 0),
         "prospects_added": int(prospects_added or 0),
     }
-
-
-@router.get("/api/my/recent-completions")
-async def my_recent_completions(request: Request, limit: int = 10):
-    """Return recent succeeded jobs for the user in the last 7 days."""
-    user = await require_auth(request)
-    try:
-        limit = int(limit)
-    except Exception:
-        limit = 10
-    limit = max(1, min(50, limit))
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=7)
-    with get_session() as s:
-        rows = (
-            s.query(Crawl)
-            .filter(
-                Crawl.user_id == user.id,
-                Crawl.status == "succeeded",
-                Crawl.updated_at >= cutoff,
-            )
-            .order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-            .limit(limit)
-            .all()
-        )
-    items = []
-    for r in rows:
-        items.append(
-            {
-                "id": r.id,
-                "domain": r.domain,
-                "canonical_url": r.canonical_url,
-                "updated_at": (r.updated_at or now).isoformat(),
-            }
-        )
-    return {"items": items}
 
 
 @router.get("/api/my/jobs")

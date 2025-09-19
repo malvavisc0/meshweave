@@ -46,13 +46,6 @@
   <div id="active-jobs-list"></div>
 </section>
 
-<section class="panel mt-2" role="region" aria-label="Recent Completions">
-  <h2>Recent Completions</h2>
-  <table class="table" aria-label="Recent Completions">
-    <thead><tr><th>Domain</th><th>URL</th><th>Updated</th><th>Actions</th></tr></thead>
-    <tbody id="recent-completions-tbody"><tr><td colspan="4"><em class="small">Loading…</em></td></tr></tbody>
-  </table>
-</section>
 
 <section class="panel mt-2" role="region" aria-label="My Jobs">
   <h2>My Jobs</h2>
@@ -348,33 +341,6 @@ function loadQuickStats(){
   }).catch(function(){ /* silent */ });
 }
 
-// Recent Completions
-function loadRecentCompletions(){
-  apiJson('/api/my/recent-completions?limit=10','GET').then(function(d){
-    var tb = document.getElementById('recent-completions-tbody');
-    if (!tb) return;
-    var items = (d && d.items) || [];
-    if (!items.length) {
-      tb.innerHTML = '<tr><td colspan="4"><em class="small">No recent completions.</em></td></tr>';
-      return;
-    }
-    tb.innerHTML = '';
-    items.forEach(function(it){
-      var tr = document.createElement('tr');
-      var urlText = it.canonical_url || ('https://' + (it.domain||''));
-      var href = '/analysis/' + it.id;
-      tr.innerHTML =
-        '<td>'+escapeHtml(it.domain||'')+'</td>'+
-        '<td><a href="'+href+'">'+escapeHtml(urlText)+'</a></td>'+
-        '<td><small>'+escapeHtml(it.updated_at||'')+'</small></td>'+
-        '<td><a class="btn btn-sm" href="'+href+'">View</a></td>';
-      tb.appendChild(tr);
-    });
-  }).catch(function(){
-    var tb = document.getElementById('recent-completions-tbody');
-    if (tb) tb.innerHTML = '<tr><td colspan="4"><em class="small">Unable to load.</em></td></tr>';
-  });
-}
 
 // Active Jobs polling
 var _activeJobsTimer = null;
@@ -719,7 +685,6 @@ function bulkRetry(){
   try{ trackEvent('dashboard_view'); }catch(_){}
   loadProducts();
   loadQuickStats();
-  loadRecentCompletions();
   _readInitialJobsState();
   var applyBtn = document.getElementById('jobs-apply'); if (applyBtn) applyBtn.addEventListener('click', applyJobFilters);
   var nextBtn = document.getElementById('jobs-next'); if (nextBtn) nextBtn.addEventListener('click', nextJobsPage);
