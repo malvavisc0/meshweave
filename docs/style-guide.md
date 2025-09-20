@@ -40,6 +40,9 @@ Location of stylesheet:
   - Info
     - `--info-weak`: #E0F7FA
     - `--info`: #0F9BA8
+  - Background pattern
+    - `--bg-grid-size`: 24px
+    - `--bg-grid-color`: rgba(231,237,233,0.25)
 - Shadows
   - `--shadow-1`: 0 10px 30px rgba(0,0,0,0.12)
   - `--shadow-2`: 0 6px 20px rgba(0,0,0,0.10)
@@ -47,7 +50,7 @@ Location of stylesheet:
   - `--focus-ring`: 0 0 0 3px rgba(15,155,168,0.45)
 
 2) Base Elements
-- Body uses the Plus Jakarta Sans font stack (`'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`), line-height 1.45, tinted neutral background var(--bg), color var(--fg); edge-to-edge layout (no horizontal body padding)
+- Body uses the Plus Jakarta Sans font stack (`'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`), line-height 1.45, tinted neutral background var(--bg) with a subtle grid pattern, color var(--fg); edge-to-edge layout (no horizontal body padding). To disable the pattern on a specific page, add class "no-bg-pattern" to the body element.
 - Links are brand-colored; hover underlines
 - Code tags have subtle gray background and small padding
 - Headings
