@@ -72,7 +72,7 @@ async def my_jobs(
         )
 
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
-    page_title = f"My Jobs — {site_name}"
+    page_title = f"My Dashboard — {site_name}"
     meta_description = "Your recent crawls."
 
     # CSRF token for retry forms on this page
@@ -239,10 +239,8 @@ async def retry_crawl(
 
 @router.get("/api/my/quick-stats")
 async def my_quick_stats(request: Request):
-    """Aggregate user metrics for last 30 days: analyses_completed, emails_extracted, prospects_added."""
+    """Aggregate user metrics (all time): analyses_completed, emails_extracted, prospects_added."""
     user = await require_auth(request)
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=30)
     analyses_completed = 0
     emails_extracted = 0
     prospects_added = 0
@@ -252,7 +250,6 @@ async def my_quick_stats(request: Request):
             .filter(
                 Crawl.user_id == user.id,
                 Crawl.status == "succeeded",
-                Crawl.updated_at >= cutoff,
             )
             .count()
         )
@@ -261,14 +258,13 @@ async def my_quick_stats(request: Request):
             .join(Crawl, CrawlEmail.crawl_id == Crawl.id)
             .filter(
                 Crawl.user_id == user.id,
-                CrawlEmail.created_at >= cutoff,
             )
             .scalar()
             or 0
         )
         prospects_added = (
             s.query(Prospect)
-            .filter(Prospect.user_id == user.id, Prospect.created_at >= cutoff)
+            .filter(Prospect.user_id == user.id)
             .count()
         )
     return {

@@ -15,6 +15,7 @@ from . import (
     progress,
     prospects,
     submissions,
+    products,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "prospects",
     "submissions",
     "legal",
+    "products",
 ]

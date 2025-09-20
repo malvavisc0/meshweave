@@ -4,162 +4,8 @@
 
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     var _activeJobsTimer = null;
-    var _pfLastTrigger = null;
     var _jobsState = { status: '', q: '', cursor: null, limit: 25 };
 
-    // Product management functions
-    function openProductForm(p) {
-        _pfLastTrigger = document.activeElement || null;
-        var pf = document.getElementById('product-form');
-        pf.classList.remove('hidden');
-        pf.setAttribute('aria-hidden', 'false');
-        document.getElementById('pf-title').textContent = p ? 'Edit Product' : 'New Product';
-        document.getElementById('pf-id').value = (p && p.id) || '';
-        document.getElementById('pf-name').value = (p && p.name) || '';
-        document.getElementById('pf-website').value = (p && p.website) || '';
-        document.getElementById('pf-description').value = (p && p.description) || '';
-        document.getElementById('pf-contact').value = (p && p.contact_info) || '';
-        var nameInput = document.getElementById('pf-name');
-        var nameErr = document.getElementById('pf-name-err');
-        var descInput = document.getElementById('pf-description');
-        var descErr = document.getElementById('pf-description-err');
-        var pfGlobal = document.getElementById('pf-global');
-        if (nameInput) nameInput.setAttribute('aria-invalid', 'false');
-        if (nameErr) nameErr.textContent = '';
-        if (descInput) descInput.setAttribute('aria-invalid', 'false');
-        if (descErr) descErr.textContent = '';
-        if (pfGlobal) pfGlobal.textContent = '';
-        try { nameInput && nameInput.focus(); } catch (_) { }
-        try { pf.addEventListener('keydown', _productFormKeydown); } catch (_) { }
-    }
-
-    function closeProductForm() {
-        var pf = document.getElementById('product-form');
-        pf.classList.add('hidden');
-        pf.setAttribute('aria-hidden', 'true');
-        try { pf.removeEventListener('keydown', _productFormKeydown); } catch (_) { }
-        if (_pfLastTrigger && typeof _pfLastTrigger.focus === 'function') {
-            try { _pfLastTrigger.focus(); } catch (_) { }
-        }
-    }
-
-    function renderProducts(items) {
-        var tb = document.getElementById('products-tbody');
-        if (!tb) return;
-        if (!items || !items.length) {
-            tb.innerHTML = '<tr><td colspan="5"><em class="small">No products yet. Click "New Product".</em></td></tr>';
-            return;
-        }
-        tb.innerHTML = '';
-        items.forEach(function (p) {
-            var tr = document.createElement('tr');
-            tr.innerHTML =
-                '<td>' + escapeHtml(p.name || '') + '</td>' +
-                '<td>' + ((safeUrl(p.website || '') && p.website) ? ('<a href="' + safeUrl(p.website) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(p.website) + '</a>') : '-') + '</td>' +
-                '<td><small>' + escapeHtml(p.updated_at || '') + '</small></td>' +
-                '<td><small>' + escapeHtml(p.contact_info || '-') + '</small></td>' +
-                '<td><button class="btn btn-sm" onclick="openProductFormFromJson(\'' + encodeURIComponent(JSON.stringify(p)) + '\')">Edit</button></td>';
-            tb.appendChild(tr);
-        });
-    }
-
-    function loadProducts() {
-        apiJson('/api/products', 'GET').then(function (res) {
-            renderProducts((res && res.items) || []);
-        }).catch(function (e) {
-            var tb = document.getElementById('products-tbody');
-            if (tb) {
-                tb.innerHTML = '<tr><td colspan="5"><em class="small">Sign in to manage products.</em></td></tr>';
-            }
-        });
-    }
-
-    function saveProduct() {
-        var id = document.getElementById('pf-id').value.trim();
-        var name = document.getElementById('pf-name').value.trim();
-        var website = document.getElementById('pf-website').value.trim();
-        var description = document.getElementById('pf-description').value.trim();
-        var contact = document.getElementById('pf-contact').value.trim();
-
-        var pfGlobal = document.getElementById('pf-global');
-        var nameInput = document.getElementById('pf-name');
-        var nameErr = document.getElementById('pf-name-err');
-        var descInput = document.getElementById('pf-description');
-        var descErr = document.getElementById('pf-description-err');
-        if (pfGlobal) pfGlobal.textContent = '';
-        if (nameErr) nameErr.textContent = '';
-        if (descErr) descErr.textContent = '';
-        if (nameInput) nameInput.setAttribute('aria-invalid', 'false');
-        if (descInput) descInput.setAttribute('aria-invalid', 'false');
-
-        var firstInvalid = null;
-        if (!name) {
-            if (nameErr) nameErr.textContent = 'Name is required.';
-            if (nameInput) nameInput.setAttribute('aria-invalid', 'true');
-            firstInvalid = firstInvalid || nameInput;
-        }
-        if (!description) {
-            if (descErr) descErr.textContent = 'Description is required.';
-            if (descInput) descInput.setAttribute('aria-invalid', 'true');
-            firstInvalid = firstInvalid || descInput;
-        }
-        if (firstInvalid) { try { firstInvalid.focus(); } catch (_) { }; if (pfGlobal) pfGlobal.textContent = 'Please correct the highlighted fields.'; return; }
-        // Validate contact info if provided (format: Name <email@example.com>)
-        if (contact && !/^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/.test(contact)) {
-            if (pfGlobal) pfGlobal.textContent = 'Contact Info must look like: Name <email@example.com>';
-            return;
-        }
-
-        var body = {
-            name: name,
-            website: website || null,
-            description: description,
-            contact_info: contact || null
-        };
-
-        var url = '/api/products' + (id ? ('/' + encodeURIComponent(id)) : '');
-        var method = id ? 'PUT' : 'POST';
-
-        apiJson(url, method, body).then(function () {
-            closeProductForm();
-            loadProducts();
-            try { trackEvent(method === 'POST' ? 'product_create_success' : 'product_update_success'); } catch (_) { }
-        }).catch(function (e) {
-            var nameInput = document.getElementById('pf-name');
-            var nameErr = document.getElementById('pf-name-err');
-            var pfGlobal = document.getElementById('pf-global');
-            if (e && e.status === 409) {
-                if (nameErr) nameErr.textContent = (e.body && e.body.detail) ? String(e.body.detail).replace(/_/g, ' ') : 'Product with this name already exists.';
-                if (nameInput) { nameInput.setAttribute('aria-invalid', 'true'); try { nameInput.focus(); } catch (_) { } }
-            } else if (e && e.status === 400) {
-                if (pfGlobal) pfGlobal.textContent = 'Invalid fields. Please check required fields.';
-            } else if (e && e.status === 401) {
-                if (pfGlobal) pfGlobal.textContent = 'Sign in to save products.';
-            } else {
-                if (pfGlobal) pfGlobal.textContent = 'Unable to save product.';
-            }
-        });
-    }
-
-    function openProductFormFromJson(js) {
-        try {
-            var p = JSON.parse(decodeURIComponent(js));
-            openProductForm(p);
-        } catch (_) {
-            openProductForm(null);
-        }
-    }
-
-    // Safe URL helper: allow only http/https
-    function safeUrl(u) {
-        try {
-            var s = String(u || '').trim();
-            if (!s) return '';
-            var l = s.toLowerCase();
-            if (l.startsWith('http://') || l.startsWith('https://')) return s;
-            return '';
-        } catch (_) { return ''; }
-    }
 
     // Quick Stats
     function loadQuickStats() {
@@ -303,7 +149,25 @@
             else { bar.classList.add('hidden'); }
         }
     }
-
+ 
+    // Show/hide and enable/disable the Next button based on presence of a next cursor
+    function _setNextButtonAvailability(hasNext) {
+        var nextBtn = document.getElementById('jobs-next');
+        var pageMsg = document.getElementById('jobs-page-msg');
+        if (nextBtn) {
+            if (hasNext) {
+                nextBtn.classList.remove('hidden');
+                nextBtn.disabled = false;
+                nextBtn.setAttribute('aria-disabled', 'false');
+            } else {
+                nextBtn.classList.add('hidden');
+                nextBtn.disabled = true;
+                nextBtn.setAttribute('aria-disabled', 'true');
+            }
+        }
+        if (pageMsg) pageMsg.textContent = hasNext ? 'More available' : '';
+    }
+ 
     function fetchJobs(next) {
         var msg = document.getElementById('jobs-status-msg');
         var pageMsg = document.getElementById('jobs-page-msg');
@@ -322,10 +186,11 @@
             var nc = (res && res.next_cursor) || null;
             _jobsState.cursor = nc;
             if (msg) msg.textContent = items.length + ' jobs';
-            if (pageMsg) pageMsg.textContent = nc ? 'More available' : '';
+            _setNextButtonAvailability(!!nc);
             _qsSet({ status: status || null, q: q || null, cursor: null });
         }).catch(function () {
             if (msg) msg.textContent = 'Unable to load jobs.';
+            _setNextButtonAvailability(false);
         });
     }
 
@@ -351,12 +216,12 @@
             var items = (res && res.items) || [];
             renderJobsList(items);
             _jobsState.cursor = (res && res.next_cursor) || null;
-            var pageMsg = document.getElementById('jobs-page-msg');
-            if (pageMsg) pageMsg.textContent = _jobsState.cursor ? 'More available' : '';
+            _setNextButtonAvailability(!!_jobsState.cursor);
             var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = items.length + ' jobs';
             _qsSet({ status: _jobsState.status || null, q: _jobsState.q || null, cursor: _jobsState.cursor || null });
         }).catch(function () {
             var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = 'Unable to load jobs.';
+            _setNextButtonAvailability(false);
         });
     }
 
@@ -371,39 +236,22 @@
         }).catch(function () { /* ignore */ });
     }
 
-    // Drawer focus management
-    function _productFormKeydown(e) {
-        if (e.key === 'Escape') { try { closeProductForm(); } catch (_) { } }
-        if (e.key === 'Tab') {
-            var pf = document.getElementById('product-form');
-            var focusable = pf.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
-            focusable = Array.prototype.slice.call(focusable).filter(function (el) { return !el.disabled && el.offsetParent !== null; });
-            if (!focusable.length) return;
-            var first = focusable[0], last = focusable[focusable.length - 1];
-            if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
-            else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
-        }
-    }
 
     // Initialize the dashboard
     function initDashboard() {
         try { trackEvent('dashboard_view'); } catch (_) { }
-        loadProducts();
         loadQuickStats();
         _readInitialJobsState();
         var applyBtn = document.getElementById('jobs-apply'); if (applyBtn) applyBtn.addEventListener('click', applyJobFilters);
         var nextBtn = document.getElementById('jobs-next'); if (nextBtn) nextBtn.addEventListener('click', nextJobsPage);
         var bulkBtn = document.getElementById('jobs-bulk-retry'); if (bulkBtn) bulkBtn.addEventListener('click', bulkRetry);
+        // Hide "Next" until we know more
+        _setNextButtonAvailability(false);
         // Initial fetch to ensure server-side table is synced with filters (if any)
         fetchJobs(false);
         setupActiveJobsPolling();
     }
 
-    // Expose functions to global scope for HTML onclick attributes
-    window.openProductForm = openProductForm;
-    window.closeProductForm = closeProductForm;
-    window.saveProduct = saveProduct;
-    window.openProductFormFromJson = openProductFormFromJson;
 
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {

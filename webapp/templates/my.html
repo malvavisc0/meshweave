@@ -32,7 +32,7 @@
 {% endif %}
 
 <section class="panel mt-2" role="region" aria-label="Quick Stats">
-  <h2>Quick Stats (last 30 days)</h2>
+  <h2>Quick Stats</h2>
   <div id="quick-stats" class="grid-3">
     <div class="card"><div class="label">Analyses</div><div class="value" id="qs-analyses">–</div></div>
     <div class="card"><div class="label">Emails</div><div class="value" id="qs-emails">–</div></div>
@@ -111,7 +111,7 @@
   </table>
 
   <div class="mt-1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-    <button class="btn" id="jobs-next">Next</button>
+    <button class="btn hidden" id="jobs-next" aria-disabled="true">Next</button>
     <small id="jobs-page-msg" role="status" aria-live="polite"></small>
   </div>
 
@@ -121,44 +121,6 @@
   </div>
 </section>
 
-<section class="panel mt-2" role="region" aria-label="Products">
-  <h2>Products</h2>
-  <div class="actions" role="toolbar" aria-label="Product Actions">
-    <button type="button" class="btn btn-primary" onclick="openProductForm()">New Product</button>
-  </div>
-  <table class="table mt-1" aria-label="Products Table">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Website</th>
-        <th>Updated</th>
-        <th>Contact Info</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="products-tbody">
-      <tr><td colspan="5"><em class="small">Loading…</em></td></tr>
-    </tbody>
-  </table>
-
-  <!-- Product Form Drawer -->
-  <div id="product-form" class="panel mt-2 hidden" aria-hidden="true" aria-label="Product Form">
-    <h3 id="pf-title">New Product</h3>
-    <div id="pf-global" class="small" role="status" aria-live="polite" style="color:#b00020;"></div>
-    <div class="small">Fields marked “required” must be filled.</div>
-    <div style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px; margin-top:8px;">
-      <label>Name (required)<br><input type="text" id="pf-name" placeholder="Product Name" aria-describedby="pf-name-err" aria-invalid="false"><br><small id="pf-name-err" class="small" style="color:#b00020;"></small></label>
-      <label>Website<br><input type="text" id="pf-website" placeholder="https://example.com"></label>
-      <label>Contact Info<br><input type="text" id="pf-contact" placeholder="Jane Doe <jane@example.com>" pattern="^[^<>\\n]+ <[^<>\\s@]+@[^<>\\s@]+\\.[^<>\\s@]+>$" title="Format: Name <email@example.com>" style="width:100%"></label>
-      <label class="col-span-all">Description (required)<br><textarea id="pf-description" rows="3" style="width:100%" aria-describedby="pf-description-err" aria-invalid="false"></textarea><br><small id="pf-description-err" class="small" style="color:#b00020;"></small></label>
-    </div>
-    <div class="mt-1" role="toolbar" aria-label="Product Form Actions">
-      <button class="btn" onclick="saveProduct()">Save</button>
-      <button class="btn" onclick="closeProductForm()">Cancel</button>
-    </div>
-    <input type="hidden" id="pf-id" value="">
-  </div>
-</section>
 {% endblock %}
 
 {% block scripts %}
