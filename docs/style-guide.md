@@ -55,7 +55,7 @@ Location of stylesheet:
 - Code tags have subtle gray background and small padding
 - Headings
   - h1: 20px; h2: 16px
-  - Use `.hero-title` for hero headlines: 2.5em with margin
+  - Use `.hero-title` for hero headlines: font-size: clamp(1.75rem, 6vw, 2.5rem); with margin
 - Container
   - `.container`: `max-width: var(--container); margin: 0 auto; padding-inline: clamp(12px, 4vw, 24px);` (horizontal gutters only; no vertical padding)
 
@@ -63,6 +63,7 @@ Location of stylesheet:
 - Top navigation
   - `nav.topnav`: Flex layout with border-bottom and tinted background var(--bg-soft); padding 8px 12px (matches footer horizontal spacing)
   - `.nav-left`, `.nav-right`: Flex containers with gaps
+  - Wraps on narrow screens (`flex-wrap: wrap`) to prevent overflow of long emails/sign-in text
 - Sticky footer
   - Body is a flex column with `min-height: 100vh`; footer uses `margin-top: auto` so it stays at the bottom when content is short and scrolls with content when long
 - Bottom separation best practice
@@ -81,6 +82,13 @@ Location of stylesheet:
   - `.hidden`, `.inline`, `.inline-block`, `.block`
 - Flex spacer
   - `.spacer`: takes remaining space in a flex row (e.g., in `.actions`)
+- Toolbars
+  - `.actions`: flexible action clusters (display:flex; gap; wrap)
+  - `.toolbar`: generic inline toolbar (display:flex; gap; align-items:center; flex-wrap:wrap)
+- Grids
+  - `.form-grid`: responsive form grid (grid: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--gap))
+- Width
+  - `.w-full`: force width: 100% (inputs/controls)
 - A11y helpers
   - `.visually-hidden`: screen-reader only text
 - Validation text
@@ -126,7 +134,9 @@ Location of stylesheet:
 
 9) Tables
 - `.table`: Full width, collapsed borders, uniform cell padding and 13px font
-- Use for dashboard jobs, emails list; keep bulk actions in `.actions`
+- `.table-wrap`: wrapper that enables horizontal scroll on small screens (`overflow-x: auto; -webkit-overflow-scrolling: touch`)
+- Long content handling: links inside table cells should wrap (`.table td a { overflow-wrap: anywhere; word-break: break-word; }`)
+- Usage: Use for dashboard jobs, emails list; keep bulk actions in `.actions`
 
 10) Badges and Status Chips
 - Badge group

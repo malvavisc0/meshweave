@@ -51,7 +51,7 @@
 <section class="panel mt-2" role="region" aria-label="My Jobs">
   <h2>My Jobs</h2>
 
-  <div class="actions" role="toolbar" aria-label="Job Filters" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+  <div class="actions toolbar" role="toolbar" aria-label="Job Filters">
     <label class="small">Status
       <select id="jobs-status">
         <option value="">All</option>
@@ -69,54 +69,56 @@
     <span class="small" id="jobs-status-msg" role="status" aria-live="polite"></span>
   </div>
 
-  <table class="table mt-1" aria-label="My Jobs">
-    <thead>
-      <tr>
-        <th><input type="checkbox" id="jobs-select-all" aria-label="Select All Jobs"></th>
-        <th>Scope</th>
-        <th>URL</th>
-        <th>Status</th>
-        <th>Updated</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="my-jobs-tbody">
-      {% if items and items|length > 0 %}
-        {% for it in items %}
-        <tr data-crawl-id="{{ it.id }}" data-status="{{ it.status }}">
-          <td><input type="checkbox" class="jobs-select" data-id="{{ it.id }}" aria-label="Select job {{ it.id }}"></td>
-          <td>{{ it.scope }}</td>
-          <td>
-            <a href="/analysis/{{ it.id }}">
-              {{ it.canonical_url or (it.domain ~ it.path ~ (it.query and ('?' ~ it.query) or '')) }}
-            </a>
-          </td>
-          <td>{{ it.status }}</td>
-          <td><small>{{ it.updated_at }}</small></td>
-          <td>
-            {% if it.status != 'running' %}
-            <form method="post" action="/retry/{{ it.id }}" class="inline">
-              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-              <button type="submit" class="btn">Retry</button>
-            </form>
-            {% else %}
-            <em>Running</em>
-            {% endif %}
-          </td>
+  <div class="table-wrap">
+    <table class="table mt-1" aria-label="My Jobs">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="jobs-select-all" aria-label="Select All Jobs"></th>
+          <th>Scope</th>
+          <th>URL</th>
+          <th>Status</th>
+          <th>Updated</th>
+          <th>Actions</th>
         </tr>
-        {% endfor %}
-      {% else %}
-        <tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>
-      {% endif %}
-    </tbody>
-  </table>
+      </thead>
+      <tbody id="my-jobs-tbody">
+        {% if items and items|length > 0 %}
+          {% for it in items %}
+          <tr data-crawl-id="{{ it.id }}" data-status="{{ it.status }}">
+            <td><input type="checkbox" class="jobs-select" data-id="{{ it.id }}" aria-label="Select job {{ it.id }}"></td>
+            <td>{{ it.scope }}</td>
+            <td>
+              <a href="/analysis/{{ it.id }}">
+                {{ it.canonical_url or (it.domain ~ it.path ~ (it.query and ('?' ~ it.query) or '')) }}
+              </a>
+            </td>
+            <td>{{ it.status }}</td>
+            <td><small>{{ it.updated_at }}</small></td>
+            <td>
+              {% if it.status != 'running' %}
+              <form method="post" action="/retry/{{ it.id }}" class="inline">
+                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+                <button type="submit" class="btn">Retry</button>
+              </form>
+              {% else %}
+              <em>Running</em>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 
-  <div class="mt-1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+  <div class="mt-1 toolbar">
     <button class="btn hidden" id="jobs-next" aria-disabled="true">Next</button>
     <small id="jobs-page-msg" role="status" aria-live="polite"></small>
   </div>
 
-  <div id="jobs-bulk-bar" class="mt-1 hidden" role="region" aria-label="Bulk Actions" style="display:flex;gap:8px;align-items:center;">
+  <div id="jobs-bulk-bar" class="mt-1 hidden toolbar" role="region" aria-label="Bulk Actions">
     <span class="small" id="jobs-bulk-count">0 selected</span>
     <button class="btn" id="jobs-bulk-retry">Retry selected</button>
   </div>

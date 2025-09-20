@@ -344,26 +344,28 @@
       <span class="spacer"></span>
       <button class="btn" onclick="openAddLead()">Add Email</button>
     </div>
-    <table class="table" aria-label="Emails table">
-      <thead>
-        <tr>
-          <th><input type="checkbox" id="lead-select-all"></th>
-          <th>Email</th>
-          <th>Mentions</th>
-          <th>Found As</th>
-          <th>Status</th>
-          <th>Domain</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="leads-tbody">
-        <!-- Rows injected by JS -->
-      </tbody>
-    </table>
+    <div class="table-wrap">
+      <table class="table mt-1" aria-label="Emails table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="lead-select-all"></th>
+            <th>Email</th>
+            <th>Mentions</th>
+            <th>Found As</th>
+            <th>Status</th>
+            <th>Domain</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="leads-tbody">
+          <!-- Rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
     <!-- Add Lead inline form (hidden by default) -->
     <div id="add-lead-form" class="hidden mt-1">
       <div class="subtitle">Add contact (saves to your Prospect)</div>
-      <div style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px;">
+      <div class="form-grid">
         <label>Email<br><input type="text" id="add-email" placeholder="name@example.com"></label>
         <label>Source URL (optional)<br><input type="text" id="add-source" placeholder="https://..."></label>
         <label>Social URL (optional)<br><input type="text" id="add-social" placeholder="https://linkedin.com/in/..."></label>
