@@ -346,7 +346,7 @@ label { font-size: 13px; }
 /* ===== Additive hooks for Home Submission Journey (non-destructive) ===== */
 
 /* Container wrapper for wide pages */
-.container { max-width: var(--container, 1100px); margin: 0 auto; padding: 0; }
+.container { max-width: var(--container, 1100px); margin: 0 auto; padding: 0; padding-inline: clamp(12px, 4vw, 24px); }
 
 /* Inline validation feedback colors */
 .validation-success { color: var(--green); }

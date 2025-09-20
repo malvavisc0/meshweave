@@ -57,7 +57,7 @@ Location of stylesheet:
   - h1: 20px; h2: 16px
   - Use `.hero-title` for hero headlines: 2.5em with margin
 - Container
-  - `.container`: `max-width: var(--container); margin: 0 auto; padding-inline: 0;`
+  - `.container`: `max-width: var(--container); margin: 0 auto; padding-inline: clamp(12px, 4vw, 24px);` (horizontal gutters only; no vertical padding)
 
 3) Layout and Navigation
 - Top navigation
