@@ -62,6 +62,8 @@ Location of stylesheet:
   - `.nav-left`, `.nav-right`: Flex containers with gaps
 - Sticky footer
   - Body is a flex column with `min-height: 100vh`; footer uses `margin-top: auto` so it stays at the bottom when content is short and scrolls with content when long
+- Bottom separation best practice
+  - Global bottom spacing applied via `main { padding-bottom: calc(var(--gap) * 2); }` to ensure comfortable separation between the last content section and the footer across all pages. Do not add spacing on the footer; prefer page/content padding. Avoid double-spacing by not adding extra `margin-bottom` to the last section unless needed for specific contexts.
 - Content layout helpers
   - `.layout`: 2-column grid (2fr 1fr). Stacks on <=768px
   - `.layout-pages`: narrow list + wide pane (2fr 3fr) for results page
