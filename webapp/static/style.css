@@ -4,19 +4,19 @@
   --radius: 8px;
   --radius-sm: 6px;
 
-  --border: #E0E0E0;
-  --border-strong: #C9C9C9;
+  --border: #E7EDE9;
+  --border-strong: #D2DCD6;
 
-  --fg: #393E46;
-  --muted: #5C636E;
-  --bg: #F7F7F7;
+  --fg: #1F2937;
+  --muted: #64748B;
+  --bg: #F9FBFA;
   --bg-soft: #FFFFFF;
   --card-bg: #fff;
 
-  --brand: #F8B500;
-  --brand-ink: #8A5F00;
-  --brand-weak: #FFF3CC;
-  --brand-hover: #D89E00;
+  --brand: #06C167;
+  --brand-ink: #066A3E;
+  --brand-weak: #E9F9F0;
+  --brand-hover: #05A356;
 
   --green-weak: #ecfdf5;
   --green: #0a7f42;
@@ -27,7 +27,7 @@
   --orange-weak: #fff7ed;
   --orange: #b45309;
 
-  --gray: #5C636E;
+  --gray: #64748B;
 
   --info-weak: #E0F7FA;
   --info: #0F9BA8;
