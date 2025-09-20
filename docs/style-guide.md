@@ -14,19 +14,19 @@ Location of stylesheet:
   - `--container`: 1100px (max content width for wide pages)
 - Colors
 - Foreground/background
-  - `--fg`: #111
-  - `--muted`: #666
-  - `--bg`: #E8F9FD
-  - `--bg-soft`: #E0F7FA
+  - `--fg`: #393E46
+  - `--muted`: #5C636E
+  - `--bg`: #F7F7F7
+  - `--bg-soft`: #FFFFFF
   - `--card-bg`: #fff
   - Borders
-    - `--border`: #D6EFF2
-    - `--border-strong`: #AFDBE1
+    - `--border`: #E0E0E0
+    - `--border-strong`: #C9C9C9
   - Brand
-    - `--brand`: #0F9BA8
-    - `--brand-ink`: #0B6F78
-    - `--brand-weak`: #C4F1F4
-    - `--brand-hover`: #0C8591
+    - `--brand`: #F8B500
+    - `--brand-ink`: #8A5F00
+    - `--brand-weak`: #FFF3CC
+    - `--brand-hover`: #D89E00
   - Status
     - `--green-weak`: #ecfdf5
     - `--green`: #0a7f42
@@ -34,7 +34,7 @@ Location of stylesheet:
     - `--red`: #b91c1c
     - `--orange-weak`: #fff7ed
     - `--orange`: #b45309
-    - `--gray`: #6b7280
+    - `--gray`: #5C636E
     - `--warning`: #f59e0b
     - `--warning-weak`: #fffbeb
   - Info
@@ -47,19 +47,21 @@ Location of stylesheet:
   - `--focus-ring`: 0 0 0 3px rgba(15,155,168,0.45)
 
 2) Base Elements
-- Body uses system fonts, line-height 1.45, tinted aqua background var(--bg), color var(--fg)
+- Body uses the Plus Jakarta Sans font stack (`'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`), line-height 1.45, tinted neutral background var(--bg), color var(--fg); edge-to-edge layout (no horizontal body padding)
 - Links are brand-colored; hover underlines
 - Code tags have subtle gray background and small padding
 - Headings
   - h1: 20px; h2: 16px
   - Use `.hero-title` for hero headlines: 2.5em with margin
 - Container
-  - `.container`: `max-width: var(--container); margin: 0 auto; padding-inline: 12px;`
+  - `.container`: `max-width: var(--container); margin: 0 auto; padding-inline: 0;`
 
 3) Layout and Navigation
 - Top navigation
-  - `nav.topnav`: Flex layout with border-bottom and tinted background var(--bg-soft)
+  - `nav.topnav`: Flex layout with border-bottom and tinted background var(--bg-soft); padding 8px 12px (matches footer horizontal spacing)
   - `.nav-left`, `.nav-right`: Flex containers with gaps
+- Sticky footer
+  - Body is a flex column with `min-height: 100vh`; footer uses `margin-top: auto` so it stays at the bottom when content is short and scrolls with content when long
 - Content layout helpers
   - `.layout`: 2-column grid (2fr 1fr). Stacks on <=768px
   - `.layout-pages`: narrow list + wide pane (2fr 3fr) for results page
