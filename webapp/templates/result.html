@@ -158,7 +158,7 @@
     </div>
     {% endif %}
     <div class="actions cta-row">
-      <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}" onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
+      <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}" onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
     </div>
   </section>
   {% endif %}
@@ -382,7 +382,7 @@
   <section id="m-leads" class="mobile-section panel mt-2" role="region" aria-label="Emails">
     <h2>Emails</h2>
     <div class="small">Sign in to view.</div>
-    <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
+    <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
   </section>
   {% endif %}
 

@@ -105,6 +105,7 @@ Location of stylesheet:
   - `.btn-primary`: brand background, white text
   - `.btn-secondary`: white background, brand border, brand text
   - `.btn-danger-soft`: red-weak background, red-ish text
+  - `.btn-google`: Google Sign-In (white surface, Google gray text, subtle hover; border #dadce0; decorative Google-colored square via `::before`)
   - `.btn-sm`: compact button
   - `.btn-icon`: minimal padding icon-style
 - Usage
@@ -203,6 +204,8 @@ Location of stylesheet:
   - `<div class="alert alert-info" role="status" aria-live="polite">...</div>`
 - Primary action
   - `<button class="btn btn-primary">Analyze</button>`
+- Google Sign-In (OAuth)
+  - `<a class="btn btn-google" href="/login?provider=google&next=/">Sign in with Google</a>`
 - Inline form in toolbar
   - `<form method="post" class="inline">...</form>`
 - Panel section

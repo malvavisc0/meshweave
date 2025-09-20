@@ -166,6 +166,31 @@ button, .btn {
 .btn-sm { padding:3px 8px; font-size:12px; }
 .btn-icon { padding:2px 6px; font-size:12px; }
 
+/* Google Sign-In button (uses Google palette; white surface) */
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  color: #3c4043; /* Google Gray 800-ish */
+  border-color: #dadce0; /* Google Gray 300-ish */
+}
+.btn-google:hover {
+  background: #f8faff; /* subtle hover */
+  border-color: #dadce0;
+  text-decoration: none;
+}
+.btn-google:focus {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 3px rgba(15,155,168,0.45));
+}
+/* Decorative color quad to hint Google brand colors without bundling an asset */
+.btn-google::before {
+  content: "";
+  width: 18px; height: 18px; border-radius: 2px;
+  background: conic-gradient(#4285F4 0 90deg, #34A853 90deg 180deg, #FBBC05 180deg 270deg, #EA4335 270deg 360deg);
+}
+
 /* Inputs */
 input[type=text], input[type=url], input[type=email], input[type=number], select, textarea, .input, .select {
   padding:8px;

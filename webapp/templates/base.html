@@ -47,7 +47,7 @@
             <button type="submit" class="btn btn-danger-soft">Sign out</button>
           </form>
         {% else %}
-          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary" data-track="signin_click">
+          <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-google" data-track="signin_click">
             Sign in with Google
           </a>
         {% endif %}
