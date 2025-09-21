@@ -1,7 +1,9 @@
 import os
 import uuid
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+
 from webapp.infra import templates
 from webapp.utils.auth import require_auth
 from webapp.utils.config import _env_bool
@@ -9,6 +11,7 @@ from webapp.utils.security import _make_csrf_token
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
 
 @router.get("/products", response_class=HTMLResponse)
 async def products_page(request: Request):

@@ -21,10 +21,10 @@ from webapp.routers import (
     home,
     jobs,
     legal,
+    products,
     progress,
     prospects,
     submissions,
-    products,
 )
 from webapp.utils.auth import AuthSessionMiddleware
 from webapp.utils.config import _env_bool

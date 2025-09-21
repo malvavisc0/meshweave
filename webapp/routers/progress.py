@@ -12,15 +12,18 @@ router = APIRouter()
 
 # --- Stale finalization helpers ---
 
+
 def _env_bool(name: str, default: bool = False) -> bool:
     v = str(os.getenv(name, "1" if default else "0")).strip().lower()
     return v in ("1", "true", "yes", "on")
+
 
 def _int_env(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
     except Exception:
         return default
+
 
 def finalize_stale_job(crawl_id: str) -> str:
     """
@@ -40,21 +43,31 @@ def finalize_stale_job(crawl_id: str) -> str:
                 return "noop"
 
             # Load persisted links/emails
-            link_rows = (
-                s.query(CrawlLink)
-                .filter(CrawlLink.crawl_id == crawl_id)
-                .all()
-            )
-            email_rows = (
-                s.query(CrawlEmail)
-                .filter(CrawlEmail.crawl_id == crawl_id)
-                .all()
-            )
+            link_rows = s.query(CrawlLink).filter(CrawlLink.crawl_id == crawl_id).all()
+            email_rows = s.query(CrawlEmail).filter(CrawlEmail.crawl_id == crawl_id).all()
 
             # Dedup and aggregate
-            internal = sorted({(lr.absolute_url or "").strip() for lr in link_rows if (lr.type or "") == "internal" and (lr.absolute_url or "").strip()})
-            external = sorted({(lr.absolute_url or "").strip() for lr in link_rows if (lr.type or "") == "external" and (lr.absolute_url or "").strip()})
-            visited_pages_count = len({(lr.page_url or "").strip() for lr in link_rows if (lr.page_url or "").strip()})
+            internal = sorted(
+                {
+                    (lr.absolute_url or "").strip()
+                    for lr in link_rows
+                    if (lr.type or "") == "internal" and (lr.absolute_url or "").strip()
+                }
+            )
+            external = sorted(
+                {
+                    (lr.absolute_url or "").strip()
+                    for lr in link_rows
+                    if (lr.type or "") == "external" and (lr.absolute_url or "").strip()
+                }
+            )
+            visited_pages_count = len(
+                {
+                    (lr.page_url or "").strip()
+                    for lr in link_rows
+                    if (lr.page_url or "").strip()
+                }
+            )
 
             emails_unique_set = set()
             by_url = defaultdict(set)  # url -> set(emails)
@@ -68,7 +81,11 @@ def finalize_stale_job(crawl_id: str) -> str:
                 by_url[pg].add(em)
                 fas = []
                 try:
-                    fas = [x.strip().lower() for x in (er.found_as or "").split(",") if x.strip()]
+                    fas = [
+                        x.strip().lower()
+                        for x in (er.found_as or "").split(",")
+                        if x.strip()
+                    ]
                 except Exception:
                     fas = []
                 key = (em, pg)
@@ -79,13 +96,15 @@ def finalize_stale_job(crawl_id: str) -> str:
             emails_unique = sorted(emails_unique_set)
             emails_by_url = {u: sorted(list(v)) for u, v in by_url.items()}
             sources = [
-                {"email": k[0], "url": k[1], "found_as": sorted(list(v))} for k, v in src_map.items()
+                {"email": k[0], "url": k[1], "found_as": sorted(list(v))}
+                for k, v in src_map.items()
             ]
             total_mentions = sum(len(v) for v in emails_by_url.values())
 
             # Limits (best-effort)
             try:
                 import json as _json
+
                 limits = _json.loads(row.limits_json or "{}")
             except Exception:
                 limits = {}
@@ -141,6 +160,7 @@ def finalize_stale_job(crawl_id: str) -> str:
             return "ok" if updated == 1 else "race"
     except Exception:
         return "err"
+
 
 @router.get("/api/progress/{crawl_id}")
 async def api_progress(request: Request, crawl_id: str):
@@ -240,19 +260,26 @@ async def api_progress(request: Request, crawl_id: str):
     # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
     if (row.scope or "page") == "site" and time_budget_ms_val is None:
         try:
-            time_budget_ms_val = int(os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000"))
+            time_budget_ms_val = int(
+                os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000")
+            )
         except Exception:
             time_budget_ms_val = 600000
         if elapsed_ms is not None and time_budget_remaining_ms is None:
             try:
-                time_budget_remaining_ms = max(0, int(time_budget_ms_val) - int(elapsed_ms))
+                time_budget_remaining_ms = max(
+                    0, int(time_budget_ms_val) - int(elapsed_ms)
+                )
             except Exception:
                 time_budget_remaining_ms = None
 
     # Auto-finalize stale running jobs (if enabled)
     try:
-        if _env_bool("STALE_FINALIZE_ENABLED", True) and str((row.status or "")).lower() == "running":
-            scope = (row.scope or "page")
+        if (
+            _env_bool("STALE_FINALIZE_ENABLED", True)
+            and str((row.status or "")).lower() == "running"
+        ):
+            scope = row.scope or "page"
             stale = False
             if scope == "site":
                 grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
@@ -269,7 +296,9 @@ async def api_progress(request: Request, crawl_id: str):
                     pass
                 outcome = finalize_stale_job(row.id)
                 try:
-                    stale_finalize_finished.labels(scope=scope, outcome=str(outcome)).inc()
+                    stale_finalize_finished.labels(
+                        scope=scope, outcome=str(outcome)
+                    ).inc()
                 except Exception:
                     pass
                 # Refresh row (best-effort)
@@ -417,19 +446,26 @@ async def api_progress_public(key: str):
     # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
     if (row.scope or "page") == "site" and time_budget_ms_val is None:
         try:
-            time_budget_ms_val = int(os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000"))
+            time_budget_ms_val = int(
+                os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000")
+            )
         except Exception:
             time_budget_ms_val = 600000
         if elapsed_ms is not None and time_budget_remaining_ms is None:
             try:
-                time_budget_remaining_ms = max(0, int(time_budget_ms_val) - int(elapsed_ms))
+                time_budget_remaining_ms = max(
+                    0, int(time_budget_ms_val) - int(elapsed_ms)
+                )
             except Exception:
                 time_budget_remaining_ms = None
 
     # Auto-finalize stale running jobs (if enabled)
     try:
-        if _env_bool("STALE_FINALIZE_ENABLED", True) and str((row.status or "")).lower() == "running":
-            scope = (row.scope or "page")
+        if (
+            _env_bool("STALE_FINALIZE_ENABLED", True)
+            and str((row.status or "")).lower() == "running"
+        ):
+            scope = row.scope or "page"
             stale = False
             if scope == "site":
                 grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
@@ -446,7 +482,9 @@ async def api_progress_public(key: str):
                     pass
                 outcome = finalize_stale_job(row.id)
                 try:
-                    stale_finalize_finished.labels(scope=scope, outcome=str(outcome)).inc()
+                    stale_finalize_finished.labels(
+                        scope=scope, outcome=str(outcome)
+                    ).inc()
                 except Exception:
                     pass
                 with get_session() as s:

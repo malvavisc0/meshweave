@@ -84,10 +84,12 @@ async def view_analysis(request: Request, ref: str):
         domain_val = (row.domain or "").strip()
         path_val = (row.path or "").strip() or "/"
         if scope_val == "site":
-            page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
+            page_title = (
+                f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
+            )
         else:
             # Page scope: prefer page.title, else use path
-            path_or_title = (title_from_payload or path_val)
+            path_or_title = title_from_payload or path_val
             page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
 
         meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
@@ -221,7 +223,7 @@ async def view_analysis(request: Request, ref: str):
         page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
     else:
         # Page scope: prefer page.title, else use path
-        path_or_title = (title_from_payload or path_val)
+        path_or_title = title_from_payload or path_val
         page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
 
     meta_description = (desc_from_payload or "").strip() or (payload or {}).get(

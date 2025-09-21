@@ -12,10 +12,10 @@ from . import (
     home,
     jobs,
     legal,
+    products,
     progress,
     prospects,
     submissions,
-    products,
 )
 
 __all__ = [

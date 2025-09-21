@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, List, Optional, cast
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
@@ -262,11 +262,7 @@ async def my_quick_stats(request: Request):
             .scalar()
             or 0
         )
-        prospects_added = (
-            s.query(Prospect)
-            .filter(Prospect.user_id == user.id)
-            .count()
-        )
+        prospects_added = s.query(Prospect).filter(Prospect.user_id == user.id).count()
     return {
         "analyses_completed": int(analyses_completed or 0),
         "emails_extracted": int(emails_extracted or 0),
