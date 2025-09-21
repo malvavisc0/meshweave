@@ -228,19 +228,11 @@
   {% if payload and payload.pages %}
   <details open class="panel mt-2" role="region" aria-label="Pages">
     <summary><h2>Pages (<span id="pages-count">0</span>)</h2></summary>
-    <div class="small">Only pages with content are shown.</div>
-    <div class="small mb-1" role="toolbar" aria-label="Pages Filters">
-      <label class="mr-1"><input type="checkbox" id="pages-filter-emails"> Has emails</label>
-      <span class="ml-2">Length:</span>
-      <label class="ml-1"><input type="radio" name="pages-length" value="all" checked> All</label>
-      <label class="ml-1"><input type="radio" name="pages-length" value="short"> Short</label>
-      <label class="ml-1"><input type="radio" name="pages-length" value="long"> Long</label>
-    </div>
     <div class="small mb-1" role="toolbar" aria-label="Pages Controls">
       <input type="search" id="page-search" placeholder="Search pages..." oninput="filterPages(this.value)">
       <button class="btn btn-sm" onclick="selectAllPages()">Select All</button>
       <button class="btn btn-sm" onclick="clearAllPages()">Clear</button>
-      <span class="selection-summary ml-1">Selected: <span id="selected-count">0</span></span>
+      <span class="selection-summary ml-1">Included pages: <span id="selected-count">0</span></span>
     </div>
     <div class="layout layout-pages">
       <div>

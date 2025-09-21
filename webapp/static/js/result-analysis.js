@@ -250,47 +250,58 @@
         try{
             var ul=document.getElementById('pages-list'); if(!ul) return;
             ul.innerHTML='';
-            var rows = (PAGES||[]).filter(function(p){ return p && (p.markdown||'').trim().length; });
-
-            // Apply filters
-            var hasEmailsOnly = !!(document.getElementById('pages-filter-emails') && document.getElementById('pages-filter-emails').checked);
-            var lenVal = (function(){
-                var r = document.querySelector('input[name="pages-length"]:checked');
-                return r ? r.value : 'all';
-            })();
-
-            function hasEmails(url){
-                try { return Array.isArray(EMAILS_BY_URL[url]) && EMAILS_BY_URL[url].length > 0; } catch(_){ return false; }
-            }
-            function bucket(len){
-                if (len < 2000) return 'short';
-                if (len >= 8000) return 'long';
-                return 'medium';
-            }
-
-            var filtered = rows.filter(function(p){
-                var ok = true;
-                if (hasEmailsOnly) ok = ok && hasEmails(p.url||'');
-                if (lenVal !== 'all') ok = ok && (bucket((p.markdown||'').length) === lenVal);
-                return ok;
-            });
+            // Show all pages; only filter is search input (handled by filterPages)
+            var rows = (PAGES||[]).filter(function(p){ return !!p; });
+ 
+            var filtered = rows.slice(0);
 
             filtered.forEach(function(p,i){
                 var li=document.createElement('li');
-                li.setAttribute('data-url', p.url || '');
-                if (SELECTED_PAGES.has(p.url||'')) li.classList.add('included');
-                li.innerHTML = '<input type="checkbox" '+(i===0?'checked':'')+'> <span class="small">'+escapeHtml(p.url||'')+'</span>';
+                var url = p.url || '';
+                li.setAttribute('data-url', url);
+
+                // Initial checkbox checked state mirrors inclusion set
+                var isIncluded = SELECTED_PAGES.has(url);
+                if (isIncluded) li.classList.add('selected');
+
+                li.innerHTML = '<input type="checkbox" '+(isIncluded?'checked':'')+'> <span class="small">'+escapeHtml(url)+'</span>';
+
+                var cb = li.querySelector('input[type=checkbox]');
+                if (cb) {
+                    cb.addEventListener('change', function(){
+                        if (cb.checked) {
+                            SELECTED_PAGES.add(url);
+                        } else {
+                            SELECTED_PAGES.delete(url);
+                        }
+                        li.classList.toggle('selected', cb.checked);
+                        updateSelectionCount();
+                    });
+                }
+
                 li.addEventListener('click', function(e){
-                    var cb = li.querySelector('input[type=checkbox]');
-                    if (e.target && e.target.tagName && e.target.tagName.toLowerCase() === 'input') {
-                        previewPageByUrl(p.url||'');
+                    var target = e.target || {};
+                    var tag = (target.tagName || '').toLowerCase();
+                    // Clicking on the checkbox lets the 'change' handler update state
+                    if (tag === 'input') {
+                        previewPageByUrl(url);
                         try { trackEvent('page_select_toggle'); } catch(_){}
                         return;
                     }
-                    if (cb) cb.checked = !cb.checked;
-                    previewPageByUrl(p.url||'');
+                    // Toggle checkbox and propagate state changes
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        // Trigger the change handler to keep SELECTED_PAGES in sync
+                        try { cb.dispatchEvent(new Event('change')); } catch(_){ /* fallback */
+                            if (cb.checked) { SELECTED_PAGES.add(url); } else { SELECTED_PAGES.delete(url); }
+                            li.classList.toggle('selected', cb.checked);
+                            updateSelectionCount();
+                        }
+                    }
+                    previewPageByUrl(url);
                     try { trackEvent('page_select_toggle'); } catch(_){}
                 });
+
                 ul.appendChild(li);
             });
 
@@ -306,6 +317,9 @@
                 renderOutline('', '');
                 setPreviewHint(filtered.length ? 'No per-page markdown available.' : 'No pages to display.');
             }
+
+            // Ensure the "Selected" counter reflects current inclusion set and checkboxes
+            updateSelectionCount();
         }catch(_){}
     }
     function renderMarkdown(md){
@@ -1362,11 +1376,6 @@
         document.querySelectorAll('.lead-type').forEach(function(cb){ cb.addEventListener('change', renderLeads); });
         renderPages();
         // Pages filters listeners
-        try {
-            var _pfe = document.getElementById('pages-filter-emails');
-            if (_pfe) { _pfe.addEventListener('change', renderPages); }
-            document.querySelectorAll('input[name="pages-length"]').forEach(function(cb){ cb.addEventListener('change', renderPages); });
-        } catch(_){}
         renderSocial();
         // Links (external domains) pagination - JS only
         try { setupLinksPagination(); } catch(_){}
