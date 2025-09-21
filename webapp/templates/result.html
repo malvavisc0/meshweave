@@ -224,33 +224,43 @@
   </section>
   {% endif %}
 
-  <!-- Pages (Collapsible) panel for desktop -->
+  <!-- Pages panel for desktop -->
   {% if payload and payload.pages %}
-  <details open class="panel mt-2" role="region" aria-label="Pages">
-    <summary><h2>Pages (<span id="pages-count">0</span>)</h2></summary>
+  <section class="panel mt-2" role="region" aria-label="Pages">
+    <h2>Pages (<span id="pages-count">0</span>)</h2>
     <div class="small mb-1" role="toolbar" aria-label="Pages Controls">
       <input type="search" id="page-search" placeholder="Search pages..." oninput="filterPages(this.value)">
+      {% if _logged_in %}
       <button class="btn btn-sm" onclick="selectAllPages()">Select All</button>
       <button class="btn btn-sm" onclick="clearAllPages()">Clear</button>
       <span class="selection-summary ml-1">Included pages: <span id="selected-count">0</span></span>
+      {% endif %}
     </div>
     <div class="layout layout-pages">
+      <!-- Left: Pages panel with header -->
       <div class="panel pages-panel">
+        <div class="pages-pane-header small">
+          <span>URLs</span>
+          <span id="pages-extra"></span>
+        </div>
         <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
       </div>
-      <div>
 
-        <div class="small mb-1" style="display:flex; align-items:center; justify-content:space-between;">
+      <!-- Right: Markdown panel with toolbar above (outside the content container) -->
+      <div>
+        <div class="pages-pane-header small mb-1">
           <span>Content (Markdown)</span>
           <span>
             <button class="btn btn-sm" onclick="copyCurrentPage()">Copy</button>
             <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
           </span>
         </div>
-        <pre id="page-markdown" class="panel pages-panel" aria-label="Markdown content"><!-- filled by JS --></pre>
+        <div class="panel pages-panel">
+          <pre id="page-markdown" class="pages-markdown" aria-label="Markdown content"><!-- filled by JS --></pre>
+        </div>
       </div>
     </div>
-  </details>
+  </section>
   {% endif %}
 
   {% if _logged_in %}

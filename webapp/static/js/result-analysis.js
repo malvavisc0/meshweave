@@ -15,7 +15,14 @@
     const LINKS_EXTERNAL = __ctx.links_external || [];
     const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
     const PAGES = __ctx.pages || [];
-    const LOGGED_IN = !!(__ctx.logged_in);
+    // Derive logged-in state; fall back to DOM signal to avoid false positives
+    let LOGGED_IN = !!(__ctx.logged_in);
+    try {
+        // If a login button is visible, treat as anonymous regardless of server flag
+        if (document.querySelector('a[href*="/login?provider="], .btn-google[href^="/login"]')) {
+            LOGGED_IN = false;
+        }
+    } catch(_){}
     var PROSPECT_ID = null; var PROSPECT_SOCIALS = [];
     const SELECTED_PAGES = new Set();
     const SELECTED_SECTIONS = []; // {url, heading, snippet}
@@ -303,19 +310,24 @@
                 var isIncluded = SELECTED_PAGES.has(url);
                 if (isIncluded) li.classList.add('selected');
 
-                li.innerHTML = '<input type="checkbox" '+(isIncluded?'checked':'')+'> <span class="small">'+escapeHtml(url)+'</span>';
+                // Render checkbox; disable for anonymous users
+                li.innerHTML = '<input type="checkbox" '+(LOGGED_IN ? '' : 'disabled ') + (isIncluded?'checked':'')+'> <span class="small">'+escapeHtml(url)+'</span>';
 
                 var cb = li.querySelector('input[type=checkbox]');
                 if (cb) {
-                    cb.addEventListener('change', function(){
-                        if (cb.checked) {
-                            SELECTED_PAGES.add(url);
-                        } else {
-                            SELECTED_PAGES.delete(url);
-                        }
-                        li.classList.toggle('selected', cb.checked);
-                        updateSelectionCount();
-                    });
+                    if (!LOGGED_IN) {
+                        cb.disabled = true;
+                    } else {
+                        cb.addEventListener('change', function(){
+                            if (cb.checked) {
+                                SELECTED_PAGES.add(url);
+                            } else {
+                                SELECTED_PAGES.delete(url);
+                            }
+                            li.classList.toggle('selected', cb.checked);
+                            updateSelectionCount();
+                        });
+                    }
                 }
 
                 li.addEventListener('click', function(e){
@@ -326,6 +338,13 @@
                         try { trackEvent('page_select_toggle'); } catch(_){}
                         return;
                     }
+                    // Anonymous users: allow preview only, do not toggle selection
+                    if (!LOGGED_IN) {
+                        previewPageByUrl(url);
+                        try { trackEvent('page_preview'); } catch(_){}
+                        return;
+                    }
+                    // Logged-in: toggle selection (via checkbox) then preview
                     if (cb) {
                         cb.checked = !cb.checked;
                         try { cb.dispatchEvent(new Event('change')); } catch(_){
@@ -359,6 +378,7 @@
 
             // Ensure the "Included pages" counter reflects current inclusion set and checkboxes
             updateSelectionCount();
+            if (!LOGGED_IN) { enforceAnonymousRestrictions(); }
         }catch(_){}
     }
     function renderPagesControls(){
@@ -1110,6 +1130,7 @@
     }
     function selectAllPages(){
         try{
+            if (!LOGGED_IN) return;
             var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
             var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
 
@@ -1132,6 +1153,7 @@
     }
     function clearAllPages(){
         try{
+            if (!LOGGED_IN) return;
             var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
             var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
 
@@ -1161,6 +1183,27 @@
             var cb = li.querySelector('input[type=checkbox]');
             li.classList.toggle('selected', !!(cb && cb.checked));
         });
+    }
+
+    // For anonymous users: hide selection controls and prevent any selection state
+    function enforceAnonymousRestrictions(){
+        if (LOGGED_IN) return;
+        try {
+            // Hide Select All / Clear and selection summary in the Pages toolbar
+            var toolbar = document.querySelector('[aria-label="Pages Controls"]');
+            if (toolbar) {
+                toolbar.querySelectorAll('button').forEach(function(btn){ btn.style.display = 'none'; });
+                var ss = toolbar.querySelector('.selection-summary');
+                if (ss) ss.style.display = 'none';
+            }
+            // Clear selected set and enforce disabled, unchecked checkboxes
+            SELECTED_PAGES.clear();
+            document.querySelectorAll('#pages-list input[type=checkbox]').forEach(function(cb){
+                cb.checked = false;
+                cb.disabled = true;
+            });
+            updateSelectionCount();
+        } catch(_){}
     }
 
     /* ----- Structured results & actions ----- */
