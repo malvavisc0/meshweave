@@ -20,6 +20,8 @@
     const SELECTED_PAGES = new Set();
     const SELECTED_SECTIONS = []; // {url, heading, snippet}
     var LAST_PRODUCT_ID = (function(){ try { return localStorage.getItem('pb:last_product_id') || ''; } catch(_) { return ''; } })();
+    // Pages pager state (initialized on first render)
+    var PAGES_PAGER = null;
 
     // Download markdown
     function downloadMarkdown() {
@@ -236,11 +238,9 @@
             var md = (p && (p.markdown||'').trim()) || '';
             if (md) {
                 renderMarkdown(md);
-                renderOutline(md, url);
                 setPreviewHint('');
             } else {
                 renderMarkdown('');
-                renderOutline('', url);
                 setPreviewHint('No per-page markdown available.');
             }
             setActiveRowByUrl(url);
@@ -248,15 +248,54 @@
     }
     function renderPages(){
         try{
-            var ul=document.getElementById('pages-list'); if(!ul) return;
-            ul.innerHTML='';
-            // Show all pages; only filter is search input (handled by filterPages)
-            var rows = (PAGES||[]).filter(function(p){ return !!p; });
- 
-            var filtered = rows.slice(0);
+            var ul = document.getElementById('pages-list'); if (!ul) return;
 
-            filtered.forEach(function(p,i){
-                var li=document.createElement('li');
+            // Initialize pager state if needed
+            if (!PAGES_PAGER) {
+                PAGES_PAGER = {
+                    term: '',
+                    page: 1,
+                    pageSize: 15,
+                    totalPages: 1,
+                    ul: ul,
+                    pagerEl: null,
+                    prevBtn: null,
+                    nextBtn: null,
+                    pageLabel: null,
+                    sliceUrls: []
+                };
+            } else {
+                PAGES_PAGER.ul = ul;
+                if (PAGES_PAGER.pageSize == null) PAGES_PAGER.pageSize = 15;
+                if (!Array.isArray(PAGES_PAGER.sliceUrls)) PAGES_PAGER.sliceUrls = [];
+            }
+
+            // Filter dataset by search term (URL match)
+            var rows = (PAGES || []).filter(function(p){ return !!p; });
+            var term = String(PAGES_PAGER.term || '').toLowerCase().trim();
+            var filtered = term
+                ? rows.filter(function(p){
+                    var u = String(p.url || '').toLowerCase();
+                    return u.indexOf(term) !== -1;
+                })
+                : rows;
+
+            // Compute pagination
+            PAGES_PAGER.totalPages = Math.max(1, Math.ceil(filtered.length / PAGES_PAGER.pageSize));
+            if (PAGES_PAGER.page < 1) PAGES_PAGER.page = 1;
+            if (PAGES_PAGER.page > PAGES_PAGER.totalPages) PAGES_PAGER.page = PAGES_PAGER.totalPages;
+
+            var start = (PAGES_PAGER.page - 1) * PAGES_PAGER.pageSize;
+            var end = Math.min(filtered.length, start + PAGES_PAGER.pageSize);
+            var slice = filtered.slice(start, end);
+
+            // Track current slice URLs for Select All / Clear operations
+            PAGES_PAGER.sliceUrls = slice.map(function(p){ return p.url || ''; });
+
+            // Render current slice
+            ul.innerHTML = '';
+            slice.forEach(function(p){
+                var li = document.createElement('li');
                 var url = p.url || '';
                 li.setAttribute('data-url', url);
 
@@ -282,17 +321,14 @@
                 li.addEventListener('click', function(e){
                     var target = e.target || {};
                     var tag = (target.tagName || '').toLowerCase();
-                    // Clicking on the checkbox lets the 'change' handler update state
                     if (tag === 'input') {
                         previewPageByUrl(url);
                         try { trackEvent('page_select_toggle'); } catch(_){}
                         return;
                     }
-                    // Toggle checkbox and propagate state changes
                     if (cb) {
                         cb.checked = !cb.checked;
-                        // Trigger the change handler to keep SELECTED_PAGES in sync
-                        try { cb.dispatchEvent(new Event('change')); } catch(_){ /* fallback */
+                        try { cb.dispatchEvent(new Event('change')); } catch(_){
                             if (cb.checked) { SELECTED_PAGES.add(url); } else { SELECTED_PAGES.delete(url); }
                             li.classList.toggle('selected', cb.checked);
                             updateSelectionCount();
@@ -305,23 +341,87 @@
                 ul.appendChild(li);
             });
 
-            // Update pages count (filtered & with content)
-            try { var pc=document.getElementById('pages-count'); if (pc) pc.textContent = String(filtered.length); } catch(_){}
+            // Update pages count (filtered)
+            try { var pc = document.getElementById('pages-count'); if (pc) pc.textContent = String(filtered.length); } catch(_){}
 
-            // Initial preview: first filtered page
-            var firstWithMd = filtered.find(function(p){ return !!((p.markdown||'').trim().length); });
+            // Initial preview: first item with markdown on current slice; show hint if none
+            var firstWithMd = slice.find(function(p){ return !!((p.markdown || '').trim().length); });
             if (firstWithMd) {
-                previewPageByUrl(firstWithMd.url||'');
+                previewPageByUrl(firstWithMd.url || '');
             } else {
                 renderMarkdown('');
-                renderOutline('', '');
                 setPreviewHint(filtered.length ? 'No per-page markdown available.' : 'No pages to display.');
             }
 
-            // Ensure the "Selected" counter reflects current inclusion set and checkboxes
+            // Pager controls (always visible; disabled as needed)
+            renderPagesControls();
+            updatePagesControls();
+
+            // Ensure the "Included pages" counter reflects current inclusion set and checkboxes
             updateSelectionCount();
         }catch(_){}
     }
+    function renderPagesControls(){
+        try{
+            var st = PAGES_PAGER; if (!st || !st.ul) return;
+            if (!st.pagerEl) {
+                var nav = document.createElement('div');
+                nav.id = 'pages-pager';
+                nav.setAttribute('role','navigation');
+                nav.setAttribute('aria-label','Pages pagination');
+                nav.className = 'small mt-1';
+                try {
+                    nav.style.display = 'flex';
+                    nav.style.justifyContent = 'center';
+                    nav.style.alignItems = 'center';
+                    nav.style.gap = '8px';
+                } catch(_){}
+
+                var prev = document.createElement('button');
+                prev.type = 'button'; prev.className = 'btn btn-sm'; prev.textContent = 'Prev';
+                prev.setAttribute('aria-controls', st.ul.id || 'pages-list');
+
+                var label = document.createElement('span');
+                label.className = 'ml-1 mr-1';
+                label.setAttribute('aria-live','polite');
+                label.textContent = 'Page ' + st.page + ' of ' + st.totalPages;
+
+                var next = document.createElement('button');
+                next.type = 'button'; next.className = 'btn btn-sm'; next.textContent = 'Next';
+                next.setAttribute('aria-controls', st.ul.id || 'pages-list');
+
+                prev.addEventListener('click', function(){
+                    if (PAGES_PAGER.page > 1) {
+                        PAGES_PAGER.page -= 1;
+                        renderPages();
+                    }
+                });
+                next.addEventListener('click', function(){
+                    if (PAGES_PAGER.page < PAGES_PAGER.totalPages) {
+                        PAGES_PAGER.page += 1;
+                        renderPages();
+                    }
+                });
+
+                nav.appendChild(prev);
+                nav.appendChild(label);
+                nav.appendChild(next);
+
+                st.ul.parentNode.appendChild(nav);
+                st.pagerEl = nav; st.prevBtn = prev; st.nextBtn = next; st.pageLabel = label;
+            }
+        }catch(_){}
+    }
+
+    function updatePagesControls(){
+        try{
+            var st = PAGES_PAGER; if (!st || !st.pagerEl) return;
+            if (st.prevBtn) st.prevBtn.disabled = (st.page <= 1);
+            if (st.nextBtn) st.nextBtn.disabled = (st.page >= st.totalPages);
+            if (st.pageLabel) st.pageLabel.textContent = 'Page ' + st.page + ' of ' + st.totalPages;
+        }catch(_){}
+    }
+
     function renderMarkdown(md){
         var pre=document.getElementById('page-markdown'); if(pre){ pre.textContent = (md||''); }
     }
@@ -989,31 +1089,68 @@
 
     /* ----- Pages enhancements ----- */
     function filterPages(term){
-        term = String(term||'').toLowerCase();
-        document.querySelectorAll('#pages-list li').forEach(function(li){
-            var txt = (li.textContent || '').toLowerCase();
-            li.style.display = (term==='' || txt.indexOf(term) !== -1) ? '' : 'none';
-        });
+        try{
+            if (!PAGES_PAGER) {
+                PAGES_PAGER = {
+                    term: '',
+                    page: 1,
+                    pageSize: 15,
+                    totalPages: 1,
+                    ul: document.getElementById('pages-list'),
+                    pagerEl: null, prevBtn: null, nextBtn: null, pageLabel: null,
+                    sliceUrls: []
+                };
+            } else {
+                PAGES_PAGER.ul = document.getElementById('pages-list') || PAGES_PAGER.ul;
+            }
+            PAGES_PAGER.term = String(term || '');
+            PAGES_PAGER.page = 1; // reset to first page on new search
+            renderPages();
+        } catch(_){}
     }
     function selectAllPages(){
-        document.querySelectorAll('#pages-list li').forEach(function(li){
-            var url = li.getAttribute('data-url') || '';
-            if (!url) return;
-            SELECTED_PAGES.add(url);
-            var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = true;
-            li.classList.add('selected');
-        });
-        updateSelectionCount();
+        try{
+            var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
+            var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
+
+            // Add only current slice URLs
+            (st.sliceUrls || []).forEach(function(url){
+                if (url) SELECTED_PAGES.add(url);
+            });
+
+            // Update visible checkboxes for current slice
+            var current = new Set(st.sliceUrls || []);
+            ul.querySelectorAll('li').forEach(function(li){
+                var url = li.getAttribute('data-url') || '';
+                if (!url || !current.has(url)) return;
+                var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = true;
+                li.classList.add('selected');
+            });
+
+            updateSelectionCount();
+        } catch(_){}
     }
     function clearAllPages(){
-        document.querySelectorAll('#pages-list li').forEach(function(li){
-            var url = li.getAttribute('data-url') || '';
-            if (!url) return;
-            SELECTED_PAGES.delete(url);
-            var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = false;
-            li.classList.remove('selected');
-        });
-        updateSelectionCount();
+        try{
+            var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
+            var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
+
+            // Remove only current slice URLs
+            (st.sliceUrls || []).forEach(function(url){
+                if (url) SELECTED_PAGES.delete(url);
+            });
+
+            // Update visible checkboxes for current slice
+            var current = new Set(st.sliceUrls || []);
+            ul.querySelectorAll('li').forEach(function(li){
+                var url = li.getAttribute('data-url') || '';
+                if (!url || !current.has(url)) return;
+                var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = false;
+                li.classList.remove('selected');
+            });
+
+            updateSelectionCount();
+        } catch(_){}
     }
     function updateSelectionCount(){
         var count = Array.from(SELECTED_PAGES.values()).length;

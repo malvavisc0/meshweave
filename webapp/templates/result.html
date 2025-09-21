@@ -235,22 +235,19 @@
       <span class="selection-summary ml-1">Included pages: <span id="selected-count">0</span></span>
     </div>
     <div class="layout layout-pages">
-      <div>
+      <div class="panel pages-panel">
         <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
       </div>
       <div>
-        <div class="small">Outline</div>
-        <ul class="domain-list small" id="page-outline" aria-label="Outline from headings"><!-- filled by JS --></ul>
 
-        <div class="small mt-2 mb-1">Content (Markdown)</div>
-        <pre id="page-markdown" class="panel pages-panel" aria-label="Markdown content"><!-- filled by JS --></pre>
-
-        <div class="mt-1" role="toolbar" aria-label="Page Actions">
-          <button class="btn btn-sm" onclick="copyCurrentPage()">Copy</button>
-          <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
-          <button class="btn btn-sm" onclick="pbIncludeCurrentPage()">Include Page in Prompt</button>
-          <button class="btn btn-sm" onclick="pbIncludeSelectedSections()">Include Selected Sections</button>
+        <div class="small mb-1" style="display:flex; align-items:center; justify-content:space-between;">
+          <span>Content (Markdown)</span>
+          <span>
+            <button class="btn btn-sm" onclick="copyCurrentPage()">Copy</button>
+            <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
+          </span>
         </div>
+        <pre id="page-markdown" class="panel pages-panel" aria-label="Markdown content"><!-- filled by JS --></pre>
       </div>
     </div>
   </details>
