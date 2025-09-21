@@ -26,8 +26,8 @@
   <p class="small">
     <strong>Share:</strong>
     <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Post on X</a> •
-    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Share on LinkedIn</a>
-    {% if _logged_in %} • <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>{% endif %}
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Share on LinkedIn</a> •
+    <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>
   </p>
 {% endif %}
 
@@ -79,7 +79,7 @@
 {% elif status == "succeeded" and payload %}
   <!-- Actions Row -->
   <div class="actions" role="toolbar" aria-label="Actions">
-    <button type="button" class="btn" onclick="openChat()">Chat</button>
+    {% if _logged_in %}<button type="button" class="btn" onclick="openChat()">Chat</button>{% endif %}
     <a class="btn" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
     <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
     <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
@@ -103,7 +103,13 @@
   </div>
 
   {% set rm = {} %}
-  {% if summary and summary.metrics and summary.metrics.render %}
+  {# Prefer summary metrics only when they contain any render values; otherwise fall back to payload #}
+  {% if summary and summary.metrics and summary.metrics.render and (
+        (summary.metrics.render.response_status is not none) or
+        (summary.metrics.render.load_time_ms is not none) or
+        (summary.metrics.render.content_length is not none) or
+        (summary.metrics.render.network_requests is not none)
+     ) %}
     {% set rm = summary.metrics.render %}
   {% elif payload and payload.pages and payload.pages[0] and payload.pages[0].metrics and payload.pages[0].metrics.render %}
     {% set rm = payload.pages[0].metrics.render %}
@@ -144,7 +150,7 @@
     </div>
   </div>
 
-  {% if visibility == 'public' and not request.state.current_user %}
+  {% if visibility == 'public' and not request.state.current_user and (email_count or 0) > 0 %}
   <section class="panel gate-locked mt-2" role="region" aria-label="Email Contacts (Preview)">
     <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ PREMIUM FEATURE</h2>
     {% if email_preview and email_preview|length > 0 %}
@@ -169,12 +175,12 @@
     <div id="social-groups"><!-- filled by JS --></div>
   </section>
 
-  <!-- Claim Analysis panel (public only) -->
-  {% if visibility == 'public' and key %}
+  <!-- Claim Analysis panel (public only, logged-in users) -->
+  {% if _logged_in and visibility == 'public' and key %}
   <section class="panel mt-2" role="region" aria-label="Claim Analysis">
     <h2>Claim Analysis</h2>
-    <div class="small" id="claim-status">Claimable status coming soon</div>
-    <button class="btn btn-primary" id="claim-btn" disabled title="Coming soon">Claim Analysis</button>
+    <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
+    <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
   </section>
   {% endif %}
 
@@ -218,6 +224,7 @@
   </details>
   {% endif %}
 
+  {% if _logged_in %}
   <!-- Compose & Chat (tabbed, flat/Slack-inspired) -->
   <section class="panel mt-2" id="compose-chat" role="region" aria-label="Compose & Chat">
     <h2>Compose & Chat</h2>
@@ -291,6 +298,7 @@
       <textarea id="structured-content" rows="12" placeholder="Generated content will appear here..." readonly></textarea>
     </div>
   </section>
+  {% endif %}
 
 
 
@@ -299,7 +307,7 @@
     <button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-stats">Stats</button>
     {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-leads">Leads</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>
+    {% if _logged_in %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>{% endif %}
   </div>
 
   <!-- Sections -->
@@ -342,6 +350,7 @@
       <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
       <button class="btn" onclick="clearLeadFilters()">Clear</button>
       <span class="spacer"></span>
+      <button class="btn" onclick="exportEmailsCsv()" data-track="export_emails_click" aria-label="Export all emails as CSV">Export CSV</button>
       <button class="btn" onclick="openAddLead()">Add Email</button>
     </div>
     <div class="table-wrap">
@@ -362,6 +371,7 @@
         </tbody>
       </table>
     </div>
+    <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
     <!-- Add Lead inline form (hidden by default) -->
     <div id="add-lead-form" class="hidden mt-1">
       <div class="subtitle">Add contact (saves to your Prospect)</div>
@@ -378,12 +388,6 @@
       </div>
     </div>
   </details>
-  {% else %}
-  <section id="m-leads" class="mobile-section panel mt-2" role="region" aria-label="Emails">
-    <h2>Emails</h2>
-    <div class="small">Sign in to view.</div>
-    <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in</a>
-  </section>
   {% endif %}
 
 
@@ -410,11 +414,13 @@
 
   <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel"></section>
 
+  {% if _logged_in %}
   <section id="m-chat" class="mobile-section panel mt-2 hidden" role="region" aria-label="Chat">
     <h2>LLM Chat</h2>
-    <div class="small">Sign in to chat with this crawl</div>
+    <div class="small">Chat is coming soon</div>
     <button class="btn btn-primary" onclick="openChat()">Open Chat</button>
   </section>
+  {% endif %}
 
   <!-- Hidden markdown for download only (no inline render in site scope) -->
   <pre id="markdown-content" class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
@@ -441,7 +447,8 @@
   'pages': payload.pages if payload and payload.pages else [],
   'crawl_id': id if id else '',
   'public_key': key if key else '',
-  'status': status if status else ''
+  'status': status if status else '',
+  'logged_in': _logged_in and True or False
 } | tojson }}
 </script>
 <script src="/static/js/result-analysis.js"></script>

@@ -15,6 +15,7 @@
     const LINKS_EXTERNAL = __ctx.links_external || [];
     const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
     const PAGES = __ctx.pages || [];
+    const LOGGED_IN = !!(__ctx.logged_in);
     var PROSPECT_ID = null; var PROSPECT_SOCIALS = [];
     const SELECTED_PAGES = new Set();
     const SELECTED_SECTIONS = []; // {url, heading, snippet}
@@ -283,10 +284,12 @@
                     var cb = li.querySelector('input[type=checkbox]');
                     if (e.target && e.target.tagName && e.target.tagName.toLowerCase() === 'input') {
                         previewPageByUrl(p.url||'');
+                        try { trackEvent('page_select_toggle'); } catch(_){}
                         return;
                     }
                     if (cb) cb.checked = !cb.checked;
                     previewPageByUrl(p.url||'');
+                    try { trackEvent('page_select_toggle'); } catch(_){}
                 });
                 ul.appendChild(li);
             });
@@ -350,7 +353,11 @@
                 var urls=Array.from(groups[plat].values());
                 html += '<div class="mb-2"><div class="small"><strong>'+plat+'</strong> <span class="small">('+(urls.length)+')</span></div><ul class="domain-list">';
                 urls.forEach(function(u){
-                    html += '<li><span>'+escapeHtml(u)+'</span><span><a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(u)+'\')">Copy</button> <button class="btn btn-sm" onclick="attachProspectSocial(\''+jsStr(plat.toLowerCase())+'\', \''+jsStr(u)+'\')">Attach to Prospect</button> <button class="btn btn-sm" onclick="attachContactSocial(\''+jsStr(u)+'\')">Attach to Contact</button></span></li>';
+                    var acts = '<a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(u)+'\')">Copy</button>';
+                    if (LOGGED_IN) {
+                        acts += ' <button class="btn btn-sm" onclick="attachProspectSocial(\''+jsStr(plat.toLowerCase())+'\', \''+jsStr(u)+'\')">Attach to Prospect</button> <button class="btn btn-sm" onclick="attachContactSocial(\''+jsStr(u)+'\')">Attach to Contact</button>';
+                    }
+                    html += '<li><span>'+escapeHtml(u)+'</span><span>'+acts+'</span></li>';
                 });
                 html += '</ul></div>';
             });
@@ -1034,6 +1041,10 @@
             tr.setAttribute('data-email', email);
             tr.setAttribute('data-domain', dom);
             tr.setAttribute('data-foundas', foundAs.join(','));
+            var actionsHtml = '<button class="btn btn-sm" onclick="copyLink(\''+jsStr(email)+'\')">Copy</button>';
+            if (LOGGED_IN) {
+                actionsHtml += ' <button class="btn btn-sm" onclick="addEmailToProspect(\''+jsStr(email)+'\', \''+jsStr(fUrl)+'\')">Add to Prospect</button>';
+            }
             tr.innerHTML =
                 '<td><input type="checkbox" class="lead-select"></td>' +
                 '<td><code>'+escapeHtml(email)+'</code></td>' +
@@ -1041,7 +1052,7 @@
                 '<td title="'+escapeHtml(foundAs.length ? ('Found on: '+fUrl+'; as: '+foundAs.join(',')) : 'N/A')+'">'+(foundAs.join(',')||'-')+'</td>' +
                 '<td><span class="status-chip '+st.cls+'">'+st.label+'</span></td>' +
                 '<td>'+escapeHtml(dom || '-')+'</td>' +
-                '<td><button class="btn btn-sm" onclick="copyLink(\''+jsStr(email)+'\')">Copy</button> <button class="btn btn-sm" onclick="addEmailToProspect(\''+jsStr(email)+'\', \''+jsStr(fUrl)+'\')">Add to Prospect</button></td>';
+                '<td>'+actionsHtml+'</td>';
             if (applyLeadFilters(tr)) tbody.appendChild(tr);
         });
         // Hook select all
@@ -1052,6 +1063,11 @@
                 tbody.querySelectorAll('.lead-select').forEach(function(cb){ cb.checked = sa.checked; });
             };
         }
+        // Toggle empty state message
+        try {
+            var empty = document.getElementById('leads-empty');
+            if (empty) empty.classList.toggle('hidden', tbody.children.length > 0);
+        } catch(_){}
     }
     function clearLeadFilters() {
         var df = document.getElementById('lead-filter-domain'); if (df) df.value = '';
@@ -1081,6 +1097,7 @@
             EMAILS_SOURCES_RAW.push({email:e, url:s || window.location.href, found_as: []});
             closeAddLead();
             renderLeads();
+            try { trackEvent('add_lead_success'); } catch(_){}
             alert('Contact added');
         }).catch(function(err){
             if (err && err.status === 409) alert('Contact already exists');
@@ -1214,10 +1231,12 @@
         } catch(_){}
         renderSocial();
 
-        // Load mini compose products and apply product defaults
-        miniLoadProducts();
-        // Optional deep link preset (e.g., ?preset=sales_pitch)
-        tryPresetAutoGenerate();
+        // Load mini compose products and apply product defaults (logged-in only)
+        if (LOGGED_IN) {
+            miniLoadProducts();
+            // Optional deep link preset (e.g., ?preset=sales_pitch)
+            tryPresetAutoGenerate();
+        }
 
         // Wire prospects + claim
         try { var pt = document.getElementById('prospect-toggle'); if (pt) pt.addEventListener('click', prospectToggle); } catch(_){}
