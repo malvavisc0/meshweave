@@ -192,7 +192,7 @@
 
   {% if visibility == 'public' and not request.state.current_user and (email_count or 0) > 0 %}
   <section class="panel gate-locked mt-2" role="region" aria-label="Email Contacts (Preview)">
-    <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ PREMIUM FEATURE</h2>
+    <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ </h2>
     {% if email_preview and email_preview|length > 0 %}
     <div class="gate-preview small">
       Preview ({{ email_preview|length }} of {{ email_count or 0 }}):

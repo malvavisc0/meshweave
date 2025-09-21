@@ -68,7 +68,28 @@ async def view_analysis(request: Request, ref: str):
         except Exception:
             pass
 
-        page_title = title_from_payload or f"Result for {row.canonical_url}"
+        # Site branding
+        site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+
+        # Build SEO-friendly page title
+        try:
+            if isinstance(payload, dict):
+                scope_val = str(payload.get("scope") or "").strip().lower()
+            else:
+                scope_val = ""
+        except Exception:
+            scope_val = ""
+        if not scope_val:
+            scope_val = str(getattr(row, "scope", "") or "").strip().lower()
+        domain_val = (row.domain or "").strip()
+        path_val = (row.path or "").strip() or "/"
+        if scope_val == "site":
+            page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
+        else:
+            # Page scope: prefer page.title, else use path
+            path_or_title = (title_from_payload or path_val)
+            page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
+
         meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
             "markdown", ""
         )
@@ -78,7 +99,6 @@ async def view_analysis(request: Request, ref: str):
 
         abs_page_url = _abs_url(request, f"/analysis/{row.id}")
         og_image_url = os.getenv("OG_IMAGE_URL") or None
-        site_name = os.getenv("SITE_NAME", "Markdownify Web App")
         json_ld = json.dumps(
             {
                 "@context": "https://schema.org",
@@ -182,7 +202,28 @@ async def view_analysis(request: Request, ref: str):
     except Exception:
         pass
 
-    page_title = title_from_payload or f"Result for {row.canonical_url}"
+    # Site branding first
+    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+
+    # Build SEO-friendly page title for public view
+    try:
+        if isinstance(payload, dict):
+            scope_val = str(payload.get("scope") or "").strip().lower()
+        else:
+            scope_val = ""
+    except Exception:
+        scope_val = ""
+    if not scope_val:
+        scope_val = str(getattr(row, "scope", "") or "").strip().lower()
+    domain_val = (row.domain or "").strip()
+    path_val = (row.path or "").strip() or "/"
+    if scope_val == "site":
+        page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
+    else:
+        # Page scope: prefer page.title, else use path
+        path_or_title = (title_from_payload or path_val)
+        page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
+
     meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
         "markdown", ""
     )
@@ -191,7 +232,6 @@ async def view_analysis(request: Request, ref: str):
 
     abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
 
     json_ld = json.dumps(
         {

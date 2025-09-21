@@ -389,19 +389,23 @@ async def submit(
         key_val: Optional[str] = None
 
         if is_public:
+            # Default all public analyses to site scope (domain root) so pages[] with markdown is available
+            start_url = f"https://{dom}/"
             existing = (
                 s.query(Crawl)
                 .filter(
                     Crawl.visibility == "public",
                     Crawl.domain == dom,
-                    Crawl.path == path,
-                    Crawl.query == query,
+                    Crawl.path == "/",
+                    Crawl.query == "",
                 )
                 .one_or_none()
             )
             if existing:
-                existing.url = uval
-                existing.canonical_url = canon_url
+                # Convert/refresh existing public entry to site-scope crawl on domain root
+                existing.url = start_url
+                existing.canonical_url = start_url
+                existing.scope = "site"
                 # If a run is already in progress, keep it running; else reset to pending
                 if existing.status not in {"running"}:
                     existing.status = "pending"
@@ -424,13 +428,14 @@ async def submit(
                     tries += 1
 
                 row = Crawl(
-                    url=uval,
+                    url=start_url,
                     domain=dom,
-                    path=path,
-                    query=query,
-                    canonical_url=canon_url,
+                    path="/",
+                    query="",
+                    canonical_url=start_url,
                     key=key_try,
                     visibility="public",
+                    scope="site",
                     status="pending",
                     payload_json=None,
                     error=None,
@@ -524,13 +529,17 @@ async def submit(
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if row and row.status in {"pending", "failed", "succeeded"}:
-            # start a new run when pending/failed/succeeded
-            if user and getattr(user, "id", None):
-                background_tasks.add_task(
-                    run_crawl_task, crawl_id, force_refresh, user_id=user.id
-                )
+            # Public analyses: run site crawl to populate pages[] with markdown
+            if is_public:
+                background_tasks.add_task(run_site_crawl_task, crawl_id, force_refresh)
             else:
-                background_tasks.add_task(run_crawl_task, crawl_id, force_refresh)
+                # Private (or non-public) page analyses: run single-page crawl
+                if user and getattr(user, "id", None):
+                    background_tasks.add_task(
+                        run_crawl_task, crawl_id, force_refresh, user_id=user.id
+                    )
+                else:
+                    background_tasks.add_task(run_crawl_task, crawl_id, force_refresh)
 
     # Capture submission metadata (configurable)
     if _env_bool("WEBAPP_LOG_REQUESTS", True):
