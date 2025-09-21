@@ -237,13 +237,15 @@
       {% endif %}
     </div>
     <div class="layout layout-pages">
-      <!-- Left: Pages panel with header -->
-      <div class="panel pages-panel">
-        <div class="pages-pane-header small">
+      <!-- Left: URLs header outside the panel to mirror right column -->
+      <div>
+        <div class="pages-pane-header small mb-1">
           <span>URLs</span>
           <span id="pages-extra"></span>
         </div>
-        <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
+        <div class="panel pages-panel">
+          <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
+        </div>
       </div>
 
       <!-- Right: Markdown panel with toolbar above (outside the content container) -->
