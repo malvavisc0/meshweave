@@ -124,18 +124,38 @@
     </div>
     <div class="stat-card">
       <div class="stat-k">Load</div>
-      <div class="stat-v">{{ rm.load_time_ms if rm.load_time_ms is not none else "" }} ms</div>
+      <div class="stat-v">
+        {% set _load_ms = (rm.load_time_ms if rm and (rm.load_time_ms is not none) else None) %}
+        {% if _load_ms is not none %}
+          {% if _load_ms >= 1000 %}
+            {{ (_load_ms / 1000.0) | round(1) }} s
+          {% else %}
+            {{ _load_ms | int }} ms
+          {% endif %}
+        {% else %}{{ "" }}{% endif %}
+      </div>
     </div>
     <div class="stat-card">
       <div class="stat-k">Bytes</div>
-      <div class="stat-v">{{ rm.content_length if rm.content_length is not none else "" }}</div>
+      <div class="stat-v">
+        {% set _bytes = (rm.content_length if rm and (rm.content_length is not none) else None) %}
+        {% if _bytes is not none %}
+          {% if _bytes >= 1048576 %}
+            {{ (_bytes / 1048576.0) | round(1) }} MB
+          {% elif _bytes >= 1024 %}
+            {{ (_bytes / 1024.0) | round(1) }} KB
+          {% else %}
+            {{ _bytes | int }} B
+          {% endif %}
+        {% else %}{{ "" }}{% endif %}
+      </div>
     </div>
     <div class="stat-card">
       <div class="stat-k">Requests</div>
       <div class="stat-v">{{ rm.network_requests if rm.network_requests is not none else "" }}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-k">Emails (U)</div>
+      <div class="stat-k">Emails</div>
       <div class="stat-v">
         {% if payload.emails and payload.emails.counts %}{{ payload.emails.counts.total_unique or 0 }}
         {% elif summary and summary.emails %}{{ summary.emails.unique_count or 0 }}
@@ -143,9 +163,29 @@
       </div>
     </div>
     <div class="stat-card">
-      <div class="stat-k">{% if payload.pages %}Pages{% else %}Base Domain{% endif %}</div>
+      <div class="stat-k">Pages</div>
       <div class="stat-v">
-        {% if payload.pages %}{{ payload.pages|length }}{% else %}{{ payload.metrics.extraction.base_domain if payload.metrics and payload.metrics.extraction else "" }}{% endif %}
+        {# Prefer summary extraction internal_count; fallback to payload.metrics or links count #}
+        {% if summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.internal_count is not none) %}
+          {{ summary.metrics.extraction.internal_count }}
+        {% elif payload and payload.metrics and payload.metrics.extraction and (payload.metrics.extraction.internal_count is not none) %}
+          {{ payload.metrics.extraction.internal_count }}
+        {% elif payload and payload.links and payload.links.internal %}
+          {{ payload.links.internal|length }}
+        {% else %}0{% endif %}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-k">Links</div>
+      <div class="stat-v">
+        {# Prefer summary extraction external_count; fallback to payload.metrics or links count #}
+        {% if summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.external_count is not none) %}
+          {{ summary.metrics.extraction.external_count }}
+        {% elif payload and payload.metrics and payload.metrics.extraction and (payload.metrics.extraction.external_count is not none) %}
+          {{ payload.metrics.extraction.external_count }}
+        {% elif payload and payload.links and payload.links.external %}
+          {{ payload.links.external|length }}
+        {% else %}0{% endif %}
       </div>
     </div>
   </div>
@@ -304,40 +344,27 @@
 
   <!-- Mobile Tabs (hidden on desktop by base.css) -->
   <div class="mobile-tabs" role="tablist" aria-label="Sections">
-    <button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-stats">Stats</button>
+    <button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-stats">Links</button>
     {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-leads">Leads</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
     {% if _logged_in %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>{% endif %}
   </div>
 
   <!-- Sections -->
-  <section id="m-stats" class="mobile-section panel mt-2" role="region" aria-label="Summary & Metrics">
-    <h2>Summary & Metrics</h2>
-    <div class="summary-grid">
-      <div class="summary-item">
-        <strong>HTTP</strong><br>
-        Status {{ rm.response_status if rm and (rm.response_status is not none) else "" }},
-        Load {{ rm.load_time_ms if rm and (rm.load_time_ms is not none) else "" }} ms,
-        Bytes {{ rm.content_length if rm and (rm.content_length is not none) else "" }},
-        Requests {{ rm.network_requests if rm and (rm.network_requests is not none) else "" }}
-      </div>
-      <div class="summary-item">
-        <strong>Extraction</strong><br>
-        Internal {{ summary.metrics.extraction.internal_count if summary and summary.metrics and summary.metrics.extraction else "" }},
-        External {{ summary.metrics.extraction.external_count if summary and summary.metrics and summary.metrics.extraction else "" }},
-        Candidates {{ summary.metrics.extraction.total_candidates if summary and summary.metrics and summary.metrics.extraction else "" }},
-        Unique {{ summary.metrics.extraction.unique_total if summary and summary.metrics and summary.metrics.extraction else "" }}
-      </div>
-      {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
-      <div class="summary-item col-span-all">
-        <ul class="domain-list">
-          {% for td in summary.links.top_external_domains %}
-            <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
-          {% endfor %}
-        </ul>
-      </div>
-      {% endif %}
-    </div>
+  <section id="m-stats" class="mobile-section panel mt-2" role="region" aria-label="Links">
+    <h2>Links</h2>
+    {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
+      <ul class="domain-list">
+        <li class="small" style="font-weight:600;">
+          <span class="small">URL</span> <span class="small">Count</span>
+        </li>
+        {% for td in summary.links.top_external_domains %}
+          <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="small">No external domains detected.</div>
+    {% endif %}
   </section>
 
   {% if show_leads %}
