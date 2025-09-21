@@ -55,6 +55,18 @@ contacts_create = Counter("contacts_create_total", "Prospect contacts created")
 products_create = Counter("products_create_total", "Products created")
 products_update = Counter("products_update_total", "Products updated")
 
+# Stale finalization metrics
+stale_finalize_attempts = Counter(
+    "stale_finalize_attempts_total",
+    "Attempts to finalize stale running jobs into a terminal state",
+    ["scope"],  # page|site
+)
+stale_finalize_finished = Counter(
+    "stale_finalize_finished_total",
+    "Finalize outcomes for stale running jobs",
+    ["scope", "outcome"],  # outcome: ok|race|noop|err
+)
+
 
 def metrics_body() -> bytes:
     """Return Prometheus metrics exposition as bytes."""

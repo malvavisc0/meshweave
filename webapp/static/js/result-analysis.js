@@ -1458,14 +1458,19 @@
         if (!crawlId) return;
         function tick(){
             fetch('/api/progress/'+encodeURIComponent(crawlId), {credentials:'same-origin'})
-                .then(function(r){ return r.json(); })
+                .then(function(r){
+                    if (!r.ok) { throw {status: r.status}; }
+                    return r.json();
+                })
                 .then(function(j){
                     try {
                         var v = Number(j.visited_pages||0), lim = (j.limits&&Number(j.limits.max_pages))||null;
-                        document.getElementById('progress-status') && (document.getElementById('progress-status').textContent = String(j.status||''));
-                        document.getElementById('progress-visited') && (document.getElementById('progress-visited').textContent = String(v));
-                        document.getElementById('progress-total') && (document.getElementById('progress-total').textContent = lim ? String(lim) : '?');
-                        document.getElementById('progress-elapsed') && (document.getElementById('progress-elapsed').textContent = fmtMs(Number(j.elapsed_ms||0)));
+                        var st = (String(j.status||'').toLowerCase());
+                        // Status + counters
+                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = String(j.status||'');
+                        var pv = document.getElementById('progress-visited'); if (pv) pv.textContent = String(v);
+                        var pt = document.getElementById('progress-total'); if (pt) pt.textContent = lim ? String(lim) : '?';
+                        var pel = document.getElementById('progress-elapsed'); if (pel) pel.textContent = fmtMs(Number(j.elapsed_ms||0));
                         // ETA and budget
                         var etaEl = document.getElementById('progress-eta');
                         if (etaEl) {
@@ -1473,10 +1478,8 @@
                             etaEl.textContent = (etaMs!=null && !Number.isNaN(etaMs)) ? fmtMs(etaMs) : '—';
                         }
                         var budEl = document.getElementById('progress-budget');
-                        if (budEl) {
-                            var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
-                            budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
-                        }
+                        var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
+                        if (budEl) budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
                         // Found-so-far counters (best-effort)
                         try {
                             var el;
@@ -1484,19 +1487,31 @@
                             el = document.getElementById('progress-links-int'); if (el) el.textContent = String(j.links_internal_so_far || 0);
                             el = document.getElementById('progress-domains-ext'); if (el) el.textContent = String(j.external_domains_so_far || 0);
                         } catch(_) {}
+                        // Progress bar
                         var pct = 0;
                         if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v/lim)*100)));
                         var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct+'%';
+                        // Finalizing condition (site scope): budget exhausted but status still running
+                        if (st === 'running' && rem != null && !Number.isNaN(rem) && Number(rem) <= 0) {
+                            if (ps) ps.textContent = 'finalizing…';
+                            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
+                            setTimeout(function(){ location.reload(); }, 1000);
+                            return;
+                        }
                         // Stop on terminal states
-                        var st = (String(j.status||'').toLowerCase());
                         if (st !== 'running' && st !== 'pending') {
                             if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                            // Soft refresh summary by reloading page
                             setTimeout(function(){ location.reload(); }, 800);
                         }
                     } catch(e){}
                 })
-                .catch(function(){ /* ignore */ });
+                .catch(function(_err){
+                    try {
+                        if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
+                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = 'unavailable';
+                    } catch(_) {}
+                    setTimeout(function(){ location.reload(); }, 1500);
+                });
         }
         tick();
         __progressTimer = setInterval(tick, 2000);
@@ -1507,24 +1522,28 @@
         if (!pubKey) return;
         function tick(){
             fetch('/api/progress/public/'+encodeURIComponent(pubKey))
-                .then(function(r){ return r.json(); })
+                .then(function(r){
+                    if (!r.ok) { throw {status: r.status}; }
+                    return r.json();
+                })
                 .then(function(j){
                     try {
                         var v = Number(j.visited_pages||0), lim = (j.limits&&Number(j.limits.max_pages))||null;
-                        document.getElementById('progress-status') && (document.getElementById('progress-status').textContent = String(j.status||''));
-                        document.getElementById('progress-visited') && (document.getElementById('progress-visited').textContent = String(v));
-                        document.getElementById('progress-total') && (document.getElementById('progress-total').textContent = lim ? String(lim) : '?');
-                        document.getElementById('progress-elapsed') && (document.getElementById('progress-elapsed').textContent = fmtMs(Number(j.elapsed_ms||0)));
+                        var st = (String(j.status||'').toLowerCase());
+                        // Status + counters
+                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = String(j.status||'');
+                        var pv = document.getElementById('progress-visited'); if (pv) pv.textContent = String(v);
+                        var pt = document.getElementById('progress-total'); if (pt) pt.textContent = lim ? String(lim) : '?';
+                        var pel = document.getElementById('progress-elapsed'); if (pel) pel.textContent = fmtMs(Number(j.elapsed_ms||0));
+                        // ETA and budget
                         var etaEl = document.getElementById('progress-eta');
                         if (etaEl) {
                             var etaMs = (j.est_remaining_ms==null ? null : Number(j.est_remaining_ms));
                             etaEl.textContent = (etaMs!=null && !Number.isNaN(etaMs)) ? fmtMs(etaMs) : '—';
                         }
                         var budEl = document.getElementById('progress-budget');
-                        if (budEl) {
-                            var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
-                            budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
-                        }
+                        var rem = (j.time_budget_remaining_ms==null ? null : Number(j.time_budget_remaining_ms));
+                        if (budEl) budEl.textContent = (rem!=null && !Number.isNaN(rem)) ? ('Budget left: '+fmtMs(rem)) : '';
                         // Found-so-far counters (best-effort)
                         try {
                             var el;
@@ -1532,17 +1551,32 @@
                             el = document.getElementById('progress-links-int'); if (el) el.textContent = String(j.links_internal_so_far || 0);
                             el = document.getElementById('progress-domains-ext'); if (el) el.textContent = String(j.external_domains_so_far || 0);
                         } catch(_) {}
+                        // Progress bar
                         var pct = 0;
                         if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v/lim)*100)));
                         var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct+'%';
-                        var st = (String(j.status||'').toLowerCase());
+                        // Finalizing condition (site scope)
+                        if (st === 'running' && rem != null && !Number.isNaN(rem) && Number(rem) <= 0) {
+                            if (ps) ps.textContent = 'finalizing…';
+                            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
+                            setTimeout(function(){ location.reload(); }, 1000);
+                            return;
+                        }
+                        // Stop on terminal states
                         if (st !== 'running' && st !== 'pending') {
                             if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
                             setTimeout(function(){ location.reload(); }, 800);
                         }
                     } catch(e){}
                 })
-                .catch(function(){ /* ignore */ });
+                .catch(function(err){
+                    try {
+                        if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
+                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = 'unavailable';
+                    } catch(_) {}
+                    // Single refresh to avoid loops; SSR will render final state or 404
+                    setTimeout(function(){ location.reload(); }, 1500);
+                });
         }
         tick();
         __progressTimer = setInterval(tick, 2000);
