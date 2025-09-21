@@ -365,6 +365,144 @@
         }catch(_){}
     }
 
+    /* ----- Links panel (external domains) pagination ----- */
+    var LINKS_PAGER = null;
+
+    function setupLinksPagination(){
+        try{
+            // Data and DOM targets
+            if (!Array.isArray(TOP_EXTERNAL_DOMAINS) || TOP_EXTERNAL_DOMAINS.length === 0) return; // keep SSR empty state
+            var sec = document.getElementById('m-stats'); if (!sec) return;
+            var ul = sec.querySelector('ul.domain-list'); if (!ul) return;
+            if (!ul.id) ul.id = 'ext-domains-list';
+
+            var totalPages = Math.max(1, Math.ceil(TOP_EXTERNAL_DOMAINS.length / 10));
+            LINKS_PAGER = {
+                items: TOP_EXTERNAL_DOMAINS.slice(0),
+                pageSize: 10,
+                page: 1,
+                totalPages: totalPages,
+                ul: ul,
+                pagerEl: null,
+                prevBtn: null,
+                nextBtn: null,
+                pageLabel: null
+            };
+
+            renderLinksListSlice();
+            // Always render controls; buttons are disabled as needed
+            renderLinksControls();
+        } catch(_) {}
+    }
+
+    function renderLinksListSlice(){
+        try{
+            var st = LINKS_PAGER; if (!st || !st.ul) return;
+            var ul = st.ul;
+            // Rebuild list: header row + page slice
+            ul.innerHTML = '';
+            var head = document.createElement('li');
+            head.className = 'small';
+            head.style.fontWeight = '600';
+            head.innerHTML = '<span class="small">URL</span> <span class="small">Count</span>';
+            ul.appendChild(head);
+
+            var start = (st.page - 1) * st.pageSize;
+            var end = Math.min(st.items.length, start + st.pageSize);
+            for (var i = start; i < end; i++) {
+                var td = st.items[i] || {};
+                var li = document.createElement('li');
+
+                var left = document.createElement('span');
+                var dom = String(td.domain || '');
+                if (dom) {
+                    var a = document.createElement('a');
+                    a.href = 'https://' + dom;
+                    a.target = '_blank';
+                    a.rel = 'nofollow noopener';
+                    a.textContent = dom;
+                    left.appendChild(a);
+                } else {
+                    left.textContent = '';
+                }
+
+                var right = document.createElement('span');
+                right.className = 'small';
+                right.textContent = String(td.count == null ? '' : td.count);
+
+                li.appendChild(left);
+                li.appendChild(right);
+                ul.appendChild(li);
+            }
+        } catch(_) {}
+    }
+
+    function renderLinksControls(){
+        try{
+            var st = LINKS_PAGER; if (!st || !st.ul) return;
+            if (!st.pagerEl) {
+                var nav = document.createElement('div');
+                nav.id = 'ext-domains-pager';
+                nav.setAttribute('role','navigation');
+                nav.setAttribute('aria-label','Links pagination');
+                nav.className = 'small mt-1';
+                // Center the controls
+                try {
+                    nav.style.display = 'flex';
+                    nav.style.justifyContent = 'center';
+                    nav.style.alignItems = 'center';
+                    nav.style.gap = '8px';
+                } catch(_){}
+
+                var prev = document.createElement('button');
+                prev.type = 'button'; prev.className = 'btn btn-sm'; prev.textContent = 'Prev';
+                prev.setAttribute('aria-controls', st.ul.id);
+
+                var label = document.createElement('span');
+                label.className = 'ml-1 mr-1';
+                label.setAttribute('aria-live','polite');
+                label.textContent = 'Page ' + st.page + ' of ' + st.totalPages;
+
+                var next = document.createElement('button');
+                next.type = 'button'; next.className = 'btn btn-sm'; next.textContent = 'Next';
+                next.setAttribute('aria-controls', st.ul.id);
+
+                prev.addEventListener('click', function(){
+                    if (LINKS_PAGER.page > 1) {
+                        LINKS_PAGER.page -= 1;
+                        renderLinksListSlice();
+                        updateLinksControls();
+                    }
+                });
+                next.addEventListener('click', function(){
+                    if (LINKS_PAGER.page < LINKS_PAGER.totalPages) {
+                        LINKS_PAGER.page += 1;
+                        renderLinksListSlice();
+                        updateLinksControls();
+                    }
+                });
+
+                nav.appendChild(prev);
+                nav.appendChild(label);
+                nav.appendChild(next);
+
+                st.ul.parentNode.appendChild(nav);
+                st.pagerEl = nav; st.prevBtn = prev; st.nextBtn = next; st.pageLabel = label;
+            }
+            updateLinksControls();
+        } catch(_) {}
+    }
+
+    function updateLinksControls(){
+        try{
+            var st = LINKS_PAGER; if (!st || !st.pagerEl) return;
+            // Always show controls; disable unavailable actions
+            if (st.prevBtn) st.prevBtn.disabled = (st.page <= 1);
+            if (st.nextBtn) st.nextBtn.disabled = (st.page >= st.totalPages);
+            if (st.pageLabel) st.pageLabel.textContent = 'Page ' + st.page + ' of ' + st.totalPages;
+        } catch(_) {}
+    }
+
     /* Pages outline & prompt selection helpers */
     function extractOutlineFromMarkdown(md){
         try{
@@ -1230,6 +1368,8 @@
             document.querySelectorAll('input[name="pages-length"]').forEach(function(cb){ cb.addEventListener('change', renderPages); });
         } catch(_){}
         renderSocial();
+        // Links (external domains) pagination - JS only
+        try { setupLinksPagination(); } catch(_){}
 
         // Load mini compose products and apply product defaults (logged-in only)
         if (LOGGED_IN) {
