@@ -53,6 +53,7 @@ services:
     environment:
       - SITE_BASE_URL=http://localhost:8080
       - DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/markdownify
+      - WEBAPP_AUTO_MIGRATE=true
       - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
       - MARKDOWNIFY_DISABLE_CACHE=true
       - SITE_NAME=Markdownify
