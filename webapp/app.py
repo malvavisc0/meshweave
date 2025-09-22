@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
 
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates
@@ -111,6 +113,38 @@ async def _cleanup_oauth_states_loop(stop_event: asyncio.Event):
         await _sleep_until(stop_event, 900.0)
 
 
+def _auto_migrate_on_start() -> None:
+    """Optionally run Alembic migrations on startup (all dialects).
+
+    Controlled by WEBAPP_AUTO_MIGRATE=true|1|yes|on. Fails fast on errors.
+    """
+    from webapp.utils.config import _env_bool
+
+    if not _env_bool("WEBAPP_AUTO_MIGRATE", False):
+        return
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    ini_path = os.path.join(base_dir, "alembic.ini")
+    script_loc = os.path.join(base_dir, "alembic")
+
+    cfg = AlembicConfig(ini_path if os.path.exists(ini_path) else None)
+    # Ensure script_location is set, even if alembic.ini is missing or minimal
+    if os.path.isdir(script_loc):
+        cfg.set_main_option("script_location", script_loc)
+
+    # If DATABASE_URL is provided, prefer it; otherwise fallback to SQLite path
+    db_url = os.getenv("DATABASE_URL", "").strip()
+    if not db_url:
+        sqlite_path = os.getenv("SQLITE_PATH", "/db/app.db").strip()
+        db_url = f"sqlite:///{sqlite_path}"
+    cfg.set_main_option("sqlalchemy.url", db_url)
+
+    try:
+        alembic_command.upgrade(cfg, "head")
+    except Exception as exc:
+        # Fail fast with a clear error; deployment should provide logs
+        raise RuntimeError(f"Automatic DB migration failed: {exc}") from exc
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context (startup/shutdown).
@@ -124,6 +158,7 @@ async def lifespan(app: FastAPI):
         None: Control back to FastAPI to run the application.
     """
     init_logging()
+    _auto_migrate_on_start()
     init_db()
 
     # Enforce OAuth config in prod if policy requires (fail-fast)

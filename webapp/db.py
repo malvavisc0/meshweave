@@ -1,4 +1,5 @@
 import os
+import logging
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -6,6 +7,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base
+
+log = logging.getLogger(__name__)
 
 # SQLite path configurable via env
 SQLITE_PATH = os.getenv("SQLITE_PATH", "/db/app.db")
@@ -23,6 +26,11 @@ if DATABASE_URL:
         future=True,
         pool_pre_ping=True,
     )
+    if engine.dialect.name == "sqlite":
+        log.warning(
+            "DATABASE_URL is set but SQLite dialect detected (%s). Verify configuration.",
+            DATABASE_URL,
+        )
 else:
     # Default to SQLite
     engine = create_engine(
@@ -53,21 +61,21 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
         # Improve concurrency and reduce lock errors
         try:
             cursor.execute("PRAGMA journal_mode=WAL")
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("SQLite PRAGMA journal_mode=WAL failed: %s", e)
         try:
             cursor.execute("PRAGMA synchronous=NORMAL")
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("SQLite PRAGMA synchronous=NORMAL failed: %s", e)
         # Additional safety: busy timeout in milliseconds
         try:
             cursor.execute("PRAGMA busy_timeout=10000")
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("SQLite PRAGMA busy_timeout failed: %s", e)
         cursor.close()
-    except Exception:
+    except Exception as e:
         # If this fails, constraints may not be enforced in dev SQLite
-        pass
+        log.warning("SQLite PRAGMA setup failed: %s", e)
 
 
 if engine.dialect.name == "sqlite":
@@ -80,52 +88,44 @@ SessionLocal = sessionmaker(
 
 
 def init_db() -> None:
-    # For non-SQLite backends, rely on Alembic migrations; do not auto-create here
-    if engine.dialect.name != "sqlite":
+    """
+    Initialize database for local/dev when using SQLite.
+
+    Policy:
+      - Non-SQLite: rely exclusively on Alembic migrations (no-op here).
+      - SQLite:
+          * When WEBAPP_SQLITE_USE_ALEMBIC=true (default), do not perform bootstrap here;
+            expect Alembic to run at startup (see app.lifespan auto-migrate).
+          * When WEBAPP_SQLITE_BOOTSTRAP=true (escape hatch), apply minimal bootstrap and
+            enforce critical invariants on crawls and products.
+    """
+    dialect = engine.dialect.name
+    if dialect != "sqlite":
+        log.info("init_db: dialect=%s, path=alembic_only", dialect)
         return
+
+    use_alembic = os.getenv("WEBAPP_SQLITE_USE_ALEMBIC", "true").strip().lower() in {"1", "true", "yes", "on"}
+    do_bootstrap = os.getenv("WEBAPP_SQLITE_BOOTSTRAP", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if use_alembic and not do_bootstrap:
+        log.info("init_db: dialect=sqlite, path=alembic_preferred (no bootstrap)")
+        return
+
+    log.info("init_db: dialect=sqlite, path=bootstrap_emergency")
 
     # Create any missing tables defined in SQLAlchemy models (does not alter existing tables)
     Base.metadata.create_all(bind=engine)
 
     # Helpers scoped to init to avoid polluting module namespace
     def _column_exists(conn, table: str, column: str) -> bool:
-        """Check if a column exists on a SQLite table.
-
-        Args:
-            conn: SQLAlchemy connection.
-            table (str): Table name.
-            column (str): Column name.
-
-        Returns:
-            bool: True if the column exists, otherwise False.
-        """
         rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").all()
         return any((len(r) > 1 and r[1] == column) for r in rows)
 
     def _table_exists(conn, table: str) -> bool:
-        """Check if a SQLite table exists.
-
-        Args:
-            conn: SQLAlchemy connection.
-            table (str): Table name.
-
-        Returns:
-            bool: True if the table exists, otherwise False.
-        """
         q = "SELECT name FROM sqlite_master WHERE type='table' AND name=:t"
         res = conn.exec_driver_sql(q, {"t": table}).first()
         return bool(res)
 
     def _ensure_users_table(conn) -> None:
-        """Create users table and indexes if they do not exist.
-
-        Args:
-            conn: SQLAlchemy connection.
-
-        Returns:
-            None
-        """
-        # TEXT for datetimes; application uses UTC ISO format
         conn.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -148,14 +148,6 @@ def init_db() -> None:
         )
 
     def _ensure_auth_sessions_table(conn) -> None:
-        """Create auth_sessions table and indexes if they do not exist.
-
-        Args:
-            conn: SQLAlchemy connection.
-
-        Returns:
-            None
-        """
         conn.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -180,14 +172,6 @@ def init_db() -> None:
         )
 
     def _ensure_oauth_states_table(conn) -> None:
-        """Create oauth_states table and indexes if they do not exist.
-
-        Args:
-            conn: SQLAlchemy connection.
-
-        Returns:
-            None
-        """
         conn.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS oauth_states (
@@ -205,17 +189,6 @@ def init_db() -> None:
         )
 
     def _ensure_crawls_columns_and_indexes(conn) -> None:
-        """Ensure crawls table has required columns and indexes.
-
-        Adds user_id, scope, limits_json columns when missing and creates
-        supporting indexes.
-
-        Args:
-            conn: SQLAlchemy connection.
-
-        Returns:
-            None
-        """
         # Ensure columns exist on crawls
         if not _column_exists(conn, "crawls", "user_id"):
             conn.exec_driver_sql("ALTER TABLE crawls ADD COLUMN user_id TEXT")
@@ -234,7 +207,6 @@ def init_db() -> None:
         )
 
     def _unique_indexes_columns(conn, table: str) -> dict:
-        """Return a mapping of unique index name -> ordered list of column names."""
         rows = conn.exec_driver_sql(f"PRAGMA index_list({table})").all()
         uniques = [r for r in rows if len(r) >= 3 and bool(r[2])]
         result = {}
@@ -246,7 +218,6 @@ def init_db() -> None:
         return result
 
     def _has_unique_index(conn, table: str, columns: list) -> bool:
-        """Check if a unique index exists on the given table with exactly the provided columns (in order)."""
         try:
             idx_cols = _unique_indexes_columns(conn, table)
             for cols in idx_cols.values():
@@ -257,7 +228,6 @@ def init_db() -> None:
             return False
 
     def _has_fk(conn, table: str, from_col: str, ref_table: str, to_col: str) -> bool:
-        """Check if a foreign key exists on table.from_col -> ref_table.to_col."""
         try:
             fks = conn.exec_driver_sql(f"PRAGMA foreign_key_list({table})").all()
             # pragma foreign_key_list columns (positional): id, seq, table, from, to, on_update, on_delete, match
@@ -288,8 +258,7 @@ def init_db() -> None:
             # Add/ensure new columns + indexes on crawls
             _ensure_crawls_columns_and_indexes(conn)
 
-            # Constraint validation for legacy installations
-            # Enforce presence of unique indexes and foreign key as per SQLAlchemy models
+            # Constraint validation for legacy installations (crawls)
             if not _has_unique_index(
                 conn, "crawls", ["visibility", "domain", "path", "query"]
             ):
@@ -308,6 +277,25 @@ def init_db() -> None:
                     "A legacy database likely needs a table rebuild to attach FK constraints."
                 )
 
+            # New: products invariants (unique and FK)
+            if _table_exists(conn, "products"):
+                if not _has_unique_index(conn, "products", ["user_id", "name"]):
+                    # Attempt to create the named unique index when safe
+                    conn.exec_driver_sql(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_products_user_name ON products(user_id, name)"
+                    )
+                    # Re-validate
+                    if not _has_unique_index(conn, "products", ["user_id", "name"]):
+                        raise RuntimeError(
+                            "Missing unique index on products(user_id, name) post-repair."
+                        )
+                if not _has_fk(conn, "products", "user_id", "users", "id"):
+                    # Cannot add FK without table rebuild; fail with guidance
+                    raise RuntimeError(
+                        "Missing foreign key on products.user_id -> users(id). "
+                        "Run Alembic migrations or rebuild the SQLite DB."
+                    )
+
             # Basic validation
             for tbl in ("users", "auth_sessions", "crawls"):
                 if not _table_exists(conn, tbl):
@@ -323,7 +311,7 @@ def init_db() -> None:
 
     except Exception as exc:
         # Fail fast with clear message; let startup abort
-        raise RuntimeError(f"Phase 1 emergency migration failed: {exc}") from exc
+        raise RuntimeError(f"Emergency SQLite bootstrap failed: {exc}") from exc
 
 
 @contextmanager
