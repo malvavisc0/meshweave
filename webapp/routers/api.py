@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Dict, List
@@ -755,11 +756,16 @@ async def create_product(request: Request):
 
     name = (data.get("name") or "").strip()
     description = (data.get("description") or "").strip()
-    website = (data.get("website") or "").strip() or None
-    contact_info = (data.get("contact_info") or "").strip() or None
+    website = (data.get("website") or "").strip()
+    contact_info = (data.get("contact_info") or "").strip()
 
-    if not name or not description:
-        raise HTTPException(status_code=400, detail="name and description are required")
+    if not name or not description or not website or not contact_info:
+        raise HTTPException(
+            status_code=400,
+            detail="name, description, website and contact_info are required",
+        )
+    if not re.match(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$", contact_info):
+        raise HTTPException(status_code=400, detail="invalid_contact_info")
 
     with get_session() as s:
         # Enforce unique per user (by model constraint)
@@ -789,11 +795,16 @@ async def update_product(request: Request, product_id: str):
 
     name = (data.get("name") or "").strip()
     description = (data.get("description") or "").strip()
-    website = (data.get("website") or "").strip() or None
-    contact_info = (data.get("contact_info") or "").strip() or None
+    website = (data.get("website") or "").strip()
+    contact_info = (data.get("contact_info") or "").strip()
 
-    if not name or not description:
-        raise HTTPException(status_code=400, detail="name and description are required")
+    if not name or not description or not website or not contact_info:
+        raise HTTPException(
+            status_code=400,
+            detail="name, description, website and contact_info are required",
+        )
+    if not re.match(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$", contact_info):
+        raise HTTPException(status_code=400, detail="invalid_contact_info")
 
     now = datetime.now(timezone.utc)
     with get_session() as s:

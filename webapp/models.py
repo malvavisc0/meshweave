@@ -397,9 +397,9 @@ class Product(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    website: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    website: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    contact_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    contact_info: Mapped[str] = mapped_column(Text, nullable=False)
     defaults_json: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )  # {"tone":"...","cta":"...","length":"..."}

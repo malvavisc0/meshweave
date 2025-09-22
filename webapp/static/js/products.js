@@ -9,8 +9,6 @@
         _pfLastTrigger = document.activeElement || null;
         var pf = document.getElementById('product-form');
         if (!pf) return;
-        pf.classList.remove('hidden');
-        pf.setAttribute('aria-hidden', 'false');
         var titleEl = document.getElementById('pf-title'); if (titleEl) titleEl.textContent = p ? 'Edit Product' : 'New Product';
         var idEl = document.getElementById('pf-id'); if (idEl) idEl.value = (p && p.id) || '';
         var nameEl = document.getElementById('pf-name'); if (nameEl) nameEl.value = (p && p.name) || '';
@@ -19,35 +17,47 @@
         var contactEl = document.getElementById('pf-contact'); if (contactEl) contactEl.value = (p && p.contact_info) || '';
 
         var nameErr = document.getElementById('pf-name-err');
+        var webErr = document.getElementById('pf-website-err');
+        var contactErr = document.getElementById('pf-contact-err');
         var descErr = document.getElementById('pf-description-err');
         var pfGlobal = document.getElementById('pf-global');
 
         if (nameEl) nameEl.setAttribute('aria-invalid', 'false');
-        if (nameErr) nameErr.textContent = '';
         if (descEl) descEl.setAttribute('aria-invalid', 'false');
+        if (webEl) webEl.setAttribute('aria-invalid', 'false');
+        if (contactEl) contactEl.setAttribute('aria-invalid', 'false');
+
+        if (nameErr) nameErr.textContent = '';
+        if (webErr) webErr.textContent = '';
+        if (contactErr) contactErr.textContent = '';
         if (descErr) descErr.textContent = '';
         if (pfGlobal) pfGlobal.textContent = '';
 
         try { nameEl && nameEl.focus(); } catch (_) { }
-        try { pf.addEventListener('keydown', _productFormKeydown); } catch (_) { }
     }
 
     function closeProductForm() {
-        var pf = document.getElementById('product-form');
-        if (!pf) return;
-        pf.classList.add('hidden');
-        pf.setAttribute('aria-hidden', 'true');
-        try { pf.removeEventListener('keydown', _productFormKeydown); } catch (_) { }
-        if (_pfLastTrigger && typeof _pfLastTrigger.focus === 'function') {
-            try { _pfLastTrigger.focus(); } catch (_) { }
-        }
+        var titleEl = document.getElementById('pf-title'); if (titleEl) titleEl.textContent = 'New Product';
+        var idEl = document.getElementById('pf-id'); if (idEl) idEl.value = '';
+        var nameEl = document.getElementById('pf-name'); if (nameEl) { nameEl.value = ''; nameEl.setAttribute('aria-invalid', 'false'); }
+        var webEl = document.getElementById('pf-website'); if (webEl) { webEl.value = ''; webEl.setAttribute('aria-invalid', 'false'); }
+        var descEl = document.getElementById('pf-description'); if (descEl) { descEl.value = ''; descEl.setAttribute('aria-invalid', 'false'); }
+        var contactEl = document.getElementById('pf-contact'); if (contactEl) { contactEl.value = ''; contactEl.setAttribute('aria-invalid', 'false'); }
+
+        var nameErr = document.getElementById('pf-name-err'); if (nameErr) nameErr.textContent = '';
+        var webErr = document.getElementById('pf-website-err'); if (webErr) webErr.textContent = '';
+        var contactErr = document.getElementById('pf-contact-err'); if (contactErr) contactErr.textContent = '';
+        var descErr = document.getElementById('pf-description-err'); if (descErr) descErr.textContent = '';
+        var pfGlobal = document.getElementById('pf-global'); if (pfGlobal) pfGlobal.textContent = '';
+
+        try { nameEl && nameEl.focus(); } catch (_) { }
     }
 
     function renderProducts(items) {
         var tb = document.getElementById('products-tbody');
         if (!tb) return;
         if (!items || !items.length) {
-            tb.innerHTML = '<tr><td colspan="5"><em class="small">No products yet. Click "New Product".</em></td></tr>';
+            tb.innerHTML = '<tr><td colspan="5"><em class="small">No products yet. Use the form to add one.</em></td></tr>';
             return;
         }
         tb.innerHTML = '';
@@ -87,12 +97,20 @@
         var pfGlobal = document.getElementById('pf-global');
         var nameInput = document.getElementById('pf-name');
         var nameErr = document.getElementById('pf-name-err');
+        var websiteInput = document.getElementById('pf-website');
+        var websiteErr = document.getElementById('pf-website-err');
+        var contactInput = document.getElementById('pf-contact');
+        var contactErr = document.getElementById('pf-contact-err');
         var descInput = document.getElementById('pf-description');
         var descErr = document.getElementById('pf-description-err');
         if (pfGlobal) pfGlobal.textContent = '';
         if (nameErr) nameErr.textContent = '';
+        if (websiteErr) websiteErr.textContent = '';
+        if (contactErr) contactErr.textContent = '';
         if (descErr) descErr.textContent = '';
         if (nameInput) nameInput.setAttribute('aria-invalid', 'false');
+        if (websiteInput) websiteInput.setAttribute('aria-invalid', 'false');
+        if (contactInput) contactInput.setAttribute('aria-invalid', 'false');
         if (descInput) descInput.setAttribute('aria-invalid', 'false');
 
         var firstInvalid = null;
@@ -101,33 +119,43 @@
             if (nameInput) nameInput.setAttribute('aria-invalid', 'true');
             firstInvalid = firstInvalid || nameInput;
         }
+        if (!website) {
+            if (websiteErr) websiteErr.textContent = 'Website is required.';
+            if (websiteInput) websiteInput.setAttribute('aria-invalid', 'true');
+            firstInvalid = firstInvalid || websiteInput;
+        }
         if (!description) {
             if (descErr) descErr.textContent = 'Description is required.';
             if (descInput) descInput.setAttribute('aria-invalid', 'true');
             firstInvalid = firstInvalid || descInput;
+        }
+        if (!contact) {
+            if (contactErr) contactErr.textContent = 'Contact Info is required.';
+            if (contactInput) contactInput.setAttribute('aria-invalid', 'true');
+            firstInvalid = firstInvalid || contactInput;
+        } else if (!/^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/.test(contact)) {
+            if (contactErr) contactErr.textContent = 'Contact Info must look like: Name <email@example.com>';
+            if (contactInput) contactInput.setAttribute('aria-invalid', 'true');
+            firstInvalid = firstInvalid || contactInput;
         }
         if (firstInvalid) {
             try { firstInvalid.focus(); } catch (_) { }
             if (pfGlobal) pfGlobal.textContent = 'Please correct the highlighted fields.';
             return;
         }
-        if (contact && !/^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/.test(contact)) {
-            if (pfGlobal) pfGlobal.textContent = 'Contact Info must look like: Name <email@example.com>';
-            return;
-        }
 
         var body = {
             name: name,
-            website: website || null,
+            website: website,
             description: description,
-            contact_info: contact || null
+            contact_info: contact
         };
 
         var url = '/api/products' + (id ? ('/' + encodeURIComponent(id)) : '');
         var method = id ? 'PUT' : 'POST';
 
         apiJson(url, method, body).then(function () {
-            closeProductForm();
+            closeProductForm(); // reset fields, keep form visible
             loadProducts();
             try { trackEvent(method === 'POST' ? 'product_create_success' : 'product_update_success'); } catch (_) { }
         }).catch(function (e) {
