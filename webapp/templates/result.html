@@ -19,8 +19,7 @@
 {% endif %}
 
 {# Auth/leads gating helpers #}
-{% set _logged_in = request.state.current_user %}
-{% set show_leads = not (visibility == 'public' and not _logged_in) %}
+{% set show_leads = not (visibility == 'public' and not request.state.current_user) %}
 
 {% if visibility == "public" and abs_page_url %}
   <p class="small">
@@ -215,7 +214,7 @@
   </section>
 
   <!-- Claim Analysis panel (public only, logged-in users) -->
-  {% if _logged_in and visibility == 'public' and key %}
+  {% if request.state.current_user and visibility == 'public' and key %}
   <section class="panel mt-2" role="region" aria-label="Claim Analysis">
     <h2>Claim Analysis</h2>
     <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
@@ -269,15 +268,13 @@
   <section class="panel mt-2" id="compose-chat" role="region" aria-label="Compose & Chat">
     <h2>Compose & Chat</h2>
 
-    {% if _logged_in and not has_products %}
+    {% if request.state.current_user and not has_products %}
     <div id="compose-notices" class="small" style="margin-bottom:8px;">
       <div class="mt-1">
         No products yet.
         <a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>
       </div>
     </div>
-    {% else %}
-    <div id="compose-notices" class="small" style="margin-bottom:8px; display:none;"></div>
     {% endif %}
 
     <!-- Compose mini-bar -->
@@ -473,7 +470,7 @@
   'crawl_id': id if id else '',
   'public_key': key if key else '',
   'status': status if status else '',
-  'logged_in': _logged_in and True or False,
+  'logged_in': request.state.current_user and True or False,
   'can_chat': can_chat|default(false),
   'can_select_pages': can_select_pages|default(false),
   'user_products': user_products|default([]),
