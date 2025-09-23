@@ -4,14 +4,14 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from alembic.config import Config as AlembicConfig
-from alembic import command as alembic_command
 
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates

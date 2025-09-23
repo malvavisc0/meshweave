@@ -115,10 +115,10 @@ async def view_analysis(request: Request, ref: str):
         )
 
         summary = build_summary(row, payload)
- 
+
         api_url = f"/api/analysis/private/{row.id}"
         abs_api_url = _abs_url(request, api_url)
- 
+
         # Compute ownership/permissions for UI gating
         current_user = getattr(request.state, "current_user", None)
         is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
@@ -146,8 +146,12 @@ async def view_analysis(request: Request, ref: str):
                         "description": p.description or "",
                         "website": p.website or None,
                         "contact_info": p.contact_info or None,
-                        "created_at": (p.created_at or datetime.now(timezone.utc)).isoformat(),
-                        "updated_at": (p.updated_at or datetime.now(timezone.utc)).isoformat(),
+                        "created_at": (
+                            p.created_at or datetime.now(timezone.utc)
+                        ).isoformat(),
+                        "updated_at": (
+                            p.updated_at or datetime.now(timezone.utc)
+                        ).isoformat(),
                     }
                     for p in products
                 ]
@@ -164,7 +168,7 @@ async def view_analysis(request: Request, ref: str):
             if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
             else ""
         )
- 
+
         resp = templates.TemplateResponse(
             "result.html",
             {
@@ -328,12 +332,12 @@ async def view_analysis(request: Request, ref: str):
         claim_min_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
     except Exception:
         claim_min_hours = 24
-    created_at_iso = (
-        (row.created_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    created_at_iso = (row.created_at or datetime.now(timezone.utc)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
     )
 
-    ownerless = (getattr(row, "user_id", None) is None)
- 
+    ownerless = getattr(row, "user_id", None) is None
+
     # Ownership/permissions (public view)
     current_user = getattr(request.state, "current_user", None)
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
@@ -361,8 +365,12 @@ async def view_analysis(request: Request, ref: str):
                     "description": p.description or "",
                     "website": p.website or None,
                     "contact_info": p.contact_info or None,
-                    "created_at": (p.created_at or datetime.now(timezone.utc)).isoformat(),
-                    "updated_at": (p.updated_at or datetime.now(timezone.utc)).isoformat(),
+                    "created_at": (
+                        p.created_at or datetime.now(timezone.utc)
+                    ).isoformat(),
+                    "updated_at": (
+                        p.updated_at or datetime.now(timezone.utc)
+                    ).isoformat(),
                 }
                 for p in products
             ]

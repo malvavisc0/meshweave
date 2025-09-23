@@ -9,7 +9,7 @@ from sqlalchemy import func
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail, Prospect, Product
+from webapp.models import Crawl, CrawlEmail, Product, Prospect
 
 # Treat SQLAlchemy declarative models as Any for type checkers to avoid circular/forward-ref analysis issues
 Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]

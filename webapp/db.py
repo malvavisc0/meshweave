@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -104,8 +104,18 @@ def init_db() -> None:
         log.info("init_db: dialect=%s, path=alembic_only", dialect)
         return
 
-    use_alembic = os.getenv("WEBAPP_SQLITE_USE_ALEMBIC", "true").strip().lower() in {"1", "true", "yes", "on"}
-    do_bootstrap = os.getenv("WEBAPP_SQLITE_BOOTSTRAP", "false").strip().lower() in {"1", "true", "yes", "on"}
+    use_alembic = os.getenv("WEBAPP_SQLITE_USE_ALEMBIC", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    do_bootstrap = os.getenv("WEBAPP_SQLITE_BOOTSTRAP", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     if use_alembic and not do_bootstrap:
         log.info("init_db: dialect=sqlite, path=alembic_preferred (no bootstrap)")
         return
