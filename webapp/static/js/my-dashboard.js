@@ -13,9 +13,11 @@
             var a = document.getElementById('qs-analyses');
             var e = document.getElementById('qs-emails');
             var p = document.getElementById('qs-prospects');
+            var pr = document.getElementById('qs-products');
             if (a) a.textContent = (d && typeof d.analyses_completed === 'number') ? d.analyses_completed : '0';
             if (e) e.textContent = (d && typeof d.emails_extracted === 'number') ? d.emails_extracted : '0';
             if (p) p.textContent = (d && typeof d.prospects_added === 'number') ? d.prospects_added : '0';
+            if (pr) pr.textContent = (d && typeof d.products_count === 'number') ? d.products_count : '0';
             try { trackEvent('quick_stats_loaded'); } catch (_) { }
         }).catch(function () { /* silent */ });
     }

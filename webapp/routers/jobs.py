@@ -9,12 +9,13 @@ from sqlalchemy import func
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail, Prospect
+from webapp.models import Crawl, CrawlEmail, Prospect, Product
 
 # Treat SQLAlchemy declarative models as Any for type checkers to avoid circular/forward-ref analysis issues
 Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
 CrawlEmail = cast(Any, CrawlEmail)  # pyright: ignore[reportGeneralTypeIssues]
 Prospect = cast(Any, Prospect)  # pyright: ignore[reportGeneralTypeIssues]
+Product = cast(Any, Product)  # pyright: ignore[reportGeneralTypeIssues]
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -239,11 +240,12 @@ async def retry_crawl(
 
 @router.get("/api/my/quick-stats")
 async def my_quick_stats(request: Request):
-    """Aggregate user metrics (all time): analyses_completed, emails_extracted, prospects_added."""
+    """Aggregate user metrics (all time): analyses_completed, emails_extracted, prospects_added, products_count."""
     user = await require_auth(request)
     analyses_completed = 0
     emails_extracted = 0
     prospects_added = 0
+    products_count = 0
     with get_session() as s:
         analyses_completed = (
             s.query(Crawl)
@@ -263,10 +265,12 @@ async def my_quick_stats(request: Request):
             or 0
         )
         prospects_added = s.query(Prospect).filter(Prospect.user_id == user.id).count()
+        products_count = s.query(Product).filter(Product.user_id == user.id).count()
     return {
         "analyses_completed": int(analyses_completed or 0),
         "emails_extracted": int(emails_extracted or 0),
         "prospects_added": int(prospects_added or 0),
+        "products_count": int(products_count or 0),
     }
 
 

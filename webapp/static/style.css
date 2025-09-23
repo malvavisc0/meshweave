@@ -315,6 +315,18 @@ label { font-size: 13px; }
 /* Quick stats */
 .quick-stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--gap); margin: 10px 0 16px; }
 .stat-card { background: var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:10px; }
+
+/* Force single-row variant for dashboard quick stats */
+.quick-stats-1row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+  margin: 10px 0 16px;
+}
+@media (max-width: 640px) {
+  /* Optional: on very small screens, allow 2 columns to avoid overflow */
+  .quick-stats-1row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .stat-k { font-size: 12px; color: var(--muted); }
 .stat-v { font-size: 16px; font-weight: 600; margin-top: 4px; }
 
