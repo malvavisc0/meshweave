@@ -58,6 +58,11 @@
   </div>
 </section>
 
+<section class="panel mt-2" role="region" aria-label="Start a new Site Crawl">
+  <h2>Start a new Site Crawl</h2>
+  {% include "partials/site_crawl_form.html" %}
+</section>
+
 <section class="panel mt-2" role="region" aria-label="Active Jobs">
   <h2>Active Jobs</h2>
   <div id="active-jobs-empty" class="small"><em>No active jobs.</em></div>
@@ -151,5 +156,6 @@
   // Pass CSRF token to external script
   var CSRF_TOKEN = "{{ csrf_token or '' }}";
 </script>
+<script src="/static/js/site-crawl.js"></script>
 <script src="/static/js/my-dashboard.js"></script>
 {% endblock %}
