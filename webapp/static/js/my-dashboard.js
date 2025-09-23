@@ -4,6 +4,7 @@
 
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     var _activeJobsTimer = null;
+    var _jobsRefreshTimer = null;
     var _jobsState = { status: '', q: '', cursor: null, limit: 25 };
 
 
@@ -52,6 +53,19 @@
         if (!ids || !ids.length) return;
         ids.forEach(function (id) {
             apiJson('/api/progress/' + encodeURIComponent(id), 'GET').then(function (d) {
+                var status = (d && (d.status || '')).toLowerCase();
+                // If job is no longer running, remove its progress card and refresh the jobs table
+                if (status && status !== 'running') {
+                    var list = document.getElementById('active-jobs-list');
+                    var empty = document.getElementById('active-jobs-empty');
+                    var card = (list ? list.querySelector('[data-crawl-id="' + id + '"]') : null);
+                    if (card && card.parentNode) { card.parentNode.removeChild(card); }
+                    if (empty) { empty.style.display = (list && list.children.length) ? 'none' : ''; }
+                    // Schedule a lightweight refresh of the jobs table so the row status/actions update
+                    refreshJobsSoon();
+                    return;
+                }
+                // Update progress UI
                 var pb = document.getElementById('pb-' + id);
                 var pbt = document.getElementById('pbt-' + id);
                 if (pb) {
@@ -66,12 +80,24 @@
     }
 
     function setupActiveJobsPolling() {
-        var ids = collectActiveJobs();
         if (_activeJobsTimer) { clearInterval(_activeJobsTimer); _activeJobsTimer = null; }
-        if (ids.length) {
-            tickActiveJobs(ids);
-            _activeJobsTimer = setInterval(function () { tickActiveJobs(ids); try { trackEvent('job_poll_tick'); } catch (_) { } }, 4000);
+        function pollOnce() {
+            var ids = collectActiveJobs();
+            if (ids.length) {
+                tickActiveJobs(ids);
+            } else {
+                // Keep "no active jobs" message accurate
+                var empty = document.getElementById('active-jobs-empty');
+                if (empty) empty.style.display = '';
+            }
         }
+        // Initial poll
+        pollOnce();
+        // Recollect IDs and poll each tick so UI stays in sync
+        _activeJobsTimer = setInterval(function () {
+            pollOnce();
+            try { trackEvent('job_poll_tick'); } catch (_) { }
+        }, 4000);
     }
 
     // Jobs filters, keyset pagination, and bulk retry
@@ -150,6 +176,15 @@
             if (selected.length > 0) { bar.classList.remove('hidden'); }
             else { bar.classList.add('hidden'); }
         }
+    }
+
+    // Throttled refresh to update the jobs table when a running job finishes
+    function refreshJobsSoon() {
+        if (_jobsRefreshTimer) return;
+        _jobsRefreshTimer = setTimeout(function () {
+            _jobsRefreshTimer = null;
+            fetchJobs(false);
+        }, 300);
     }
  
     // Show/hide and enable/disable the Next button based on presence of a next cursor
