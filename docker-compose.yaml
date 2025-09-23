@@ -1,6 +1,6 @@
 networks:
   magics:
-
+  
 services:
   postgres:
     image: postgres:16-alpine
@@ -89,6 +89,8 @@ services:
       # CSRF for logout forms
       - WEBAPP_CSRF_ENABLED=true
       - WEBAPP_CSRF_MAX_AGE=7200
+      # Claim public analyses minimum age (hours)
+      - CLAIM_PUBLIC_MIN_AGE_HOURS=24
     volumes:
       - ./.cache:/tmp/markdownify/cache
       - ./data/webapp:/db

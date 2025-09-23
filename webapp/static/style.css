@@ -191,6 +191,10 @@ button, .btn {
   background: conic-gradient(#4285F4 0 90deg, #34A853 90deg 180deg, #FBBC05 180deg 270deg, #EA4335 270deg 360deg);
 }
 
+/* AI action (minimal, keep icon only; inherit base .btn styling) */
+.btn-ai { display: inline-flex; align-items: center; gap: 6px; }
+.btn-ai::before { content: "✨"; font-size: 14px; line-height: 1; }
+
 /* Inputs */
 input[type=text], input[type=url], input[type=email], input[type=number], select, textarea, .input, .select {
   padding:8px;
@@ -258,12 +262,6 @@ label { font-size: 13px; }
 .table td a { word-break: break-word; overflow-wrap: anywhere; }
 
 /* Tabs */
-.tabs { display:flex; gap:6px; margin-bottom:8px; }
-.tab {
-  padding:6px 10px; border:1px solid var(--border); background:#fff;
-  border-radius:6px; cursor:pointer; font-size:13px;
-}
-.tab[aria-selected="true"] { background: var(--brand-weak); border-color: var(--brand-weak); }
 
 /* Lists */
 .domain-list { list-style:none; margin:0; padding:0; }
@@ -301,7 +299,7 @@ label { font-size: 13px; }
 .pages-list li { padding:6px 8px; border-bottom:1px solid var(--border); font-size:13px; display:flex; gap:8px; align-items:center; border-left: 3px solid transparent; }
 /* Align first row with right markdown top by removing extra top padding */
 .pages-list li:first-child { padding-top: 0; }
-.pages-list input[type=checkbox] { pointer-events:none; }
+/* checkbox is clickable; pointer-events removed */
 .pages-list li.active { background: var(--brand-weak); border-color: var(--brand-weak); border-left: 3px solid var(--brand); }
 .pages-list li.active .small { color: var(--fg); font-weight: 600; }
 
@@ -394,6 +392,14 @@ label { font-size: 13px; }
   background: var(--brand-weak);
   border-left: 3px solid var(--brand);
 }
+/* Subtle selected checkmark next to URL */
+.pages-list li.selected .small::after {
+  content: " ✓";
+  color: var(--brand);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
 .selection-summary {
   font-weight: 600;
   color: var(--brand);

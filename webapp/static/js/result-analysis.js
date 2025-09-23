@@ -15,14 +15,10 @@
     const LINKS_EXTERNAL = __ctx.links_external || [];
     const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
     const PAGES = __ctx.pages || [];
-    // Derive logged-in state; fall back to DOM signal to avoid false positives
+    // Logged-in state and capability flags from server
     let LOGGED_IN = !!(__ctx.logged_in);
-    try {
-        // If a login button is visible, treat as anonymous regardless of server flag
-        if (document.querySelector('a[href*="/login?provider="], .btn-google[href^="/login"]')) {
-            LOGGED_IN = false;
-        }
-    } catch(_){}
+    const CAN_CHAT = !!(__ctx.can_chat);
+    const CAN_SELECT_PAGES = !!(__ctx.can_select_pages);
     var PROSPECT_ID = null; var PROSPECT_SOCIALS = [];
     const SELECTED_PAGES = new Set();
     const SELECTED_SECTIONS = []; // {url, heading, snippet}
@@ -90,23 +86,6 @@
             var chip = document.getElementById('prospect-status-chip');
             if (chip) chip.textContent = text || 'Shortlisted';
         } catch(_){}
-    }
-    function tabSwitch(tabId) {
-        // Hide all tab contents
-        document.querySelectorAll('.tab-content').forEach(function(content) { content.classList.remove('active'); });
-        // Show selected
-        document.getElementById(tabId).classList.add('active');
-        // Update tab buttons
-        document.querySelectorAll('.tab').forEach(function(tab) { tab.classList.remove('active'); });
-        event.target.classList.add('active');
-        // ARIA
-        event.target.setAttribute('aria-selected', 'true');
-        document.querySelectorAll('.tab:not(.active)').forEach(function(tab) { tab.setAttribute('aria-selected', 'false'); });
-        // Focus chat input if free chat
-        if (tabId === 'free-chat-tab') {
-            var input = document.getElementById('chat-question');
-            if (input) input.focus();
-        }
     }
 
     function prospectEnsure(){
@@ -278,7 +257,11 @@
             }
 
             // Filter dataset by search term (URL match)
+            // Fallback: when no PAGES provided, use LINKS_INTERNAL as URL-only rows
             var rows = (PAGES || []).filter(function(p){ return !!p; });
+            if ((!rows || rows.length === 0) && Array.isArray(LINKS_INTERNAL) && LINKS_INTERNAL.length > 0) {
+                rows = LINKS_INTERNAL.map(function(u){ return { url: u, markdown: '' }; });
+            }
             var term = String(PAGES_PAGER.term || '').toLowerCase().trim();
             var filtered = term
                 ? rows.filter(function(p){
@@ -310,12 +293,12 @@
                 var isIncluded = SELECTED_PAGES.has(url);
                 if (isIncluded) li.classList.add('selected');
 
-                // Render checkbox; disable for anonymous users
-                li.innerHTML = '<input type="checkbox" '+(LOGGED_IN ? '' : 'disabled ') + (isIncluded?'checked':'')+'> <span class="small">'+escapeHtml(url)+'</span>';
-
+                // Render checkbox; disable when selection is not allowed
+                li.innerHTML = '<input type="checkbox" '+(CAN_SELECT_PAGES ? '' : 'disabled ') + (isIncluded?'checked':'')+'> <span class="small">'+escapeHtml(url)+'</span>';
+ 
                 var cb = li.querySelector('input[type=checkbox]');
                 if (cb) {
-                    if (!LOGGED_IN) {
+                    if (!CAN_SELECT_PAGES) {
                         cb.disabled = true;
                     } else {
                         cb.addEventListener('change', function(){
@@ -338,13 +321,13 @@
                         try { trackEvent('page_select_toggle'); } catch(_){}
                         return;
                     }
-                    // Anonymous users: allow preview only, do not toggle selection
-                    if (!LOGGED_IN) {
+                    // If selection disabled: allow preview only, do not toggle selection
+                    if (!CAN_SELECT_PAGES) {
                         previewPageByUrl(url);
                         try { trackEvent('page_preview'); } catch(_){}
                         return;
                     }
-                    // Logged-in: toggle selection (via checkbox) then preview
+                    // Selection allowed: toggle selection (via checkbox) then preview
                     if (cb) {
                         cb.checked = !cb.checked;
                         try { cb.dispatchEvent(new Event('change')); } catch(_){
@@ -378,7 +361,7 @@
 
             // Ensure the "Included pages" counter reflects current inclusion set and checkboxes
             updateSelectionCount();
-            if (!LOGGED_IN) { enforceAnonymousRestrictions(); }
+            if (!CAN_SELECT_PAGES) { enforceSelectionRestrictions(); }
         }catch(_){}
     }
     function renderPagesControls(){
@@ -458,8 +441,9 @@
         try {
             var pre=document.getElementById('page-markdown'); var md=(pre && (pre.textContent||pre.innerText)||'');
             if(!md.trim()){ alert('Nothing to download'); return; }
-            var sel = document.querySelector('#pages-list li input[type=checkbox]:checked');
-            var url = sel ? (sel.closest('li').getAttribute('data-url')||'') : '';
+            var liSel = document.querySelector('#pages-list li input[type=checkbox]:checked');
+            var li = liSel ? liSel.closest('li') : (document.querySelector('#pages-list li.active') || null);
+            var url = li ? (li.getAttribute('data-url')||'') : '';
             var fname = (url ? (url.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'')||'page') : 'page') + '.md';
             var blob=new Blob([md],{type:'text/markdown;charset=utf-8'}); var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
         } catch(_) {}
@@ -943,6 +927,62 @@
             PB_PRODUCTS = (r && r.items) || [];
             var sel = document.getElementById('mini-product'); if (!sel) return;
             sel.innerHTML = '';
+ 
+            // small inline helper to show a hint under the Product select
+            function setHintHtml(html){
+                try{
+                    var hint = document.getElementById('mini-product-hint');
+                    if (!hint) {
+                        hint = document.createElement('div');
+                        hint.id = 'mini-product-hint';
+                        hint.className = 'small';
+                        var parent = sel.parentNode;
+                        if (parent) parent.appendChild(hint);
+                    }
+                    hint.innerHTML = html || '';
+                    hint.style.display = html ? '' : 'none';
+                }catch(_){}
+            }
+            // Toggle Product-dependent compose surfaces (chat stays visible); owner-only Shortcuts/Product
+            function setComposeVisibility(hasProducts){
+                try{
+                    var cfg = document.querySelector('#compose-chat .config-grid');
+                    var sa  = document.querySelector('#compose-chat .structured-actions');
+                    var notices = document.getElementById('compose-notices');
+                    // Owner-only AND must have products to show compose controls
+                    var showCompose = (!!CAN_SELECT_PAGES) && !!hasProducts;
+                    [cfg, sa].forEach(function(el){ if (el) el.style.display = showCompose ? '' : 'none'; });
+                    // CTA when logged-in and no products (invite to add), regardless of ownership
+                    if (notices) {
+                        if (LOGGED_IN && !hasProducts) {
+                            notices.innerHTML =
+                                '<div class="mt-1">' +
+                                'No products yet. ' +
+                                '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
+                                '</div>';
+                            notices.style.display = '';
+                        } else {
+                            notices.innerHTML = '';
+                            notices.style.display = 'none';
+                        }
+                    }
+                }catch(_){}
+            }
+ 
+            if (!PB_PRODUCTS.length) {
+                // CTA uses DB-backed /api/products result (not template JSON). Show action to add a Product.
+                setHintHtml(
+                    '<div class="mt-1">' +
+                    'No products yet. ' +
+                    '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
+                    '</div>'
+                );
+                setComposeVisibility(false);
+            } else {
+                setHintHtml('');
+                setComposeVisibility(true);
+            }
+ 
             PB_PRODUCTS.forEach(function(p){
                 var opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; sel.appendChild(opt);
             });
@@ -953,8 +993,57 @@
                 try{ localStorage.setItem('pb:last_product_id', sel.value || ''); }catch(_){}
                 miniApplyDefaultsForSelected();
             };
-        }).catch(function(){
+        }).catch(function(e){
             var sel = document.getElementById('mini-product'); if (sel) sel.innerHTML = '';
+ 
+            function setHintHtml(html){
+                try{
+                    var hint = document.getElementById('mini-product-hint');
+                    if (!hint) {
+                        hint = document.createElement('div');
+                        hint.id = 'mini-product-hint';
+                        hint.className = 'small';
+                        if (sel && sel.parentNode) sel.parentNode.appendChild(hint);
+                    }
+                    hint.innerHTML = html || '';
+                    hint.style.display = html ? '' : 'none';
+                }catch(_){}
+            }
+            function setComposeVisibility(hasProducts){
+                try{
+                    var cfg = document.querySelector('#compose-chat .config-grid');
+                    var sa  = document.querySelector('#compose-chat .structured-actions');
+                    var notices = document.getElementById('compose-notices');
+                    var showCompose = (!!CAN_SELECT_PAGES) && !!hasProducts;
+                    [cfg, sa].forEach(function(el){ if (el) el.style.display = showCompose ? '' : 'none'; });
+                    if (notices) {
+                        if (LOGGED_IN && !hasProducts) {
+                            notices.innerHTML =
+                                '<div class="mt-1">' +
+                                'No products yet. ' +
+                                '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
+                                '</div>';
+                            notices.style.display = '';
+                        } else {
+                            notices.innerHTML = '';
+                            notices.style.display = 'none';
+                        }
+                    }
+                }catch(_){}
+            }
+ 
+            if (e && e.status === 401) {
+                setHintHtml('Sign in to use shortcuts.');
+                setComposeVisibility(false);
+            } else {
+                setHintHtml(
+                    '<div class="mt-1">' +
+                    'No products yet. ' +
+                    '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
+                    '</div>'
+                );
+                setComposeVisibility(false);
+            }
         });
     }
     function miniApplyDefaultsForSelected(){
@@ -1001,7 +1090,7 @@
     function openChatAndPrefill(text){
         try{
             openChat();
-            var input = document.getElementById('chat-input');
+            var input = document.getElementById('chat-question');
             if (input) input.value = text || '';
             if (navigator.clipboard && window.isSecureContext && text) {
                 navigator.clipboard.writeText(text).then(function(){}, function(){});
@@ -1022,14 +1111,6 @@
             }
             var txt = buildPromptFromMini(templateId);
             openChatAndPrefill(txt);
-        }catch(_){}
-    }
-    function copyChatDraft(){
-        try{
-            var input = document.getElementById('chat-input'); var text = (input && input.value) || '';
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(function(){ alert('Copied'); });
-            } else { legacyCopy(text); }
         }catch(_){}
     }
     // Deep link: preset auto-generate
@@ -1130,15 +1211,15 @@
     }
     function selectAllPages(){
         try{
-            if (!LOGGED_IN) return;
+            if (!CAN_SELECT_PAGES) return;
             var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
             var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
-
+ 
             // Add only current slice URLs
             (st.sliceUrls || []).forEach(function(url){
                 if (url) SELECTED_PAGES.add(url);
             });
-
+ 
             // Update visible checkboxes for current slice
             var current = new Set(st.sliceUrls || []);
             ul.querySelectorAll('li').forEach(function(li){
@@ -1147,21 +1228,21 @@
                 var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = true;
                 li.classList.add('selected');
             });
-
+ 
             updateSelectionCount();
         } catch(_){}
     }
     function clearAllPages(){
         try{
-            if (!LOGGED_IN) return;
+            if (!CAN_SELECT_PAGES) return;
             var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
             var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
-
+ 
             // Remove only current slice URLs
             (st.sliceUrls || []).forEach(function(url){
                 if (url) SELECTED_PAGES.delete(url);
             });
-
+ 
             // Update visible checkboxes for current slice
             var current = new Set(st.sliceUrls || []);
             ul.querySelectorAll('li').forEach(function(li){
@@ -1170,7 +1251,7 @@
                 var cb = li.querySelector('input[type=checkbox]'); if (cb) cb.checked = false;
                 li.classList.remove('selected');
             });
-
+ 
             updateSelectionCount();
         } catch(_){}
     }
@@ -1183,11 +1264,16 @@
             var cb = li.querySelector('input[type=checkbox]');
             li.classList.toggle('selected', !!(cb && cb.checked));
         });
+        // Enable/disable Ask button strictly based on having at least one selected page
+        try {
+            var sendBtn = document.getElementById('chat-send');
+            if (sendBtn) sendBtn.disabled = (count === 0);
+        } catch(_){}
     }
 
-    // For anonymous users: hide selection controls and prevent any selection state
-    function enforceAnonymousRestrictions(){
-        if (LOGGED_IN) return;
+    // When page selection is not allowed: hide controls and prevent any selection state
+    function enforceSelectionRestrictions(){
+        if (CAN_SELECT_PAGES) return;
         try {
             // Hide Select All / Clear and selection summary in the Pages toolbar
             var toolbar = document.querySelector('[aria-label="Pages Controls"]');
@@ -1210,36 +1296,9 @@
     function runStructured(templateId) {
         try {
             var txt = buildPromptFromMini(templateId);
-            showGeneratedContent(txt);
+            addChatMessage('user', txt);
+            addChatMessage('ai', 'Chat is coming soon.');
         } catch(e) { alert('Unable to generate content'); }
-    }
-    function showGeneratedContent(content){
-        try {
-            var cont = document.getElementById('structured-content');
-            var wrap = document.getElementById('structured-results');
-            var copy = document.getElementById('copy-btn');
-            var down = document.getElementById('download-btn');
-            if (cont && wrap) {
-                cont.value = content || '';
-                wrap.style.display = content ? 'block' : 'none';
-                if (copy) copy.disabled = !content;
-                if (down) down.disabled = !content;
-                wrap.scrollIntoView({behavior:'smooth'});
-            }
-            try { trackEvent('structured_generated'); } catch(_){}
-        } catch(_){}
-    }
-    function copyStructuredContent(){
-        try{
-            var t = (document.getElementById('structured-content').value || '');
-            navigator.clipboard.writeText(t).then(function(){ alert('Content copied'); });
-        } catch(_) {}
-    }
-    function downloadStructuredContent(){
-        try {
-            var t = (document.getElementById('structured-content').value || '');
-            downloadBlob(t, 'generated-content.txt', 'text/plain;charset=utf-8');
-        } catch(_) {}
     }
 
     /* ----- Chat skeleton (Pass 1 = coming soon) ----- */
@@ -1271,6 +1330,29 @@
         }
         // Coming soon in Pass 1
         addChatMessage('ai', 'Chat is coming soon. Use Structured Actions for now.');
+    }
+
+    function runClarityAssessmentForCurrentPage(){
+        try{
+            var pre = document.getElementById('page-markdown');
+            var md = (pre && (pre.textContent || pre.innerText) || '').toString().trim();
+            if (!md) { alert('No markdown to assess'); return; }
+            var url = currentSelectedPageUrl();
+            var sources_md = url ? ('- ' + url) : '';
+            var tpl = (BUILTIN_TEMPLATES && BUILTIN_TEMPLATES.clarity_check) || [
+                'Assess clarity for the selected page/sections:',
+                'Sources:',
+                '{sources}',
+                '',
+                'Sections:',
+                '{sections}',
+                '',
+                'Identify confusing parts and propose concise improvements. Keep in bullet points.'
+            ].join('\n');
+            var prompt = tpl.replace(/\{sources\}/g, sources_md).replace(/\{sections\}/g, '### Page Content\n\n' + md);
+            addChatMessage('user', prompt);
+            addChatMessage('ai', 'Chat is coming soon.');
+        } catch(_) {}
     }
 
     /* Small helpers */
@@ -1517,6 +1599,41 @@
         __progressTimer = setInterval(tick, 2000);
     }
 
+    /* Claim eligibility UI */
+    function setupClaimEligibility(){
+        try {
+            var btn = document.getElementById('claim-btn');
+            var label = document.getElementById('claim-status');
+            var createdAt = __ctx.created_at || '';
+            var minHours = Number(__ctx.claim_min_hours == null ? 24 : __ctx.claim_min_hours);
+            if (!btn || !label || !__ctx.public_key) return;
+
+            function update(){
+                var now = new Date();
+                var created = createdAt ? new Date(createdAt) : now;
+                var eligibleAt = new Date(created.getTime() + (minHours * 3600000));
+                var ms = eligibleAt - now;
+                if (ms <= 0) {
+                    btn.disabled = false;
+                    btn.setAttribute('aria-disabled','false');
+                    label.textContent = 'You can claim this analysis.';
+                    return true;
+                }
+                btn.disabled = true;
+                btn.setAttribute('aria-disabled','true');
+                var s = Math.max(0, Math.floor(ms/1000));
+                var m = Math.floor(s/60);
+                var r = s % 60;
+                label.textContent = 'Eligible in ' + (m > 0 ? (m + 'm ') : '') + (r + 's');
+                return false;
+            }
+
+            update();
+            btn.addEventListener('click', claimAnalysis);
+            var timer = setInterval(function(){ if (update()) { try{ clearInterval(timer); }catch(_){ } } }, 1000);
+        } catch(_){}
+    }
+
     /* Public progress polling by short key */
     function startPublicProgressPolling(pubKey){
         if (!pubKey) return;
@@ -1594,16 +1711,16 @@
         // Links (external domains) pagination - JS only
         try { setupLinksPagination(); } catch(_){}
 
-        // Load mini compose products and apply product defaults (logged-in only)
-        if (LOGGED_IN) {
+        // Load mini compose products (chat-only; section rendered when CAN_CHAT)
+        if (CAN_CHAT) {
             miniLoadProducts();
-            // Optional deep link preset (e.g., ?preset=sales_pitch)
-            tryPresetAutoGenerate();
+            // Deep link presets only make sense for owners (Shortcuts owner-only)
+            if (CAN_SELECT_PAGES) { tryPresetAutoGenerate(); }
         }
 
         // Wire prospects + claim
         try { var pt = document.getElementById('prospect-toggle'); if (pt) pt.addEventListener('click', prospectToggle); } catch(_){}
-        try { var cb = document.getElementById('claim-btn'); if (cb) { cb.disabled = false; cb.addEventListener('click', claimAnalysis); } } catch(_){}
+        try { setupClaimEligibility(); } catch(_){}
 
         // Start progress polling (private by id or public by key)
         const hasId = !!(__ctx.crawl_id);
@@ -1634,8 +1751,7 @@
     window.saveAddedLead = saveAddedLead;
     window.claimAnalysis = claimAnalysis;
     window.runStructured = runStructured;
-    window.copyStructuredContent = copyStructuredContent;
-    window.downloadStructuredContent = downloadStructuredContent;
+    window.runClarityAssessmentForCurrentPage = runClarityAssessmentForCurrentPage;
     window.attachProspectSocial = attachProspectSocial;
     window.attachContactSocial = attachContactSocial;
     window.addEmailToProspect = addEmailToProspect;

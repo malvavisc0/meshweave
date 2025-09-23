@@ -115,10 +115,20 @@ async def view_analysis(request: Request, ref: str):
         )
 
         summary = build_summary(row, payload)
-
+ 
         api_url = f"/api/analysis/private/{row.id}"
         abs_api_url = _abs_url(request, api_url)
-
+ 
+        # Compute ownership/permissions for UI gating
+        current_user = getattr(request.state, "current_user", None)
+        is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
+        status_lc = str(getattr(row, "status", "") or "").lower()
+        logged_in = bool(current_user)
+        # Chat: visible for any logged-in user on succeeded analyses
+        can_chat = (status_lc == "succeeded") and logged_in
+        # Page selection and Shortcuts: owner-only on succeeded analyses
+        can_select_pages = (status_lc == "succeeded") and is_owner
+ 
         # CSRF token for retry form (generate new session if missing and CSRF is enabled)
         cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
         session_id = request.cookies.get(cookie_name)
@@ -131,7 +141,7 @@ async def view_analysis(request: Request, ref: str):
             if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
             else ""
         )
-
+ 
         resp = templates.TemplateResponse(
             "result.html",
             {
@@ -150,6 +160,10 @@ async def view_analysis(request: Request, ref: str):
                 "abs_api_url": abs_api_url,
                 "can_retry": (row.status != "running"),
                 "csrf_token": csrf_token,
+                # Ownership / gating
+                "is_owner": is_owner,
+                "can_chat": can_chat,
+                "can_select_pages": can_select_pages,
                 # SEO/Sharing
                 "page_title": page_title,
                 "meta_description": meta_description,
@@ -284,6 +298,27 @@ async def view_analysis(request: Request, ref: str):
         else ""
     )
 
+    # Claim eligibility inputs for public view (used by client-side countdown/UI)
+    try:
+        claim_min_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
+    except Exception:
+        claim_min_hours = 24
+    created_at_iso = (
+        (row.created_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+
+    ownerless = (getattr(row, "user_id", None) is None)
+ 
+    # Ownership/permissions (public view)
+    current_user = getattr(request.state, "current_user", None)
+    is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
+    status_lc = str(getattr(row, "status", "") or "").lower()
+    logged_in = bool(current_user)
+    # Chat: visible for any logged-in user on succeeded analyses
+    can_chat = (status_lc == "succeeded") and logged_in
+    # Page selection and Shortcuts: owner-only on succeeded analyses
+    can_select_pages = (status_lc == "succeeded") and is_owner
+ 
     resp = templates.TemplateResponse(
         "result.html",
         {
@@ -306,6 +341,10 @@ async def view_analysis(request: Request, ref: str):
             "links_csv_url": links_csv_url,
             "top_domains_csv_url": top_domains_csv_url,
             "csrf_token": csrf_token,
+            # Ownership / gating
+            "is_owner": is_owner,
+            "can_chat": can_chat,
+            "can_select_pages": can_select_pages,
             # SEO/Sharing
             "page_title": page_title,
             "meta_description": meta_description,
@@ -313,6 +352,10 @@ async def view_analysis(request: Request, ref: str):
             "og_image_url": og_image_url,
             "site_name": site_name,
             "json_ld": json_ld,
+            # Claim eligibility (public ownerless)
+            "created_at": created_at_iso,
+            "claim_min_hours": claim_min_hours,
+            "ownerless": ownerless,
             # Gating helpers for anonymous public
             "email_preview": email_preview,
             "email_count": email_count,
