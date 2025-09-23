@@ -1,5 +1,7 @@
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from markdownify_crawler.core import _is_valid_email
+
 from webapp.db import get_session
 from webapp.models import CrawlEmail, CrawlLink
 from webapp.utils.url import normalize_domain
@@ -125,6 +127,8 @@ def persist_page(
                 em = str(item.get("email", "")).strip().lower()
                 if not em:
                     continue
+                if not _is_valid_email(em):
+                    continue
                 page = str(item.get("url") or page_url) or page_url
                 fa = item.get("found_as")
                 if isinstance(fa, list):
@@ -143,6 +147,8 @@ def persist_page(
         for em in emails_unique_fallback:
             em = (em or "").strip().lower()
             if not em:
+                continue
+            if not _is_valid_email(em):
                 continue
             key = (page_url, em)
             if key not in email_map:
