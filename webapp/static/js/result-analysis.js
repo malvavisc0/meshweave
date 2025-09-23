@@ -26,21 +26,6 @@
     // Pages pager state (initialized on first render)
     var PAGES_PAGER = null;
 
-    // Download markdown
-    function downloadMarkdown() {
-        try {
-            var pre = document.getElementById('markdown-content');
-            if (!pre) { alert('No markdown available'); return false; }
-            var md = (pre.textContent || pre.innerText || '').toString();
-            if (!md || md.trim().length === 0) { alert('No markdown available'); return false; }
-            var blob = new Blob([md], {type: 'text/markdown;charset=utf-8'});
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a'); a.href = url; a.download = 'content.md';
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (e) { alert('Unable to download markdown'); }
-        return false;
-    }
 
     // Chat drawer
     var CHAT_EL = null; var CHAT_LARGE = false;
@@ -193,10 +178,6 @@
     }
 
     /* Pages helpers */
-    function getMainMarkdown() {
-        var pre = document.getElementById('markdown-content');
-        try { return (pre && (pre.textContent || pre.innerText) || '').toString(); } catch(_) { return ''; }
-    }
     /* Helpers for Pages filtering and preview */
     function setPreviewHint(msg){
         try {
@@ -622,95 +603,11 @@
     }
 
     /* Pages outline & prompt selection helpers */
-    function extractOutlineFromMarkdown(md){
-        try{
-            var out=[]; if(!md) return out;
-            var re=/^#{1,3}\s+(.+)$/gm, m;
-            while((m=re.exec(md))!==null){
-                var txt=(m[1]||'').trim();
-                var start=m.index;
-                var level=1; var hashes = md.slice(m.index).match(/^#+/); if(hashes){ level = Math.min(3, hashes[0].length); }
-                out.push({level:level, text:txt, startIndex:start});
-            }
-            // compute endIndex for each
-            out.forEach(function(h,i){
-                var next = out.slice(i+1).find(function(k){ return k.level<=h.level; });
-                h.endIndex = next ? next.startIndex : md.length;
-            });
-            return out;
-        }catch(_){ return []; }
-    }
-    function getSectionSnippet(md, node){
-        try{
-            if(!node) return '';
-            var s = Math.max(0, Number(node.startIndex||0));
-            var e = Math.min(md.length, Number(node.endIndex==null ? md.length : node.endIndex));
-            var slice = md.slice(s,e);
-            var MAX=3000;
-            if (slice.length>MAX) slice = slice.slice(0, MAX) + "\n\n[...]";
-            return slice;
-        }catch(_){ return ''; }
-    }
-    function bucketsByLength(len){
-        if (len < 2000) return 'short';
-        if (len >= 8000) return 'long';
-        return 'medium';
-    }
-    function renderOutline(md, url){
-        try{
-            var ul = document.getElementById('page-outline'); if(!ul) return;
-            if(!md){ ul.innerHTML = '<li class="small">No outline</li>'; return; }
-            var nodes = extractOutlineFromMarkdown(md);
-            if(!nodes.length){ ul.innerHTML = '<li class="small">No headings</li>'; return; }
-            var html='';
-            nodes.forEach(function(n, idx){
-                var checked = SELECTED_SECTIONS.some(function(ss){ return (ss.url===url) && (ss.heading===n.text); });
-                html += '<li>' +
-                    '<label class="small">' +
-                    '<input type="checkbox" class="outline-include" data-url="'+jsStr(url)+'" data-h-index="'+idx+'" '+(checked?'checked':'')+'>' +
-                    '<span class="ml-1">'+ (n.level===1?'# ':n.level===2?'## ':'### ') + escapeHtml(n.text) + '</span>' +
-                    '</label>' +
-                '</li>';
-            });
-            ul.innerHTML = html;
-        }catch(_){}
-    }
     function currentSelectedPageUrl(){
         try{
             var li=document.querySelector('#pages-list li.active') || document.querySelector('#pages-list li input[type=checkbox]:checked')?.closest('li');
             return li ? (li.getAttribute('data-url')||'') : '';
         }catch(_){ return ''; }
-    }
-    function pbIncludeCurrentPage(){
-        try{
-            var url = currentSelectedPageUrl();
-            if (!url) { alert('Select a page first'); return; }
-            if (SELECTED_PAGES.has(url)) { SELECTED_PAGES.delete(url); } else { SELECTED_PAGES.add(url); }
-            renderPages();
-        }catch(_){}
-    }
-    function pbIncludeSelectedSections(){
-        try{
-            var url = currentSelectedPageUrl();
-            if (!url) { alert('Select a page first'); return; }
-            var pre=document.getElementById('page-markdown'); var md=(pre && (pre.textContent||pre.innerText)||'');
-            var nodes = extractOutlineFromMarkdown(md);
-            var boxes = document.querySelectorAll('#page-outline .outline-include');
-            var added=0, removed=0;
-            boxes.forEach(function(cb){
-                var idx = Number(cb.getAttribute('data-h-index')||'-1'); if (Number.isNaN(idx) || idx<0 || idx>=nodes.length) return;
-                var node = nodes[idx];
-                var existsIdx = SELECTED_SECTIONS.findIndex(function(ss){ return (ss.url===url) && (ss.heading===node.text); });
-                if (cb.checked && existsIdx === -1) {
-                    SELECTED_SECTIONS.push({url:url, heading:node.text, snippet:getSectionSnippet(md, node)});
-                    added++;
-                } else if (!cb.checked && existsIdx !== -1) {
-                    SELECTED_SECTIONS.splice(existsIdx,1);
-                    removed++;
-                }
-            });
-            if (added||removed) alert('Sections updated: +'+added+' / -'+removed);
-        }catch(_){}
     }
 
     /* Prompt Builder */
@@ -773,147 +670,7 @@
             'Identify confusing parts and propose concise improvements. Keep in bullet points.'
         ].join('\n')
     };
-    var TONE_PRESETS = [
-        'Professional',
-        'Friendly',
-        'Conversational',
-        'Enthusiastic',
-        'Concise',
-        'Analytical',
-        'Persuasive',
-        'Empathetic',
-        'Confident',
-        'Playful'
-    ];
-    function openPromptBuilder(){
-        try{
-            var el=document.getElementById('prompt-builder'); if(!el) return;
-            el.style.display='flex'; el.setAttribute('aria-hidden','false'); PB_OPEN=true;
-            // load products (once per open)
-            pbLoadProducts();
-            // ensure template options exist
-            var ts = document.getElementById('pb-template');
-            if (ts && !ts.options.length) {
-                ['sales_pitch','outreach_email','weaknesses','clarity_check'].forEach(function(k){
-                    var opt=document.createElement('option'); opt.value=k; opt.textContent={
-                        sales_pitch:'Sales Pitch', outreach_email:'Outreach Email', weaknesses:'Weaknesses & Opportunities', clarity_check:'Clarity Check'
-                    }[k] || k;
-                    ts.appendChild(opt);
-                });
-            }
-        }catch(_){}
-    }
-    function closePromptBuilder(){
-        try{
-            var el=document.getElementById('prompt-builder'); if(!el) return;
-            el.style.display='none'; el.setAttribute('aria-hidden','true'); PB_OPEN=false;
-        }catch(_){}
-    }
-    function togglePromptBuilderSize(){
-        PB_LARGE = !PB_LARGE;
-        var el=document.getElementById('prompt-builder'); if(!el) return;
-        el.style.height = PB_LARGE ? '70vh' : '420px';
-        el.style.width = PB_LARGE ? '600px' : '360px';
-    }
-    function pbLoadProducts(){
-        apiJson('/api/products','GET').then(function(r){
-            var items = (r && r.items) || [];
-            PB_PRODUCTS = items;
-            var sel = document.getElementById('pb-product'); if(!sel) return;
-            sel.innerHTML='';
-            items.forEach(function(p){
-                var opt=document.createElement('option');
-                opt.value=p.id; opt.textContent=p.name;
-                sel.appendChild(opt);
-            });
-            // select last used or first
-            var chosen = LAST_PRODUCT_ID && items.find(function(p){return p.id===LAST_PRODUCT_ID;}) ? LAST_PRODUCT_ID : (items[0] && items[0].id) || '';
-            if (chosen) sel.value = chosen;
-            if (chosen) { try{ localStorage.setItem('pb:last_product_id', chosen); }catch(_){ } }
-            pbRenderVarsForSelected();
-            sel.onchange = function(){
-                try{ localStorage.setItem('pb:last_product_id', sel.value || ''); }catch(_){}
-                pbRenderVarsForSelected();
-            };
-        }).catch(function(e){
-            // not signed in or no products
-            var sel = document.getElementById('pb-product'); if(sel){ sel.innerHTML = ''; }
-            document.getElementById('pb-vars').innerHTML = '<div class="small">Sign in and create a Product to use Prompt Builder.</div>';
-        });
-    }
-    function pbRenderVarsForSelected(){
-        var sel = document.getElementById('pb-product'); var pid = sel ? sel.value : '';
-        var p = PB_PRODUCTS.find(function(x){ return x.id===pid; }) || {};
-        var d = (p.defaults || {});
-        var curTone = (d.tone || p.tone || '') || '';
-        var toneOpts = (TONE_PRESETS || []).map(function(t){
-            var selected = (String(curTone).toLowerCase() === String(t).toLowerCase()) ? ' selected' : '';
-            return '<option value="'+jsStr(t)+'"'+selected+'>'+escapeHtml(t)+'</option>';
-        }).join('');
-        var html = ''
-            + '<div class="small mt-1" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px;">'
-            + '  <label>Tone<br><select id="pb-var-tone">'+ toneOpts +'</select></label>'
-            + '  <label>CTA<br><input type="text" id="pb-var-cta" value="'+jsStr(d.cta||'')+'"></label>'
-            + '  <label>Length<br><input type="text" id="pb-var-length" value="'+jsStr(d.length||'')+'"></label>'
-            + '</div>';
-        document.getElementById('pb-vars').innerHTML = html;
-    }
-    function generatePrompt(tid, vars, selectedPages, selectedSections){
-        var tpl = BUILTIN_TEMPLATES[tid] || '';
-        var sources_md = Array.from(selectedPages).map(function(u){ return '- ' + u; }).join('\n');
-        var sections_md = selectedSections.map(function(s){ return '### ' + s.heading + '\n\n' + s.snippet.trim(); }).join('\n\n');
-
-        // Resolve selected product and map product variables
-        var sel = document.getElementById('pb-product');
-        var pid = sel ? (sel.value || '') : '';
-        var p = PB_PRODUCTS.find(function(x){ return x.id === pid; }) || {};
-
-        var prodVars = {
-            product_name: p.name || '',
-            product_website: p.website || '',
-            product_description: p.description || '',
-            icp: p.icp || '',
-            pricing: p.pricing || '',
-            contact_info: p.contact_info || ''
-        };
-
-        var map = Object.assign({}, prodVars, vars, {sources: sources_md, sections: sections_md});
-        return tpl.replace(/\{([a-zA-Z0-9_]+)\}/g, function(_m, k){ return (map[k] == null ? '' : String(map[k])); });
-    }
-    function pbCollectVars(){
-        function gv(id){ var el=document.getElementById(id); return el ? (el.value||'') : ''; }
-        return {
-            tone: gv('pb-var-tone'),
-            cta: gv('pb-var-cta'),
-            length: gv('pb-var-length')
-        };
-    }
-    function pbBuild(){
-        var tid = (function(){ var el=document.getElementById('pb-template'); return el ? (el.value||'sales_pitch') : 'sales_pitch'; })();
-        var vars = pbCollectVars();
-        var text = generatePrompt(tid, vars, SELECTED_PAGES, SELECTED_SECTIONS);
-        var out = document.getElementById('pb-output'); if (out) out.value = text;
-        var warn = document.getElementById('pb-length-warning');
-        if (warn) warn.classList.toggle('hidden', !(text && text.length > 50000));
-    }
-    function pbCopyText(){
-        try{
-            var out=document.getElementById('pb-output'); var text=(out && out.value)||'';
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(function(){ alert('Copied'); }, function(){ legacyCopy(text); });
-            } else { legacyCopy(text); }
-        } catch(_) {}
-    }
-    function pbCopyMarkdown(){ pbCopyText(); }
-    function pbDownloadMarkdown(){
-        try{
-            var out=document.getElementById('pb-output'); var md=(out && out.value)||'';
-            if(!md.trim()){ alert('Nothing to download'); return; }
-            var tid = (function(){ var el=document.getElementById('pb-template'); return el ? (el.value||'sales_pitch') : 'sales_pitch'; })();
-            var fname = (BASE_DOMAIN || 'site') + '-' + tid + '.md';
-            var blob=new Blob([md],{type:'text/markdown;charset=utf-8'}); var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
-        }catch(_){}
-    }
+    /* pbLoadProducts removed: products are now provided server-side via __ctx.user_products */
 
     /* Mini compose helpers and shortcuts */
     function getQueryParam(name){
@@ -922,67 +679,72 @@
             return url.searchParams.get(name);
         } catch(_) { return null; }
     }
-    function miniLoadProducts(){
-        apiJson('/api/products','GET').then(function(r){
-            PB_PRODUCTS = (r && r.items) || [];
-            var sel = document.getElementById('mini-product'); if (!sel) return;
-            sel.innerHTML = '';
- 
-            // small inline helper to show a hint under the Product select
-            function setHintHtml(html){
-                try{
-                    var hint = document.getElementById('mini-product-hint');
-                    if (!hint) {
-                        hint = document.createElement('div');
-                        hint.id = 'mini-product-hint';
-                        hint.className = 'small';
-                        var parent = sel.parentNode;
-                        if (parent) parent.appendChild(hint);
+    function miniApplyProductsVisibility(){
+        var sel = document.getElementById('mini-product');
+        if (sel) { sel.innerHTML = ''; }
+
+        // small inline helper to show a hint under the Product select (or notices fallback)
+        function setHintHtml(html){
+            try{
+                var hint = document.getElementById('mini-product-hint');
+                var parent = (sel && sel.parentNode) || document.getElementById('compose-notices');
+                if (!hint) {
+                    hint = document.createElement('div');
+                    hint.id = 'mini-product-hint';
+                    hint.className = 'small';
+                    if (parent) parent.appendChild(hint);
+                }
+                hint.innerHTML = html || '';
+                hint.style.display = html ? '' : 'none';
+                // Ensure the parent notices container is visible when we have content
+                if (parent && parent.id === 'compose-notices') {
+                    parent.style.display = html ? '' : 'none';
+                }
+            }catch(_){}
+        }
+        // Toggle Product-dependent compose surfaces (chat stays visible); owner-only Shortcuts/Product
+        function setComposeVisibility(hasProducts){
+            try{
+                var cfg = document.querySelector('#compose-chat .config-grid');
+                var sa  = document.querySelector('#compose-chat .structured-actions');
+                var notices = document.getElementById('compose-notices');
+                // Owner-only AND must have products to show compose controls
+                var showCompose = (!!CAN_SELECT_PAGES) && !!hasProducts;
+                [cfg, sa].forEach(function(el){ if (el) el.style.display = showCompose ? '' : 'none'; });
+                // CTA when logged-in and no products (invite to add), regardless of ownership
+                if (notices) {
+                    if (LOGGED_IN && !hasProducts) {
+                        notices.innerHTML =
+                            '<div class="mt-1">' +
+                            'No products yet. ' +
+                            '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
+                            '</div>';
+                        notices.style.display = '';
+                    } else {
+                        notices.innerHTML = '';
+                        notices.style.display = 'none';
                     }
-                    hint.innerHTML = html || '';
-                    hint.style.display = html ? '' : 'none';
-                }catch(_){}
-            }
-            // Toggle Product-dependent compose surfaces (chat stays visible); owner-only Shortcuts/Product
-            function setComposeVisibility(hasProducts){
-                try{
-                    var cfg = document.querySelector('#compose-chat .config-grid');
-                    var sa  = document.querySelector('#compose-chat .structured-actions');
-                    var notices = document.getElementById('compose-notices');
-                    // Owner-only AND must have products to show compose controls
-                    var showCompose = (!!CAN_SELECT_PAGES) && !!hasProducts;
-                    [cfg, sa].forEach(function(el){ if (el) el.style.display = showCompose ? '' : 'none'; });
-                    // CTA when logged-in and no products (invite to add), regardless of ownership
-                    if (notices) {
-                        if (LOGGED_IN && !hasProducts) {
-                            notices.innerHTML =
-                                '<div class="mt-1">' +
-                                'No products yet. ' +
-                                '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
-                                '</div>';
-                            notices.style.display = '';
-                        } else {
-                            notices.innerHTML = '';
-                            notices.style.display = 'none';
-                        }
-                    }
-                }catch(_){}
-            }
- 
-            if (!PB_PRODUCTS.length) {
-                // CTA uses DB-backed /api/products result (not template JSON). Show action to add a Product.
-                setHintHtml(
-                    '<div class="mt-1">' +
-                    'No products yet. ' +
-                    '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
-                    '</div>'
-                );
-                setComposeVisibility(false);
-            } else {
-                setHintHtml('');
-                setComposeVisibility(true);
-            }
- 
+                }
+            }catch(_){}
+        }
+
+        if (!PB_PRODUCTS.length) {
+            // Show CTA to add a Product.
+            setHintHtml(
+                '<div class="mt-1">' +
+                'No products yet. ' +
+                '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
+                '</div>'
+            );
+            // Explicitly unhide notices container even if template hid config grid
+            try{ var n = document.getElementById('compose-notices'); if (n) n.style.display = ''; }catch(_){}
+            setComposeVisibility(false);
+        } else {
+            setHintHtml('');
+            setComposeVisibility(true);
+        }
+
+        if (sel) {
             PB_PRODUCTS.forEach(function(p){
                 var opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; sel.appendChild(opt);
             });
@@ -993,58 +755,7 @@
                 try{ localStorage.setItem('pb:last_product_id', sel.value || ''); }catch(_){}
                 miniApplyDefaultsForSelected();
             };
-        }).catch(function(e){
-            var sel = document.getElementById('mini-product'); if (sel) sel.innerHTML = '';
- 
-            function setHintHtml(html){
-                try{
-                    var hint = document.getElementById('mini-product-hint');
-                    if (!hint) {
-                        hint = document.createElement('div');
-                        hint.id = 'mini-product-hint';
-                        hint.className = 'small';
-                        if (sel && sel.parentNode) sel.parentNode.appendChild(hint);
-                    }
-                    hint.innerHTML = html || '';
-                    hint.style.display = html ? '' : 'none';
-                }catch(_){}
-            }
-            function setComposeVisibility(hasProducts){
-                try{
-                    var cfg = document.querySelector('#compose-chat .config-grid');
-                    var sa  = document.querySelector('#compose-chat .structured-actions');
-                    var notices = document.getElementById('compose-notices');
-                    var showCompose = (!!CAN_SELECT_PAGES) && !!hasProducts;
-                    [cfg, sa].forEach(function(el){ if (el) el.style.display = showCompose ? '' : 'none'; });
-                    if (notices) {
-                        if (LOGGED_IN && !hasProducts) {
-                            notices.innerHTML =
-                                '<div class="mt-1">' +
-                                'No products yet. ' +
-                                '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
-                                '</div>';
-                            notices.style.display = '';
-                        } else {
-                            notices.innerHTML = '';
-                            notices.style.display = 'none';
-                        }
-                    }
-                }catch(_){}
-            }
- 
-            if (e && e.status === 401) {
-                setHintHtml('Sign in to use shortcuts.');
-                setComposeVisibility(false);
-            } else {
-                setHintHtml(
-                    '<div class="mt-1">' +
-                    'No products yet. ' +
-                    '<a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>' +
-                    '</div>'
-                );
-                setComposeVisibility(false);
-            }
-        });
+        }
     }
     function miniApplyDefaultsForSelected(){
         try{
@@ -1087,55 +798,17 @@
         };
         return tpl.replace(/\{([a-zA-Z0-9_]+)\}/g, function(_m, k){ return (map[k] == null ? '' : String(map[k])); });
     }
-    function openChatAndPrefill(text){
-        try{
-            openChat();
-            var input = document.getElementById('chat-question');
-            if (input) input.value = text || '';
-            if (navigator.clipboard && window.isSecureContext && text) {
-                navigator.clipboard.writeText(text).then(function(){}, function(){});
-            }
-            alert('Draft generated and copied');
-        }catch(_){}
-    }
-    function generateAndOpenChat(templateId){
-        try{
-            // ensure products loaded or try load
-            if (!PB_PRODUCTS || PB_PRODUCTS.length === 0) {
-                miniLoadProducts();
-                setTimeout(function(){ // naive retry shortly
-                    var txt = buildPromptFromMini(templateId);
-                    openChatAndPrefill(txt);
-                }, 300);
-                return;
-            }
-            var txt = buildPromptFromMini(templateId);
-            openChatAndPrefill(txt);
-        }catch(_){}
-    }
     // Deep link: preset auto-generate
     function tryPresetAutoGenerate(){
         try{
             var preset = getQueryParam('preset');
             if (preset && BUILTIN_TEMPLATES[preset]) {
-                // Load products then generate structured output into results panel
-                if (!PB_PRODUCTS || PB_PRODUCTS.length===0) {
-                    miniLoadProducts();
-                    setTimeout(function(){ runStructured(preset); }, 300);
-                } else {
-                    runStructured(preset);
-                }
+                runStructured(preset);
             }
         }catch(_){}
     }
 
     /* ----- Emails preview helpers ----- */
-    function scrollToFullEmails() {
-        try {
-            var el = document.getElementById('m-leads') || document.getElementById('leads-tbody');
-            if (el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
-        } catch(_) {}
-    }
     function copyEmail(email) {
         try { navigator.clipboard.writeText(email); showToast('Email copied'); } catch(_) {}
     }
@@ -1163,29 +836,6 @@
         var blob=new Blob([text], {type: mime||'text/plain;charset=utf-8'});
         var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=filename||'download.txt';
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
-    }
-    function showAddEmailForm(){
-        var el = document.getElementById('add-email-inline'); if (el) el.classList.remove('hidden');
-        try { document.getElementById('new-email-inline').focus(); } catch(_){}
-    }
-    function hideAddEmailForm(){
-        var el = document.getElementById('add-email-inline'); if (el) el.classList.add('hidden');
-    }
-    function addInlineEmail(){
-        var e = (document.getElementById('new-email-inline').value || '').trim().toLowerCase();
-        if (!e) { alert('Email is required'); return; }
-        saveAddedLeadInline(e);
-    }
-    function saveAddedLeadInline(email) {
-        prospectEnsure().then(function(pid){
-            return apiJson('/api/prospects/'+encodeURIComponent(pid)+'/contacts','POST',{ email: email });
-        }).then(function(){
-            alert('Email added');
-            hideAddEmailForm();
-        }).catch(function(err){
-            if (err && err.status === 401) alert('Sign in to add');
-            else alert('Unable to add email');
-        });
     }
 
     /* ----- Pages enhancements ----- */
@@ -1711,9 +1361,10 @@
         // Links (external domains) pagination - JS only
         try { setupLinksPagination(); } catch(_){}
 
-        // Load mini compose products (chat-only; section rendered when CAN_CHAT)
+        // Load mini compose products from server data (no AJAX)
         if (CAN_CHAT) {
-            miniLoadProducts();
+            PB_PRODUCTS = __ctx.user_products || [];
+            miniApplyProductsVisibility();
             // Deep link presets only make sense for owners (Shortcuts owner-only)
             if (CAN_SELECT_PAGES) { tryPresetAutoGenerate(); }
         }
@@ -1739,8 +1390,6 @@
     window.openChat = openChat;
     window.closeChat = closeChat;
     window.toggleChatSize = toggleChatSize;
-    window.pbIncludeCurrentPage = pbIncludeCurrentPage;
-    window.pbIncludeSelectedSections = pbIncludeSelectedSections;
     window.copyCurrentPage = copyCurrentPage;
     window.downloadCurrentPage = downloadCurrentPage;
     window.filterPages = filterPages;

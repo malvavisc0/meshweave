@@ -268,10 +268,20 @@
   {% if can_chat %}
   <section class="panel mt-2" id="compose-chat" role="region" aria-label="Compose & Chat">
     <h2>Compose & Chat</h2>
+
+    {% if _logged_in and not has_products %}
+    <div id="compose-notices" class="small" style="margin-bottom:8px;">
+      <div class="mt-1">
+        No products yet.
+        <a class="btn btn-primary" href="/products" aria-label="Add a new product">Add Product</a>
+      </div>
+    </div>
+    {% else %}
     <div id="compose-notices" class="small" style="margin-bottom:8px; display:none;"></div>
+    {% endif %}
 
     <!-- Compose mini-bar -->
-    {% if can_select_pages %}
+    {% if can_select_pages and has_products %}
     <div class="config-grid">
       <label>Product<br><select id="mini-product"></select></label>
       <label>Tone<br>
@@ -295,7 +305,7 @@
     {% endif %}
 
     <!-- Shortcuts -->
-    {% if can_select_pages %}
+    {% if can_select_pages and has_products %}
     <div class="structured-actions">
       <h3>Shortcuts</h3>
       <div class="small mb-1">Use Product/Tone/CTA/Length above</div>
@@ -466,6 +476,7 @@
   'logged_in': _logged_in and True or False,
   'can_chat': can_chat|default(false),
   'can_select_pages': can_select_pages|default(false),
+  'user_products': user_products|default([]),
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
   'ownerless': ownerless|default(false)

@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail
+from webapp.models import Crawl, CrawlEmail, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.security import _make_csrf_token
@@ -128,7 +128,30 @@ async def view_analysis(request: Request, ref: str):
         can_chat = (status_lc == "succeeded") and logged_in
         # Page selection and Shortcuts: owner-only on succeeded analyses
         can_select_pages = (status_lc == "succeeded") and is_owner
- 
+
+        # Query user products for compose section
+        user_products = []
+        if current_user:
+            with get_session() as s:
+                products = (
+                    s.query(Product)
+                    .filter(Product.user_id == current_user.id)
+                    .order_by(Product.updated_at.desc())
+                    .all()
+                )
+                user_products = [
+                    {
+                        "id": p.id,
+                        "name": p.name or "",
+                        "description": p.description or "",
+                        "website": p.website or None,
+                        "contact_info": p.contact_info or None,
+                        "created_at": (p.created_at or datetime.now(timezone.utc)).isoformat(),
+                        "updated_at": (p.updated_at or datetime.now(timezone.utc)).isoformat(),
+                    }
+                    for p in products
+                ]
+
         # CSRF token for retry form (generate new session if missing and CSRF is enabled)
         cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
         session_id = request.cookies.get(cookie_name)
@@ -164,6 +187,8 @@ async def view_analysis(request: Request, ref: str):
                 "is_owner": is_owner,
                 "can_chat": can_chat,
                 "can_select_pages": can_select_pages,
+                "user_products": user_products,
+                "has_products": bool(user_products),
                 # SEO/Sharing
                 "page_title": page_title,
                 "meta_description": meta_description,
@@ -318,7 +343,30 @@ async def view_analysis(request: Request, ref: str):
     can_chat = (status_lc == "succeeded") and logged_in
     # Page selection and Shortcuts: owner-only on succeeded analyses
     can_select_pages = (status_lc == "succeeded") and is_owner
- 
+
+    # Query user products for compose section
+    user_products = []
+    if current_user:
+        with get_session() as s:
+            products = (
+                s.query(Product)
+                .filter(Product.user_id == current_user.id)
+                .order_by(Product.updated_at.desc())
+                .all()
+            )
+            user_products = [
+                {
+                    "id": p.id,
+                    "name": p.name or "",
+                    "description": p.description or "",
+                    "website": p.website or None,
+                    "contact_info": p.contact_info or None,
+                    "created_at": (p.created_at or datetime.now(timezone.utc)).isoformat(),
+                    "updated_at": (p.updated_at or datetime.now(timezone.utc)).isoformat(),
+                }
+                for p in products
+            ]
+
     resp = templates.TemplateResponse(
         "result.html",
         {
@@ -345,6 +393,8 @@ async def view_analysis(request: Request, ref: str):
             "is_owner": is_owner,
             "can_chat": can_chat,
             "can_select_pages": can_select_pages,
+            "user_products": user_products,
+            "has_products": bool(user_products),
             # SEO/Sharing
             "page_title": page_title,
             "meta_description": meta_description,
