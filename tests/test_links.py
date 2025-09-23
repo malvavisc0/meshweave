@@ -1,8 +1,5 @@
-from markdownify_crawler.core import (
-    _IGNORED_DOMAINS,  # type: ignore
-    _classify_links,
-    soup_from_html,
-)
+from markdownify_crawler.core import _IGNORED_DOMAINS  # type: ignore
+from markdownify_crawler.core import _classify_links, soup_from_html
 
 
 def test_classify_links_internal_external_and_root_skip(monkeypatch):

@@ -346,6 +346,63 @@ def _classify_links(soup: BeautifulSoup, base_url: str):
 
 _EMAIL_REGEX = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[A-Za-z]{2,})")
 
+# Common top-level domains for validation
+_COMMON_TLDS = {
+    "com", "org", "net", "edu", "gov", "mil", "info", "biz", "co", "uk", "de", "fr", "it", "es", "ca", "au", "jp", "cn", "in", "br", "mx", "nl", "se", "no", "fi", "dk", "pl", "ru", "be", "at", "ch", "pt", "cz", "gr", "tr", "hu", "sk", "si", "hr", "ba", "me", "rs", "mk", "al", "bg", "ro", "md", "ua", "by", "kz", "uz", "tj", "tm", "kg", "az", "am", "ge", "ee", "lv", "lt", "mt", "cy", "lu", "is", "ie", "gi", "pt", "ad", "li", "mc", "sm", "va", "ai", "io", "sh", "ac", "to", "tv", "cc", "st", "ms", "gs", "tc", "vg", "je", "gg", "im", "fo", "gl", "sj", "ax", "pm", "re", "wf", "tf", "yt", "mq", "gp", "gf", "pf", "nc", "vu", "sb", "fm", "ki", "nr", "pw", "ws", "as", "ck", "nu", "tk", "nf", "hm", "bv", "cx", "aq"
+}
+
+
+def _is_valid_email(email: str) -> bool:
+    """Validate if an email address appears legitimate and not a false positive.
+
+    Performs stricter checks than the basic regex to filter out common false positives
+    from deobfuscation, such as emails starting with numbers or containing invalid patterns.
+
+    Parameters:
+        email (str): Email address to validate.
+
+    Returns:
+        bool: True if the email passes validation checks.
+    """
+    if not email or '@' not in email:
+        return False
+
+    local, domain = email.split('@', 1)
+    if not local or not domain:
+        return False
+
+    # Local part checks
+    if (local.startswith('.') or local.endswith('.') or
+        '..' in local or len(local) < 2):
+        return False
+
+    # Domain checks
+    if ('.' not in domain or domain.startswith('.') or domain.endswith('.') or
+        '..' in domain):
+        return False
+
+    # Stricter regex check
+    strict_regex = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    if not strict_regex.fullmatch(email):
+        return False
+
+    # Additional heuristics for false positives
+    # Exclude emails where local part starts with digit and is very short (likely false positive)
+    if local[0].isdigit() and len(local) < 5:
+        return False
+
+    # Exclude emails with unusual domain extensions or patterns
+    domain_parts = domain.split('.')
+    if len(domain_parts) < 2 or any(len(part) < 2 for part in domain_parts[-2:]):
+        return False
+
+    # Check if TLD is common
+    tld = domain_parts[-1].lower()
+    if tld not in _COMMON_TLDS:
+        return False
+
+    return True
+
 
 def _deobfuscate_text(text: str) -> str:
     """Replace common textual obfuscations of email addresses.
@@ -469,7 +526,9 @@ def extract_emails(
         sources.append({"email": e, "found_as": "obfuscated" if had_obf else "text"})
 
     all_unique = mailto_emails | text_emails
-    return all_unique, sources
+    # Filter out invalid emails to reduce false positives
+    valid_emails = {email for email in all_unique if _is_valid_email(email)}
+    return valid_emails, sources
 
 
 # -------------------------
@@ -552,6 +611,20 @@ def preprocess_soup(soup: BeautifulSoup, base_url: str, final_url: str) -> Beaut
     # common nav/header/menu/footer/social classes
     for node in soup.find_all(
         True, {"class": re.compile(r"(nav|navbar|menu|header|footer|social)", re.I)}
+    ):
+        node.decompose()
+
+    # additional common noise: ads, popups, modals, banners
+    for node in soup.find_all(
+        True, {"class": re.compile(r"(ad|ads|popup|modal|banner|overlay|tooltip)", re.I)}
+    ):
+        node.decompose()
+    for node in soup.find_all(True, id=re.compile(r"(ad|ads|popup|modal|banner|overlay)", re.I)):
+        node.decompose()
+
+    # role-based additional removals
+    for node in soup.find_all(
+        attrs={"role": re.compile(r"^(complementary|banner|contentinfo|dialog|alert)$", re.I)}
     ):
         node.decompose()
 
