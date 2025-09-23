@@ -26,6 +26,7 @@ from webapp.routers import (
     products,
     progress,
     prospects,
+    prospects_page,
     submissions,
 )
 from webapp.utils.auth import AuthSessionMiddleware
@@ -347,8 +348,9 @@ def create_app() -> FastAPI:
     app.include_router(all_public.router)
     # Prospects/Contacts/Products APIs
     app.include_router(prospects.router)
-    # Products management page
+    # Pages: Products and Prospects management pages
     app.include_router(products.router)
+    app.include_router(prospects_page.router)
     # API router remains last
     app.include_router(api.router)
 

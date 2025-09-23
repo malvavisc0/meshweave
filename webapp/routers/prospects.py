@@ -323,5 +323,80 @@ async def export_contacts_csv(request: Request, prospect_id: str):
     )
 
 
+@router.get("/api/prospects/{prospect_id}/contacts")
+async def list_contacts(request: Request, prospect_id: str):
+    user = await require_auth(request)
+    with get_session() as s:
+        p = (
+            s.query(Prospect)
+            .filter(Prospect.id == prospect_id, Prospect.user_id == user.id)
+            .one_or_none()
+        )
+        if not p:
+            raise HTTPException(status_code=404, detail="Prospect not found")
+        rows = (
+            s.query(ProspectContact)
+            .filter(ProspectContact.prospect_id == prospect_id)
+            .order_by(ProspectContact.created_at.desc())
+            .all()
+        )
+        items = [
+            {
+                "id": r.id,
+                "prospect_id": r.prospect_id,
+                "email": r.email,
+                "source_url": r.source_url,
+                "social_url": r.social_url,
+                "tags": r.tags,
+                "role_title": r.role_title,
+                "created_at": (r.created_at or datetime.now(timezone.utc)).isoformat(),
+            }
+            for r in rows
+        ]
+    return {"items": items}
+
+
+@router.delete("/api/prospects/{prospect_id}/contacts/{contact_id}")
+async def delete_contact(request: Request, prospect_id: str, contact_id: str):
+    user = await require_auth(request)
+    with get_session() as s:
+        p = (
+            s.query(Prospect)
+            .filter(Prospect.id == prospect_id, Prospect.user_id == user.id)
+            .one_or_none()
+        )
+        if not p:
+            raise HTTPException(status_code=404, detail="Prospect not found")
+        c = (
+            s.query(ProspectContact)
+            .filter(
+                ProspectContact.id == contact_id,
+                ProspectContact.prospect_id == prospect_id,
+            )
+            .one_or_none()
+        )
+        if not c:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        s.delete(c)
+        s.flush()
+        return {"ok": True, "id": contact_id}
+
+
+@router.delete("/api/prospects/{prospect_id}")
+async def delete_prospect(request: Request, prospect_id: str):
+    user = await require_auth(request)
+    with get_session() as s:
+        row = (
+            s.query(Prospect)
+            .filter(Prospect.id == prospect_id, Prospect.user_id == user.id)
+            .one_or_none()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        s.delete(row)
+        s.flush()
+        return {"ok": True, "id": prospect_id}
+
+
 # Products API endpoints removed from prospects router to avoid duplication.
 # Use the canonical implementations in webapp.routers.api for /api/products.

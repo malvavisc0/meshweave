@@ -42,6 +42,7 @@
           <span class="small">Signed in{% if request.state.current_user.email %} as {{ request.state.current_user.email }}{% endif %}</span>
           <a href="/my" class="small btn ml-1 mr-1">Dashboard</a>
           <a href="/products" class="small btn ml-1 mr-1">Products</a>
+          <a href="/prospects" class="small btn ml-1 mr-1">Prospects</a>
           <form action="/logout" method="post" class="inline">
             {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
             <button type="submit" class="btn btn-danger-soft">Sign out</button>
