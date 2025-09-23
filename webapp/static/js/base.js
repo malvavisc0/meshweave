@@ -2,27 +2,16 @@
 (function () {
   'use strict';
 
-  function getMeta(name) {
-    try {
-      var el = document.querySelector('meta[name="' + name + '"]');
-      return el ? (el.getAttribute('content') || '') : '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function getCsrfToken() {
-    return getMeta('csrf-token') || '';
-  }
-
   // Consistent HTML escaping
   function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/"/g, '"')
-      .replace(/'/g, '&#39;');
+    try {
+      var div = document.createElement('div');
+      div.textContent = String(s == null ? '' : s);
+      return div.innerHTML;
+    } catch (_){
+      // Fallback: best-effort stringify
+      return String(s == null ? '' : s);
+    }
   }
 
   function legacyCopy(text) {
@@ -87,7 +76,6 @@
   window.escapeHtml = escapeHtml;
   window.trackEvent = trackEvent;
   window.apiJson = apiJson;
-  window.getCsrfToken = getCsrfToken;
 
   // Delegate tracking and copy handlers on links/buttons
   try {

@@ -1016,9 +1016,16 @@
         } catch(_) {}
     }
     function escapeHtml(s){
-        return String(s).replace(/[&<>"']/g, function(c){
-            return {'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'}[c];
-        });
+        if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+            return window.escapeHtml(s);
+        }
+        try {
+            var div = document.createElement('div');
+            div.textContent = String(s == null ? '' : s);
+            return div.innerHTML;
+        } catch (_){
+            return String(s == null ? '' : s);
+        }
     }
 
     /* Keep existing code below */
