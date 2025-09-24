@@ -4,14 +4,14 @@
   --radius: 8px;
   --radius-sm: 6px;
 
-  --border: #E7EDE9;
-  --border-strong: #D2DCD6;
+  --border: #E5E5E5;
+  --border-strong: #D0D0D0;
 
   --fg: #1F2937;
-  --muted: #64748B;
-  --bg: #F9FBFA;
-  --bg-soft: #FFFFFF;
-  --card-bg: #fff;
+  --muted: #374151;
+  --bg: #F5F5F5;
+  --bg-soft: #FAFAFA;
+  --card-bg: #F9F9F9;
 
   --brand: #06C167;
   --brand-ink: #066A3E;
@@ -34,7 +34,7 @@
 
   --shadow-1: 0 10px 30px rgba(0,0,0,0.12);
   --bg-grid-size: 24px;
-  --bg-grid-color: rgba(231, 237, 233, 0.25);
+  --bg-grid-color: rgba(200, 200, 200, 0.15);
 }
 
 /* Base */

@@ -30,7 +30,7 @@ COPY alembic ./alembic
 # - Install auth deps (authlib, cryptography) for Google OIDC
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir ".[renderer]" && \
-    pip install --no-cache-dir fastapi[standard] uvicorn[standard] jinja2 sqlalchemy psycopg2-binary python-multipart httpx authlib cryptography prometheus-client alembic && \
+    pip install --no-cache-dir fastapi[standard] uvicorn[standard] jinja2 sqlalchemy psycopg2-binary python-multipart httpx authlib cryptography prometheus-client alembic openai agno && \
     pip install --no-cache-dir /app/webapp
 # Install curl for container healthchecks and diagnostics
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

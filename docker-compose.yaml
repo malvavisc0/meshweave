@@ -105,6 +105,8 @@ services:
       WEBAPP_CSRF_MAX_AGE: 7200
       # Claim public analyses minimum age (hours)
       CLAIM_PUBLIC_MIN_AGE_HOURS: 24
+      # OpenRouter integration
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
     volumes:
       - ./.cache:/tmp/markdownify/cache
       - ./data/webapp:/db
