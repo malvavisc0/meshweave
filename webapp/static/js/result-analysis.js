@@ -20,8 +20,7 @@
     const CAN_CHAT = !!(__ctx.can_chat);
     const CAN_SELECT_PAGES = !!(__ctx.can_select_pages);
     var PROSPECT_ID = null; var PROSPECT_SOCIALS = [];
-    const SELECTED_PAGES = new Set();
-    const SELECTED_SECTIONS = []; // {url, heading, snippet}
+    // Selection state: Map<url, markdown>
     const SELECTED_PAGE_CONTENT = new Map(); // url -> markdown content
     var LAST_PRODUCT_ID = (function(){ try { return localStorage.getItem('pb:last_product_id') || ''; } catch(_) { return ''; } })();
     // Pages pager state (initialized on first render)
@@ -271,8 +270,8 @@
                 var url = p.url || '';
                 li.setAttribute('data-url', url);
 
-                // Initial checkbox checked state mirrors inclusion set
-                var isIncluded = SELECTED_PAGES.has(url);
+                // Initial checkbox checked state mirrors inclusion map
+                var isIncluded = SELECTED_PAGE_CONTENT.has(url);
                 if (isIncluded) li.classList.add('selected');
 
                 // Render checkbox; disable when selection is not allowed
@@ -285,9 +284,10 @@
                     } else {
                         cb.addEventListener('change', function(){
                             if (cb.checked) {
-                                SELECTED_PAGES.add(url);
+                                // store markdown content at selection time
+                                SELECTED_PAGE_CONTENT.set(url, ((p && (p.markdown||'').trim()) || ''));
                             } else {
-                                SELECTED_PAGES.delete(url);
+                                SELECTED_PAGE_CONTENT.delete(url);
                             }
                             li.classList.toggle('selected', cb.checked);
                             updateSelectionCount();
@@ -313,7 +313,7 @@
                     if (cb) {
                         cb.checked = !cb.checked;
                         try { cb.dispatchEvent(new Event('change')); } catch(_){
-                            if (cb.checked) { SELECTED_PAGES.add(url); } else { SELECTED_PAGES.delete(url); }
+                            if (cb.checked) { SELECTED_PAGE_CONTENT.set(url, ((p && (p.markdown||'').trim()) || '')); } else { SELECTED_PAGE_CONTENT.delete(url); }
                             li.classList.toggle('selected', cb.checked);
                             updateSelectionCount();
                         }
@@ -630,8 +630,8 @@
             'Sources:',
             '{sources}',
             '',
-            'Key sections:',
-            '{sections}',
+            'Content snippets:',
+            '{content}',
             '',
             'Write a persuasive, tailored pitch.'
         ].join('\n'),
@@ -641,12 +641,12 @@
             'CTA: {cta}',
             'Length: {length}',
             '',
-            'Context (site pages and sections):',
+            'Context (site pages):',
             'Sources:',
             '{sources}',
             '',
-            'Sections (quoted):',
-            '{sections}',
+            'Content snippets:',
+            '{content}',
             '',
             'Use {contact_info} for the signature/contact details.'
         ].join('\n'),
@@ -655,18 +655,18 @@
             'Sources:',
             '{sources}',
             '',
-            'Sections:',
-            '{sections}',
+            'Content snippets:',
+            '{content}',
             '',
             'Summarize clearly and concisely for executive review.'
         ].join('\n'),
         clarity_check: [
-            'Assess clarity for the selected page/sections:',
+            'Assess clarity for the selected page(s):',
             'Sources:',
             '{sources}',
             '',
-            'Sections:',
-            '{sections}',
+            'Content:',
+            '{content}',
             '',
             'Identify confusing parts and propose concise improvements. Keep in bullet points.'
         ].join('\n')
@@ -775,18 +775,16 @@
         var cta = (document.getElementById('mini-cta') && document.getElementById('mini-cta').value) || '';
         var length = (document.getElementById('mini-length') && document.getElementById('mini-length').value) || '';
         var tpl = BUILTIN_TEMPLATES[templateId] || '';
-        var sources_md = Array.from(SELECTED_PAGES).map(function(u){ return '- ' + u; }).join('\n');
-        var sections_md = SELECTED_SECTIONS.map(function(s){ return '### ' + s.heading + '\n\n' + s.snippet.trim(); }).join('\n\n');
-        // Optional shorten toggle
-        try{
-            if (document.getElementById('mini-shorten') && document.getElementById('mini-shorten').checked) {
-                sections_md = SELECTED_SECTIONS.map(function(s){
-                    var sn = s.snippet.replace(/\s+/g,' ').trim();
-                    if (sn.length > 220) sn = sn.slice(0, 220) + ' [...]';
-                    return '- ' + s.heading + ': ' + sn;
-                }).join('\n');
-            }
-        }catch(_){}
+        var urls = Array.from(SELECTED_PAGE_CONTENT.keys());
+        var sources_md = urls.map(function(u){ return '- ' + u; }).join('\n');
+        var shorten = false; try { shorten = !!(document.getElementById('mini-shorten') && document.getElementById('mini-shorten').checked); } catch(_){}
+        var maxLen = shorten ? 220 : 600;
+        var content_md = urls.map(function(u){
+            var md = SELECTED_PAGE_CONTENT.get(u) || '';
+            var sn = md.replace(/\s+/g,' ').trim();
+            if (sn.length > maxLen) sn = sn.slice(0, maxLen) + ' [...]';
+            return '### ' + u + '\n\n' + sn;
+        }).join('\n\n');
         var map = {
             product_name: p.name || '',
             product_website: p.website || '',
@@ -795,7 +793,7 @@
             pricing: p.pricing || '',
             contact_info: p.contact_info || '',
             tone: tone, cta: cta, length: length,
-            sources: sources_md, sections: sections_md
+            sources: sources_md, content: content_md
         };
         return tpl.replace(/\{([a-zA-Z0-9_]+)\}/g, function(_m, k){ return (map[k] == null ? '' : String(map[k])); });
     }
@@ -868,7 +866,10 @@
  
             // Add only current slice URLs
             (st.sliceUrls || []).forEach(function(url){
-                if (url) SELECTED_PAGES.add(url);
+                if (!url) return;
+                var page = (PAGES||[]).find(function(x){ return x && (x.url||'')===url; });
+                var md = (page && (page.markdown||'').trim()) || '';
+                SELECTED_PAGE_CONTENT.set(url, md);
             });
  
             // Update visible checkboxes for current slice
@@ -891,7 +892,7 @@
  
             // Remove only current slice URLs
             (st.sliceUrls || []).forEach(function(url){
-                if (url) SELECTED_PAGES.delete(url);
+                if (url) SELECTED_PAGE_CONTENT.delete(url);
             });
  
             // Update visible checkboxes for current slice
@@ -910,7 +911,7 @@
         try {
             var sendBtn = document.getElementById('chat-send');
             if (!sendBtn) return;
-            var hasPages = Array.from(SELECTED_PAGES.values()).length > 0;
+            var hasPages = (SELECTED_PAGE_CONTENT.size > 0);
             var qEl = document.getElementById('chat-question');
             var hasText = !!(qEl && qEl.value && qEl.value.trim().length > 0);
             var disabled = !(hasPages && hasText);
@@ -921,21 +922,13 @@
     }
 
     function updateSelectionCount(){
-        var count = Array.from(SELECTED_PAGES.values()).length;
+        var count = SELECTED_PAGE_CONTENT.size;
         try { var el=document.getElementById('selected-count'); if (el) el.textContent = String(count); } catch(_){}
         try { var ce=document.getElementById('chat-page-count'); if (ce) ce.textContent = String(count); } catch(_){}
         // Row selected styles based on checkbox state
         document.querySelectorAll('#pages-list li').forEach(function(li){
             var cb = li.querySelector('input[type=checkbox]');
             li.classList.toggle('selected', !!(cb && cb.checked));
-        });
-        // Update SELECTED_PAGE_CONTENT for selected pages
-        SELECTED_PAGES.forEach(function(url){
-            if (!SELECTED_PAGE_CONTENT.has(url)) {
-                var p = (PAGES||[]).find(function(x){ return (x && (x.url||'')===url); });
-                var md = (p && (p.markdown||'').trim()) || '';
-                SELECTED_PAGE_CONTENT.set(url, md);
-            }
         });
         // Sync Ask button state after any selection change
         try { updateChatSendState(); } catch(_){}
@@ -953,7 +946,7 @@
                 if (ss) ss.style.display = 'none';
             }
             // Clear selected set and enforce disabled, unchecked checkboxes
-            SELECTED_PAGES.clear();
+            SELECTED_PAGE_CONTENT.clear();
             document.querySelectorAll('#pages-list input[type=checkbox]').forEach(function(cb){
                 cb.checked = false;
                 cb.disabled = true;
@@ -992,7 +985,7 @@
     function sendChatMessage(){
         var q = (document.getElementById('chat-question').value || '').trim();
         if (!q) return;
-        var n = Array.from(SELECTED_PAGES.values()).length;
+        var n = SELECTED_PAGE_CONTENT.size;
         addChatMessage('user', q);
         document.getElementById('chat-question').value = '';
         try { updateChatSendState(); } catch(_) {}
@@ -1016,16 +1009,16 @@
             var url = currentSelectedPageUrl();
             var sources_md = url ? ('- ' + url) : '';
             var tpl = (BUILTIN_TEMPLATES && BUILTIN_TEMPLATES.clarity_check) || [
-                'Assess clarity for the selected page/sections:',
+                'Assess clarity for the selected page(s):',
                 'Sources:',
                 '{sources}',
                 '',
-                'Sections:',
-                '{sections}',
+                'Content:',
+                '{content}',
                 '',
                 'Identify confusing parts and propose concise improvements. Keep in bullet points.'
             ].join('\n');
-            var prompt = tpl.replace(/\{sources\}/g, sources_md).replace(/\{sections\}/g, '### Page Content\n\n' + md);
+            var prompt = tpl.replace(/\{sources\}/g, sources_md).replace(/\{content\}/g, '### Page Content\n\n' + md);
             addChatMessage('user', prompt);
             addChatMessage('ai', 'Chat is coming soon.');
         } catch(_) {}
