@@ -1,16 +1,19 @@
+---
+name: markdownify
+
 networks:
   magics:
   
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: markdownify-database
+    image: postgres:17-alpine
+    container_name: postgres
     hostname: postgres
     restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=markdownify
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: markdownify
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
@@ -21,20 +24,31 @@ services:
       start_period: 10s
     networks:
       - magics
-  markdownify-crawler:
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: redis
+    hostname: redis
+    restart: always
+    expose:
+      - 6379
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - magics
+  crawler:
     build:
       context: .
       dockerfile: Dockerfile
-    image: markdownify-crawler:latest
-    container_name: markdownify-crawler
-    hostname: markdownify-crawler
+    image: crawler:latest
+    container_name: crawler
+    hostname: crawler
     restart: always
     environment:
-      - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
-      - MARKDOWNIFY_IGNORE_PATHS=^/feed/,^/wp-json/
-      - MARKDOWNIFY_IGNORE_DOMAINS=github.com,youtube.com,play.google.com
-      - MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
-      - MARKDOWNIFY_DISABLE_CACHE=true
+      MARKDOWNIFY_CACHE_DIR: /tmp/markdownify/cache
+      MARKDOWNIFY_IGNORE_PATHS: ^/feed/,^/wp-json/
+      MARKDOWNIFY_IGNORE_DOMAINS: github.com,youtube.com,play.google.com
+      MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS: true
+      MARKDOWNIFY_DISABLE_CACHE: true
     expose:
       - 8000
     volumes:
@@ -42,55 +56,55 @@ services:
       - ./.cache:/tmp/markdownify/cache
     networks:
       - magics
-  webapp:
+  markdownify:
     build:
       context: .
       dockerfile: webapp/Dockerfile
-    image: markdownify-webapp:latest
-    container_name: markdownify-webapp
-    hostname: markdownify-webapp
+    image: markdownify:latest
+    container_name: markdownify
+    hostname: markdownify
     restart: always
     environment:
-      - SITE_BASE_URL=http://localhost:8080
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/markdownify
-      - WEBAPP_AUTO_MIGRATE=true
-      - MARKDOWNIFY_CACHE_DIR=/tmp/markdownify/cache
-      - MARKDOWNIFY_DISABLE_CACHE=true
-      - SITE_NAME=Markdownify
+      SITE_BASE_URL: http://localhost:8080
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/markdownify
+      WEBAPP_AUTO_MIGRATE: true
+      MARKDOWNIFY_CACHE_DIR: /tmp/markdownify/cache
+      MARKDOWNIFY_DISABLE_CACHE: true
+      SITE_NAME: Markdownify
       # Auth config
-      - WEBAPP_AUTH_ENABLED=true
-      - WEBAPP_READYZ_REQUIRE_AUTH=false
+      WEBAPP_AUTH_ENABLED: true
+      WEBAPP_READYZ_REQUIRE_AUTH: false
       # Public base URL for redirects. For local dev you can leave it unset or set to http://localhost:8080
       # In production behind HTTPS (Nginx Proxy Manager), set to your https origin, e.g. https://your.domain
-      - WEBAPP_AUTH_COOKIE_NAME=auth_sid
+      WEBAPP_AUTH_COOKIE_NAME: auth_sid
       # For local dev (no TLS) set false; in production behind HTTPS set true
-      - WEBAPP_AUTH_COOKIE_SECURE=false
-      - WEBAPP_AUTH_TTL_SECONDS=86400
-      - WEBAPP_AUTH_ABS_MAX_SECONDS=604800
-      - AUTH_USER_MAX_SESSIONS=5
+      WEBAPP_AUTH_COOKIE_SECURE: false
+      WEBAPP_AUTH_TTL_SECONDS: 86400
+      WEBAPP_AUTH_ABS_MAX_SECONDS: 604800
+      AUTH_USER_MAX_SESSIONS: 5
       # Authenticated user quotas and site crawl defaults/caps
-      - AUTH_USER_DAILY_SITE_CRAWLS=10
-      - AUTH_USER_CONCURRENT_JOBS=3
-      - AUTH_SITE_MAX_PAGES_DEFAULT=100
-      - AUTH_SITE_MAX_DEPTH_DEFAULT=2
-      - AUTH_SITE_TIME_BUDGET_MS_DEFAULT=900000
-      - AUTH_SITE_MAX_PAGES_CAP=500
-      - AUTH_SITE_MAX_DEPTH_CAP=5
+      AUTH_USER_DAILY_SITE_CRAWLS: 10
+      AUTH_USER_CONCURRENT_JOBS: 3
+      AUTH_SITE_MAX_PAGES_DEFAULT: 100
+      AUTH_SITE_MAX_DEPTH_DEFAULT: 2
+      AUTH_SITE_TIME_BUDGET_MS_DEFAULT: 900000
+      AUTH_SITE_MAX_PAGES_CAP: 500
+      AUTH_SITE_MAX_DEPTH_CAP: 5
       # OAuth (Google)
-      - OAUTH_PROVIDER=google
-      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
-      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      OAUTH_PROVIDER: google
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET}
       # Optional email domain allowlist (comma-separated)
-      # - OAUTH_ALLOWED_DOMAINS=yourcompany.com
-      - OAUTH_STATE_TTL=600
+      # OAUTH_ALLOWED_DOMAINS: yourcompany.com
+      OAUTH_STATE_TTL: 600
       # Login rate limit
-      - LOGIN_RATE_LIMIT_MAX=5
-      - LOGIN_RATE_LIMIT_WINDOW_SEC=900
+      LOGIN_RATE_LIMIT_MAX: 5
+      LOGIN_RATE_LIMIT_WINDOW_SEC: 900
       # CSRF for logout forms
-      - WEBAPP_CSRF_ENABLED=true
-      - WEBAPP_CSRF_MAX_AGE=7200
+      WEBAPP_CSRF_ENABLED: true
+      WEBAPP_CSRF_MAX_AGE: 7200
       # Claim public analyses minimum age (hours)
-      - CLAIM_PUBLIC_MIN_AGE_HOURS=24
+      CLAIM_PUBLIC_MIN_AGE_HOURS: 24
     volumes:
       - ./.cache:/tmp/markdownify/cache
       - ./data/webapp:/db
