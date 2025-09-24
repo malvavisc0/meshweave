@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+  <section class="panel mt-2" role="region" aria-label="Unauthorized">
+    <h1>401 — Unauthorized</h1>
+    <p>You need to sign in to access this page.</p>
+
+    <div class="actions mt-1">
+      <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}">Sign in with Google</a>
+      <a class="btn" href="/">Back to Home</a>
+    </div>
+
+    <div class="small mt-1">
+      If you believe this is an error, please try signing in again or contact support.
+    </div>
+  </section>
+</div>
+{% endblock %}

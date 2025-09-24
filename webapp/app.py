@@ -3,6 +3,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import AsyncIterator
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
@@ -147,7 +148,7 @@ def _auto_migrate_on_start() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan context (startup/shutdown).
 
     Initializes the database on startup. Designed for FastAPI's lifespan parameter.
@@ -211,7 +212,7 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application instance.
     """
-    app = FastAPI(title="Markdownify Web App", lifespan=lifespan)
+    app = FastAPI(title="Markdownify Web App", lifespan=lifespan)  # type: ignore[arg-type]
 
     # Middleware: attach per-request ID
     app.add_middleware(RequestIDMiddleware)
@@ -258,10 +259,26 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"detail": "Internal Server Error"},
             )
-        return PlainTextResponse(
+        # Non-API: render HTML template
+        site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+        og_image_url = os.getenv("OG_IMAGE_URL") or None
+        page_title = f"Server Error — {site_name}"
+        meta_description = "An unexpected error occurred."
+        abs_page_url = str(request.url)
+        resp = templates.TemplateResponse(
+            "500.html",
+            {
+                "request": request,
+                "site_name": site_name,
+                "page_title": page_title,
+                "meta_description": meta_description,
+                "abs_page_url": abs_page_url,
+                "og_image_url": og_image_url,
+            },
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content="Internal Server Error",
         )
+        resp.headers["X-Robots-Tag"] = "noindex"
+        return resp
 
     app.add_exception_handler(RequestValidationError, _handle_validation_error)
     app.add_exception_handler(Exception, _handle_unexpected_error)
@@ -310,14 +327,63 @@ def create_app() -> FastAPI:
         # Fallback behavior for other HTTP errors
         if isinstance(exc, StarletteHTTPException):
             is_api = str(request.url.path).startswith("/api")
+            status_code = exc.status_code
+            detail = exc.detail or (
+                "Unauthorized"
+                if status_code == status.HTTP_401_UNAUTHORIZED
+                else (
+                    "Forbidden" if status_code == status.HTTP_403_FORBIDDEN else "Error"
+                )
+            )
             if is_api:
                 return JSONResponse(
-                    status_code=exc.status_code,
-                    content={"detail": exc.detail or "Error"},
+                    status_code=status_code,
+                    content={"detail": detail},
                 )
+            # Non-API: render templates for 401/403; fallback to plain text for others
+            if status_code == status.HTTP_401_UNAUTHORIZED:
+                site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+                og_image_url = os.getenv("OG_IMAGE_URL") or None
+                page_title = f"Sign in required — {site_name}"
+                meta_description = "You need to sign in to access this page."
+                abs_page_url = str(request.url)
+                resp = templates.TemplateResponse(
+                    "401.html",
+                    {
+                        "request": request,
+                        "site_name": site_name,
+                        "page_title": page_title,
+                        "meta_description": meta_description,
+                        "abs_page_url": abs_page_url,
+                        "og_image_url": og_image_url,
+                    },
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                )
+                resp.headers["X-Robots-Tag"] = "noindex"
+                return resp
+            if status_code == status.HTTP_403_FORBIDDEN:
+                site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+                og_image_url = os.getenv("OG_IMAGE_URL") or None
+                page_title = f"Access denied — {site_name}"
+                meta_description = "You don't have permission to access this page."
+                abs_page_url = str(request.url)
+                resp = templates.TemplateResponse(
+                    "403.html",
+                    {
+                        "request": request,
+                        "site_name": site_name,
+                        "page_title": page_title,
+                        "meta_description": meta_description,
+                        "abs_page_url": abs_page_url,
+                        "og_image_url": og_image_url,
+                    },
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+                resp.headers["X-Robots-Tag"] = "noindex"
+                return resp
             return PlainTextResponse(
-                status_code=exc.status_code,
-                content=str(exc.detail or "Error"),
+                status_code=status_code,
+                content=str(detail),
             )
         # Should not happen for non-HTTP exceptions here, but return generic error
         return PlainTextResponse(
