@@ -15,15 +15,7 @@
   }
 
   function legacyCopy(text) {
-    try {
-      var ta = document.createElement('textarea');
-      ta.value = text; ta.setAttribute('readonly','');
-      ta.style.position = 'absolute'; ta.style.left = '-9999px';
-      document.body.appendChild(ta); ta.select();
-      var ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      if (ok) alert('Link copied'); else prompt('Copy this link:', text);
-    } catch (e) { prompt('Copy this link:', text); }
+    prompt('Copy this link:', text);
   }
 
   function copyLink(url) {

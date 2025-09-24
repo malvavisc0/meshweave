@@ -22,6 +22,7 @@
     var PROSPECT_ID = null; var PROSPECT_SOCIALS = [];
     const SELECTED_PAGES = new Set();
     const SELECTED_SECTIONS = []; // {url, heading, snippet}
+    const SELECTED_PAGE_CONTENT = new Map(); // url -> markdown content
     var LAST_PRODUCT_ID = (function(){ try { return localStorage.getItem('pb:last_product_id') || ''; } catch(_) { return ''; } })();
     // Pages pager state (initialized on first render)
     var PAGES_PAGER = null;
@@ -905,6 +906,20 @@
             updateSelectionCount();
         } catch(_){}
     }
+    function updateChatSendState(){
+        try {
+            var sendBtn = document.getElementById('chat-send');
+            if (!sendBtn) return;
+            var hasPages = Array.from(SELECTED_PAGES.values()).length > 0;
+            var qEl = document.getElementById('chat-question');
+            var hasText = !!(qEl && qEl.value && qEl.value.trim().length > 0);
+            var disabled = !(hasPages && hasText);
+            sendBtn.disabled = disabled;
+            sendBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+            sendBtn.title = disabled ? (hasPages ? 'Type a question' : 'Select at least one page') : 'Ask';
+        } catch(_){}
+    }
+
     function updateSelectionCount(){
         var count = Array.from(SELECTED_PAGES.values()).length;
         try { var el=document.getElementById('selected-count'); if (el) el.textContent = String(count); } catch(_){}
@@ -914,11 +929,16 @@
             var cb = li.querySelector('input[type=checkbox]');
             li.classList.toggle('selected', !!(cb && cb.checked));
         });
-        // Enable/disable Ask button strictly based on having at least one selected page
-        try {
-            var sendBtn = document.getElementById('chat-send');
-            if (sendBtn) sendBtn.disabled = (count === 0);
-        } catch(_){}
+        // Update SELECTED_PAGE_CONTENT for selected pages
+        SELECTED_PAGES.forEach(function(url){
+            if (!SELECTED_PAGE_CONTENT.has(url)) {
+                var p = (PAGES||[]).find(function(x){ return (x && (x.url||'')===url); });
+                var md = (p && (p.markdown||'').trim()) || '';
+                SELECTED_PAGE_CONTENT.set(url, md);
+            }
+        });
+        // Sync Ask button state after any selection change
+        try { updateChatSendState(); } catch(_){}
     }
 
     // When page selection is not allowed: hide controls and prevent any selection state
@@ -974,12 +994,18 @@
         if (!q) return;
         var n = Array.from(SELECTED_PAGES.values()).length;
         addChatMessage('user', q);
+        document.getElementById('chat-question').value = '';
+        try { updateChatSendState(); } catch(_) {}
         if (n === 0) {
             addChatMessage('ai', 'Please select some pages first.');
             return;
         }
         // Coming soon in Pass 1
-        addChatMessage('ai', 'Chat is coming soon. Use Structured Actions for now.');
+        showTypingIndicator();
+        setTimeout(function(){
+            hideTypingIndicator();
+            addChatMessage('ai', 'Chat is coming soon. Use Structured Actions for now.');
+        }, 1000);
     }
 
     function runClarityAssessmentForCurrentPage(){
@@ -1379,6 +1405,19 @@
         // Wire prospects + claim
         try { var pt = document.getElementById('prospect-toggle'); if (pt) pt.addEventListener('click', prospectToggle); } catch(_){}
         try { setupClaimEligibility(); } catch(_){}
+
+        // Ensure chat button state is correct
+        updateSelectionCount();
+
+        // Wire chat input to enable/disable Ask button based on text and selection
+        try {
+            var _qEl = document.getElementById('chat-question');
+            if (_qEl) {
+                _qEl.addEventListener('input', function(){
+                    try { updateChatSendState(); } catch(_){}
+                });
+            }
+        } catch(_){}
 
         // Start progress polling (private by id or public by key)
         const hasId = !!(__ctx.crawl_id);
