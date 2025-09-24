@@ -15,13 +15,13 @@ Location of stylesheet:
 - Colors
 - Foreground/background
   - `--fg`: #1F2937
-  - `--muted`: #64748B
-  - `--bg`: #F9FBFA
-  - `--bg-soft`: #FFFFFF
-  - `--card-bg`: #fff
-  - Borders
-    - `--border`: #E7EDE9
-    - `--border-strong`: #D2DCD6
+  - `--muted`: #374151
+  - `--bg`: #F5F5F5
+  - `--bg-soft`: #FAFAFA
+  - `--card-bg`: #F9F9F9
+- Borders
+    - `--border`: #E5E5E5
+    - `--border-strong`: #D0D0D0
   - Brand
     - `--brand`: #06C167
     - `--brand-ink`: #066A3E
@@ -41,8 +41,8 @@ Location of stylesheet:
     - `--info-weak`: #E0F7FA
     - `--info`: #0F9BA8
   - Background pattern
-    - `--bg-grid-size`: 24px
-    - `--bg-grid-color`: rgba(231,237,233,0.25)
+      - `--bg-grid-size`: 24px
+      - `--bg-grid-color`: rgba(200,200,200,0.15)
 - Shadows
   - `--shadow-1`: 0 10px 30px rgba(0,0,0,0.12)
   - `--shadow-2`: 0 6px 20px rgba(0,0,0,0.10)
@@ -292,6 +292,7 @@ Change Log Reference
 - New grid helpers for summary metrics on result page
 - Added tokens/utilities/patterns for mockups: container, bg-soft, brand-hover, warning colors, focus ring, shadow-2, discovery cards, filter chips selected state, validation feedback text, hero, gate-locked
 - A11y: focus visibility, aria-live usage, touch target guidance
+- Softened color palette: updated background, border, and muted colors to reduce brightness and improve accessibility for users sensitive to bright screens (e.g., replaced pure whites with off-whites, adjusted grid pattern opacity)
 
 Review and QA
 - When creating new pages/components:
