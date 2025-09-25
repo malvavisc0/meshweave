@@ -1024,6 +1024,59 @@
         var t = document.getElementById('typing-indicator'); if (t) t.remove();
     }
 
+    // Append a chat message rendering Markdown safely when libs are available
+    function appendChatMessageMarkdown(sender, text){
+        var messages = document.getElementById('chat-messages'); if (!messages) return;
+        var d = document.createElement('div'); d.className = 'chat-message ' + (sender || 'ai');
+        var bubble = document.createElement('div'); bubble.className = 'message-bubble';
+        try {
+            if (window.marked && window.DOMPurify) {
+                try { if (window.marked.setOptions) window.marked.setOptions({breaks:true}); } catch(_){}
+                var html = window.marked.parse(String(text == null ? '' : text));
+                bubble.innerHTML = window.DOMPurify.sanitize(html);
+            } else {
+                bubble.textContent = String(text == null ? '' : text);
+            }
+        } catch(_){
+            bubble.textContent = String(text == null ? '' : text);
+        }
+        d.appendChild(bubble);
+        messages.appendChild(d);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Load persisted history and render into chat UI
+    async function loadChatHistory(){
+        try {
+            if (!USER_ID || !CRAWL_ID) return;
+            var url = '/api/ai/chat/' + encodeURIComponent(USER_ID) + '/' + encodeURIComponent(CRAWL_ID) + '/history';
+            var resp = await fetch(url, {credentials:'same-origin'});
+            if (!resp.ok) return;
+            var j = await resp.json();
+            var arr = (j && Array.isArray(j.messages)) ? j.messages : [];
+            arr.forEach(function(m){
+                var role = (m && m.role) === 'user' ? 'user' : 'ai';
+                var content = (m && m.content) || '';
+                appendChatMessageMarkdown(role, content);
+            });
+        } catch(_){}
+    }
+
+    // Clear conversation history (owner-only)
+    function clearChatHistory(){
+        try {
+            if (!USER_ID || !CRAWL_ID) return;
+            if (!confirm('Clear conversation?')) return;
+            var url = '/api/ai/chat/' + encodeURIComponent(USER_ID) + '/' + encodeURIComponent(CRAWL_ID);
+            apiJson(url, 'DELETE', {}).then(function(){
+                try { var messages = document.getElementById('chat-messages'); if (messages) messages.innerHTML = ''; } catch(_){}
+                try { showToast('Conversation cleared'); } catch(_){}
+            }).catch(function(){
+                alert('Unable to clear conversation');
+            });
+        } catch(_){}
+    }
+
     // Shared streaming helper used by chat and clarity assessment
     async function startChatStream(message, pages){
         try {
@@ -1661,6 +1714,8 @@
 
         // Ensure chat button state is correct
         updateSelectionCount();
+        // Load persisted chat history (owner-only)
+        try { if (CAN_CHAT && USER_ID && CRAWL_ID) { loadChatHistory(); } } catch(_){}
         try {
             if (!window.__CHAT_ABORT_WIRED) {
                 window.addEventListener('beforeunload', function(){
@@ -1711,4 +1766,5 @@
     window.attachProspectSocial = attachProspectSocial;
     window.attachContactSocial = attachContactSocial;
     window.addEmailToProspect = addEmailToProspect;
+    window.clearChatHistory = clearChatHistory;
 })();

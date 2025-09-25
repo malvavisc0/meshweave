@@ -415,3 +415,72 @@ class Product(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+# ---- Chat persistence (threads + messages) ----
+
+class ChatThread(Base):
+    __tablename__ = "chat_threads"
+    __table_args__ = (
+        UniqueConstraint("user_id", "crawl_id", name="uq_chat_threads_user_crawl"),
+        Index("ix_chat_threads_user_id", "user_id"),
+        Index("ix_chat_threads_crawl_id", "crawl_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    crawl_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("crawls.id", ondelete="CASCADE"), nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationships
+    messages: Mapped[List["ChatMessage"]] = relationship(
+        "ChatMessage",
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_thread_id_created_at", "thread_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    thread_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_threads.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(
+        String(10), nullable=False
+    )  # "user" | "ai"
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationship
+    thread: Mapped["ChatThread"] = relationship("ChatThread", back_populates="messages")

@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 from typing import Any, AsyncIterator, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -9,6 +10,8 @@ from pydantic import BaseModel
 from webapp.ai import agent as get_agent
 from webapp.ai import db as get_db
 from webapp.ai import model as get_model
+from webapp.db import get_session
+from webapp.models import ChatThread, ChatMessage
 from webapp.utils.auth import require_ownership
 from webapp.utils.logging import log_audit
 
@@ -32,6 +35,22 @@ class ChatRequest(BaseModel):
 router = APIRouter(prefix="/api/ai")
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_thread(user_id: str, analysis_id: str) -> ChatThread:
+    """Get or create a ChatThread row for this user+analysis."""
+    with get_session() as s:
+        thr = (
+            s.query(ChatThread)
+            .filter(ChatThread.user_id == user_id, ChatThread.crawl_id == analysis_id)
+            .one_or_none()
+        )
+        if thr:
+            return thr
+        thr = ChatThread(user_id=user_id, crawl_id=analysis_id)
+        s.add(thr)
+        s.flush()
+        return thr
 
 
 def _bool_env(name: str) -> bool:
@@ -274,6 +293,25 @@ async def send_message(
         selected_chars=total_chars,
     )
 
+    # Persist: ensure thread and save user message (with minimal metadata)
+    try:
+        thread = _ensure_thread(user_id=user_id, analysis_id=analysis_id)
+        meta = {"pages_count": len(selected_pages), "selected_chars": total_chars}
+        with get_session() as s:
+            # Re-attach thread to this session when saving message
+            th = s.query(ChatThread).filter(ChatThread.id == thread.id).one_or_none()
+            if th:
+                s.add(
+                    ChatMessage(
+                        thread_id=th.id,
+                        role="user",
+                        content=msg,
+                        metadata_json=json.dumps(meta),
+                    )
+                )
+    except Exception:
+        logger.exception("Failed to persist user chat message")
+
     # Optional dev stub for local testing (no provider)
     if _bool_env("AI_CHAT_DEV_STUB"):
         _audit(
@@ -284,19 +322,127 @@ async def send_message(
             yield "Stubbed AI response:\n\n"
             yield (compiled_prompt or "")[:2000]
 
+        # Also persist the AI stubbed response after generation
+        async def _proxy_dev_stream():
+            buf = ""
+            async for chunk in _dev_stub_stream():
+                buf += chunk or ""
+                yield chunk
+            try:
+                thread = _ensure_thread(user_id=user_id, analysis_id=analysis_id)
+                with get_session() as s:
+                    th = s.query(ChatThread).filter(ChatThread.id == thread.id).one_or_none()
+                    if th:
+                        s.add(ChatMessage(thread_id=th.id, role="ai", content=buf, metadata_json=None))
+            except Exception:
+                logger.exception("Failed to persist AI chat message (dev stub)")
+
         return StreamingResponse(
-            _dev_stub_stream(), media_type="text/plain; charset=utf-8"
+            _proxy_dev_stream(), media_type="text/plain; charset=utf-8"
         )
 
-    # Create agent and stream response
+    # Create agent
     agent = _make_agent(user_id=user_id, analysis_id=analysis_id)
-    return StreamingResponse(
-        _stream_agent(
+
+    # Proxy stream to both client and DB (persist AI message at the end)
+    async def _proxy_stream_and_persist() -> AsyncIterator[str]:
+        buf = ""
+        async for chunk in _stream_agent(
             agent,
             compiled_prompt,
             request=request,
             user_id=user_id,
             analysis_id=analysis_id,
-        ),
-        media_type="text/plain; charset=utf-8",
+        ):
+            text = chunk or ""
+            buf += text
+            yield text
+        # Save AI message after streaming completes
+        try:
+            thread = _ensure_thread(user_id=user_id, analysis_id=analysis_id)
+            with get_session() as s:
+                th = s.query(ChatThread).filter(ChatThread.id == thread.id).one_or_none()
+                if th:
+                    s.add(
+                        ChatMessage(
+                            thread_id=th.id,
+                            role="ai",
+                            content=buf,
+                            metadata_json=None,
+                        )
+                    )
+        except Exception:
+            logger.exception("Failed to persist AI chat message")
+
+    return StreamingResponse(
+        _proxy_stream_and_persist(), media_type="text/plain; charset=utf-8"
     )
+
+
+@router.get("/chat/{user_id}/{analysis_id}/history")
+async def get_chat_history(
+    user_id: str, analysis_id: str, request: Request
+) -> dict:
+    """
+    Return persisted chat history for this user+analysis (owner-only).
+    """
+    # Auth & ownership
+    current_user = getattr(request.state, "current_user", None)
+    if not current_user or str(current_user.id) != str(user_id):
+        raise HTTPException(status_code=401 if not current_user else 403, detail="Unauthorized" if not current_user else "Forbidden")
+    # Enforce ownership of the analysis/crawl
+    await require_ownership(request, analysis_id)
+
+    with get_session() as s:
+        thr = (
+            s.query(ChatThread)
+            .filter(ChatThread.user_id == user_id, ChatThread.crawl_id == analysis_id)
+            .one_or_none()
+        )
+        if not thr:
+            return {"messages": []}
+        rows = (
+            s.query(ChatMessage)
+            .filter(ChatMessage.thread_id == thr.id)
+            .order_by(ChatMessage.created_at.asc())
+            .all()
+        )
+        messages = []
+        for m in rows:
+            created_iso = None
+            try:
+                created_iso = (m.created_at.isoformat() if m.created_at else None)
+            except Exception:
+                created_iso = None
+            messages.append(
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "created_at": created_iso,
+                }
+            )
+        return {"messages": messages}
+
+
+@router.delete("/chat/{user_id}/{analysis_id}")
+async def clear_chat_history(
+    user_id: str, analysis_id: str, request: Request
+) -> dict:
+    """
+    Clear chat history for this user+analysis (owner-only).
+    """
+    # Auth & ownership
+    current_user = getattr(request.state, "current_user", None)
+    if not current_user or str(current_user.id) != str(user_id):
+        raise HTTPException(status_code=401 if not current_user else 403, detail="Unauthorized" if not current_user else "Forbidden")
+    await require_ownership(request, analysis_id)
+
+    with get_session() as s:
+        thr = (
+            s.query(ChatThread)
+            .filter(ChatThread.user_id == user_id, ChatThread.crawl_id == analysis_id)
+            .one_or_none()
+        )
+        if thr:
+            s.delete(thr)
+    return {"status": "ok"}
