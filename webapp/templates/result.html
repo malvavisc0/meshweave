@@ -231,7 +231,10 @@
       {% if can_select_pages %}
       <button class="btn btn-sm" onclick="selectAllPages()">Select All</button>
       <button class="btn btn-sm" onclick="clearAllPages()">Clear</button>
-      <span class="selection-summary ml-1">Included pages: <span id="selected-count">0</span></span>
+      <span class="selection-summary ml-1">
+        Included pages: <span id="selected-count">0</span>
+        <span class="small" id="selected-chars-wrap"> • ~chars: <span id="selected-chars">0</span>/<span id="selected-chars-max"></span></span>
+      </span>
       {% endif %}
     </div>
     <div class="layout layout-pages">
@@ -317,12 +320,12 @@
     <!-- Chat area -->
     <div class="free-chat">
       <h3>Chat with Site</h3>
-      <div class="small mb-1">Select pages then ask a question. (Chat coming soon)</div>
+      <div class="small mb-1">Select pages then ask a question.</div>
       <div class="selected-pages-indicator mb-1">
         <span class="small">Chatting with <span id="chat-page-count">0</span> pages</span>
       </div>
       <div class="chat-area">
-        <div class="chat-messages" id="chat-messages">
+        <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-atomic="false">
         </div>
         <div class="chat-input-container">
           <input type="text" id="chat-question" placeholder="What's their pricing model?" maxlength="500">
@@ -437,7 +440,7 @@
   {% if can_chat %}
   <section id="m-chat" class="mobile-section panel mt-2 hidden" role="region" aria-label="Chat">
     <h2>LLM Chat</h2>
-    <div class="small">Chat is coming soon</div>
+    <div class="small">Ask a question about the selected pages.</div>
     <button class="btn btn-primary" onclick="openChat()">Open Chat</button>
   </section>
   {% endif %}
@@ -466,6 +469,7 @@
   'top_external_domains': summary.links.top_external_domains if summary and summary.links and summary.links.top_external_domains else [],
   'pages': payload.pages if payload and payload.pages else [],
   'crawl_id': id if id else '',
+  'user_id': user_id if user_id else '',
   'public_key': key if key else '',
   'status': status if status else '',
   'logged_in': request.state.current_user and True or False,
@@ -474,7 +478,10 @@
   'user_products': user_products|default([]),
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
-  'ownerless': ownerless|default(false)
+  'ownerless': ownerless|default(false),
+  'ai_chat_max_pages': ai_chat_max_pages|default(5),
+  'ai_chat_max_chars_per_page': ai_chat_max_chars_per_page|default(3000),
+  'ai_chat_max_total_chars': ai_chat_max_total_chars|default(15000)
 } | tojson }}
 </script>
 <script src="/static/js/result-analysis.js"></script>

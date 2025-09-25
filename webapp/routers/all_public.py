@@ -1,13 +1,15 @@
 import os
+import contextlib
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, distinct, func, or_
+from sqlalchemy.orm import Session
 
-from webapp.db import get_session
+from webapp.db import get_db
 from webapp.infra import templates
 from webapp.models import Crawl, CrawlEmail, CrawlLink
 from webapp.utils.url import _abs_url
@@ -26,6 +28,7 @@ async def view_all(
     dir: Optional[str] = "next",
     has_emails: bool = False,
     sort: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
     """Paginated listing of public results with optional filters.
 
@@ -78,7 +81,7 @@ async def view_all(
     prev_url = None
     next_url = None
 
-    with get_session() as s:
+    with contextlib.nullcontext(db) as s:
         if srt != "recent" and not cursor:
             # Aggregation ordering (no keyset cursor support in this branch)
             q = (

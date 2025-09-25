@@ -124,8 +124,8 @@ async def view_analysis(request: Request, ref: str):
         is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
         status_lc = str(getattr(row, "status", "") or "").lower()
         logged_in = bool(current_user)
-        # Chat: visible for any logged-in user on succeeded analyses
-        can_chat = (status_lc == "succeeded") and logged_in
+        # Chat: owners-only on succeeded analyses
+        can_chat = (status_lc == "succeeded") and is_owner
         # Page selection and Shortcuts: owner-only on succeeded analyses
         can_select_pages = (status_lc == "succeeded") and is_owner
 
@@ -193,6 +193,7 @@ async def view_analysis(request: Request, ref: str):
                 "can_select_pages": can_select_pages,
                 "user_products": user_products,
                 "has_products": bool(user_products),
+                "user_id": (current_user.id if current_user else ""),
                 # SEO/Sharing
                 "page_title": page_title,
                 "meta_description": meta_description,
@@ -200,6 +201,10 @@ async def view_analysis(request: Request, ref: str):
                 "og_image_url": og_image_url,
                 "site_name": site_name,
                 "json_ld": json_ld,
+                # AI chat limits (mirror backend defaults; configurable via env)
+                "ai_chat_max_pages": int(os.getenv("AI_CHAT_MAX_PAGES", "5")),
+                "ai_chat_max_chars_per_page": int(os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")),
+                "ai_chat_max_total_chars": int(os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")),
             },
         )
         # Prevent indexing of private results
@@ -343,8 +348,8 @@ async def view_analysis(request: Request, ref: str):
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
     status_lc = str(getattr(row, "status", "") or "").lower()
     logged_in = bool(current_user)
-    # Chat: visible for any logged-in user on succeeded analyses
-    can_chat = (status_lc == "succeeded") and logged_in
+    # Chat: owners-only on succeeded analyses
+    can_chat = (status_lc == "succeeded") and is_owner
     # Page selection and Shortcuts: owner-only on succeeded analyses
     can_select_pages = (status_lc == "succeeded") and is_owner
 
@@ -403,6 +408,9 @@ async def view_analysis(request: Request, ref: str):
             "can_select_pages": can_select_pages,
             "user_products": user_products,
             "has_products": bool(user_products),
+            "user_id": (current_user.id if current_user else ""),
+            # Provide private id to owners for chat scoping
+            "id": row.id,
             # SEO/Sharing
             "page_title": page_title,
             "meta_description": meta_description,
@@ -417,6 +425,10 @@ async def view_analysis(request: Request, ref: str):
             # Gating helpers for anonymous public
             "email_preview": email_preview,
             "email_count": email_count,
+            # AI chat limits (mirror backend defaults; configurable via env)
+            "ai_chat_max_pages": int(os.getenv("AI_CHAT_MAX_PAGES", "5")),
+            "ai_chat_max_chars_per_page": int(os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")),
+            "ai_chat_max_total_chars": int(os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")),
         },
     )
     # Set session cookie if newly created for CSRF

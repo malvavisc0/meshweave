@@ -15,11 +15,22 @@
     const LINKS_EXTERNAL = __ctx.links_external || [];
     const TOP_EXTERNAL_DOMAINS = __ctx.top_external_domains || [];
     const PAGES = __ctx.pages || [];
+    const USER_ID = __ctx.user_id || '';
+    const CRAWL_ID = __ctx.crawl_id || '';
+    // AI chat limits from server (with safe defaults)
+    const MAX_PAGES = Number(__ctx.ai_chat_max_pages || 5);
+    const MAX_CHARS_PER_PAGE = Number(__ctx.ai_chat_max_chars_per_page || 3000);
+    const MAX_TOTAL_CHARS = Number(__ctx.ai_chat_max_total_chars || 15000);
     // Logged-in state and capability flags from server
     let LOGGED_IN = !!(__ctx.logged_in);
     const CAN_CHAT = !!(__ctx.can_chat);
     const CAN_SELECT_PAGES = !!(__ctx.can_select_pages);
     var PROSPECT_ID = null; var PROSPECT_SOCIALS = [];
+    // Streaming state for Ask button gating
+    var IS_STREAMING = false;
+    // Abort controller for in-flight chat requests
+    var CHAT_ABORT_CTRL = null;
+    var __ABORT_WIRED = false;
     // Selection state: Map<url, markdown>
     const SELECTED_PAGE_CONTENT = new Map(); // url -> markdown content
     var LAST_PRODUCT_ID = (function(){ try { return localStorage.getItem('pb:last_product_id') || ''; } catch(_) { return ''; } })();
@@ -284,6 +295,12 @@
                     } else {
                         cb.addEventListener('change', function(){
                             if (cb.checked) {
+                                // Enforce max pages selection on client
+                                if (SELECTED_PAGE_CONTENT.size >= MAX_PAGES) {
+                                    cb.checked = false;
+                                    try { showToast('Only ' + MAX_PAGES + ' pages can be selected'); } catch(_){}
+                                    return;
+                                }
                                 // store markdown content at selection time
                                 SELECTED_PAGE_CONTENT.set(url, ((p && (p.markdown||'').trim()) || ''));
                             } else {
@@ -864,13 +881,18 @@
             var st = PAGES_PAGER; if (!st || !Array.isArray(st.sliceUrls)) return;
             var ul = st.ul || document.getElementById('pages-list'); if (!ul) return;
  
-            // Add only current slice URLs
+            // Add only current slice URLs, enforce max pages
+            var limited = false;
             (st.sliceUrls || []).forEach(function(url){
                 if (!url) return;
+                if (SELECTED_PAGE_CONTENT.size >= MAX_PAGES) { limited = true; return; }
                 var page = (PAGES||[]).find(function(x){ return x && (x.url||'')===url; });
                 var md = (page && (page.markdown||'').trim()) || '';
                 SELECTED_PAGE_CONTENT.set(url, md);
             });
+            if (limited) {
+                try { showToast('Only ' + MAX_PAGES + ' pages can be selected'); } catch(_){}
+            }
  
             // Update visible checkboxes for current slice
             var current = new Set(st.sliceUrls || []);
@@ -914,10 +936,14 @@
             var hasPages = (SELECTED_PAGE_CONTENT.size > 0);
             var qEl = document.getElementById('chat-question');
             var hasText = !!(qEl && qEl.value && qEl.value.trim().length > 0);
-            var disabled = !(hasPages && hasText);
+            var disabled = IS_STREAMING || !(hasPages && hasText);
             sendBtn.disabled = disabled;
             sendBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-            sendBtn.title = disabled ? (hasPages ? 'Type a question' : 'Select at least one page') : 'Ask';
+            if (IS_STREAMING) {
+                sendBtn.title = 'Receiving answer...';
+            } else {
+                sendBtn.title = disabled ? (hasPages ? 'Type a question' : 'Select at least one page') : 'Ask';
+            }
         } catch(_){}
     }
 
@@ -925,6 +951,20 @@
         var count = SELECTED_PAGE_CONTENT.size;
         try { var el=document.getElementById('selected-count'); if (el) el.textContent = String(count); } catch(_){}
         try { var ce=document.getElementById('chat-page-count'); if (ce) ce.textContent = String(count); } catch(_){}
+        // Update approximate selected chars vs budget
+        try {
+            var maxEl = document.getElementById('selected-chars-max');
+            if (maxEl) maxEl.textContent = String(MAX_TOTAL_CHARS);
+            var total = 0;
+            SELECTED_PAGE_CONTENT.forEach(function(md){
+                var t = String(md==null?'':md);
+                var add = Math.min(MAX_CHARS_PER_PAGE, t.length);
+                var rem = Math.max(0, MAX_TOTAL_CHARS - total);
+                add = Math.min(add, rem);
+                total += add;
+            });
+            var sc = document.getElementById('selected-chars'); if (sc) sc.textContent = String(total);
+        } catch(_){}
         // Row selected styles based on checkbox state
         document.querySelectorAll('#pages-list li').forEach(function(li){
             var cb = li.querySelector('input[type=checkbox]');
@@ -960,7 +1000,8 @@
         try {
             var txt = buildPromptFromMini(templateId);
             addChatMessage('user', txt);
-            addChatMessage('ai', 'Chat is coming soon.');
+            var pages = Array.from(SELECTED_PAGE_CONTENT.values());
+            startChatStream(txt, pages);
         } catch(e) { alert('Unable to generate content'); }
     }
 
@@ -982,45 +1023,198 @@
     function hideTypingIndicator(){
         var t = document.getElementById('typing-indicator'); if (t) t.remove();
     }
-    function sendChatMessage(){
-        var q = (document.getElementById('chat-question').value || '').trim();
-        if (!q) return;
-        var n = SELECTED_PAGE_CONTENT.size;
-        addChatMessage('user', q);
-        document.getElementById('chat-question').value = '';
-        try { updateChatSendState(); } catch(_) {}
-        if (n === 0) {
-            addChatMessage('ai', 'Please select some pages first.');
-            return;
-        }
-        // Coming soon in Pass 1
-        showTypingIndicator();
-        setTimeout(function(){
+
+    // Shared streaming helper used by chat and clarity assessment
+    async function startChatStream(message, pages){
+        try {
+            if (!message || !Array.isArray(pages)) { addChatMessage('ai','Invalid request.'); return; }
+            if (IS_STREAMING) return;
+            if (!USER_ID || !CRAWL_ID) { addChatMessage('ai','Chat unavailable: missing identifiers.'); return; }
+
+            IS_STREAMING = true;
+            try { updateChatSendState(); } catch(_){}
+            showTypingIndicator();
+            try { trackEvent('chat_stream_start', {kind:'start', pages_count: (Array.isArray(pages) ? pages.length : 0)}); } catch(_){}
+
+            var url = '/api/ai/chat/' + encodeURIComponent(USER_ID) + '/' + encodeURIComponent(CRAWL_ID);
+            var ctrl = new AbortController(); CHAT_ABORT_CTRL = ctrl;
+            let resp;
+            try {
+                resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ message: message, pages: pages }),
+                    signal: ctrl.signal
+                });
+            } catch (e) {
+                hideTypingIndicator();
+                addChatMessage('ai', 'Network error.');
+                try { trackEvent('chat_stream_end', {status:'network_error'}); } catch(_){}
+                IS_STREAMING = false;
+                try { updateChatSendState(); } catch(_){}
+                return;
+            }
+
+            if (!resp.ok) {
+                hideTypingIndicator();
+                var friendly = await parseFriendlyError(resp);
+                addChatMessage('ai', friendly);
+                try { trackEvent('chat_stream_end', {status:'http_error', http_status: (resp && resp.status) || 0}); } catch(_){}
+                IS_STREAMING = false;
+                try { updateChatSendState(); } catch(_){}
+                return;
+            }
+
             hideTypingIndicator();
-            addChatMessage('ai', 'Chat is coming soon. Use Structured Actions for now.');
-        }, 1000);
+            var messages = document.getElementById('chat-messages');
+            var container = document.createElement('div'); container.className = 'chat-message ai';
+            var bubble = document.createElement('div'); bubble.className = 'message-bubble'; bubble.textContent = '';
+            container.appendChild(bubble);
+            if (messages) { messages.appendChild(container); messages.scrollTop = messages.scrollHeight; }
+
+            try {
+                var reader = resp.body && resp.body.getReader ? resp.body.getReader() : null;
+                var decoder = new TextDecoder();
+                if (reader) {
+                    while (true) {
+                        const {done, value} = await reader.read();
+                        if (done) break;
+                        var chunk = decoder.decode(value || new Uint8Array(), {stream: true});
+                        if (chunk && bubble) {
+                            bubble.textContent += chunk;
+                            if (messages) messages.scrollTop = messages.scrollHeight;
+                        }
+                    }
+                } else {
+                    var all = await resp.text();
+                    bubble.textContent += (all || '');
+                    if (messages) messages.scrollTop = messages.scrollHeight;
+                }
+            } catch (_e) {
+                // ignore stream errors; partial content is already displayed
+            } finally {
+                try { trackEvent('chat_stream_end', {status:'ok'}); } catch(_){}
+                IS_STREAMING = false;
+                CHAT_ABORT_CTRL = null;
+                try { updateChatSendState(); } catch(_){}
+            }
+        } finally {
+            if (IS_STREAMING) {
+                IS_STREAMING = false;
+                try { updateChatSendState(); } catch(_){}
+            }
+        }
+    }
+    async function sendChatMessage(){
+        try {
+            var qEl = document.getElementById('chat-question');
+            var q = (qEl && (qEl.value || '').trim()) || '';
+            if (!q) return;
+            if (IS_STREAMING) return; // Prevent concurrent sends
+
+            var n = SELECTED_PAGE_CONTENT.size;
+            addChatMessage('user', q);
+            if (qEl) qEl.value = '';
+            try { updateChatSendState(); } catch(_) {}
+
+            if (n === 0) {
+                addChatMessage('ai', 'Please select some pages first.');
+                return;
+            }
+            if (!USER_ID || !CRAWL_ID) {
+                addChatMessage('ai', 'Chat unavailable: missing identifiers.');
+                return;
+            }
+
+            // Disable Ask while streaming
+            IS_STREAMING = true;
+            try { updateChatSendState(); } catch(_) {}
+            showTypingIndicator();
+            try { trackEvent('chat_stream_start', {kind:'send', pages_count: SELECTED_PAGE_CONTENT.size || 0}); } catch(_){}
+
+            var pages = Array.from(SELECTED_PAGE_CONTENT.values());
+            var url = '/api/ai/chat/' + encodeURIComponent(USER_ID) + '/' + encodeURIComponent(CRAWL_ID);
+            var ctrl = new AbortController(); CHAT_ABORT_CTRL = ctrl;
+
+            let resp;
+            try {
+                resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ message: q, pages: pages }),
+                    signal: ctrl.signal
+                });
+            } catch (e) {
+                hideTypingIndicator();
+                addChatMessage('ai', 'Network error.');
+                try { trackEvent('chat_stream_end', {status:'network_error'}); } catch(_){}
+                return;
+            }
+
+            if (!resp.ok) {
+                hideTypingIndicator();
+                var friendly = await parseFriendlyError(resp);
+                addChatMessage('ai', friendly);
+                try { trackEvent('chat_stream_end', {status:'http_error', http_status: (resp && resp.status) || 0}); } catch(_){}
+                return;
+            }
+
+            // Prepare AI message bubble to append streamed text into
+            hideTypingIndicator();
+            var messages = document.getElementById('chat-messages');
+            var container = document.createElement('div'); container.className = 'chat-message ai';
+            var bubble = document.createElement('div'); bubble.className = 'message-bubble'; bubble.textContent = '';
+            container.appendChild(bubble);
+            if (messages) { messages.appendChild(container); messages.scrollTop = messages.scrollHeight; }
+
+            // Stream plaintext chunks
+            try {
+                var reader = resp.body && resp.body.getReader ? resp.body.getReader() : null;
+                var decoder = new TextDecoder();
+                if (reader) {
+                    while (true) {
+                        const {done, value} = await reader.read();
+                        if (done) break;
+                        var chunk = decoder.decode(value || new Uint8Array(), {stream: true});
+                        if (chunk && bubble) {
+                            bubble.textContent += chunk;
+                            if (messages) messages.scrollTop = messages.scrollHeight;
+                        }
+                    }
+                } else {
+                    // Fallback: no reader (older browsers) - read as text
+                    var all = await resp.text();
+                    bubble.textContent += (all || '');
+                    if (messages) messages.scrollTop = messages.scrollHeight;
+                }
+            } catch (streamErr) {
+                // On streaming error, at least leave what we got
+            } finally {
+                try { trackEvent('chat_stream_end', {status:'ok'}); } catch(_){}
+                IS_STREAMING = false;
+                CHAT_ABORT_CTRL = null;
+                try { updateChatSendState(); } catch(_) {}
+            }
+        } finally {
+            // Ensure state flips back even if unexpected throw earlier
+            if (IS_STREAMING) {
+                IS_STREAMING = false;
+                try { updateChatSendState(); } catch(_) {}
+            }
+        }
     }
 
-    function runClarityAssessmentForCurrentPage(){
+    async function runClarityAssessmentForCurrentPage(){
         try{
             var pre = document.getElementById('page-markdown');
             var md = (pre && (pre.textContent || pre.innerText) || '').toString().trim();
             if (!md) { alert('No markdown to assess'); return; }
-            var url = currentSelectedPageUrl();
-            var sources_md = url ? ('- ' + url) : '';
-            var tpl = (BUILTIN_TEMPLATES && BUILTIN_TEMPLATES.clarity_check) || [
-                'Assess clarity for the selected page(s):',
-                'Sources:',
-                '{sources}',
-                '',
-                'Content:',
-                '{content}',
-                '',
-                'Identify confusing parts and propose concise improvements. Keep in bullet points.'
-            ].join('\n');
-            var prompt = tpl.replace(/\{sources\}/g, sources_md).replace(/\{content\}/g, '### Page Content\n\n' + md);
-            addChatMessage('user', prompt);
-            addChatMessage('ai', 'Chat is coming soon.');
+
+            var msg = 'Assess the clarity of the following page for a typical visitor. Is the text clear enough? Identify confusing parts and propose concise improvements.';
+            addChatMessage('user', 'Clarity assessment for current page.');
+            await startChatStream(msg, [md]);
         } catch(_) {}
     }
 
@@ -1044,6 +1238,48 @@
             return div.innerHTML;
         } catch (_){
             return String(s == null ? '' : s);
+        }
+    }
+
+    // Map HTTP errors to friendly UI messages
+    async function parseFriendlyError(resp) {
+        try {
+            var status = (resp && resp.status) || 0;
+            var text = '';
+            var detail = '';
+            try {
+                // Attempt JSON first
+                var j = await resp.clone().json();
+                detail = (j && j.detail) || '';
+            } catch(_) {
+                try { text = await resp.clone().text(); } catch(__) {}
+            }
+            var d = String(detail || text || '').toLowerCase();
+
+            if (status === 401) return 'Unauthorized';
+            if (status === 403) return 'Forbidden';
+
+            if (status === 400) {
+                if (d.indexOf('message is required') !== -1) {
+                    return 'Please type a question.';
+                }
+                if (d.indexOf('pages must be a list') !== -1) {
+                    return 'Invalid selection. Please reselect pages.';
+                }
+                if (d.indexOf('exceeds limit') !== -1 || d.indexOf('limit') !== -1) {
+                    // Special-case pages limit
+                    if (d.indexOf('pages') !== -1) {
+                        return 'Limit exceeded: select up to ' + MAX_PAGES + ' pages.';
+                    }
+                    return 'Request exceeds allowed limits.';
+                }
+                return 'Invalid request.';
+            }
+
+            return 'Error ' + status;
+        } catch(_) {
+            var s = (resp && resp.status) || 0;
+            return s ? ('Error ' + s) : 'Request failed';
         }
     }
 
@@ -1401,6 +1637,14 @@
 
         // Ensure chat button state is correct
         updateSelectionCount();
+        try {
+            if (!window.__CHAT_ABORT_WIRED) {
+                window.addEventListener('beforeunload', function(){
+                    try { if (CHAT_ABORT_CTRL) CHAT_ABORT_CTRL.abort(); } catch(_){}
+                });
+                window.__CHAT_ABORT_WIRED = true;
+            }
+        } catch(_){}
 
         // Wire chat input to enable/disable Ask button based on text and selection
         try {

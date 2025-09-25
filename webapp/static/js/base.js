@@ -30,22 +30,28 @@
     return false;
   }
 
-  // Lightweight tracking helper using Beacon API when available
-  function trackEvent(event, action, type) {
-    try {
-      var params = new URLSearchParams();
-      if (event) params.set('event', event);
-      if (action) params.set('action', action);
-      if (type) params.set('type', type);
-      var url = '/api/track?' + params.toString();
-      if (navigator.sendBeacon) {
-        var blob = new Blob([], {type: 'text/plain'});
-        navigator.sendBeacon(url, blob);
-      } else {
-        fetch(url, {method:'GET', credentials:'same-origin'});
-      }
-    } catch (e) {}
-  }
+    // Lightweight tracking helper using Beacon API when available
+    function trackEvent(event, action, type) {
+      try {
+        var params = new URLSearchParams();
+        if (event) params.set('event', event);
+        if (type) params.set('type', type);
+        if (action != null && action !== '') {
+          if (typeof action === 'object') {
+            try { params.set('meta', JSON.stringify(action)); } catch (_) {}
+          } else {
+            params.set('action', String(action));
+          }
+        }
+        var url = '/api/track?' + params.toString();
+        if (navigator.sendBeacon) {
+          var blob = new Blob([], {type: 'text/plain'});
+          navigator.sendBeacon(url, blob);
+        } else {
+          fetch(url, {method:'GET', credentials:'same-origin'});
+        }
+      } catch (e) {}
+    }
 
   // Common JSON fetch wrapper with uniform error handling
   function apiJson(url, method, body) {

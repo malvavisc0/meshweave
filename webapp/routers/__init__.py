@@ -17,6 +17,7 @@ from . import (
     prospects,
     prospects_page,
     submissions,
+    ai
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "submissions",
     "legal",
     "products",
+    "ai"
 ]

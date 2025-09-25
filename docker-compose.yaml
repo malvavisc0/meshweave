@@ -105,8 +105,16 @@ services:
       WEBAPP_CSRF_MAX_AGE: 7200
       # Claim public analyses minimum age (hours)
       CLAIM_PUBLIC_MIN_AGE_HOURS: 24
-      # OpenRouter integration
+      # AI integration
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      AI_MODEL_ID: ${AI_MODEL_ID}
+      AI_REDIS_URL: ${AI_REDIS_URL:-redis://redis:6379}
+      AI_CHAT_VERBOSE_ERRORS: yes
+      # Database pool tuning (Postgres)
+      DB_POOL_SIZE: 5
+      DB_MAX_OVERFLOW: 10
+      DB_POOL_RECYCLE: 1800
+      DB_POOL_TIMEOUT: 30
     volumes:
       - ./.cache:/tmp/markdownify/cache
       - ./data/webapp:/db

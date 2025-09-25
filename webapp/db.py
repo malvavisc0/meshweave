@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -19,28 +20,66 @@ os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 # SQLAlchemy engine and session factory (sync)
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-if DATABASE_URL:
-    # Use external database (e.g., Postgres) when configured
-    engine = create_engine(
-        DATABASE_URL,
-        future=True,
-        pool_pre_ping=True,
-    )
-    if engine.dialect.name == "sqlite":
-        log.warning(
-            "DATABASE_URL is set but SQLite dialect detected (%s). Verify configuration.",
-            DATABASE_URL,
+class DatabaseConnectionPool:
+    """Thread-safe singleton for SQLAlchemy Engine and Session factory."""
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, database_url: str, sqlite_path: str):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    instance = super().__new__(cls)
+                    instance._initialize_pool(database_url, sqlite_path)
+                    cls._instance = instance
+        return cls._instance
+
+    def _initialize_pool(self, database_url: str, sqlite_path: str) -> None:
+        url = (database_url or "").strip()
+        if url:
+            # External DB (e.g., Postgres)
+            try:
+                pool_size = int(os.getenv("DB_POOL_SIZE", "5"))
+                max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+                pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "1800"))
+                pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+            except Exception:
+                # Fallback to safe defaults
+                pool_size, max_overflow, pool_recycle, pool_timeout = 5, 10, 1800, 30
+            self.engine = create_engine(
+                url,
+                future=True,
+                pool_pre_ping=True,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
+                pool_recycle=pool_recycle,
+                pool_timeout=pool_timeout,
+            )
+            if self.engine.dialect.name == "sqlite":
+                log.warning(
+                    "DATABASE_URL is set but SQLite dialect detected (%s). Verify configuration.",
+                    url,
+                )
+                event.listen(self.engine, "connect", _set_sqlite_pragma)
+        else:
+            # Default to SQLite
+            self.engine = create_engine(
+                f"sqlite:///{sqlite_path}",
+                connect_args={"check_same_thread": False, "timeout": 30.0},
+                future=True,
+            )
+            event.listen(self.engine, "connect", _set_sqlite_pragma)
+
+        self.SessionLocal = sessionmaker(
+            bind=self.engine,
+            autoflush=False,
+            autocommit=False,
+            future=True,
+            expire_on_commit=False,
         )
-else:
-    # Default to SQLite
-    engine = create_engine(
-        f"sqlite:///{SQLITE_PATH}",
-        connect_args={
-            "check_same_thread": False,
-            "timeout": 30.0,
-        },  # needed for SQLite with threads
-        future=True,
-    )
+
+    def get_session(self) -> Session:
+        return self.SessionLocal()
 
 
 # Ensure SQLite enforces foreign key constraints (register only for SQLite)
@@ -78,13 +117,7 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
         log.warning("SQLite PRAGMA setup failed: %s", e)
 
 
-if engine.dialect.name == "sqlite":
-    event.listen(engine, "connect", _set_sqlite_pragma)
-
-
-SessionLocal = sessionmaker(
-    bind=engine, autoflush=False, autocommit=False, future=True, expire_on_commit=False
-)
+db_pool = DatabaseConnectionPool(DATABASE_URL, SQLITE_PATH)
 
 
 def init_db() -> None:
@@ -99,7 +132,7 @@ def init_db() -> None:
           * When WEBAPP_SQLITE_BOOTSTRAP=true (escape hatch), apply minimal bootstrap and
             enforce critical invariants on crawls and products.
     """
-    dialect = engine.dialect.name
+    dialect = db_pool.engine.dialect.name
     if dialect != "sqlite":
         log.info("init_db: dialect=%s, path=alembic_only", dialect)
         return
@@ -123,7 +156,7 @@ def init_db() -> None:
     log.info("init_db: dialect=sqlite, path=bootstrap_emergency")
 
     # Create any missing tables defined in SQLAlchemy models (does not alter existing tables)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=db_pool.engine)
 
     # Helpers scoped to init to avoid polluting module namespace
     def _column_exists(conn, table: str, column: str) -> bool:
@@ -255,7 +288,7 @@ def init_db() -> None:
 
     # Execute emergency migration with fail-fast semantics
     try:
-        with engine.begin() as conn:
+        with db_pool.engine.begin() as conn:
             # Validate that base tables exist before altering (crawls is required by app)
             if not _table_exists(conn, "crawls"):
                 raise RuntimeError(
@@ -338,12 +371,27 @@ def get_session() -> Iterator[Session]:
         - Commits if the block exits normally.
         - Rolls back on exception and always closes the session.
     """
-    session: Session = SessionLocal()
+    session: Session = db_pool.get_session()
     try:
         yield session
         session.commit()
     except Exception:
         session.rollback()
         raise
+    finally:
+        session.close()
+
+
+def get_db() -> Iterator[Session]:
+    """FastAPI dependency that yields a database session for request scope.
+
+    Yields:
+        Session: A database session. Callers should not commit; writes should
+        explicitly manage transactions, while simple read paths typically rely
+        on autocommit-less sessions.
+    """
+    session: Session = db_pool.get_session()
+    try:
+        yield session
     finally:
         session.close()

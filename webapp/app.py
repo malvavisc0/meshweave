@@ -19,6 +19,7 @@ from webapp.infra import mount_static, templates
 from webapp.routers import (
     all_public,
     analysis,
+    ai,
     api,
     auth,
     home,
@@ -417,6 +418,8 @@ def create_app() -> FastAPI:
     # Pages: Products and Prospects management pages
     app.include_router(products.router)
     app.include_router(prospects_page.router)
+    # AI chat router
+    app.include_router(ai.router)
     # API router remains last
     app.include_router(api.router)
 

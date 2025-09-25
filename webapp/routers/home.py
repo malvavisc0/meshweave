@@ -3,10 +3,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
 
-from webapp.db import get_session
+from webapp.db import get_db
 from webapp.infra import templates
 from webapp.models import Crawl
 from webapp.utils.config import _env_bool
@@ -18,20 +19,19 @@ router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+async def home(request: Request, db: Session = Depends(get_db)):
     """Homepage with submission form and latest 10 public results.
 
     Renders recent public crawls (domain, path, query, title, status) and ensures
     a session cookie and CSRF token are set.
     """
-    with get_session() as s:
-        rows: List[Crawl] = (
-            s.query(Crawl)
-            .filter(Crawl.visibility == "public")
-            .order_by(Crawl.updated_at.desc())
-            .limit(10)
-            .all()
-        )
+    rows: List[Crawl] = (
+        db.query(Crawl)
+        .filter(Crawl.visibility == "public")
+        .order_by(Crawl.updated_at.desc())
+        .limit(10)
+        .all()
+    )
 
     items = []
     for r in rows:
