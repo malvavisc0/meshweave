@@ -428,10 +428,12 @@ label { font-size: 13px; }
 .chat-message.user .message-bubble {
   background: var(--brand); color: #fff; display: inline-block; padding: 10px 14px;
   border-radius: var(--radius); max-width: 80%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  white-space: pre-wrap;
 }
 .chat-message.ai .message-bubble {
   background: var(--card-bg); color: var(--fg); display: inline-block; padding: 10px 14px;
   border-radius: var(--radius); border: 1px solid var(--border); max-width: 80%; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  white-space: pre-wrap;
 }
 .chat-input-container { padding: 12px; display: flex; gap: 8px; }
 .chat-input-container input { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); }

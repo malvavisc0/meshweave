@@ -1076,21 +1076,33 @@
             try {
                 var reader = resp.body && resp.body.getReader ? resp.body.getReader() : null;
                 var decoder = new TextDecoder();
+                var __streamBuf = '';
                 if (reader) {
                     while (true) {
                         const {done, value} = await reader.read();
                         if (done) break;
                         var chunk = decoder.decode(value || new Uint8Array(), {stream: true});
                         if (chunk && bubble) {
+                            __streamBuf += chunk;
                             bubble.textContent += chunk;
                             if (messages) messages.scrollTop = messages.scrollHeight;
                         }
                     }
                 } else {
                     var all = await resp.text();
+                    __streamBuf = all || '';
                     bubble.textContent += (all || '');
                     if (messages) messages.scrollTop = messages.scrollHeight;
                 }
+                // After streaming completes, render Markdown safely if libraries are available
+                try {
+                    if (window.marked && window.DOMPurify && bubble) {
+                        if (window.marked.setOptions) { window.marked.setOptions({ breaks: true }); }
+                        var __html = window.marked.parse(__streamBuf || '');
+                        var __safe = window.DOMPurify.sanitize(__html);
+                        bubble.innerHTML = __safe;
+                    }
+                } catch(__mdErr) {}
             } catch (_e) {
                 // ignore stream errors; partial content is already displayed
             } finally {
@@ -1173,12 +1185,14 @@
             try {
                 var reader = resp.body && resp.body.getReader ? resp.body.getReader() : null;
                 var decoder = new TextDecoder();
+                var __streamBuf = '';
                 if (reader) {
                     while (true) {
                         const {done, value} = await reader.read();
                         if (done) break;
                         var chunk = decoder.decode(value || new Uint8Array(), {stream: true});
                         if (chunk && bubble) {
+                            __streamBuf += chunk;
                             bubble.textContent += chunk;
                             if (messages) messages.scrollTop = messages.scrollHeight;
                         }
@@ -1186,9 +1200,19 @@
                 } else {
                     // Fallback: no reader (older browsers) - read as text
                     var all = await resp.text();
+                    __streamBuf = all || '';
                     bubble.textContent += (all || '');
                     if (messages) messages.scrollTop = messages.scrollHeight;
                 }
+                // After streaming completes, render Markdown safely if libraries are available
+                try {
+                    if (window.marked && window.DOMPurify && bubble) {
+                        if (window.marked.setOptions) { window.marked.setOptions({ breaks: true }); }
+                        var __html = window.marked.parse(__streamBuf || '');
+                        var __safe = window.DOMPurify.sanitize(__html);
+                        bubble.innerHTML = __safe;
+                    }
+                } catch(__mdErr) {}
             } catch (streamErr) {
                 // On streaming error, at least leave what we got
             } finally {

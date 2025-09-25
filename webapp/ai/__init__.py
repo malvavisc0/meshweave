@@ -16,7 +16,7 @@ def agent(
     session_id: str,
     db: RedisDb,
     model: OpenRouter,
-    markdown: bool = False,
+    markdown: bool = True,
     stream: bool = True,
 ):
     return Agent(
