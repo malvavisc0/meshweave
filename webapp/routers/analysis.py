@@ -380,8 +380,9 @@ async def view_analysis(request: Request, ref: str):
                 for p in products
             ]
 
+    template_name = "result_public.html" if not current_user else "result.html"
     resp = templates.TemplateResponse(
-        "result.html",
+        template_name,
         {
             "request": request,
             "domain": row.domain,
