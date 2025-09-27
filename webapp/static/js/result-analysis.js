@@ -30,7 +30,6 @@
     var IS_STREAMING = false;
     // Abort controller for in-flight chat requests
     var CHAT_ABORT_CTRL = null;
-    var __ABORT_WIRED = false;
     // Selection state: Map<url, markdown>
     const SELECTED_PAGE_CONTENT = new Map(); // url -> markdown content
     var LAST_PRODUCT_ID = (function(){ try { return localStorage.getItem('pb:last_product_id') || ''; } catch(_) { return ''; } })();
@@ -1366,16 +1365,37 @@
     (function() {
         var mtabs = document.querySelectorAll('.mobile-tab');
         function activate(targetSel, btn) {
-            document.querySelectorAll('.mobile-section').forEach(function(sec){ sec.classList.remove('active'); sec.style.display='none'; });
-            var t = document.querySelector(targetSel); if (t) { t.classList.add('active'); t.style.display='block'; }
+            // Hide all sections
+            document.querySelectorAll('.mobile-section').forEach(function(sec){
+                sec.classList.remove('active');
+                sec.style.display = 'none';
+            });
+            // Show target section
+            var t = document.querySelector(targetSel);
+            if (t) {
+                try { t.classList.remove('hidden'); } catch(_){}
+                t.classList.add('active');
+                t.style.display = 'block';
+            }
+            // Update tab aria state
             mtabs.forEach(function(b){ b.setAttribute('aria-selected','false'); });
-            btn.setAttribute('aria-selected','true');
+            if (btn) btn.setAttribute('aria-selected','true');
         }
+        // Click handlers
         mtabs.forEach(function(btn){
             btn.addEventListener('click', function(){
-                activate(this.getAttribute('data-target'), this);
+                var tgt = this.getAttribute('data-target');
+                if (tgt) activate(tgt, this);
             });
         });
+        // Initial activation: prefer aria-selected="true", fallback to first tab
+        try {
+            var initial = document.querySelector('.mobile-tabs .mobile-tab[aria-selected="true"]') || mtabs[0];
+            if (initial) {
+                var target = initial.getAttribute('data-target');
+                if (target) activate(target, initial);
+            }
+        } catch(_){}
     })();
 
     // Simple email validation heuristics

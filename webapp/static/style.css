@@ -260,6 +260,7 @@ label { font-size: 13px; }
 /* Tables */
 .table { width:100%; border-collapse: collapse; }
 .table th, .table td { text-align:left; padding:8px; border-bottom:1px solid var(--border); font-size: 13px; vertical-align: top; }
+.table td { word-break: break-word; overflow-wrap: anywhere; }
 .table td a { word-break: break-word; overflow-wrap: anywhere; }
 
 /* Tabs */
@@ -363,10 +364,11 @@ label { font-size: 13px; }
   .mobile-tabs { display:flex; gap:6px; flex-wrap:wrap; margin: 12px 0; }
   .mobile-tab {
     padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:13px; cursor:pointer;
+    min-height: 40px;
   }
   .mobile-tab[aria-selected="true"] { background: var(--brand-weak); border-color:#c7d2fe; }
   .mobile-section { display:none; }
-  .mobile-section.active { display:block; margin-bottom:12px; }
+  .mobile-section.active { display:block !important; margin-bottom:12px; }
   .sidebar { margin-top:12px; }
 }
 
@@ -484,4 +486,156 @@ label { font-size: 13px; }
 .site-footer .sep { opacity: 0.6; margin: 0 6px; }
 @media (max-width: 768px) {
   .site-footer .footer-inner { flex-direction: column; align-items: flex-start; }
+}
+
+/* ===== Mobile Enhancements Pass (2025-09) ===== */
+
+/* Improve chat area sizing on tablets/phones */
+@media (max-width: 768px) {
+  .chat-area {
+    /* Previously fixed 250px; make it respond to viewport height */
+    height: clamp(220px, 45vh, 450px);
+  }
+}
+
+/* Global focus visibility for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Small-screen ergonomics and layout fixes */
+@media (max-width: 480px) {
+  /* Top navigation: stack and avoid overflow */
+  nav.topnav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .topnav .nav-left,
+  .topnav .nav-right {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .topnav .nav-right .small {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topnav .btn,
+  .topnav form button {
+    width: 100%;
+  }
+
+  /* Tap target sizing */
+  button, .btn {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  .btn-sm {
+    min-height: 36px;
+    padding: 8px 10px;
+  }
+
+  /* Form controls: avoid iOS zoom; enforce comfortable height */
+  input[type=text], input[type=url], input[type=email], input[type=number],
+  select, textarea, .input, .select {
+    min-height: 40px;
+    font-size: 16px;
+  }
+
+  /* Tables: denser padding and wrapped actions */
+  .table th, .table td {
+    padding: 6px;
+  }
+  .table .btn {
+    margin: 2px 0;
+    display: inline-block;
+  }
+  .actions {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* Panels and headings: slightly tighter spacing on small screens */
+  .panel {
+    padding: 10px;
+  }
+  h1 { margin: 10px 0 6px; }
+  h2 { margin: 8px 0 6px; }
+
+  /* Chat drawer containment within viewport */
+  .chat-drawer {
+    width: calc(100% - 24px);
+    left: 12px;
+    right: 12px;
+    height: clamp(300px, 60vh, 420px);
+    bottom: 12px;
+  }
+}
+
+/* Mobile Tabs: ensure active section displays even if .hidden was applied */
+@media (max-width: 768px) {
+  .mobile-section.active { display: block !important; }
+  .mobile-tab { min-height: 40px; }
+}
+
+/* ===== Final Nav and Style Review Tweaks (2025-09) ===== */
+
+/* Accessible skip link */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.skip-link:focus, .skip-link:focus-visible {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: auto;
+  height: auto;
+  padding: 8px 12px;
+  background: #fff;
+  color: var(--brand-ink);
+  border: 2px solid var(--brand);
+  border-radius: 6px;
+  z-index: 1000;
+}
+
+/* Active state for current nav link */
+.topnav a[aria-current="page"]:not(.btn) {
+  color: var(--brand-ink);
+  text-decoration: underline;
+  font-weight: 700;
+}
+.topnav .btn[aria-current="page"] {
+  background: var(--brand-weak);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+/* Improve focus ring on nav links and buttons for visibility */
+.topnav a:focus-visible,
+.topnav .btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Safe-area support for iOS devices (home indicator area) */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: max(var(--gap), env(safe-area-inset-bottom));
+  }
+  .site-footer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  @media (max-width: 480px) {
+    .chat-drawer {
+      bottom: max(12px, env(safe-area-inset-bottom));
+    }
+  }
 }
