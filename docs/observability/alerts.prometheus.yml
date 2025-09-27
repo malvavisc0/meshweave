@@ -1,0 +1,99 @@
+# Prometheus Alerting Rules — Authentication & Crawl Site
+# Scope: Example rules to monitor auth flow, quotas, sessions, and job performance.
+# NOTE: Adjust metric names/labels and thresholds to your environment.
+
+groups:
+  - name: auth-and-sessions
+    rules:
+      - alert: OAuthFailureSpike
+        expr: increase(auth_attempts_total{result="failure"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OAuth failure spike detected"
+          description: "More than 10 OAuth failures in 5 minutes. Investigate provider health, redirect URI config, or client secrets."
+
+      - alert: ExcessiveLoginRateLimited
+        expr: increase(rate_limit_hits_total{type="login"}[5m]) > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Login rate limits frequently triggered"
+          description: "High login rate-limit activity. Possible abuse or misconfigured clients."
+
+      - alert: ActiveSessionsZeroInProd
+        expr: (active_sessions_count == 0) and (on() vector(1) == 1)
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "No active sessions reported"
+          description: "No active sessions in the last 30 minutes. Verify if this is expected (low traffic) or instrumentation issues."
+
+  - name: quotas-and-security
+    rules:
+      - alert: QuotaDailySiteExceededSpike
+        expr: increase(rate_limit_hits_total{type="daily_site"}[10m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Daily site crawl quota exceeded spike"
+          description: "Large number of daily site crawl quota hits. Investigate potential abuse or adjust quotas."
+
+      - alert: QuotaConcurrentJobsExceeded
+        expr: increase(rate_limit_hits_total{type="concurrent_jobs"}[10m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Concurrent jobs quota exceeded frequently"
+          description: "Users hitting concurrent job limits. Consider capacity or tune limits."
+
+  - name: jobs-and-performance
+    rules:
+      - alert: CrawlJobsLongDurationSite
+        expr: histogram_quantile(0.95, sum(rate(crawl_job_duration_seconds_bucket{scope="site"}[5m])) by (le)) > 300
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High site crawl job duration (P95)"
+          description: "Site crawl P95 duration > 300s for 15m. Investigate source latency, resource constraints, or excessive limits."
+
+      - alert: CrawlJobsFailureRateHigh
+        expr: (increase(crawl_job_duration_seconds_count{status="failed"}[10m]) / clamp_min(increase(crawl_job_duration_seconds_count[10m]), 1)) > 0.3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High crawl job failure rate"
+          description: "Failure ratio > 30% over 10m. Check upstream provider, connectivity, or crawler bugs."
+
+  - name: background-and-readiness
+    rules:
+      - alert: SessionCleanupLag
+        expr: active_sessions_count > 0 and increase(active_sessions_count[1h]) == 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Active sessions gauge not changing"
+          description: "No change in active session count for 1h with non-zero sessions. Check cleanup task health and gauge updates."
+
+      - alert: ReadinessFailures
+        expr: probe_success{job="webapp-readyz"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Webapp readiness probe failing"
+          description: "Readiness probe failing for over 5 minutes. Check DB connectivity and OAuth config policy (WEBAPP_READYZ_REQUIRE_AUTH)."
+
+
+# Scrape/Probing Notes (example)
+# - Configure a blackbox exporter to probe /readyz (target webapp) and record probe_success.
+# - Ensure Prometheus scrapes the webapp /metrics endpoint.
+# - Adjust labels and job names to match your Prometheus setup.
