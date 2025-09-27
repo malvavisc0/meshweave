@@ -20,8 +20,10 @@ os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 # SQLAlchemy engine and session factory (sync)
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
+
 class DatabaseConnectionPool:
     """Thread-safe singleton for SQLAlchemy Engine and Session factory."""
+
     _instance = None
     _lock = threading.Lock()
 

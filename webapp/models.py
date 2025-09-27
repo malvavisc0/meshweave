@@ -419,6 +419,7 @@ class Product(Base):
 
 # ---- Chat persistence (threads + messages) ----
 
+
 class ChatThread(Base):
     __tablename__ = "chat_threads"
     __table_args__ = (
@@ -470,9 +471,7 @@ class ChatMessage(Base):
     thread_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("chat_threads.id", ondelete="CASCADE"), nullable=False
     )
-    role: Mapped[str] = mapped_column(
-        String(10), nullable=False
-    )  # "user" | "ai"
+    role: Mapped[str] = mapped_column(String(10), nullable=False)  # "user" | "ai"
     content: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

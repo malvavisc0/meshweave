@@ -17,9 +17,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates
 from webapp.routers import (
+    ai,
     all_public,
     analysis,
-    ai,
     api,
     auth,
     home,

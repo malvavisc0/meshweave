@@ -1,6 +1,6 @@
+import json
 import logging
 import os
-import json
 from typing import Any, AsyncIterator, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -11,10 +11,9 @@ from webapp.ai import agent as get_agent
 from webapp.ai import db as get_db
 from webapp.ai import model as get_model
 from webapp.db import get_session
-from webapp.models import ChatThread, ChatMessage
+from webapp.models import ChatMessage, ChatThread
 from webapp.utils.auth import require_ownership
 from webapp.utils.logging import log_audit
-
 
 AI_MODEL_ID = os.getenv("AI_MODEL_ID", "openai/gpt-5-mini")
 AI_REDIS_URL = os.getenv("AI_REDIS_URL", "redis://redis:6379")
@@ -117,6 +116,7 @@ async def _stream_agent(
         resp = agent.arun(compiled_prompt)
         try:
             import asyncio
+
             if asyncio.iscoroutine(resp):
                 resp = await resp
         except Exception:
@@ -331,9 +331,20 @@ async def send_message(
             try:
                 thread = _ensure_thread(user_id=user_id, analysis_id=analysis_id)
                 with get_session() as s:
-                    th = s.query(ChatThread).filter(ChatThread.id == thread.id).one_or_none()
+                    th = (
+                        s.query(ChatThread)
+                        .filter(ChatThread.id == thread.id)
+                        .one_or_none()
+                    )
                     if th:
-                        s.add(ChatMessage(thread_id=th.id, role="ai", content=buf, metadata_json=None))
+                        s.add(
+                            ChatMessage(
+                                thread_id=th.id,
+                                role="ai",
+                                content=buf,
+                                metadata_json=None,
+                            )
+                        )
             except Exception:
                 logger.exception("Failed to persist AI chat message (dev stub)")
 
@@ -380,16 +391,17 @@ async def send_message(
 
 
 @router.get("/chat/{user_id}/{analysis_id}/history")
-async def get_chat_history(
-    user_id: str, analysis_id: str, request: Request
-) -> dict:
+async def get_chat_history(user_id: str, analysis_id: str, request: Request) -> dict:
     """
     Return persisted chat history for this user+analysis (owner-only).
     """
     # Auth & ownership
     current_user = getattr(request.state, "current_user", None)
     if not current_user or str(current_user.id) != str(user_id):
-        raise HTTPException(status_code=401 if not current_user else 403, detail="Unauthorized" if not current_user else "Forbidden")
+        raise HTTPException(
+            status_code=401 if not current_user else 403,
+            detail="Unauthorized" if not current_user else "Forbidden",
+        )
     # Enforce ownership of the analysis/crawl
     await require_ownership(request, analysis_id)
 
@@ -411,7 +423,7 @@ async def get_chat_history(
         for m in rows:
             created_iso = None
             try:
-                created_iso = (m.created_at.isoformat() if m.created_at else None)
+                created_iso = m.created_at.isoformat() if m.created_at else None
             except Exception:
                 created_iso = None
             messages.append(
@@ -425,16 +437,17 @@ async def get_chat_history(
 
 
 @router.delete("/chat/{user_id}/{analysis_id}")
-async def clear_chat_history(
-    user_id: str, analysis_id: str, request: Request
-) -> dict:
+async def clear_chat_history(user_id: str, analysis_id: str, request: Request) -> dict:
     """
     Clear chat history for this user+analysis (owner-only).
     """
     # Auth & ownership
     current_user = getattr(request.state, "current_user", None)
     if not current_user or str(current_user.id) != str(user_id):
-        raise HTTPException(status_code=401 if not current_user else 403, detail="Unauthorized" if not current_user else "Forbidden")
+        raise HTTPException(
+            status_code=401 if not current_user else 403,
+            detail="Unauthorized" if not current_user else "Forbidden",
+        )
     await require_ownership(request, analysis_id)
 
     with get_session() as s:

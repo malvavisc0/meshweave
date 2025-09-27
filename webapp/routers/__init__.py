@@ -5,6 +5,7 @@ This package exposes router submodules for convenient import like:
 """
 
 from . import (
+    ai,
     all_public,
     analysis,
     api,
@@ -17,7 +18,6 @@ from . import (
     prospects,
     prospects_page,
     submissions,
-    ai
 )
 
 __all__ = [
@@ -33,5 +33,5 @@ __all__ = [
     "submissions",
     "legal",
     "products",
-    "ai"
+    "ai",
 ]

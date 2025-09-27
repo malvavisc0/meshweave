@@ -203,8 +203,12 @@ async def view_analysis(request: Request, ref: str):
                 "json_ld": json_ld,
                 # AI chat limits (mirror backend defaults; configurable via env)
                 "ai_chat_max_pages": int(os.getenv("AI_CHAT_MAX_PAGES", "5")),
-                "ai_chat_max_chars_per_page": int(os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")),
-                "ai_chat_max_total_chars": int(os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")),
+                "ai_chat_max_chars_per_page": int(
+                    os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")
+                ),
+                "ai_chat_max_total_chars": int(
+                    os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")
+                ),
             },
         )
         # Prevent indexing of private results
@@ -428,7 +432,9 @@ async def view_analysis(request: Request, ref: str):
             "email_count": email_count,
             # AI chat limits (mirror backend defaults; configurable via env)
             "ai_chat_max_pages": int(os.getenv("AI_CHAT_MAX_PAGES", "5")),
-            "ai_chat_max_chars_per_page": int(os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")),
+            "ai_chat_max_chars_per_page": int(
+                os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")
+            ),
             "ai_chat_max_total_chars": int(os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")),
         },
     )
