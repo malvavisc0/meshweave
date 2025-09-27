@@ -123,7 +123,6 @@ async def view_analysis(request: Request, ref: str):
         current_user = getattr(request.state, "current_user", None)
         is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
         status_lc = str(getattr(row, "status", "") or "").lower()
-        logged_in = bool(current_user)
         # Chat: owners-only on succeeded analyses
         can_chat = (status_lc == "succeeded") and is_owner
         # Page selection and Shortcuts: owner-only on succeeded analyses
@@ -351,7 +350,6 @@ async def view_analysis(request: Request, ref: str):
     current_user = getattr(request.state, "current_user", None)
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
     status_lc = str(getattr(row, "status", "") or "").lower()
-    logged_in = bool(current_user)
     # Chat: owners-only on succeeded analyses
     can_chat = (status_lc == "succeeded") and is_owner
     # Page selection and Shortcuts: owner-only on succeeded analyses
