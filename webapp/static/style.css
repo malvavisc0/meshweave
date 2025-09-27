@@ -378,7 +378,6 @@ label { font-size: 13px; }
   #site-btn { display: block; width: 100%; margin: 8px 0 0 0 !important; }
 }
 
-/* ===== Pass 1 UI polish additions ===== */
 
 /* Email preview list */
 .email-item {
@@ -451,7 +450,6 @@ label { font-size: 13px; }
   .chat-area { height: 250px; }
 }
 
-/* ===== Additive hooks for Home Submission Journey (non-destructive) ===== */
 
 /* Container wrapper for wide pages */
 .container { max-width: var(--container, 1100px); margin: 0 auto; padding: 0; padding-inline: clamp(12px, 4vw, 24px); }
@@ -488,25 +486,18 @@ label { font-size: 13px; }
   .site-footer .footer-inner { flex-direction: column; align-items: flex-start; }
 }
 
-/* ===== Mobile Enhancements Pass (2025-09) ===== */
-
-/* Improve chat area sizing on tablets/phones */
 @media (max-width: 768px) {
   .chat-area {
-    /* Previously fixed 250px; make it respond to viewport height */
     height: clamp(220px, 45vh, 450px);
   }
 }
 
-/* Global focus visibility for keyboard users */
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-/* Small-screen ergonomics and layout fixes */
 @media (max-width: 480px) {
-  /* Top navigation: stack and avoid overflow */
   nav.topnav {
     flex-direction: column;
     align-items: stretch;
@@ -528,7 +519,6 @@ label { font-size: 13px; }
     width: 100%;
   }
 
-  /* Tap target sizing */
   button, .btn {
     min-height: 44px;
     padding: 10px 12px;
@@ -538,14 +528,12 @@ label { font-size: 13px; }
     padding: 8px 10px;
   }
 
-  /* Form controls: avoid iOS zoom; enforce comfortable height */
   input[type=text], input[type=url], input[type=email], input[type=number],
   select, textarea, .input, .select {
     min-height: 40px;
     font-size: 16px;
   }
 
-  /* Tables: denser padding and wrapped actions */
   .table th, .table td {
     padding: 6px;
   }
@@ -558,14 +546,12 @@ label { font-size: 13px; }
     flex-wrap: wrap;
   }
 
-  /* Panels and headings: slightly tighter spacing on small screens */
   .panel {
     padding: 10px;
   }
   h1 { margin: 10px 0 6px; }
   h2 { margin: 8px 0 6px; }
 
-  /* Chat drawer containment within viewport */
   .chat-drawer {
     width: calc(100% - 24px);
     left: 12px;
@@ -575,15 +561,11 @@ label { font-size: 13px; }
   }
 }
 
-/* Mobile Tabs: ensure active section displays even if .hidden was applied */
 @media (max-width: 768px) {
   .mobile-section.active { display: block !important; }
   .mobile-tab { min-height: 40px; }
 }
 
-/* ===== Final Nav and Style Review Tweaks (2025-09) ===== */
-
-/* Accessible skip link */
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -606,7 +588,6 @@ label { font-size: 13px; }
   z-index: 1000;
 }
 
-/* Active state for current nav link */
 .topnav a[aria-current="page"]:not(.btn) {
   color: var(--brand-ink);
   text-decoration: underline;
@@ -618,14 +599,12 @@ label { font-size: 13px; }
   color: var(--brand-ink);
 }
 
-/* Improve focus ring on nav links and buttons for visibility */
 .topnav a:focus-visible,
 .topnav .btn:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-/* Safe-area support for iOS devices (home indicator area) */
 @supports (padding: env(safe-area-inset-bottom)) {
   body {
     padding-bottom: max(var(--gap), env(safe-area-inset-bottom));

@@ -1004,7 +1004,7 @@
         } catch(e) { alert('Unable to generate content'); }
     }
 
-    /* ----- Chat skeleton (Pass 1 = coming soon) ----- */
+    /* Chat helpers */
     function addChatMessage(sender, text){
         var messages = document.getElementById('chat-messages'); if (!messages) return;
         var d = document.createElement('div'); d.className = 'chat-message '+sender;
@@ -1359,8 +1359,6 @@
         }
     }
 
-    /* Keep existing code below */
-
     // Mobile tabs
     (function() {
         var mtabs = document.querySelectorAll('.mobile-tab');
@@ -1529,9 +1527,7 @@
         });
     }
 
-    // Links Explorer rendering
 
-    // Pages panel removed
 
     // Utilities
     function jsStr(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
