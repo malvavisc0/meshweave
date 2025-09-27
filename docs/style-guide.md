@@ -301,3 +301,83 @@ Review and QA
   - Validate visual at desktop and mobile (768px and 640px)
   - Test keyboard focus and aria-live regions
   - Prefer specific metric copy (counts/times) over vague language
+
+## 2025-09 Mobile, Navigation, and A11y Updates
+
+This addendum documents the latest changes and codifies guidance so new work aligns with the current UI. It complements sections 2, 3, 5, 9, 16, 18, 19, 23, and 24 above. The canonical implementation resides in [webapp/static/style.css](webapp/static/style.css) and templates in [webapp/templates/base.html](webapp/templates/base.html).
+
+1) Navigation semantics and active states
+- Primary nav must declare semantic roles and labels:
+  - In HTML: `<nav class="topnav" role="navigation" aria-label="Primary">`
+- Active page indication uses aria-current and is styled:
+  - Links: `.topnav a[aria-current="page"]:not(.btn) { color: var(--brand-ink); text-decoration: underline; font-weight: 700; }`
+  - Button-like anchors: `.topnav .btn[aria-current="page"] { background: var(--brand-weak); border-color: var(--brand); color: var(--brand-ink); }`
+- Do not use visual separators like " | "; rely on flex gaps.
+- Small screens (<=480px):
+  - Stack `.topnav` into a column and wrap `.nav-left`/`.nav-right`
+  - Truncate long signed-in labels with ellipsis
+  - Make primary CTA buttons full-width in the nav when reasonable
+
+2) Skip link and main landmark
+- Provide a keyboard-visible skip link for direct access to content:
+  - `<a class="skip-link" href="#main">Skip to content</a>`
+  - `<main id="main" tabindex="-1" role="main">…</main>`
+- Style `.skip-link` to be off-screen by default and visible on focus.
+
+3) Mobile tap targets and form ergonomics
+- At <=480px:
+  - `button, .btn` min-height: 44px (increase padding as needed)
+  - `.btn-sm` min-height: 36px
+  - `input/select/textarea` min-height: 40px; font-size: 16px to avoid iOS zoom on focus
+- Continue to prefer `.w-full` for inputs in mobile stacks and avoid inline widths.
+
+4) Tables on small screens
+- Use `.table-wrap` for horizontal scroll when truly necessary. Prefer wrapping content to avoid overflow:
+  - `.table td { word-break: break-word; overflow-wrap: anywhere; }`
+- At <=480px:
+  - Slightly reduce cell padding for density
+  - Allow action buttons inside cells to wrap (stack) with small vertical spacing
+- Keep bulk actions in `.actions` bars which already wrap and have gaps.
+
+5) Mobile tabs and default visibility
+- Use `.mobile-tabs` with `.mobile-tab` buttons and `aria-selected` to indicate the active tab; each `.mobile-tab` must specify `data-target="#section-id"`.
+- Sections are `.mobile-section`; the active section must have `.active`. JS ensures:
+  - One section is visible by default on load, preferring a tab with `aria-selected="true"`, else the first tab
+  - Switching tabs toggles `aria-selected` and shows the appropriate `.mobile-section`
+- CSS ensures the active section displays:
+  - `.mobile-section.active { display: block !important; }` on mobile breakpoints
+
+6) Chat area and drawers on mobile
+- Chat content area height is viewport-responsive to reduce wasted space:
+  - `.chat-area { height: clamp(220px, 45vh, 450px); }` on <=768px
+- Chat drawers respect the viewport and iOS safe areas on small devices:
+  - On <=480px: `.chat-drawer { width: calc(100% - 24px); height: clamp(300px, 60vh, 420px); left: 12px; right: 12px; bottom: 12px; }`
+  - Safe area: when supported, `bottom: max(12px, env(safe-area-inset-bottom))`
+
+7) Focus visibility and accessibility
+- Global keyboard focus visibility is standardized via `:focus-visible` using the brand color, ensuring actionable elements (links, buttons, pills) are obviously focused.
+- Continue to:
+  - Use `aria-live="polite"` for progress and validation feedback
+  - Provide roles for toolbars/tablists/tables
+  - Keep tap targets at least 44px on mobile
+  - Prefer clear, specific microcopy (“47 emails found”) over generic text
+
+8) iOS safe-area support
+- Body and footer accommodate the home indicator area:
+  - `body` adds extra bottom padding using `env(safe-area-inset-bottom)` when supported
+  - `.site-footer` adds matching bottom padding on iOS to avoid being occluded
+
+9) Patterns and implementation references
+- Implemented in:
+  - Navigation semantics, active link styling, and skip link: [webapp/templates/base.html](webapp/templates/base.html)
+  - Mobile ergonomics, focus ring, tables wrapping, chat sizing, safe-area: [webapp/static/style.css](webapp/static/style.css)
+  - Mobile tabs default activation logic: [webapp/static/js/result-analysis.js](webapp/static/js/result-analysis.js)
+- Do not reintroduce page-specific inline styles for navigation, tab visibility, or chat sizing. Extend global classes/utilities if needed.
+
+10) Change log (2025-09)
+- Navigation: aria-current styling for active items; skip link and main landmark added
+- Mobile: standardized tap targets and form control heights; truncated long signed-in labels; full-width nav CTAs where appropriate
+- Tables: cell content wrapping rule added; action button wrapping guidance
+- Mobile tabs: default activation on load; enforced visibility of the active section on mobile
+- Chat: viewport-responsive heights; drawer constrained to viewport width/height; safe-area support for iOS
+- Focus: global `:focus-visible` ring standardized across interactive controls
