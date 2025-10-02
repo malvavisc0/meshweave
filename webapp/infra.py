@@ -1,32 +1,46 @@
 from importlib.resources import files as resource_files
 from pathlib import Path
+import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-# Templates directory (kept minimal, no CSS for MVP)
-try:
-    # When installed as a package, resolve templates from package data
-    templates_dir = resource_files("webapp") / "templates"
-    templates = Jinja2Templates(directory=str(templates_dir))
-except Exception:
-    # Fallback for dev runs
-    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+# Prefer local filesystem templates in dev when requested via env
+# Set WEBAPP_PREFER_LOCAL_TEMPLATES=true to load from source tree without rebuilds.
+_prefer_local_tpl = os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+if _prefer_local_tpl:
+    _local_src = Path(os.getenv("WEBAPP_LOCAL_SRC_DIR", str(Path(__file__).parent)))
+    templates = Jinja2Templates(directory=str(_local_src / "templates"))
+else:
+    try:
+        # When installed as a package, resolve templates from package data
+        templates_dir = resource_files("webapp") / "templates"
+        templates = Jinja2Templates(directory=str(templates_dir))
+    except Exception:
+        # Fallback for dev runs
+        templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
 def mount_static(app: FastAPI) -> None:
-    """Mount the /static files with a packaged fallback.
+    """Mount the /static files with a packaged fallback (dev can prefer local).
 
-    Attempts to resolve the package's 'static' resources first; falls back to a
-    local 'static' directory next to this file.
-
-    Args:
-        app (FastAPI): The FastAPI application instance.
-
-    Returns:
-        None
+    Env:
+      - WEBAPP_PREFER_LOCAL_STATIC=true to serve from local source tree.
+      - If unset, packaged resources are used when available, else local.
     """
+    prefer_local_static = os.getenv("WEBAPP_PREFER_LOCAL_STATIC", os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+    if prefer_local_static:
+        _local_src = Path(os.getenv("WEBAPP_LOCAL_SRC_DIR", str(Path(__file__).parent)))
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(_local_src / "static"), check_dir=False),
+            name="static",
+        )
+        return
+
     try:
         static_dir = resource_files("webapp") / "static"
         app.mount(

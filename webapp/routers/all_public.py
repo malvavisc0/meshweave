@@ -1,5 +1,6 @@
 import contextlib
 import os
+import json
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode
@@ -121,8 +122,6 @@ async def view_all(
                 title = ""
                 try:
                     if row.payload_json:
-                        import json
-
                         payload = json.loads(row.payload_json)
                         title = (payload.get("page") or {}).get("title") or ""
                 except Exception:
@@ -214,8 +213,6 @@ async def view_all(
                 title = ""
                 try:
                     if r.payload_json:
-                        import json
-
                         payload = json.loads(r.payload_json)
                         title = (payload.get("page") or {}).get("title") or ""
                 except Exception:
@@ -314,7 +311,7 @@ async def view_all(
         # Trending section removed to avoid duplication on the All page.
 
     # SEO
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    site_name = os.getenv("SITE_NAME", "Meshweave")
     title_bits = ["All public results"]
     if dom:
         title_bits.append(f"for {dom}")
@@ -333,7 +330,7 @@ async def view_all(
             f"Browse public results filtered by status {st}. Filter, sort, and paginate."
         )
     else:
-        meta_description = "Explore public website analyses. Filter by domain/status, sort by recency/emails/pages."
+        meta_description = "Browse public website analyses. Filter by domain or status to find relevant insights."
 
     # Canonical: keep domain/status only; exclude cursor/page_size/sort/has_emails
     canonical_params = {}
@@ -347,6 +344,35 @@ async def view_all(
     abs_page_url = _abs_url(request, canonical_path)
 
     og_image_url = os.getenv("OG_IMAGE_URL") or None
+
+    # JSON-LD: ItemList of public analyses (LLM-first)
+    try:
+        list_name = f"Public Analyses for {dom}" if dom else "Public Analyses"
+        elements = []
+        for it in items:
+            try:
+                elements.append(
+                    {
+                        "@type": "CreativeWork",
+                        "name": f"Analysis for {it.get('domain') or 'site'}",
+                        "identifier": it.get("key", ""),
+                        "about": (it.get("domain") or "").strip(),
+                        "url": _abs_url(request, f"/analysis/{it.get('key','')}"),
+                        "dateModified": str(it.get("updated_at", ""))[:19],  # ISO-like
+                        "keywords": ["markdown", "links", "emails"],
+                    }
+                )
+            except Exception:
+                continue
+        json_ld_dict = {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "name": list_name,
+            "itemListElement": elements,
+        }
+        json_ld = json.dumps(json_ld_dict)
+    except Exception:
+        json_ld = None
 
     return templates.TemplateResponse(
         "all.html",
@@ -371,5 +397,6 @@ async def view_all(
             "meta_description": meta_description,
             "abs_page_url": abs_page_url,
             "og_image_url": og_image_url,
+            "json_ld": json_ld,
         },
     )

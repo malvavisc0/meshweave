@@ -66,6 +66,8 @@ h2 { margin: 10px 0 8px; font-size: 16px; }
 
 .hero-title { font-size: clamp(1.75rem, 6vw, 2.5rem); margin: 20px 0; }
 
+.hero-subtitle { font-size: 18px; font-weight: 500; line-height: 1.4; }
+
 /* Bottom spacing to separate last content block from the footer */
 main { padding-bottom: calc(var(--gap) * 2); }
 
@@ -463,7 +465,27 @@ label { font-size: 13px; }
 .gate-preview { margin-bottom: 8px; }
 
 /* Optional hero helper (inherits .panel styles if used together) */
-.hero .benefits { margin-top: 8px; }
+.hero { line-height: 1.55; }
+.hero .subtitle { margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.benefits {
+  margin-top: 8px;
+  list-style: none;
+  padding-left: 0;
+  font-size: 13px;
+  color: var(--fg);
+  display: grid;
+  gap: 6px;
+}
+.benefits li { margin: 0; }
+/* Ordered steps list for the right panel */
+.hero-steps {
+  margin: 8px 0 0 0;
+  padding-left: 18px; /* keep numbers outside content edge */
+  list-style: decimal;
+  list-style-position: outside;
+  line-height: 1.55;
+}
+.hero-steps li { margin: 2px 0; }
 .hero .social-proof { margin-top: 8px; color: var(--muted); font-size: 12px; }
 
 /* Discovery cards */
@@ -617,5 +639,29 @@ label { font-size: 13px; }
     .chat-drawer {
       bottom: max(12px, env(safe-area-inset-bottom));
     }
+  }
+}
+
+/* Homepage panels row layout
+   Use CSS Grid for two equal-height columns. Grid guarantees equal column tracks
+   regardless of inner content, fixing card background mismatch seen with flex. */
+.panels-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: stretch;
+}
+.panels-row > .panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+/* Cancel global sibling top margin inside the grid to keep columns aligned */
+.panels-row .panel + .panel {
+  margin-top: 0;
+}
+@media (max-width: 768px) {
+  .panels-row {
+    grid-template-columns: 1fr;
   }
 }

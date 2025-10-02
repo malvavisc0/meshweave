@@ -23,9 +23,9 @@
 
   <p id="site-help" class="small mt-2">
   {% if request.state.current_user %}
-    Crawls are private by default.
+    Anonymous runs are private by default when logged in.
   {% else %}
-    Crawls are public by default. Sign in to keep them private and view progress.
+    Anonymous runs are public by default. <a href="/login?provider=google&next={{ abs_page_url or '/' }}">Sign in</a> to keep them private.
   {% endif %}
   </p>
 </form>

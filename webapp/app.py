@@ -432,13 +432,17 @@ def create_app() -> FastAPI:
             {
                 "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
                 "FOOTER_REPO_URL": os.getenv(
-                    "FOOTER_REPO_URL", "https://github.com/your-org/markdownify-crawler"
+                    "FOOTER_REPO_URL", "https://github.com/malvavisc0/meshweave"
                 ).strip(),
                 "FOOTER_CONTACT_EMAIL": os.getenv(
-                    "FOOTER_CONTACT_EMAIL", "hello@acme.com"
+                    "FOOTER_CONTACT_EMAIL", "hello@meshweave.com"
                 ).strip(),
                 "FOOTER_PRIVACY_URL": os.getenv("FOOTER_PRIVACY_URL", "/privacy").strip(),
                 "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
+                # Branding defaults for templates (used as fallbacks)
+                "SITE_NAME_DEFAULT": os.getenv("SITE_NAME", "Meshweave").strip(),
+                # Convenience for footer ©
+                "CURRENT_YEAR": datetime.now(timezone.utc).year,
             }
         )
     except Exception:

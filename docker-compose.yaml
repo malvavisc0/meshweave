@@ -44,12 +44,17 @@ services:
     hostname: meshweave
     restart: always
     environment:
-      SITE_BASE_URL: http://localhost:8080
+      SITE_BASE_URL: ${SITE_BASE_URL}
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/meshweave
+      FOOTER_REPO_URL: ${FOOTER_REPO_URL}
+      FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL}
       WEBAPP_AUTO_MIGRATE: true
       MARKDOWNIFY_CACHE_DIR: /tmp/markdownify/cache
       MARKDOWNIFY_DISABLE_CACHE: true
-      SITE_NAME: MeshWeave
+      # Prefer local source templates/static during local dev so code edits take effect without rebuild
+      WEBAPP_PREFER_LOCAL_TEMPLATES: "true"
+      WEBAPP_PREFER_LOCAL_STATIC: "true"
+      SITE_NAME: Meshweave
       # Auth config
       WEBAPP_AUTH_ENABLED: true
       WEBAPP_READYZ_REQUIRE_AUTH: false

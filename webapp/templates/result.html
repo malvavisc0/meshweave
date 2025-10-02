@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container">
 <h1>
-  Result for {{ domain }}
+  Website insights
   <span class="badges" role="group" aria-label="Job state badges">
     {% if visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
     <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
@@ -200,8 +200,8 @@
 
   <!-- Pages panel for desktop -->
   {% if payload and payload.pages %}
-  <section class="panel mt-2" role="region" aria-label="Pages">
-    <h2>Pages (<span id="pages-count">0</span>)</h2>
+  <section class="panel mt-2" role="region" aria-label="Content pages">
+    <h2>Content pages (<span id="pages-count">0</span>)</h2>
     <div class="small mb-1" role="toolbar" aria-label="Pages Controls">
       <input type="search" id="page-search" placeholder="Search pages..." oninput="filterPages(this.value)">
       {% if can_select_pages %}
@@ -230,7 +230,7 @@
         <div class="pages-pane-header small mb-1">
           <span>Content (Markdown)</span>
           <span>
-            <button class="btn btn-sm" onclick="copyCurrentPage()">Copy</button>
+            <button class="btn btn-sm" onclick="copyCurrentPage()">Copy content</button>
             <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
             {% if can_chat %}<button class="btn btn-sm btn-ai" onclick="runClarityAssessmentForCurrentPage()" title="AI Clarity Assessment" aria-label="Assess Clarity">Assess Clarity</button>{% endif %}
           </span>
@@ -244,8 +244,8 @@
   {% endif %}
 
   {% if can_chat %}
-  <section class="panel mt-2" id="compose-chat" role="region" aria-label="Compose & Chat">
-    <h2>Compose & Chat</h2>
+  <section class="panel mt-2" id="compose-chat" role="region" aria-label="AI assistance">
+    <h2>AI assistance</h2>
 
     {% if request.state.current_user and not has_products %}
     <div id="compose-notices" class="small" style="margin-bottom:8px;">
@@ -317,8 +317,8 @@
   {% endif %}
 
   {% if show_leads %}
-  <section class="mobile-section panel mt-2" role="region" aria-label="Emails">
-    <h2>Emails</h2>
+  <section class="mobile-section panel mt-2" role="region" aria-label="Contact intelligence">
+    <h2>Contact intelligence</h2>
     <div class="actions" id="emails-toolbar">
       <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain">
       <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
@@ -326,7 +326,7 @@
       <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
       <button class="btn" onclick="clearLeadFilters()">Clear</button>
       <span class="spacer"></span>
-      <button class="btn" onclick="exportEmailsCsv()" data-track="export_emails_click" aria-label="Export all emails as CSV">Export CSV</button>
+      <button class="btn" onclick="exportEmailsCsv()" data-track="export_emails_click" aria-label="Download all emails as CSV">Download CSV</button>
       <button class="btn" onclick="openAddLead()">Add Email</button>
     </div>
     <div class="table-wrap">
@@ -384,13 +384,13 @@
    </section>
    {% endif %}
    <!-- Social panel -->
-   <section class="panel mt-2" role="region" aria-label="Social">
-     <h2>Social</h2>
+   <section class="panel mt-2" role="region" aria-label="Site structure">
+     <h2>Site structure</h2>
      <div id="social-groups"><!-- filled by JS --></div>
    </section>
    <!-- Links panel -->
-   <section class="panel mt-2" role="region" aria-label="Links">
-     <h2>Links</h2>
+   <section class="panel mt-2" role="region" aria-label="External links">
+     <h2>External links</h2>
      {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
        <ul class="domain-list">
          <li class="small" style="font-weight:600;">
@@ -411,8 +411,8 @@
   <div class="mobile-tabs" role="tablist" aria-label="Sections">
     {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-leads">Leads</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
-    {% if can_chat %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">Chat</button>{% endif %}
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-stats">Links</button>
+    {% if can_chat %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">AI assistance</button>{% endif %}
+    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-stats">External links</button>
   </div>
 
   <!-- Sections -->
@@ -458,8 +458,8 @@
   <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel"></section>
 
   {% if can_chat %}
-  <section id="m-chat" class="mobile-section panel mt-2 hidden" role="region" aria-label="Chat">
-    <h2>LLM Chat</h2>
+  <section id="m-chat" class="mobile-section panel mt-2 hidden" role="region" aria-label="AI assistance">
+    <h2>AI assistance</h2>
     <div class="small">Ask a question about the selected pages.</div>
     <button class="btn btn-primary" onclick="openChat()">Open Chat</button>
   </section>

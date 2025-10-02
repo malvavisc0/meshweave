@@ -69,7 +69,7 @@ async def view_analysis(request: Request, ref: str):
             pass
 
         # Site branding
-        site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+        site_name = os.getenv("SITE_NAME", "Meshweave")
 
         # Build SEO-friendly page title
         try:
@@ -101,18 +101,73 @@ async def view_analysis(request: Request, ref: str):
 
         abs_page_url = _abs_url(request, f"/analysis/{row.id}")
         og_image_url = os.getenv("OG_IMAGE_URL") or None
-        json_ld = json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "WebPage",
-                "name": page_title,
-                "description": meta_description,
-                "url": abs_page_url,
-                "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
-            }
-        )
+        # JSON-LD: CreativeWork (LLM-first)
+        try:
+            # Derive counts from payload when available
+            content_pages_count = 0
+            emails_count = 0
+            internal_links_count = 0
+            external_links_count = 0
+            if payload:
+                try:
+                    if payload.get("metrics") and payload["metrics"].get("extraction"):
+                        ext = payload["metrics"]["extraction"]
+                        if ext.get("internal_count") is not None:
+                            content_pages_count = int(ext.get("internal_count") or 0)
+                        if ext.get("external_count") is not None:
+                            external_links_count = int(ext.get("external_count") or 0)
+                except Exception:
+                    pass
+                try:
+                    if payload.get("links"):
+                        if isinstance(payload["links"].get("internal"), list):
+                            internal_links_count = len(payload["links"]["internal"])
+                        if isinstance(payload["links"].get("external"), list):
+                            external_links_count = max(external_links_count, len(payload["links"]["external"]))
+                except Exception:
+                    pass
+                try:
+                    if payload.get("emails") and payload["emails"].get("counts"):
+                        emails_count = int(payload["emails"]["counts"].get("total_unique") or 0)
+                except Exception:
+                    pass
+                try:
+                    if content_pages_count == 0 and isinstance(payload.get("pages"), list):
+                        content_pages_count = len(payload["pages"])
+                except Exception:
+                    pass
+            json_ld = json.dumps(
+                {
+                    "@context": "https://schema.org",
+                    "@type": "CreativeWork",
+                    "name": "Meshweave Analysis",
+                    "identifier": str(row.id),
+                    "about": (row.domain or "").strip(),
+                    "url": abs_page_url,
+                    "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "creativeWorkStatus": (row.status or "").title(),
+                    "measurementTechnique": ["web-crawl","markdown-extraction","link-analysis","email-detection"],
+                    "isAccessibleForFree": True,
+                    "keywords": ["markdown","link map","email intelligence","ai summary"],
+                    "additionalProperty": [
+                        {"@type":"PropertyValue","name":"content_pages_count","value": str(content_pages_count)},
+                        {"@type":"PropertyValue","name":"emails_count","value": str(emails_count)},
+                        {"@type":"PropertyValue","name":"internal_links_count","value": str(internal_links_count)},
+                        {"@type":"PropertyValue","name":"external_links_count","value": str(external_links_count)},
+                    ],
+                }
+            )
+        except Exception:
+            json_ld = json.dumps(
+                {
+                    "@context": "https://schema.org",
+                    "@type": "CreativeWork",
+                    "name": "Meshweave Analysis",
+                    "identifier": str(row.id),
+                    "about": (row.domain or "").strip(),
+                    "url": abs_page_url,
+                }
+            )
 
         summary = build_summary(row, payload)
 
@@ -256,7 +311,7 @@ async def view_analysis(request: Request, ref: str):
         pass
 
     # Site branding first
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    site_name = os.getenv("SITE_NAME", "Meshweave")
 
     # Build SEO-friendly page title for public view
     try:
@@ -286,18 +341,73 @@ async def view_analysis(request: Request, ref: str):
     abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
-    json_ld = json.dumps(
-        {
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            "name": page_title,
-            "description": meta_description,
-            "url": abs_page_url,
-            "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-        }
-    )
+    # JSON-LD: CreativeWork (LLM-first)
+    try:
+        # Derive counts from payload when available
+        content_pages_count = 0
+        emails_count = 0
+        internal_links_count = 0
+        external_links_count = 0
+        if payload:
+            try:
+                if payload.get("metrics") and payload["metrics"].get("extraction"):
+                    ext = payload["metrics"]["extraction"]
+                    if ext.get("internal_count") is not None:
+                        content_pages_count = int(ext.get("internal_count") or 0)
+                    if ext.get("external_count") is not None:
+                        external_links_count = int(ext.get("external_count") or 0)
+            except Exception:
+                pass
+            try:
+                if payload.get("links"):
+                    if isinstance(payload["links"].get("internal"), list):
+                        internal_links_count = len(payload["links"]["internal"])
+                    if isinstance(payload["links"].get("external"), list):
+                        external_links_count = max(external_links_count, len(payload["links"]["external"]))
+            except Exception:
+                pass
+            try:
+                if payload.get("emails") and payload["emails"].get("counts"):
+                    emails_count = int(payload["emails"]["counts"].get("total_unique") or 0)
+            except Exception:
+                pass
+            try:
+                if content_pages_count == 0 and isinstance(payload.get("pages"), list):
+                    content_pages_count = len(payload["pages"])
+            except Exception:
+                pass
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "Meshweave Analysis",
+                "identifier": str(row.key),
+                "about": (row.domain or "").strip(),
+                "url": abs_page_url,
+                "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "creativeWorkStatus": (row.status or "").title(),
+                "measurementTechnique": ["web-crawl","markdown-extraction","link-analysis","email-detection"],
+                "isAccessibleForFree": True,
+                "keywords": ["markdown","link map","email intelligence","ai summary"],
+                "additionalProperty": [
+                    {"@type":"PropertyValue","name":"content_pages_count","value": str(content_pages_count)},
+                    {"@type":"PropertyValue","name":"emails_count","value": str(emails_count)},
+                    {"@type":"PropertyValue","name":"internal_links_count","value": str(internal_links_count)},
+                    {"@type":"PropertyValue","name":"external_links_count","value": str(external_links_count)},
+                ],
+            }
+        )
+    except Exception:
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "Meshweave Analysis",
+                "identifier": str(row.key),
+                "about": (row.domain or "").strip(),
+                "url": abs_page_url,
+            }
+        )
 
     summary = build_summary(row, payload)
 

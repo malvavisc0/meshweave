@@ -27,32 +27,28 @@
   </div>
 {% endif %}
 
-<h1 class="hero-title">Crawl a website</h1>
-{% if request.state.current_user %}
-<p class="mb-3">Submit a domain to crawl. Results are private by default. Track progress in <a href="/my">My Jobs</a>.</p>
-{% else %}
-<p class="mb-3">Submit a domain to crawl. Public by default. Sign in to keep private and track progress.</p>
-{% endif %}
+<h1 class="hero-title">Extract Website Insights for Sales & Lead Discovery</h1>
+<p class="mb-3 hero-subtitle">Get website content, link maps, and contact intelligence with sources; use AI assistance to identify qualified lead signals and generate outreach tailored to your ideal customer profile — in minutes.</p>
 
-<section class="panel hero mt-2">
-  <ul class="benefits small m0">
-    <li>✓ Find emails instantly</li>
-    <li>✓ View site structure</li>
-    <li>✓ AI-powered insights (preview)</li>
-  </ul>
-  <div class="social-proof small mt-1">Recent public analyses listed below provide social proof.</div>
-  <div class="small mt-1">Open source on <a href="{{ FOOTER_REPO_URL }}" target="_blank" rel="noopener">GitHub</a>.</div>
-</section>
+<div class="panels-row">
+   <section class="panel">
+      <h2 id="site-heading">Analyze a site</h2>
+      {% include "partials/site_crawl_form.html" %}
+   </section>
 
-<section class="panel mt-3">
-  <h2 id="site-heading">Site Crawl</h2>
-  {% include "partials/site_crawl_form.html" %}
-</section>
+   <section class="panel">
+      <h2>What you get</h2>
+      <ul class="benefits small m0 mt-1">
+        <li>Markdown output you can copy</li>
+        <li>Internal/external structure and top domains</li>
+        <li>Emails with source pages</li>
+        <li>Owner tools for summaries and drafts</li>
+        <li>Shareable; keep private when signed in</li>
+      </ul>
+   </section>
+</div>
 
-
-<p class="mt-3 mb-3">Use for competitor research, content ideas, or sales outreach.</p>
-
-<h2>Latest public analyses</h2>
+<h2>Recent analyses</h2>
 {% if items and items|length > 0 %}
   <ul>
     {% for item in items %}
@@ -70,7 +66,7 @@
     {% endfor %}
   </ul>
 {% else %}
-  <p>No public analyses yet.</p>
+  <p>No recent analyses yet.</p>
 {% endif %}
 
 <script src="/static/js/site-crawl.js"></script>

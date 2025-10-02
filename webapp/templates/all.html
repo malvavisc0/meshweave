@@ -2,12 +2,18 @@
 
 {% block content %}
 <div class="container">
-<h1>Explore Public Website Analyses</h1>
+{% if filter_domain %}
+<h1>Insights for {{ filter_domain }}</h1>
+<p>Explore public analyses for {{ filter_domain }}. Filter by status to find relevant insights. Each card shows page and email counts with the latest update.</p>
+{% else %}
+<h1>Discover community insights</h1>
+<p>Explore public website analyses. Filter by domain or status to find relevant insights. Each card shows page and email counts with the latest update.</p>
+{% endif %}
 <!-- Removed redundant Back to Home link (header already provides Home) -->
 
 <form method="get" action="/all" class="mb-2" onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
   <label for="f-domain">Domain:</label>
-  <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com">
+  <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com" title="Enter a domain like example.com">
 
   <label for="f-status" class="ml-2">Status:</label>
   <select id="f-status" name="status">
@@ -58,7 +64,7 @@
           {{ item.page_count or 0 }} pages • {{ item.email_count or 0 }} emails • Updated: {{ item.updated_at }}
         </div>
         <div class="actions mt-1" role="toolbar" aria-label="Card actions">
-          <a class="btn btn-sm" href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">View Analysis</a>
+          <a class="btn btn-sm" href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">View insights</a>
         </div>
       </li>
     {% endfor %}
