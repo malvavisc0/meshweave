@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
 
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates
@@ -219,6 +220,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(AuthSessionMiddleware)
     app.add_middleware(CSRFMiddleware)
+    # Transfer compression for static and API responses
+    app.add_middleware(GZipMiddleware, minimum_size=512)
 
     # Exception handlers (sanitized responses + audit logs)
     async def _handle_validation_error(request: Request, exc: Exception):

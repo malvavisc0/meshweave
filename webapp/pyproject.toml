@@ -16,7 +16,14 @@ packages = ["webapp"]
 package-dir = { "webapp" = "." }
 
 [tool.setuptools.package-data]
-webapp = ["templates/*.html"]
+webapp = [
+  "templates/*.html",
+  "static/*",
+  "static/**/*.css",
+  "static/**/*.js",
+  "static/**/*.map",
+  "static/**/*.*"
+]
 
 [project.scripts]
 markdownify-webapp = "webapp.cli:main"

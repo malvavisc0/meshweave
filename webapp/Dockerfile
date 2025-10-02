@@ -24,6 +24,57 @@ COPY webapp ./webapp
 COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
 
+# Minify static assets in webapp before packaging
+RUN pip install --no-cache-dir rjsmin rcssmin && \
+    python - <<'PY'
+from pathlib import Path
+import sys
+try:
+    import rjsmin, rcssmin
+except Exception as e:
+    sys.exit(f"Minifier import failed: {e}")
+
+root = Path("/app/webapp/static")
+if not root.exists():
+    sys.exit(0)
+
+def is_binary(p: Path) -> bool:
+    try:
+        with p.open("rb") as f:
+            chunk = f.read(8192)
+        return b"\x00" in chunk
+    except Exception:
+        return True
+
+css_cnt = js_cnt = 0
+for p in root.rglob("*.css"):
+    if p.name.endswith(".min.css") or is_binary(p):
+        continue
+    try:
+        s = p.read_text(encoding="utf-8")
+        min_s = rcssmin.cssmin(s)
+        if len(min_s) < len(s):
+            p.write_text(min_s, encoding="utf-8")
+        css_cnt += 1
+    except Exception:
+        pass
+
+for p in root.rglob("*.js"):
+    if p.name.endswith(".min.js") or is_binary(p):
+        continue
+    try:
+        s = p.read_text(encoding="utf-8")
+        min_s = rjsmin.jsmin(s)
+        if len(min_s) < len(s):
+            p.write_text(min_s, encoding="utf-8")
+        js_cnt += 1
+    except Exception:
+        pass
+
+print(f"Minified CSS:{css_cnt} JS:{js_cnt}")
+PY
+RUN pip uninstall -y rjsmin rcssmin || true
+
 # Install python deps:
 # - Install local crawler package with renderer extras (playwright)
 # - Install FastAPI UI deps (fastapi, uvicorn, jinja2, sqlalchemy)

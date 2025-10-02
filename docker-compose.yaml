@@ -35,27 +35,6 @@ services:
       - ./data/redis:/data
     networks:
       - magics
-  crawler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: crawler:latest
-    container_name: crawler
-    hostname: crawler
-    restart: always
-    environment:
-      MARKDOWNIFY_CACHE_DIR: /tmp/markdownify/cache
-      MARKDOWNIFY_IGNORE_PATHS: ^/feed/,^/wp-json/
-      MARKDOWNIFY_IGNORE_DOMAINS: github.com,youtube.com,play.google.com
-      MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS: true
-      MARKDOWNIFY_DISABLE_CACHE: true
-    expose:
-      - 8000
-    volumes:
-      # Persist HTML cache locally between runs
-      - ./.cache:/tmp/markdownify/cache
-    networks:
-      - magics
   markdownify:
     build:
       context: .
