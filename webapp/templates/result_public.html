@@ -11,19 +11,6 @@
   </span>
 </h1>
 <p>This analysis contains Markdown content, link maps, and contact findings for the target domain. Owners can access AI assistance for summaries and outreach.</p>
-```yaml
-meshweave:
-  page_type: analysis
-  identifier: {{ key }}
-  domain: {{ domain }}
-  counts:
-    content_pages: {{ summary.metrics.extraction.internal_count or 0 }}
-    emails: {{ summary.emails.unique_count or 0 }}
-    internal_links: {{ summary.metrics.extraction.internal_count or 0 }}
-    external_links: {{ summary.metrics.extraction.external_count or 0 }}
-  status: {{ status }}
-  owner_features: ["ai_assistance"]
-```
 {% if request.state.current_user %}
 <div class="inline-block small mt-1" role="toolbar" aria-label="Prospect">
   <button type="button" class="btn btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
