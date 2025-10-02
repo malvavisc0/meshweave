@@ -477,7 +477,7 @@ label { font-size: 13px; }
 .pill + .pill { margin-left: 6px; }
 
 /* Footer */
-.site-footer { border-top: 1px solid var(--border); margin-top: auto; padding: 12px 0; color: var(--muted); background: #fff; }
+.site-footer { border-top: 1px solid var(--border); margin-top: auto; padding: 12px 0 12px; color: var(--muted); background: #fff; }
 .site-footer .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-inline: clamp(12px, 4vw, 24px); }
 .site-footer a { color: var(--muted); }
 .site-footer a:hover { color: var(--fg); text-decoration: underline; }
@@ -606,8 +606,9 @@ label { font-size: 13px; }
 }
 
 @supports (padding: env(safe-area-inset-bottom)) {
+  /* Keep footer flush with the viewport bottom; apply safe-area only inside footer */
   body {
-    padding-bottom: max(var(--gap), env(safe-area-inset-bottom));
+    padding-bottom: 0;
   }
   .site-footer {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
