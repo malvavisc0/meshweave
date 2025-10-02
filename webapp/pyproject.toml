@@ -3,20 +3,20 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "markdownify-webapp"
+name = "meshweave"
 version = "0.1.0"
-description = "Public FastAPI UI for markdownify-crawler"
+description = "Turn websites into words and signals"
 requires-python = ">=3.9"
 readme = ""
-authors = [{ name = "Your Name", email = "you@example.com" }]
+authors = [{ name = "MeshWeave", email = "hello@meshweave.com" }]
 dependencies = []  # Runtime deps are installed at image level
 
 [tool.setuptools]
-packages = ["webapp"]
-package-dir = { "webapp" = "." }
+packages = ["meshweave"]
+package-dir = { "meshweave" = "." }
 
 [tool.setuptools.package-data]
-webapp = [
+meshweave = [
   "templates/*.html",
   "static/*",
   "static/**/*.css",
@@ -26,4 +26,4 @@ webapp = [
 ]
 
 [project.scripts]
-markdownify-webapp = "webapp.cli:main"
+meshweave = "webapp.cli:main"

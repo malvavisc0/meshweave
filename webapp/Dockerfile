@@ -96,4 +96,4 @@ EXPOSE 8080
 
 # Run the FastAPI webapp UI
 WORKDIR /app
-CMD ["markdownify-webapp", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["meshweave", "--host", "0.0.0.0", "--port", "8080"]

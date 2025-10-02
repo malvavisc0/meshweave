@@ -108,6 +108,7 @@ htmlcov
 docker-data
 docker/*.local.*
 docker-compose.override.yml
+Dockerfile
 
 # =========================
 # Binaries / archives / misc
