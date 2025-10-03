@@ -493,6 +493,12 @@ label { font-size: 13px; }
 .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .card-title { font-size: 14px; font-weight: 600; }
 .card-meta { color: var(--muted); margin-top: 4px; }
+.card-badges { display: inline-flex; gap: 6px; align-items: center; }
+.card-subtitle .domain { font-weight: 600; color: var(--fg); }
+.card-subtitle .muted { color: var(--muted); margin-left: 4px; }
+.card-summary { margin-top: 6px; color: var(--muted); }
+.card-leads { border-color: #bbf7d0; box-shadow: 0 0 0 2px rgba(16,185,129,0.12) inset; }
+.card-dense { padding: 10px; }
 
 /* Pills (optional) */
 .pill { display: inline-block; border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 2px 8px; font-size: 12px; }

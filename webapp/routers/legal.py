@@ -1,7 +1,7 @@
 """Legal pages router providing /privacy and /terms templates."""
 
-import os
 import json
+import os
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse

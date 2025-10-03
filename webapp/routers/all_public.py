@@ -1,6 +1,6 @@
 import contextlib
-import os
 import json
+import os
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode
@@ -120,12 +120,88 @@ async def view_all(
 
             for row, email_count, page_count in rows_db:
                 title = ""
+                payload = None
                 try:
                     if row.payload_json:
                         payload = json.loads(row.payload_json)
                         title = (payload.get("page") or {}).get("title") or ""
                 except Exception:
                     title = ""
+
+                # Compute relative/iso times and "new" flag (2h threshold)
+                updated_dt = row.updated_at or datetime.now(timezone.utc)
+                try:
+                    if updated_dt.tzinfo is None:
+                        updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    updated_dt = datetime.now(timezone.utc)
+                updated_iso = updated_dt.isoformat()
+                # Relative time
+                try:
+                    now_ = datetime.now(timezone.utc)
+                    secs = int(max(0, (now_ - updated_dt).total_seconds()))
+                    if secs < 60:
+                        updated_relative = f"{secs}s ago"
+                    else:
+                        mins = secs // 60
+                        if mins < 60:
+                            updated_relative = f"{mins}m ago"
+                        else:
+                            hrs = mins // 60
+                            if hrs < 24:
+                                updated_relative = f"{hrs}h ago"
+                            else:
+                                days = hrs // 24
+                                updated_relative = f"{days}d ago"
+                except Exception:
+                    updated_relative = updated_iso
+                is_new = (
+                    datetime.now(timezone.utc) - updated_dt
+                ).total_seconds() <= 2 * 3600
+
+                # Summary snippet (site scope only) using heuristics
+                summary_snippet = ""
+                try:
+                    scope_val = row.scope or "page"
+                except Exception:
+                    scope_val = "page"
+                if scope_val == "site":
+                    desc = ""
+                    og_desc = ""
+                    try:
+                        if isinstance(payload, dict):
+                            pg = payload.get("page") or {}
+                            desc = (pg.get("description") or "").strip()
+                            og_desc = (
+                                (pg.get("og") or {}).get("description") or ""
+                            ).strip()
+                    except Exception:
+                        pass
+
+                    def _first_sentence(text: str, limit: int = 160) -> str:
+                        try:
+                            t = (text or "").strip()
+                            if not t:
+                                return ""
+                            for sep in [". ", "। ", "。", "…", "\n"]:
+                                if sep in t:
+                                    t = t.split(sep, 1)[0]
+                                    break
+                            return (t[: limit - 1] + "…") if len(t) > limit else t
+                        except Exception:
+                            return ""
+
+                    if desc:
+                        summary_snippet = _first_sentence(desc, 160)
+                    elif og_desc:
+                        summary_snippet = _first_sentence(og_desc, 160)
+                    else:
+                        try:
+                            md = (payload or {}).get("markdown") or ""
+                        except Exception:
+                            md = ""
+                        summary_snippet = _first_sentence(md, 160)
+
                 items.append(
                     {
                         "key": row.key,
@@ -135,11 +211,14 @@ async def view_all(
                         "canonical_url": row.canonical_url,
                         "title": title,
                         "status": row.status,
-                        "updated_at": (
-                            row.updated_at or datetime.now(timezone.utc)
-                        ).isoformat(),
+                        "scope": row.scope,
+                        "updated_at": updated_iso,
+                        "updated_iso": updated_iso,
+                        "updated_relative": updated_relative,
+                        "is_new": bool(is_new),
                         "email_count": int(email_count or 0),
                         "page_count": int(page_count or 0),
+                        "summary_snippet": summary_snippet if scope_val == "site" else "",
                     }
                 )
             # For this branch, we omit keyset prev/next (could add page-based later)
@@ -211,12 +290,99 @@ async def view_all(
             for r in rows:
 
                 title = ""
+                payload = None
                 try:
                     if r.payload_json:
                         payload = json.loads(r.payload_json)
                         title = (payload.get("page") or {}).get("title") or ""
                 except Exception:
+                    payload = None
                     title = ""
+
+                # Compute relative/iso times and "new" flag (2h threshold)
+                updated_dt = r.updated_at or datetime.now(timezone.utc)
+                try:
+                    if updated_dt.tzinfo is None:
+                        updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    updated_dt = datetime.now(timezone.utc)
+                updated_iso = updated_dt.isoformat()
+                # Relative time
+                try:
+                    now_ = datetime.now(timezone.utc)
+                    secs = int(max(0, (now_ - updated_dt).total_seconds()))
+                    if secs < 60:
+                        updated_relative = f"{secs}s ago"
+                    else:
+                        mins = secs // 60
+                        if mins < 60:
+                            updated_relative = f"{mins}m ago"
+                        else:
+                            hrs = mins // 60
+                            if hrs < 24:
+                                updated_relative = f"{hrs}h ago"
+                            else:
+                                days = hrs // 24
+                                updated_relative = f"{days}d ago"
+                except Exception:
+                    updated_relative = updated_iso
+                is_new = (
+                    datetime.now(timezone.utc) - updated_dt
+                ).total_seconds() <= 2 * 3600
+
+                # Summary snippet (site scope only) using heuristics
+                summary_snippet = ""
+                try:
+                    scope_val = r.scope or "page"
+                except Exception:
+                    scope_val = "page"
+                if scope_val == "site":
+                    desc = ""
+                    og_desc = ""
+                    try:
+                        if r.payload_json:
+                            payload = (
+                                payload
+                                if isinstance(payload, dict)
+                                else json.loads(r.payload_json)
+                            )
+                        else:
+                            payload = payload if isinstance(payload, dict) else None
+                    except Exception:
+                        payload = payload if isinstance(payload, dict) else None
+                    try:
+                        if isinstance(payload, dict):
+                            pg = payload.get("page") or {}
+                            desc = (pg.get("description") or "").strip()
+                            og_desc = (
+                                (pg.get("og") or {}).get("description") or ""
+                            ).strip()
+                    except Exception:
+                        pass
+
+                    def _first_sentence(text: str, limit: int = 160) -> str:
+                        try:
+                            t = (text or "").strip()
+                            if not t:
+                                return ""
+                            for sep in [". ", "। ", "。", "…", "\n"]:
+                                if sep in t:
+                                    t = t.split(sep, 1)[0]
+                                    break
+                            return (t[: limit - 1] + "…") if len(t) > limit else t
+                        except Exception:
+                            return ""
+
+                    if desc:
+                        summary_snippet = _first_sentence(desc, 160)
+                    elif og_desc:
+                        summary_snippet = _first_sentence(og_desc, 160)
+                    else:
+                        try:
+                            md = (payload or {}).get("markdown") or ""
+                        except Exception:
+                            md = ""
+                        summary_snippet = _first_sentence(md, 160)
 
                 items.append(
                     {
@@ -227,11 +393,14 @@ async def view_all(
                         "canonical_url": r.canonical_url,
                         "title": title,
                         "status": r.status,
-                        "updated_at": (
-                            r.updated_at or datetime.now(timezone.utc)
-                        ).isoformat(),
+                        "scope": r.scope,
+                        "updated_at": updated_iso,
+                        "updated_iso": updated_iso,
+                        "updated_relative": updated_relative,
+                        "is_new": bool(is_new),
                         "email_count": email_counts_map.get(r.id, 0),
                         "page_count": page_counts_map.get(r.id, 0),
+                        "summary_snippet": summary_snippet if scope_val == "site" else "",
                     }
                 )
 

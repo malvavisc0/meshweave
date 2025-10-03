@@ -48,28 +48,13 @@
 
 
 {% if items and items|length > 0 %}
+  {% from 'partials/analysis_card.html' import analysis_card with context %}
   <ul class="card-list mt-2">
     {% for item in items %}
-      <li class="card">
-        <div class="card-title">
-          <a href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">
-          {% if item.canonical_url %}
-            {{ item.canonical_url }}
-          {% else %}
-            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
-          {% endif %}
-          </a>
-        </div>
-        <div class="card-meta small">
-          {{ item.page_count or 0 }} pages • {{ item.email_count or 0 }} emails • Updated: {{ item.updated_at }}
-        </div>
-        <div class="actions mt-1" role="toolbar" aria-label="Card actions">
-          <a class="btn btn-sm" href="/analysis/{{ item.key }}" onclick="try{trackEvent('all_view_click');}catch(_){ }">View insights</a>
-        </div>
-      </li>
+      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=true, show_share=true, emphasize_emails=true) }}
     {% endfor %}
   </ul>
-
+ 
   {% if has_prev or has_next %}
   <nav class="mt-2" aria-label="Pagination">
     {% if has_prev %}<a href="{{ prev_url }}">&larr; Prev</a>{% endif %}

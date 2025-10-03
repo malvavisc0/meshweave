@@ -1,6 +1,6 @@
+import os
 from importlib.resources import files as resource_files
 from pathlib import Path
-import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -8,7 +8,9 @@ from fastapi.templating import Jinja2Templates
 
 # Prefer local filesystem templates in dev when requested via env
 # Set WEBAPP_PREFER_LOCAL_TEMPLATES=true to load from source tree without rebuilds.
-_prefer_local_tpl = os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false").strip().lower() in {"1", "true", "yes", "on"}
+_prefer_local_tpl = os.getenv(
+    "WEBAPP_PREFER_LOCAL_TEMPLATES", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
 
 if _prefer_local_tpl:
     _local_src = Path(os.getenv("WEBAPP_LOCAL_SRC_DIR", str(Path(__file__).parent)))
@@ -23,6 +25,29 @@ else:
         templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
+# Register Jinja filters (available regardless of template source)
+try:
+
+    def _thousands(value):
+        try:
+            # Allow ints, floats, and numeric strings; default to int grouping
+            iv = int(float(value))
+            return f"{iv:,}"
+        except Exception:
+            try:
+                return f"{int(value):,}"
+            except Exception:
+                try:
+                    return f"{float(value):,}"
+                except Exception:
+                    return str(value)
+
+    templates.env.filters["thousands"] = _thousands
+except Exception:
+    # Never fail startup due to filter registration
+    pass
+
+
 def mount_static(app: FastAPI) -> None:
     """Mount the /static files with a packaged fallback (dev can prefer local).
 
@@ -30,7 +55,9 @@ def mount_static(app: FastAPI) -> None:
       - WEBAPP_PREFER_LOCAL_STATIC=true to serve from local source tree.
       - If unset, packaged resources are used when available, else local.
     """
-    prefer_local_static = os.getenv("WEBAPP_PREFER_LOCAL_STATIC", os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    prefer_local_static = os.getenv(
+        "WEBAPP_PREFER_LOCAL_STATIC", os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false")
+    ).strip().lower() in {"1", "true", "yes", "on"}
 
     if prefer_local_static:
         _local_src = Path(os.getenv("WEBAPP_LOCAL_SRC_DIR", str(Path(__file__).parent)))

@@ -123,16 +123,22 @@ async def view_analysis(request: Request, ref: str):
                         if isinstance(payload["links"].get("internal"), list):
                             internal_links_count = len(payload["links"]["internal"])
                         if isinstance(payload["links"].get("external"), list):
-                            external_links_count = max(external_links_count, len(payload["links"]["external"]))
+                            external_links_count = max(
+                                external_links_count, len(payload["links"]["external"])
+                            )
                 except Exception:
                     pass
                 try:
                     if payload.get("emails") and payload["emails"].get("counts"):
-                        emails_count = int(payload["emails"]["counts"].get("total_unique") or 0)
+                        emails_count = int(
+                            payload["emails"]["counts"].get("total_unique") or 0
+                        )
                 except Exception:
                     pass
                 try:
-                    if content_pages_count == 0 and isinstance(payload.get("pages"), list):
+                    if content_pages_count == 0 and isinstance(
+                        payload.get("pages"), list
+                    ):
                         content_pages_count = len(payload["pages"])
                 except Exception:
                     pass
@@ -144,16 +150,44 @@ async def view_analysis(request: Request, ref: str):
                     "identifier": str(row.id),
                     "about": (row.domain or "").strip(),
                     "url": abs_page_url,
-                    "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "dateModified": (
+                        row.updated_at or datetime.now(timezone.utc)
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "creativeWorkStatus": (row.status or "").title(),
-                    "measurementTechnique": ["web-crawl","markdown-extraction","link-analysis","email-detection"],
+                    "measurementTechnique": [
+                        "web-crawl",
+                        "markdown-extraction",
+                        "link-analysis",
+                        "email-detection",
+                    ],
                     "isAccessibleForFree": True,
-                    "keywords": ["markdown","link map","email intelligence","ai summary"],
+                    "keywords": [
+                        "markdown",
+                        "link map",
+                        "email intelligence",
+                        "ai summary",
+                    ],
                     "additionalProperty": [
-                        {"@type":"PropertyValue","name":"content_pages_count","value": str(content_pages_count)},
-                        {"@type":"PropertyValue","name":"emails_count","value": str(emails_count)},
-                        {"@type":"PropertyValue","name":"internal_links_count","value": str(internal_links_count)},
-                        {"@type":"PropertyValue","name":"external_links_count","value": str(external_links_count)},
+                        {
+                            "@type": "PropertyValue",
+                            "name": "content_pages_count",
+                            "value": str(content_pages_count),
+                        },
+                        {
+                            "@type": "PropertyValue",
+                            "name": "emails_count",
+                            "value": str(emails_count),
+                        },
+                        {
+                            "@type": "PropertyValue",
+                            "name": "internal_links_count",
+                            "value": str(internal_links_count),
+                        },
+                        {
+                            "@type": "PropertyValue",
+                            "name": "external_links_count",
+                            "value": str(external_links_count),
+                        },
                     ],
                 }
             )
@@ -363,12 +397,16 @@ async def view_analysis(request: Request, ref: str):
                     if isinstance(payload["links"].get("internal"), list):
                         internal_links_count = len(payload["links"]["internal"])
                     if isinstance(payload["links"].get("external"), list):
-                        external_links_count = max(external_links_count, len(payload["links"]["external"]))
+                        external_links_count = max(
+                            external_links_count, len(payload["links"]["external"])
+                        )
             except Exception:
                 pass
             try:
                 if payload.get("emails") and payload["emails"].get("counts"):
-                    emails_count = int(payload["emails"]["counts"].get("total_unique") or 0)
+                    emails_count = int(
+                        payload["emails"]["counts"].get("total_unique") or 0
+                    )
             except Exception:
                 pass
             try:
@@ -384,16 +422,39 @@ async def view_analysis(request: Request, ref: str):
                 "identifier": str(row.key),
                 "about": (row.domain or "").strip(),
                 "url": abs_page_url,
-                "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
                 "creativeWorkStatus": (row.status or "").title(),
-                "measurementTechnique": ["web-crawl","markdown-extraction","link-analysis","email-detection"],
+                "measurementTechnique": [
+                    "web-crawl",
+                    "markdown-extraction",
+                    "link-analysis",
+                    "email-detection",
+                ],
                 "isAccessibleForFree": True,
-                "keywords": ["markdown","link map","email intelligence","ai summary"],
+                "keywords": ["markdown", "link map", "email intelligence", "ai summary"],
                 "additionalProperty": [
-                    {"@type":"PropertyValue","name":"content_pages_count","value": str(content_pages_count)},
-                    {"@type":"PropertyValue","name":"emails_count","value": str(emails_count)},
-                    {"@type":"PropertyValue","name":"internal_links_count","value": str(internal_links_count)},
-                    {"@type":"PropertyValue","name":"external_links_count","value": str(external_links_count)},
+                    {
+                        "@type": "PropertyValue",
+                        "name": "content_pages_count",
+                        "value": str(content_pages_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "emails_count",
+                        "value": str(emails_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "internal_links_count",
+                        "value": str(internal_links_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "external_links_count",
+                        "value": str(external_links_count),
+                    },
                 ],
             }
         )

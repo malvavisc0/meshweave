@@ -48,25 +48,46 @@
    </section>
 </div>
 
-<h2>Recent analyses</h2>
+{% if community_metrics %}
+  <section class="panel mt-2" role="region" aria-label="Community metrics">
+    <div class="quick-stats">
+      <div class="stat-card">
+        <div class="stat-k">Emails</div>
+        <div class="stat-v">{{ community_metrics.emails_total | thousands }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-k">Pages</div>
+        <div class="stat-v">{{ community_metrics.pages_total | thousands }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-k">Ext. links</div>
+        <div class="stat-v">{{ community_metrics.links_external_total | thousands }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-k">Ext. domains</div>
+        <div class="stat-v">{{ community_metrics.external_domains_total | thousands }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-k">Analyses</div>
+        <div class="stat-v">{{ community_metrics.analyses_total | thousands }}</div>
+      </div>
+    </div>
+  </section>
+{% endif %}
+
+<h2 class="mt-2">Recent analyses</h2>
 {% if items and items|length > 0 %}
-  <ul>
+  {% from 'partials/analysis_card.html' import analysis_card with context %}
+  <ul class="card-list mt-2">
     {% for item in items %}
-      <li>
-        <a href="/analysis/{{ item.key }}">
-          {% if item.canonical_url %}
-            {{ item.canonical_url }}
-          {% else %}
-            {{ item.domain }}{{ item.path }}{% if item.query %}?{{ item.query }}{% endif %}
-          {% endif %}
-        </a>
-        {% if item.title %} — "{{ item.title }}"{% endif %}
-        <br><small>Updated: <time datetime="{{ item.updated_at }}">{{ item.updated_at }}</time></small>
-      </li>
+      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, emphasize_emails=true) }}
     {% endfor %}
   </ul>
+  <div class="mt-2">
+    <a href="/all?sort=recent">View all →</a>
+  </div>
 {% else %}
-  <p>No recent analyses yet.</p>
+  <p>No recent public analyses yet.</p>
 {% endif %}
 
 <script src="/static/js/site-crawl.js"></script>
