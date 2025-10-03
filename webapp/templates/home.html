@@ -49,29 +49,12 @@
 </div>
 
 {% if community_metrics %}
-  <section class="panel mt-2" role="region" aria-label="Community metrics">
-    <div class="quick-stats">
-      <div class="stat-card">
-        <div class="stat-k">Emails</div>
-        <div class="stat-v">{{ community_metrics.emails_total | thousands }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Pages</div>
-        <div class="stat-v">{{ community_metrics.pages_total | thousands }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Ext. links</div>
-        <div class="stat-v">{{ community_metrics.links_external_total | thousands }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Ext. domains</div>
-        <div class="stat-v">{{ community_metrics.external_domains_total | thousands }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Analyses</div>
-        <div class="stat-v">{{ community_metrics.analyses_total | thousands }}</div>
-      </div>
-    </div>
+  <section class="panel mt-2 marketing-headline" role="region" aria-label="Community momentum">
+    <p class="m0" aria-live="polite">
+      From {{ community_metrics.analyses_total | thousands }} Analyses have been surfaced
+      {{ community_metrics.emails_total | thousands }} Potential Leads
+      across {{ community_metrics.pages_total | thousands }} Pages — and counting
+    </p>
   </section>
 {% endif %}
 

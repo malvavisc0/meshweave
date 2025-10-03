@@ -2,31 +2,41 @@
 <li class="card {{ 'card-leads' if emphasize_emails and (item.email_count|int > 0) else '' }} {{ 'card-dense' if dense else '' }}">
   <div class="card-title">
     <img src="https://www.google.com/s2/favicons?domain={{ item.domain }}&sz=64" alt="" width="16" height="16" onerror="this.style.display='none'">
-    <a href="/analysis/{{ item.key }}" class="ml-1" aria-label="Open analysis for {{ item.domain }}">
-      {{ item.title or item.canonical_url or (item.domain ~ item.path) }}
+    <a
+      href="/analysis/{{ item.key }}"
+      class="ml-1"
+      aria-label="Open analysis: {{ item.title }} from {{ item.domain }}"
+      title="{{ item.title }}"
+    >
+      {{ item.title }}
     </a>
+    {% if item.is_new %}
+      <span class="badge ml-1" title="Recently updated">NEW</span>
+    {% endif %}
   </div>
+
   <div class="card-subtitle small">
-    <span class="domain">{{ item.domain }}</span><span class="muted">{{ item.path }}</span>
+    <span class="domain">{{ item.domain }}</span>{% if item.path %}<span class="muted">/{{ item.path.lstrip('/') }}</span>{% endif %}
   </div>
-  <div class="card-badges small" role="group" aria-label="Analysis attributes">
-    <span class="badge">Public</span>
-    <span class="badge">{{ (item.scope or 'page')|title }}</span>
-    <span class="badge status-{{ item.status }}">{{ item.status|title }}</span>
-    {% if item.is_new %}<span class="badge">New</span>{% endif %}
-  </div>
+
   <div class="card-meta small">
-    {{ item.page_count|default(0) }} pages • {{ item.email_count|default(0) }} emails
-    • Updated <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">{{ item.updated_relative or item.updated_at }}</time>
+    {{ (item.email_count|default(0)) | thousands }} emails •
+    {{ (item.page_count|default(0)) | thousands }} pages •
+    Updated
+    <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">
+      {{ item.updated_relative or item.updated_at }}
+    </time>
   </div>
+
   {% if show_summary and item.summary_snippet %}
     <div class="card-summary small">{{ item.summary_snippet }}</div>
   {% endif %}
+
   <div class="actions mt-1" role="toolbar" aria-label="Card actions">
     <a class="btn btn-sm" href="/analysis/{{ item.key }}" data-track="card_view_click">View insights</a>
     {% if show_share %}
-    {% set abs_share = request.url.scheme ~ '://' ~ request.url.netloc ~ '/analysis/' ~ item.key %}
-    <button class="btn btn-sm" onclick="return copyLink('{{ abs_share }}')" data-track="card_copy_click">Copy share URL</button>
+      {% set abs_share = request.url.scheme ~ '://' ~ request.url.netloc ~ '/analysis/' ~ item.key %}
+      <button class="btn btn-sm" onclick="return copyLink('{{ abs_share }}')" data-track="card_copy_click">Copy share URL</button>
     {% endif %}
   </div>
 </li>
