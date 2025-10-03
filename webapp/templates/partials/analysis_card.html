@@ -2,13 +2,14 @@
 <li class="card {{ 'card-leads' if emphasize_emails and (item.email_count|int > 0) else '' }} {{ 'card-dense' if dense else '' }}">
   <div class="card-title">
     <img src="https://www.google.com/s2/favicons?domain={{ item.domain }}&sz=64" alt="" width="16" height="16" onerror="this.style.display='none'">
+    {% set display_title = item.title or item.domain or item.canonical_url %}
     <a
       href="/analysis/{{ item.key }}"
       class="ml-1"
-      aria-label="Open analysis: {{ item.title }} from {{ item.domain }}"
-      title="{{ item.title }}"
+      aria-label="Open analysis for {{ display_title }}"
+      title="{{ display_title }}"
     >
-      {{ item.title }}
+      {{ display_title }}
     </a>
     {% if item.is_new %}
       <span class="badge ml-1" title="Recently updated">NEW</span>
@@ -16,7 +17,9 @@
   </div>
 
   <div class="card-subtitle small">
-    <span class="domain">{{ item.domain }}</span>{% if item.path %}<span class="muted">/{{ item.path.lstrip('/') }}</span>{% endif %}
+    {% set display_domain = item.domain or (item.canonical_url or '') %}
+    {% set display_path = item.path %}
+    <span class="domain">{{ display_domain }}</span>{% if display_path %}<span class="muted">/{{ display_path.lstrip('/') }}</span>{% endif %}
   </div>
 
   <div class="card-meta small">
