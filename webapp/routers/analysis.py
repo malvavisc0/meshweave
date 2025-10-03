@@ -553,6 +553,50 @@ async def view_analysis(request: Request, ref: str):
                 for p in products
             ]
 
+    # Sanitize payload for anonymous viewers to avoid leaking emails (top-level and per-page)
+    payload_display = payload
+    try:
+        if not current_user:
+            # Work on a safe deep copy of the JSON payload (falls back to {} when missing/bad)
+            try:
+                payload_copy = json.loads(json.dumps(payload or {}))
+            except Exception:
+                payload_copy = {} if not isinstance(payload, dict) else dict(payload)
+
+            # Recursive scrubber for any key that may contain emails
+            def _scrub(obj):
+                try:
+                    if isinstance(obj, dict):
+                        for kk in list(obj.keys()):
+                            lk = str(kk).lower()
+                            if lk in ("emails", "emails_unique", "emails_by_url", "email"):
+                                obj.pop(kk, None)
+                                continue
+                            _scrub(obj.get(kk))
+                    elif isinstance(obj, list):
+                        for it in obj:
+                            _scrub(it)
+                except Exception:
+                    return
+
+            _scrub(payload_copy)
+
+            # Re-introduce non-sensitive aggregates at the top-level (counts + unique_count)
+            em = (payload or {}).get("emails") or {}
+            payload_copy["emails"] = {
+                "counts": em.get("counts") or {},
+                "unique_count": len(em.get("unique") or []),
+            }
+
+            payload_display = payload_copy
+    except Exception:
+        # In worst case, drop emails entirely but keep the rest of the payload intact
+        try:
+            payload_display = json.loads(json.dumps(payload or {}))
+            payload_display.pop("emails", None)
+        except Exception:
+            payload_display = payload or {}
+
     template_name = "result_public.html" if not current_user else "result.html"
     resp = templates.TemplateResponse(
         template_name,
@@ -566,7 +610,7 @@ async def view_analysis(request: Request, ref: str):
             "key": row.key,
             "status": row.status,
             "error": row.error,
-            "payload": payload,
+            "payload": payload_display,
             "api_url": api_url,
             "abs_api_url": abs_api_url,
             # Enriched

@@ -29,20 +29,13 @@ router = APIRouter()
 
 
 @router.get("/api/analysis/public/{key}")
-async def api_public_by_key(key: str):
+async def api_public_by_key(request: Request, key: str):
     """Public API for a crawl addressed by short key.
 
     If the crawl is not yet succeeded, returns a 202 with status information; otherwise
     returns the stored payload.
 
-    Args:
-        key (str): Short key.
-
-    Returns:
-        JSONResponse: JSON payload or status info.
-
-    Raises:
-        HTTPException: 404 if not found; 500 if stored payload is invalid JSON.
+    When the requester is not authenticated, email data is scrubbed (no addresses returned).
     """
     with get_session() as s:
         row = (
@@ -73,6 +66,41 @@ async def api_public_by_key(key: str):
         except Exception:
             pass
         return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+    # Scrub emails for anonymous users (do not return any email addresses)
+    try:
+        current_user = getattr(request.state, "current_user", None)
+
+        def _scrub_emails_recursive(obj):
+            try:
+                if isinstance(obj, dict):
+                    for kk in list(obj.keys()):
+                        lk = str(kk).lower()
+                        if lk in ("emails", "emails_unique", "emails_by_url", "email"):
+                            obj.pop(kk, None)
+                            continue
+                        _scrub_emails_recursive(obj.get(kk))
+                elif isinstance(obj, list):
+                    for it in obj:
+                        _scrub_emails_recursive(it)
+            except Exception:
+                return
+
+        if not current_user:
+            em = (payload.get("emails") or {})
+            preserved = {"counts": em.get("counts") or {}, "unique_count": len(em.get("unique") or [])}
+            # Scrub everything else recursively
+            for kk in list(payload.keys()):
+                if kk == "emails":
+                    continue
+                _scrub_emails_recursive(payload.get(kk))
+            payload["emails"] = preserved
+    except Exception:
+        try:
+            payload.pop("emails", None)
+        except Exception:
+            pass
+
     return JSONResponse(content=payload)
 
 

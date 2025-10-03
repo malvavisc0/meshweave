@@ -79,7 +79,7 @@
   <div class="actions" role="toolbar" aria-label="Actions">
     {% if can_chat %}<button type="button" class="btn" onclick="openChat()">Chat</button>{% endif %}
     <a class="btn" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-    <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
+    <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Website</a>
     <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
     {% if visibility == "public" and abs_page_url %}
       <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>

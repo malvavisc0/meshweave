@@ -1,10 +1,12 @@
 import os
+import json
 from importlib.resources import files as resource_files
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 # Prefer local filesystem templates in dev when requested via env
 # Set WEBAPP_PREFER_LOCAL_TEMPLATES=true to load from source tree without rebuilds.
@@ -43,6 +45,17 @@ try:
                     return str(value)
 
     templates.env.filters["thousands"] = _thousands
+
+    def _tojson(value):
+        try:
+            return Markup(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+        except Exception:
+            try:
+                return Markup(json.dumps(str(value)))
+            except Exception:
+                return Markup("null")
+
+    templates.env.filters["tojson"] = _tojson
 except Exception:
     # Never fail startup due to filter registration
     pass

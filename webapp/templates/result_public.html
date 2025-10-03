@@ -79,7 +79,7 @@
   <div class="actions" role="toolbar" aria-label="Actions">
     {% if can_chat %}<button type="button" class="btn" onclick="openChat()">Chat</button>{% endif %}
     <a class="btn" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-    <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Source</a>
+    <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Website</a>
     <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
     {% if visibility == "public" and abs_page_url %}
       <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
@@ -424,9 +424,9 @@
 <script id="analysis-data" type="application/json">
 {{ {
   'base_domain': summary.metrics.extraction.base_domain if summary and summary.metrics and summary.metrics.extraction else '',
-  'emails_unique': payload.emails.unique if payload and payload.emails and payload.emails.unique else [],
-  'emails_by_url': payload.emails.by_url if payload and payload.emails and payload.emails.by_url else {},
-  'emails_sources': payload.emails.sources if payload and payload.emails and payload.emails.sources else [],
+  'emails_unique': (payload.emails.unique if (request.state.current_user and payload and payload.emails and payload.emails.unique) else []),
+  'emails_by_url': (payload.emails.by_url if (request.state.current_user and payload and payload.emails and payload.emails.by_url) else {}),
+  'emails_sources': (payload.emails.sources if (request.state.current_user and payload and payload.emails and payload.emails.sources) else []),
   'links_internal': payload.links.internal if payload and payload.links and payload.links.internal else [],
   'links_external': payload.links.external if payload and payload.links and payload.links.external else [],
   'top_external_domains': summary.links.top_external_domains if summary and summary.links and summary.links.top_external_domains else [],

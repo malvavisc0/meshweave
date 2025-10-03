@@ -255,6 +255,7 @@ def create_app() -> FastAPI:
         """
         try:
             log_audit("unhandled_exception", request=request, level=logging.ERROR)
+            logging.getLogger("audit").exception("unhandled_exception")
         except Exception:
             pass
         is_api = str(request.url.path).startswith("/api")
