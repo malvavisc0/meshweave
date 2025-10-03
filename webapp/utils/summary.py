@@ -55,10 +55,18 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
     summary: dict = {}
     try:
         payload_dict: Dict = payload if isinstance(payload, dict) else {}
+        # Prefer top-level page metadata; fallback to first page entry when missing
+        pages_arr: List[Dict] = payload_dict.get("pages") or []
         pg: Dict = payload_dict.get("page") or {}
+        if not pg:
+            try:
+                if isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict):
+                    # Some payloads nest page metadata under pages[0].page
+                    pg = (pages_arr[0].get("page") or {})
+            except Exception:
+                pg = {}
         og: Dict = pg.get("og") or {}
         metrics: Dict = payload_dict.get("metrics") or {}
-        pages_arr: List[Dict] = payload_dict.get("pages") or []
         # Derive render metrics strictly from the first page (home "/")
         try:
             first_page_metrics: Dict = (

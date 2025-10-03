@@ -319,18 +319,8 @@
   {% endif %}
 
    {% if visibility == 'public' and not request.state.current_user and (email_count or 0) > 0 %}
-   <section class="panel gate-locked mt-2" role="region" aria-label="Contact intelligence (Preview)">
+   <section class="panel gate-locked mt-2" role="region" aria-label="Contact intelligence">
      <h2>Contact intelligence ({{ email_count or 0 }} found) ⚡ </h2>
-     {% if email_preview and email_preview|length > 0 %}
-     <div class="gate-preview small">
-       Preview ({{ email_preview|length }} of {{ email_count or 0 }}):
-       <ul class="domain-list">
-         {% for e in email_preview %}
-           <li><span><code>{{ e }}</code></span> <span class="small"></span></li>
-         {% endfor %}
-       </ul>
-     </div>
-     {% endif %}
      <div class="actions cta-row">
        <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}" onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
      </div>

@@ -1359,16 +1359,31 @@
         }
     }
 
-    // Mobile tabs
+    // Mobile tabs (activate only on small screens)
     (function() {
+        var isMobile = false;
+        try { isMobile = !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches); } catch(_){}
         var mtabs = document.querySelectorAll('.mobile-tab');
+
+        function hideAllMobileSections() {
+            try {
+                document.querySelectorAll('.mobile-section').forEach(function(sec){
+                    sec.classList.remove('active');
+                    sec.style.display = 'none';
+                });
+            } catch(_){}
+        }
+
+        if (!isMobile) {
+            // Ensure mobile sections are not visible on desktop (clear any inline styles)
+            hideAllMobileSections();
+            return;
+        }
+
         function activate(targetSel, btn) {
             // Hide all sections
-            document.querySelectorAll('.mobile-section').forEach(function(sec){
-                sec.classList.remove('active');
-                sec.style.display = 'none';
-            });
-            // Show target section
+            hideAllMobileSections();
+            // Show target section (mobile only)
             var t = document.querySelector(targetSel);
             if (t) {
                 try { t.classList.remove('hidden'); } catch(_){}

@@ -289,10 +289,16 @@ async def api_public_summary(key: str):
     payload = _parse_payload_or_500(row, key=key)
 
     # Extract fields safely
+    pages_arr = payload.get("pages") or []
     page = payload.get("page") or {}
+    if not page:
+        try:
+            if isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict):
+                page = (pages_arr[0].get("page") or {})
+        except Exception:
+            page = {}
     og = page.get("og") or {}
     metrics = payload.get("metrics") or {}
-    pages_arr = payload.get("pages") or []
     # Derive render metrics strictly from the first page (home "/")
     try:
         first_page_metrics = (
