@@ -120,10 +120,20 @@ async def home(request: Request, db: Session = Depends(get_db)):
         og_desc = ""
         try:
             if isinstance(payload, dict):
-                pg = payload.get("page") or {}
-                title = (pg.get("title") or "").strip()
-                description = (pg.get("description") or "").strip()
-                og_desc = ((pg.get("og") or {}).get("description") or "").strip()
+                if r.scope == "site":
+                    # For site crawls, title from first page
+                    pages = payload.get("pages") or []
+                    if pages and isinstance(pages, list) and len(pages) > 0:
+                        pg = pages[0].get("page") or {}
+                        title = (pg.get("title") or "").strip()
+                        description = (pg.get("description") or "").strip()
+                        og_desc = ((pg.get("og") or {}).get("description") or "").strip()
+                else:
+                    # For page crawls
+                    pg = payload.get("page") or {}
+                    title = (pg.get("title") or "").strip()
+                    description = (pg.get("description") or "").strip()
+                    og_desc = ((pg.get("og") or {}).get("description") or "").strip()
         except Exception:
             pass
 

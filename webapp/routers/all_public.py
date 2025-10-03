@@ -124,7 +124,12 @@ async def view_all(
                 try:
                     if row.payload_json:
                         payload = json.loads(row.payload_json)
-                        title = (payload.get("page") or {}).get("title") or ""
+                        if row.scope == "site":
+                            pages = payload.get("pages") or []
+                            if pages and isinstance(pages, list) and len(pages) > 0:
+                                title = (pages[0].get("page") or {}).get("title") or ""
+                        else:
+                            title = (payload.get("page") or {}).get("title") or ""
                 except Exception:
                     title = ""
 
@@ -294,7 +299,12 @@ async def view_all(
                 try:
                     if r.payload_json:
                         payload = json.loads(r.payload_json)
-                        title = (payload.get("page") or {}).get("title") or ""
+                        if r.scope == "site":
+                            pages = payload.get("pages") or []
+                            if pages and isinstance(pages, list) and len(pages) > 0:
+                                title = (pages[0].get("page") or {}).get("title") or ""
+                        else:
+                            title = (payload.get("page") or {}).get("title") or ""
                 except Exception:
                     payload = None
                     title = ""

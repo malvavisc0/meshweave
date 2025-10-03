@@ -18,8 +18,7 @@
 
   <div class="card-subtitle small">
     {% set display_domain = item.domain or (item.canonical_url or '') %}
-    {% set display_path = item.path %}
-    <span class="domain">{{ display_domain }}</span>{% if display_path %}<span class="muted">/{{ display_path.lstrip('/') }}</span>{% endif %}
+    <span class="domain">{{ display_domain }}</span>
   </div>
 
   <div class="card-meta small">
