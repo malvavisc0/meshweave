@@ -381,3 +381,81 @@ This addendum documents the latest changes and codifies guidance so new work ali
 - Mobile tabs: default activation on load; enforced visibility of the active section on mobile
 - Chat: viewport-responsive heights; drawer constrained to viewport width/height; safe-area support for iOS
 - Focus: global `:focus-visible` ring standardized across interactive controls
+
+## 2025-10 Home headline and discovery card updates
+
+This addendum documents the October 2025 updates to the Home page community metrics presentation and discovery card pattern so future work aligns with the current UI.
+
+1) Community metrics as a marketing headline (Home)
+- The previous “quick-stats” grid on Home is replaced by a single, scannable headline that emphasizes key numbers inline.
+- Canonical implementation:
+  - Template: [webapp/templates/home.html](webapp/templates/home.html:51)
+  - Styles: [webapp/static/style.css](webapp/static/style.css:675)
+- Copy and grammar:
+  - “From X Analyses we surfaced Y Potential Leads across Z Pages — and counting”
+  - Use the thousands filter for all numbers.
+- Markup example:
+  ```
+  <section class="panel mt-2 marketing-headline" role="region" aria-label="Community momentum">
+    <p class="m0" aria-live="polite">
+      From <span class="emph-num">{{ community_metrics.analyses_total | thousands }}</span> <span class="emph-label">Analyses</span> we surfaced
+      <span class="emph-num">{{ community_metrics.emails_total | thousands }}</span> <span class="emph-label">Potential Leads</span>
+      across <span class="emph-num">{{ community_metrics.pages_total | thousands }}</span> <span class="emph-label">Pages</span> — and counting
+    </p>
+  </section>
+  ```
+- Visual guidance:
+  - .emph-num: brand color and bold weight for numbers
+  - .emph-label: muted, compact label following each number
+  - Keep the region as a .panel for consistency with other blocks.
+- Accessibility:
+  - Use aria-live="polite" within the headline paragraph so values can update unobtrusively.
+
+2) Discovery cards (Recent Analyses) pattern
+- The discovery card macro now uses a robust title fallback and shows a cleaner subtitle line.
+- Canonical macro: [analysis_card()](webapp/templates/partials/analysis_card.html:1)
+- Title fallback logic:
+  - display_title = item.title or item.domain or item.canonical_url
+  - Use display_title for the clickable link text, link title attribute, and aria-label.
+- Subtitle:
+  - A muted subtitle row under the title shows the domain (and may include path when needed) via .card-subtitle.
+- Meta:
+  - Use thousands separators for emails and pages.
+  - Updated time uses a time element with datetime and title attributes.
+- NEW badge:
+  - Show a small “NEW” badge when item.is_new is true to highlight very recent items.
+- Snippet (structure-only reference):
+  ```
+  <li class="card ...">
+    <div class="card-title">
+      <img ...>
+      <a href="/analysis/{{ item.key }}" aria-label="Open analysis for {{ display_title }}" title="{{ display_title }}">{{ display_title }}</a>
+      {% if item.is_new %}<span class="badge ml-1" title="Recently updated">NEW</span>{% endif %}
+    </div>
+
+    <div class="card-subtitle small">
+      <span class="domain">{{ item.domain or item.canonical_url }}</span>
+    </div>
+
+    <div class="card-meta small">
+      {{ (item.email_count|default(0)) | thousands }} emails •
+      {{ (item.page_count|default(0)) | thousands }} pages •
+      Updated <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">
+        {{ item.updated_relative or item.updated_at }}
+      </time>
+    </div>
+  </li>
+  ```
+
+3) Terminology and copy consistency
+- Prefer “Potential Leads” (public/marketing copy) over raw “Emails” when summarizing.
+- Canonical headline sentence (Home): “From X Analyses we surfaced Y Potential Leads across Z Pages — and counting”.
+
+4) Deprecations and placement
+- The .quick-stats grid is no longer used on Home for community totals and is reserved for dashboard/results contexts.
+  - See base styles for stat cards: [webapp/static/style.css](webapp/static/style.css:317)
+
+5) A11y and ergonomics checklist
+- Headline: keep aria-live="polite" on the paragraph; numbers update unobtrusively.
+- Links: aria-label derived from the same computed display title shown visually.
+- Maintain 44px tap targets on mobile for action buttons within cards (use .btn and .btn-sm appropriately).
