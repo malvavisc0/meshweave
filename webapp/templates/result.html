@@ -188,6 +188,8 @@
     </div>
   </div>
 
+{% include "partials/metadata_panel.html" %}
+
 {% if request.state.current_user and visibility == 'public' and key %}
 <section class="panel mt-2" role="region" aria-label="Claim Analysis">
   <h2>Claim Analysis</h2>
