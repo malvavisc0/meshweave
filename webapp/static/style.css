@@ -671,3 +671,34 @@ label { font-size: 13px; }
     grid-template-columns: 1fr;
   }
 }
+
+/* Marketing headline emphasis (inline numbers variant) */
+.marketing-headline p {
+  font-size: 15px;
+  line-height: 1.45;
+  margin: 0;
+}
+.marketing-headline .emph-num {
+  color: var(--brand);
+  font-weight: 800;
+}
+.marketing-headline .emph-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  margin-right: 6px; /* add breathing room after each label */
+}
+
+/* Slightly tighten spacing on the panel wrapper for this block */
+.marketing-headline.panel {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Mobile readability */
+@media (max-width: 480px) {
+  .marketing-headline p {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}

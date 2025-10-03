@@ -51,9 +51,9 @@
 {% if community_metrics %}
   <section class="panel mt-2 marketing-headline" role="region" aria-label="Community momentum">
     <p class="m0" aria-live="polite">
-      From {{ community_metrics.analyses_total | thousands }} Analyses have been surfaced
-      {{ community_metrics.emails_total | thousands }} Potential Leads
-      across {{ community_metrics.pages_total | thousands }} Pages — and counting
+      From <span class="emph-num">{{ community_metrics.analyses_total | thousands }}</span> <span class="emph-label">Analyses</span> we surfaced
+      <span class="emph-num">{{ community_metrics.emails_total | thousands }}</span> <span class="emph-label">Potential Leads</span>
+      across <span class="emph-num">{{ community_metrics.pages_total | thousands }}</span> <span class="emph-label">Pages</span> — and counting
     </p>
   </section>
 {% endif %}
