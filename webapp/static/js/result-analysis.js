@@ -451,24 +451,200 @@
     function renderSocial(){
         try{
             var cont=document.getElementById('social-groups'); if(!cont) return;
-            var allow = {
-                'linkedin.com':'LinkedIn', 'www.linkedin.com':'LinkedIn',
-                'x.com':'Twitter', 'twitter.com':'Twitter', 'www.twitter.com':'Twitter',
-                'facebook.com':'Facebook','www.facebook.com':'Facebook',
-                'instagram.com':'Instagram','www.instagram.com':'Instagram',
-                'youtube.com':'YouTube','www.youtube.com':'YouTube',
-                'tiktok.com':'TikTok','www.tiktok.com':'TikTok',
-                'github.com':'GitHub','www.github.com':'GitHub'
-            };
-            var groups={};
-            (LINKS_EXTERNAL||[]).forEach(function(u){
-                try{ var h=(new URL(u)).hostname.toLowerCase(); if(!allow[h]) return; var plat=allow[h]; groups[plat]=groups[plat]||new Set(); groups[plat].add(u); }catch(_){}
+
+            // Strip tracking params and resolve known redirectors (best-effort, no network)
+            function stripTracking(u){
+                try{
+                    var url = new URL(u);
+                    var host = (url.hostname||'').toLowerCase();
+                    // Known redirectors that embed target in query
+                    if (host === 'l.facebook.com' || host === 'l.instagram.com') {
+                        var real = url.searchParams.get('u') || url.searchParams.get('url');
+                        if (real) { return new URL(real); }
+                        return null; // drop opaque redirectors
+                    }
+                    // Common trackers
+                    var del = [];
+                    url.searchParams.forEach(function(_v,k){
+                        var lk = String(k||'').toLowerCase();
+                        if (lk.startsWith('utm_') || lk === 'fbclid' || lk === 'gclid' || lk === 'mc_cid' || lk === 'mc_eid' || lk === 'igshid') del.push(k);
+                    });
+                    del.forEach(function(k){ url.searchParams.delete(k); });
+                    url.hash = '';
+                    return url;
+                }catch(_){ return null; }
+            }
+
+            // Canonicalize host/scheme and unify aliases (e.g., twitter -> x.com, youtu.be -> youtube.com)
+            function canonicalize(url){
+                try{
+                    url.protocol = 'https:';
+                    var host = (url.hostname||'').toLowerCase();
+                    var path = url.pathname || '/';
+
+                    // Host aliases
+                    if (host === 'www.x.com') host = 'x.com';
+                    if (host === 'twitter.com' || host === 'www.twitter.com' || host === 'm.twitter.com' || host === 'mobile.twitter.com') host = 'x.com';
+                    if (host === 'www.linkedin.com') host = 'linkedin.com';
+                    if (host === 'fb.com' || host === 'fb.me' || host === 'm.facebook.com' || host === 'www.facebook.com') host = 'facebook.com';
+                    if (host === 'www.instagram.com') host = 'instagram.com';
+                    if (host === 'www.youtube.com' || host === 'm.youtube.com') host = 'youtube.com';
+                    if (host === 'youtu.be') {
+                        var id = path.replace(/^\/+/, '');
+                        if (id) {
+                            url = new URL('https://youtube.com/watch?v=' + encodeURIComponent(id));
+                            host = 'youtube.com';
+                        } else {
+                            host = 'youtube.com';
+                        }
+                        path = url.pathname || '/';
+                    }
+                    if (host === 'www.tiktok.com' || host === 'vm.tiktok.com') host = 'tiktok.com';
+                    if (host === 'gist.github.com') host = 'github.com';
+                    if (host === 'discord.gg' || host === 'www.discord.gg') host = 'discord.gg';
+                    if (host === 'discord.com' || host === 'www.discord.com') host = 'discord.com';
+                    if (host === 'telegram.me' || host === 'www.telegram.me') host = 't.me';
+
+                    url.hostname = host;
+                    // Trim trailing slash except root
+                    if ((url.pathname||'').length > 1 && url.pathname.endsWith('/')) {
+                        url.pathname = url.pathname.replace(/\/+$/,'');
+                    }
+                    return url;
+                }catch(_){ return null; }
+            }
+
+            function platformForHost(host){
+                if (!host) return null;
+                if (host === 'x.com' || host === 't.co') return 'Twitter';
+                if (host === 'linkedin.com' || host === 'lnkd.in') return 'LinkedIn';
+                if (host === 'facebook.com' || host === 'fb.com' || host === 'fb.me') return 'Facebook';
+                if (host === 'instagram.com') return 'Instagram';
+                if (host === 'youtube.com' || host === 'youtu.be') return 'YouTube';
+                if (host === 'tiktok.com' || host === 'vm.tiktok.com') return 'TikTok';
+                if (host === 'github.com') return 'GitHub';
+                if (host === 'threads.net') return 'Threads';
+                if (host === 'bsky.app') return 'Bluesky';
+                if (host === 'reddit.com' || host === 'old.reddit.com' || host === 'm.reddit.com') return 'Reddit';
+                if (host === 'discord.gg' || host === 'discord.com') return 'Discord';
+                if (host === 't.me') return 'Telegram';
+                if (host.endsWith('mastodon.social') || host.indexOf('mastodon.') !== -1) return 'Mastodon';
+                return null;
+            }
+
+            // Determine whether link is profile-like, share/intent (discard), or other
+            function classifyKind(url, platform){
+                var p = String(url.pathname||'/');
+                if (platform === 'Twitter') {
+                    if (/^\/[A-Za-z0-9_]{1,15}$/.test(p)) return 'profile';
+                    if (p.startsWith('/intent/')) return 'discard';
+                    return 'other';
+                }
+                if (platform === 'LinkedIn') {
+                    if (/^\/(company|in|school)\//.test(p)) return 'profile';
+                    if (p.startsWith('/share') || p.indexOf('/sharing') !== -1) return 'discard';
+                    return 'other';
+                }
+                if (platform === 'Facebook') {
+                    if (/^\/(pages|people|profile\.php|groups)\//.test(p)) return 'profile';
+                    if (p.indexOf('sharer.php') !== -1) return 'discard';
+                    return 'other';
+                }
+                if (platform === 'Instagram') {
+                    if (/^\/(p|reel)\//.test(p)) return 'other';
+                    if (/^\/[A-Za-z0-9._]+$/.test(p)) return 'profile';
+                    return 'other';
+                }
+                if (platform === 'YouTube') {
+                    if (/^\/(channel|user|@)/.test(p)) return 'profile';
+                    if (p.startsWith('/watch') || p.startsWith('/shorts')) return 'other';
+                    return 'other';
+                }
+                if (platform === 'TikTok') {
+                    if (/^\/@/.test(p)) return 'profile';
+                    if (/\/video\//.test(p)) return 'other';
+                    return 'other';
+                }
+                if (platform === 'GitHub') {
+                    if (/^\/[A-Za-z0-9_.-]+$/.test(p)) return 'profile';
+                    return 'other';
+                }
+                if (platform === 'Threads' || platform === 'Bluesky' || platform === 'Reddit') {
+                    if (platform === 'Reddit' && /^\/(r|u)\//.test(p)) return 'profile';
+                    if (/^\/@[A-Za-z0-9_.-]+$/.test(p)) return 'profile';
+                    return 'other';
+                }
+                if (platform === 'Discord') {
+                    if (/\/invite\//.test(p)) return 'other';
+                    return 'other';
+                }
+                if (platform === 'Telegram') {
+                    if (/^\/[A-Za-z0-9_]+$/.test(p)) return 'profile';
+                    if (/\/joinchat\//.test(p)) return 'other';
+                    return 'other';
+                }
+                if (platform === 'Mastodon') {
+                    if (/^\/@/.test(p)) return 'profile';
+                    return 'other';
+                }
+                return 'other';
+            }
+
+            function classifySocial(u){
+                var url = stripTracking(u);
+                if (!url) return null;
+                url = canonicalize(url);
+                if (!url) return null;
+                var host = (url.hostname||'').toLowerCase();
+                var platform = platformForHost(host);
+                if (!platform) return null;
+                var kind = classifyKind(url, platform);
+                if (kind === 'discard') return null;
+                return { platform: platform, url: url.toString(), kind: (kind || 'other') };
+            }
+
+            // Aggregate external links across all pages + top-level
+            var all = [];
+            try{
+                var uniq = new Set();
+                (LINKS_EXTERNAL||[]).forEach(function(u){ if(u) uniq.add(u); });
+                (PAGES||[]).forEach(function(p){
+                    try{
+                        var arr = (p && p.links && Array.isArray(p.links.external)) ? p.links.external : [];
+                        arr.forEach(function(u){ if(u) uniq.add(u); });
+                    }catch(_){}
+                });
+                all = Array.from(uniq.values());
+            }catch(_){
+                all = LINKS_EXTERNAL || [];
+            }
+
+            var groups = {}; // platform -> {profiles:Set, other:Set}
+            all.forEach(function(u){
+                try{
+                    var c = classifySocial(u);
+                    if (!c) return;
+                    if (!groups[c.platform]) groups[c.platform] = {profiles:new Set(), other:new Set()};
+                    groups[c.platform][c.kind === 'profile' ? 'profiles' : 'other'].add(c.url);
+                }catch(_){}
             });
+
             var html='';
             Object.keys(groups).sort().forEach(function(plat){
-                var urls=Array.from(groups[plat].values());
-                html += '<div class="mb-2"><div class="small"><strong>'+plat+'</strong> <span class="small">('+(urls.length)+')</span></div><ul class="domain-list">';
-                urls.forEach(function(u){
+                var profiles = Array.from(groups[plat].profiles.values());
+                var others   = Array.from(groups[plat].other.values());
+                var total = profiles.length + others.length;
+                html += '<div class="mb-2"><div class="small"><strong>'+plat+'</strong> <span class="small">('+(total)+')</span></div><ul class="domain-list">';
+                // Profiles first
+                profiles.forEach(function(u){
+                    var acts = '<a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(u)+'\')">Copy</button>';
+                    if (LOGGED_IN) {
+                        acts += ' <button class="btn btn-sm" onclick="attachProspectSocial(\''+jsStr(plat.toLowerCase())+'\', \''+jsStr(u)+'\')">Attach to Prospect</button> <button class="btn btn-sm" onclick="attachContactSocial(\''+jsStr(u)+'\')">Attach to Contact</button>';
+                    }
+                    html += '<li><span>'+escapeHtml(u)+'</span><span>'+acts+'</span></li>';
+                });
+                // Other links
+                others.forEach(function(u){
                     var acts = '<a href="'+encodeURI(u)+'" target="_blank" rel="noopener">↗</a> <button class="btn btn-sm" onclick="copyLink(\''+jsStr(u)+'\')">Copy</button>';
                     if (LOGGED_IN) {
                         acts += ' <button class="btn btn-sm" onclick="attachProspectSocial(\''+jsStr(plat.toLowerCase())+'\', \''+jsStr(u)+'\')">Attach to Prospect</button> <button class="btn btn-sm" onclick="attachContactSocial(\''+jsStr(u)+'\')">Attach to Contact</button>';
