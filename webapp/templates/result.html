@@ -163,13 +163,13 @@
     <div class="stat-card">
       <div class="stat-k">Pages</div>
       <div class="stat-v">
-        {# Prefer summary extraction internal_count; fallback to payload.metrics or links count #}
-        {% if summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.internal_count is not none) %}
+        {# Use actual pages count; fallback to visited_count; then extraction internal_count #}
+        {% if payload and payload.pages %}
+          {{ payload.pages|length }}
+        {% elif payload and payload.summary and (payload.summary.visited_count is not none) %}
+          {{ payload.summary.visited_count }}
+        {% elif summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.internal_count is not none) %}
           {{ summary.metrics.extraction.internal_count }}
-        {% elif payload and payload.metrics and payload.metrics.extraction and (payload.metrics.extraction.internal_count is not none) %}
-          {{ payload.metrics.extraction.internal_count }}
-        {% elif payload and payload.links and payload.links.internal %}
-          {{ payload.links.internal|length }}
         {% else %}0{% endif %}
       </div>
     </div>
@@ -189,6 +189,56 @@
   </div>
 
 {% include "partials/metadata_panel.html" %}
+
+{% if payload and payload.summary %}
+<section class="panel mt-2" role="region" aria-label="Crawl Summary">
+  <h2>Crawl Summary</h2>
+  <ul class="domain-list">
+    <li>
+      <span class="small">Pages Visited</span>
+      <span>{{ payload.summary.visited_count or 'N/A' }}</span>
+    </li>
+    <li>
+      <span class="small">Reason Stopped</span>
+      <span>{{ payload.summary.reason_stopped or 'N/A' }}</span>
+    </li>
+  </ul>
+</section>
+{% endif %}
+
+{% if payload and (payload.scope or payload.start_url or payload.limits) %}
+<section class="panel mt-2" role="region" aria-label="Crawl Configuration">
+  <h2>Crawl Configuration</h2>
+  <ul class="domain-list">
+    {% if payload.scope %}
+    <li>
+      <span class="small">Scope</span>
+      <span>{{ payload.scope|title }}</span>
+    </li>
+    {% endif %}
+    {% if payload.start_url %}
+    <li>
+      <span class="small">Start URL</span>
+      <span><a href="{{ payload.start_url }}" target="_blank" rel="noopener">{{ payload.start_url }}</a></span>
+    </li>
+    {% endif %}
+    {% if payload.limits %}
+    <li>
+      <span class="small">Max Pages</span>
+      <span>{{ payload.limits.max_pages or 'N/A' }}</span>
+    </li>
+    <li>
+      <span class="small">Max Depth</span>
+      <span>{{ payload.limits.max_depth or 'N/A' }}</span>
+    </li>
+    <li>
+      <span class="small">Time Budget</span>
+      <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A' }}s</span>
+    </li>
+    {% endif %}
+  </ul>
+</section>
+{% endif %}
 
 {% if request.state.current_user and visibility == 'public' and key %}
 <section class="panel mt-2" role="region" aria-label="Claim Analysis">

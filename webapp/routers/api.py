@@ -87,8 +87,11 @@ async def api_public_by_key(request: Request, key: str):
                 return
 
         if not current_user:
-            em = (payload.get("emails") or {})
-            preserved = {"counts": em.get("counts") or {}, "unique_count": len(em.get("unique") or [])}
+            em = payload.get("emails") or {}
+            preserved = {
+                "counts": em.get("counts") or {},
+                "unique_count": len(em.get("unique") or []),
+            }
             # Scrub everything else recursively
             for kk in list(payload.keys()):
                 if kk == "emails":
@@ -321,8 +324,12 @@ async def api_public_summary(key: str):
     page = payload.get("page") or {}
     if not page:
         try:
-            if isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict):
-                page = (pages_arr[0].get("page") or {})
+            if (
+                isinstance(pages_arr, list)
+                and len(pages_arr) > 0
+                and isinstance(pages_arr[0], dict)
+            ):
+                page = pages_arr[0].get("page") or {}
         except Exception:
             page = {}
     og = page.get("og") or {}

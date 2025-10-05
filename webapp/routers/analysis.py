@@ -112,8 +112,7 @@ async def view_analysis(request: Request, ref: str):
                 try:
                     if payload.get("metrics") and payload["metrics"].get("extraction"):
                         ext = payload["metrics"]["extraction"]
-                        if ext.get("internal_count") is not None:
-                            content_pages_count = int(ext.get("internal_count") or 0)
+                        # Do not use internal_count for content_pages_count (it's link count, not page count)
                         if ext.get("external_count") is not None:
                             external_links_count = int(ext.get("external_count") or 0)
                 except Exception:
@@ -136,10 +135,15 @@ async def view_analysis(request: Request, ref: str):
                 except Exception:
                     pass
                 try:
-                    if content_pages_count == 0 and isinstance(
-                        payload.get("pages"), list
-                    ):
+                    if isinstance(payload.get("pages"), list):
                         content_pages_count = len(payload["pages"])
+                    elif (
+                        isinstance(payload.get("summary"), dict)
+                        and payload["summary"].get("visited_count") is not None
+                    ):
+                        content_pages_count = int(
+                            payload["summary"]["visited_count"] or 0
+                        )
                 except Exception:
                     pass
             json_ld = json.dumps(
@@ -386,8 +390,7 @@ async def view_analysis(request: Request, ref: str):
             try:
                 if payload.get("metrics") and payload["metrics"].get("extraction"):
                     ext = payload["metrics"]["extraction"]
-                    if ext.get("internal_count") is not None:
-                        content_pages_count = int(ext.get("internal_count") or 0)
+                    # Do not use internal_count for content_pages_count (it's link count, not page count)
                     if ext.get("external_count") is not None:
                         external_links_count = int(ext.get("external_count") or 0)
             except Exception:
@@ -410,8 +413,13 @@ async def view_analysis(request: Request, ref: str):
             except Exception:
                 pass
             try:
-                if content_pages_count == 0 and isinstance(payload.get("pages"), list):
+                if isinstance(payload.get("pages"), list):
                     content_pages_count = len(payload["pages"])
+                elif (
+                    isinstance(payload.get("summary"), dict)
+                    and payload["summary"].get("visited_count") is not None
+                ):
+                    content_pages_count = int(payload["summary"]["visited_count"] or 0)
             except Exception:
                 pass
         json_ld = json.dumps(
@@ -569,7 +577,12 @@ async def view_analysis(request: Request, ref: str):
                     if isinstance(obj, dict):
                         for kk in list(obj.keys()):
                             lk = str(kk).lower()
-                            if lk in ("emails", "emails_unique", "emails_by_url", "email"):
+                            if lk in (
+                                "emails",
+                                "emails_unique",
+                                "emails_by_url",
+                                "email",
+                            ):
                                 obj.pop(kk, None)
                                 continue
                             _scrub(obj.get(kk))

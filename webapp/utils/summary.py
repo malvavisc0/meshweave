@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 
 from webapp.models import Crawl
-from webapp.utils.url import normalize_domain
+from webapp.utils.url import canonicalize_url, normalize_domain
 
 
 def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
@@ -60,9 +60,13 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
         pg: Dict = payload_dict.get("page") or {}
         if not pg:
             try:
-                if isinstance(pages_arr, list) and len(pages_arr) > 0 and isinstance(pages_arr[0], dict):
+                if (
+                    isinstance(pages_arr, list)
+                    and len(pages_arr) > 0
+                    and isinstance(pages_arr[0], dict)
+                ):
                     # Some payloads nest page metadata under pages[0].page
-                    pg = (pages_arr[0].get("page") or {})
+                    pg = pages_arr[0].get("page") or {}
             except Exception:
                 pg = {}
         og: Dict = pg.get("og") or {}
@@ -108,7 +112,8 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
             "title_mismatch": _t(pg.get("title")) != _t(og.get("title")),
             "description_mismatch": _t(pg.get("description"))
             != _t(og.get("description")),
-            "canonical_mismatch": _t(pg.get("canonical")) != _t(row.canonical_url),
+            "canonical_mismatch": canonicalize_url(_t(pg.get("canonical")))[3]
+            != canonicalize_url(_t(row.canonical_url))[3],
             "og_missing": [
                 k for k in ("title", "description", "image", "url") if not _t(og.get(k))
             ],
@@ -134,7 +139,14 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
                 },
             },
             "emails": {
-                "unique_count": len(em.get("unique") or []),
+                "unique_count": (
+                    len(em.get("unique") or [])
+                    if em.get("unique")
+                    else (
+                        em.get("unique_count")
+                        or em.get("counts", {}).get("total_unique", 0)
+                    )
+                ),
                 "counts": (em.get("counts") or {}),
             },
             "links": {
