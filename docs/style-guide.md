@@ -11,22 +11,27 @@ Location of stylesheet:
   - `--gap`: 12px
   - `--radius`: 8px
   - `--radius-sm`: 6px
+  - `--radius-lg`: 12px
   - `--container`: 1100px (max content width for wide pages)
 - Colors
 - Foreground/background
-  - `--fg`: #1F2937
+  - `--fg`: #0F172A
   - `--muted`: #374151
-  - `--bg`: #F5F5F5
+  - `--bg`: #F8FAFC
   - `--bg-soft`: #FAFAFA
-  - `--card-bg`: #F9F9F9
+  - `--card-bg`: #FFFFFF
 - Borders
-    - `--border`: #E5E5E5
-    - `--border-strong`: #D0D0D0
-  - Brand
-    - `--brand`: #06C167
-    - `--brand-ink`: #066A3E
-    - `--brand-weak`: #E9F9F0
-    - `--brand-hover`: #05A356
+    - `--border`: #E5E7EB
+    - `--border-strong`: #D1D5DB
+  - Brand (Teal)
+    - `--brand`: #0D9488
+    - `--brand-ink`: #134E4A
+    - `--brand-weak`: #CCFBF1
+    - `--brand-hover`: #0F766E
+  - Accent (Cyan)
+    - `--accent`: #06B6D4
+    - `--accent-ink`: #0E7490
+    - `--accent-weak`: #CFFAFE
   - Status
     - `--green-weak`: #ecfdf5
     - `--green`: #0a7f42
@@ -37,21 +42,23 @@ Location of stylesheet:
     - `--gray`: #64748B
     - `--warning`: #f59e0b
     - `--warning-weak`: #fffbeb
-  - Info
-    - `--info-weak`: #E0F7FA
-    - `--info`: #0F9BA8
+  - Info (aligned with accent)
+    - `--info-weak`: #CFFAFE
+    - `--info`: #0E7490
   - Background pattern
       - `--bg-grid-size`: 24px
       - `--bg-grid-color`: rgba(200,200,200,0.15)
 - Shadows
-  - `--shadow-1`: 0 10px 30px rgba(0,0,0,0.12)
-  - `--shadow-2`: 0 6px 20px rgba(0,0,0,0.10)
+  - `--shadow-1`: 0 10px 30px rgba(2,6,23,0.10)
+  - `--shadow-subtle`: 0 4px 12px rgba(2,6,23,0.06)
 - Focus
-  - `--focus-ring`: 0 0 0 3px rgba(15,155,168,0.45)
+  - `--focus-ring`: 0 0 0 3px rgba(6,182,212,0.45)
+- Gradients
+  - `--brand-gradient`: linear-gradient(135deg, var(--brand), var(--accent))
 
 2) Base Elements
 - Body uses the Plus Jakarta Sans font stack (`'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`), line-height 1.45, tinted neutral background var(--bg) with a subtle grid pattern, color var(--fg); edge-to-edge layout (no horizontal body padding). To disable the pattern on a specific page, add class "no-bg-pattern" to the body element.
-- Links are brand-colored; hover underlines
+- Links use accent color (`--accent`); hover underlines. Top navigation links on soft backgrounds use `--brand-ink` for contrast.
 - Code tags have subtle gray background and small padding
 - Headings
   - h1: 20px; h2: 16px
@@ -102,8 +109,9 @@ Location of stylesheet:
 - Base
   - `button, .btn`: 13px, rounded, bordered, pointer cursor
 - Variants
-  - `.btn-primary`: brand background, white text
-  - `.btn-secondary`: white background, brand border, brand text
+  - `.btn-primary`: brand background, white text; hover deepens to `--brand-hover`
+  - `.btn-primary-gradient`: brand→accent gradient CTA; white text. Use sparingly for primary calls-to-action only.
+  - `.btn-secondary`: white background, accent border, accent-ink text; hover background `--accent-weak`
   - `.btn-danger-soft`: red-weak background, red-ish text
   - `.btn-google`: Google Sign-In (white surface, Google gray text, subtle hover; border #dadce0; decorative Google-colored square via `::before`)
   - `.btn-sm`: compact button
@@ -355,7 +363,7 @@ This addendum documents the latest changes and codifies guidance so new work ali
   - Safe area: when supported, `bottom: max(12px, env(safe-area-inset-bottom))`
 
 7) Focus visibility and accessibility
-- Global keyboard focus visibility is standardized via `:focus-visible` using the brand color, ensuring actionable elements (links, buttons, pills) are obviously focused.
+- Global keyboard focus visibility is standardized via `:focus-visible` using the accent color, ensuring actionable elements (links, buttons, pills) are obviously focused.
 - Continue to:
   - Use `aria-live="polite"` for progress and validation feedback
   - Provide roles for toolbars/tablists/tables
@@ -382,9 +390,24 @@ This addendum documents the latest changes and codifies guidance so new work ali
 - Chat: viewport-responsive heights; drawer constrained to viewport width/height; safe-area support for iOS
 - Focus: global `:focus-visible` ring standardized across interactive controls
 
-## 2025-10 Home headline and discovery card updates
+## 2025-10 Home headline, discovery card, and palette updates
 
-This addendum documents the October 2025 updates to the Home page community metrics presentation and discovery card pattern so future work aligns with the current UI.
+This addendum documents the October 2025 updates to the Home page community metrics presentation, discovery card pattern, and the adoption of the Teal + Cyan palette so future work aligns with the current UI. Canonical implementation in [webapp/static/style.css](webapp/static/style.css:1) and templates in [webapp/templates/base.html](webapp/templates/base.html:35). Palette rationale and mapping are detailed in [docs/ui-modernization-plan.md](docs/ui-modernization-plan.md).
+
+0) Palette and token updates (Teal + Cyan)
+- Primary brand (Teal) for actions and emphasis:
+  - `--brand` #0D9488, `--brand-hover` #0F766E, `--brand-ink` #134E4A, `--brand-weak` #CCFBF1
+- Secondary accent (Cyan) for links and informational highlights:
+  - `--accent` #06B6D4, `--accent-ink` #0E7490, `--accent-weak` #CFFAFE
+- Neutrals and surfaces:
+  - `--fg` #0F172A, `--bg` #F8FAFC, `--card-bg` #FFFFFF, borders updated to `--border` #E5E7EB and `--border-strong` #D1D5DB
+- New helpers:
+  - `--shadow-subtle` 0 4px 12px rgba(2,6,23,0.06), `--radius-lg` 12px, `--brand-gradient` linear-gradient(135deg, var(--brand), var(--accent))
+  - Focus ring standardized: `--focus-ring` 0 0 0 3px rgba(6,182,212,0.45) (Cyan-based)
+- Usage policy:
+  - Links use accent color; top navigation links on soft backgrounds use brand-ink for contrast
+  - Panels/cards are white surfaces on a soft page background; use subtle elevation only on interactive hover
+  - Optional gradient variant is reserved for primary CTAs: `.btn-primary-gradient`
 
 1) Community metrics as a marketing headline (Home)
 - The previous “quick-stats” grid on Home is replaced by a single, scannable headline that emphasizes key numbers inline.
@@ -459,3 +482,8 @@ This addendum documents the October 2025 updates to the Home page community metr
 - Headline: keep aria-live="polite" on the paragraph; numbers update unobtrusively.
 - Links: aria-label derived from the same computed display title shown visually.
 - Maintain 44px tap targets on mobile for action buttons within cards (use .btn and .btn-sm appropriately).
+
+6) Contrast guardrails (AA)
+- Primary buttons: white text on `--brand` and `--brand-hover` passes AA for normal text.
+- Links: `--accent` on white/soft backgrounds meets AA at 13–16px; use `--accent-ink` in dense contexts or on tinted surfaces.
+- Selected chips/rows: text `--brand-ink` on `--brand-weak` and `--accent-ink` on `--accent-weak` for comfortable readability.
