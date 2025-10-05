@@ -21,6 +21,11 @@
     const MAX_PAGES = Number(__ctx.ai_chat_max_pages || 5);
     const MAX_CHARS_PER_PAGE = Number(__ctx.ai_chat_max_chars_per_page || 3000);
     const MAX_TOTAL_CHARS = Number(__ctx.ai_chat_max_total_chars || 15000);
+    // Owner toggles
+    const LISTED = !!(__ctx.listed);
+    const SHARE_URL = __ctx.share_url || '';
+    const CAN_REFRESH = !!(__ctx.can_refresh);
+    const REFRESH_ETA = __ctx.refresh_eta || '';
     // Logged-in state and capability flags from server
     let LOGGED_IN = !!(__ctx.logged_in);
     const CAN_CHAT = !!(__ctx.can_chat);
@@ -71,6 +76,21 @@
             if (!r.ok) { throw {status: r.status, body: data}; }
             return data || {};
         });
+    }
+
+    /* Owner toggles */
+    function setListed(enabled) {
+        if (!CRAWL_ID) return Promise.reject(new Error('No crawl ID'));
+        return apiJson('/analysis/' + CRAWL_ID + '/set-listed', 'POST', {listed: !!enabled});
+    }
+    function setShare(enabled) {
+        if (!CRAWL_ID) return Promise.reject(new Error('No crawl ID'));
+        return apiJson('/analysis/' + CRAWL_ID + '/set-share', 'POST', {enabled: !!enabled});
+    }
+    function copyShareUrl() {
+        if (SHARE_URL) {
+            copyLink(SHARE_URL);
+        }
     }
     function siteRoot() {
         var d = (BASE_DOMAIN || '').replace(/^www\./,'');
@@ -1919,6 +1939,41 @@
         try { var pt = document.getElementById('prospect-toggle'); if (pt) pt.addEventListener('click', prospectToggle); } catch(_){}
         try { setupClaimEligibility(); } catch(_){}
 
+        // Wire owner toggles
+        try {
+            var listedToggle = document.getElementById('listed-toggle');
+            var listedBtn = document.getElementById('listed-btn');
+            if (listedToggle && listedBtn) {
+                listedBtn.addEventListener('click', function() {
+                    var enabled = listedToggle.checked;
+                    setListed(enabled).then(function() {
+                        showToast('Listed status updated');
+                    }).catch(function(e) {
+                        showToast('Failed to update listed status');
+                    });
+                });
+            }
+            var shareToggle = document.getElementById('share-toggle');
+            var shareBtn = document.getElementById('share-btn');
+            if (shareToggle && shareBtn) {
+                shareBtn.addEventListener('click', function() {
+                    var enabled = shareToggle.checked;
+                    setShare(enabled).then(function(res) {
+                        if (res.share_key) {
+                            SHARE_URL = '/analysis/shared/' + res.share_key;
+                        }
+                        showToast('Share status updated');
+                    }).catch(function(e) {
+                        showToast('Failed to update share status');
+                    });
+                });
+            }
+            var copyBtn = document.getElementById('copy-share-btn');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', copyShareUrl);
+            }
+        } catch(_){}
+
         // Ensure chat button state is correct
         updateSelectionCount();
         // Load persisted chat history (owner-only)
@@ -1974,4 +2029,7 @@
     window.attachContactSocial = attachContactSocial;
     window.addEmailToProspect = addEmailToProspect;
     window.clearChatHistory = clearChatHistory;
+    window.setListed = setListed;
+    window.setShare = setShare;
+    window.copyShareUrl = copyShareUrl;
 })();

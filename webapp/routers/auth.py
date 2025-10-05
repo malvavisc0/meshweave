@@ -15,6 +15,7 @@ from webapp.models import User
 from webapp.utils.auth import (
     create_auth_session,
     get_auth_cookie_value,
+    get_current_user,
     require_auth,
     sanitize_next,
     set_auth_cookie,
@@ -486,7 +487,10 @@ async def auth_callback(
 
 @router.post("/logout")
 async def logout(request: Request, csrf_token: Optional[str] = Form(None)):
-    """Logout current session (CSRF required).
+    """Logout current session.
+
+    For authenticated users, CSRF is not required to allow logout even if session state is stale.
+    For anonymous users, CSRF is required to prevent abuse.
 
     Args:
         request (Request): Incoming request used to read cookies.
@@ -496,13 +500,19 @@ async def logout(request: Request, csrf_token: Optional[str] = Form(None)):
         RedirectResponse: 303 redirect to the home page.
 
     Raises:
-        HTTPException: 403 when CSRF validation fails.
+        HTTPException: 403 when CSRF validation fails for anonymous users.
     """
-    # CSRF: validate against anonymous sid (always enforced)
-    sid_cookie = request.cookies.get(_sid_cookie_name()) or ""
-    max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-    if not _verify_csrf_token(csrf_token, sid_cookie, max_age_seconds=max_age):
-        raise HTTPException(status_code=403, detail="CSRF validation failed")
+    # Check if user is authenticated
+    user = await get_current_user(request)
+    if user:
+        # Authenticated: allow logout without CSRF check
+        pass
+    else:
+        # Anonymous: require CSRF
+        sid_cookie = request.cookies.get(_sid_cookie_name()) or ""
+        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
+        if not _verify_csrf_token(csrf_token, sid_cookie, max_age_seconds=max_age):
+            raise HTTPException(status_code=403, detail="CSRF validation failed")
 
     # Remove current auth session if present
     from webapp.utils.auth import clear_auth_cookie  # local import to avoid cycle

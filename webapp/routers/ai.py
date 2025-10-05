@@ -114,13 +114,10 @@ async def _stream_agent(
     )
     try:
         resp = agent.arun(compiled_prompt)
-        try:
-            import asyncio
+        import asyncio
 
-            if asyncio.iscoroutine(resp):
-                resp = await resp
-        except Exception:
-            pass
+        if asyncio.iscoroutine(resp):
+            resp = await resp
 
         if hasattr(resp, "__aiter__"):
             async for chunk in resp:  # type: ignore[union-attr]

@@ -93,7 +93,11 @@ async def view_all(
                 )
                 .outerjoin(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
                 .outerjoin(CrawlLink, CrawlLink.crawl_id == Crawl.id)
-                .filter(Crawl.visibility == "public")
+                .filter(
+                    Crawl.visibility == "public",
+                    Crawl.user_id.is_(None),
+                    Crawl.listed == True,
+                )
             )
             if dom:
                 q = q.filter(Crawl.domain == dom)
@@ -231,7 +235,11 @@ async def view_all(
             has_next = False
         else:
             # Keyset pagination (recent)
-            q = s.query(Crawl).filter(Crawl.visibility == "public")
+            q = s.query(Crawl).filter(
+                Crawl.visibility == "public",
+                Crawl.user_id.is_(None),
+                Crawl.listed == True,
+            )
             if dom:
                 q = q.filter(Crawl.domain == dom)
             if st:

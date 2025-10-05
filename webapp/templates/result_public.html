@@ -5,7 +5,8 @@
 <h1>
   Website insights
   <span class="badges" role="group" aria-label="Job state badges">
-    {% if visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
+    {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
+    {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
     <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
     {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
   </span>
@@ -90,7 +91,7 @@
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <input type="hidden" name="url" value="{{ canonical_url }}">
         <input type="hidden" name="public" value="on">
-        <button type="submit" class="btn">Refresh</button>
+        <button type="submit" class="btn" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}"{% endif %}>Refresh</button>
       </form>
     {% elif can_retry %}
       <form method="post" action="/retry/{{ id }}" class="inline-block">
@@ -190,7 +191,7 @@
 
 {% include "partials/metadata_panel.html" %}
 
-{% if request.state.current_user and visibility == 'public' and key %}
+{% if request.state.current_user and visibility == 'public' and key and ownerless %}
 <section class="panel mt-2" role="region" aria-label="Claim Analysis">
   <h2>Claim Analysis</h2>
   <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>

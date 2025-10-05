@@ -5,7 +5,8 @@
 <h1>
   Website insights
   <span class="badges" role="group" aria-label="Job state badges">
-    {% if visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
+    {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
+    {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
     <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
     {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
   </span>
@@ -90,12 +91,12 @@
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <input type="hidden" name="url" value="{{ canonical_url }}">
         <input type="hidden" name="public" value="on">
-        <button type="submit" class="btn">Refresh</button>
+        <button type="submit" class="btn" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}"{% endif %}>Refresh</button>
       </form>
     {% elif can_retry %}
       <form method="post" action="/retry/{{ id }}" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" class="btn">Retry</button>
+        <button type="submit" class="btn" {% if not can_retry %}disabled title="Available in {{ retry_eta }}"{% endif %}>Retry</button>
       </form>
     {% endif %}
   </div>
@@ -190,7 +191,7 @@
 
 {% include "partials/metadata_panel.html" %}
 
-{% if payload and payload.summary %}
+{% if is_owner and payload and payload.summary %}
 <section class="panel mt-2" role="region" aria-label="Crawl Summary">
   <h2>Crawl Summary</h2>
   <ul class="domain-list">
@@ -200,13 +201,13 @@
     </li>
     <li>
       <span class="small">Reason Stopped</span>
-      <span>{{ payload.summary.reason_stopped or 'N/A' }}</span>
+      <span>{{ reason_stopped_label or 'N/A' }}</span>
     </li>
   </ul>
 </section>
 {% endif %}
 
-{% if payload and (payload.scope or payload.start_url or payload.limits) %}
+{% if is_owner and payload and (payload.scope or payload.start_url or payload.limits) %}
 <section class="panel mt-2" role="region" aria-label="Crawl Configuration">
   <h2>Crawl Configuration</h2>
   <ul class="domain-list">
@@ -240,11 +241,26 @@
 </section>
 {% endif %}
 
-{% if request.state.current_user and visibility == 'public' and key %}
+{% if request.state.current_user and visibility == 'public' and key and ownerless %}
 <section class="panel mt-2" role="region" aria-label="Claim Analysis">
   <h2>Claim Analysis</h2>
   <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
   <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
+</section>
+{% endif %}
+
+{% if is_owner %}
+<section class="panel mt-2" role="region" aria-label="Owner Controls">
+  <h2>Owner Controls</h2>
+  <div class="form-grid">
+    <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in discovery</label>
+    <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
+  </div>
+  <div class="form-grid">
+    <label><input type="checkbox" id="share-toggle" {% if share_url %}checked{% endif %}> Shareable link</label>
+    <button type="button" id="share-btn" class="btn btn-sm">Update</button>
+    {% if share_url %}<button type="button" id="copy-share-btn" class="btn btn-sm">Copy Link</button>{% endif %}
+  </div>
 </section>
 {% endif %}
 

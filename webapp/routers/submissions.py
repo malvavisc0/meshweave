@@ -402,6 +402,11 @@ async def submit(
                 .one_or_none()
             )
             if existing:
+                # Enforce cooldown for public refresh
+                refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+                if now - existing.updated_at < timedelta(minutes=refresh_min_age_minutes):
+                    return RedirectResponse(url="/?notice=cooldown", status_code=303)
+
                 # Convert/refresh existing public entry to site-scope crawl on domain root
                 existing.url = start_url
                 existing.canonical_url = start_url
@@ -458,6 +463,11 @@ async def submit(
                 .one_or_none()
             )
             if existing:
+                # Enforce cooldown for public refresh
+                refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+                if now - existing.updated_at < timedelta(minutes=refresh_min_age_minutes):
+                    return RedirectResponse(url="/?notice=cooldown", status_code=303)
+
                 # Guard against updating private rows owned by another user.
                 can_update = True
                 try:

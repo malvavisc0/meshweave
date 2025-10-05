@@ -1,7 +1,8 @@
 import json
 import os
+import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -12,11 +13,155 @@ from webapp.infra import templates
 from webapp.models import Crawl, CrawlEmail, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
+from webapp.utils.reasons import friendly_reason
 from webapp.utils.security import _make_csrf_token
 from webapp.utils.summary import build_summary
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
+# Simple in-memory rate limiter for share toggle (max 5 per hour per user)
+import time
+
+share_toggle_limits = {}
+
+
+@router.get("/analysis/shared/{share_key}", response_class=HTMLResponse)
+async def view_shared_analysis(request: Request, share_key: str):
+    """View private analysis via shareable link."""
+    with get_session() as s:
+        row = (
+            s.query(Crawl)
+            .filter(Crawl.share_key == share_key, Crawl.visibility == "private")
+            .first()
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    payload: Optional[dict] = None
+    if row.payload_json:
+        try:
+            payload = json.loads(row.payload_json)
+        except json.JSONDecodeError:
+            payload = None
+
+    # Similar to public view, but with Unlisted badge and no claim
+    # Compute SEO/meta
+    title_from_payload = ""
+    desc_from_payload = ""
+    try:
+        if payload:
+            pg = payload.get("page") or {}
+            title_from_payload = (pg.get("title") or "").strip()
+            desc_from_payload = (pg.get("description") or "").strip()
+    except Exception:
+        pass
+
+    site_name = os.getenv("SITE_NAME", "Meshweave")
+    scope_val = str(getattr(row, "scope", "") or "").strip().lower()
+    domain_val = (row.domain or "").strip()
+    path_val = (row.path or "").strip() or "/"
+    if scope_val == "site":
+        page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
+    else:
+        path_or_title = title_from_payload or path_val
+        page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
+
+    meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
+        "markdown", ""
+    )
+    if meta_description and len(meta_description) > 300:
+        meta_description = meta_description[:297] + "..."
+
+    abs_page_url = _abs_url(request, f"/analysis/shared/{share_key}")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+
+    summary = build_summary(row, payload)
+
+    # Scrub emails for shared view (always scrub regardless of auth)
+    payload_display = payload
+    try:
+        # Always scrub for shared view
+        payload_copy = json.loads(json.dumps(payload or {}))
+
+        def _scrub(obj):
+            try:
+                if isinstance(obj, dict):
+                    for kk in list(obj.keys()):
+                        lk = str(kk).lower()
+                        if lk in ("emails", "emails_unique", "emails_by_url", "email"):
+                            obj.pop(kk, None)
+                            continue
+                        _scrub(obj.get(kk))
+                elif isinstance(obj, list):
+                    for it in obj:
+                        _scrub(it)
+            except Exception:
+                return
+
+        _scrub(payload_copy)
+        em = (payload or {}).get("emails") or {}
+        payload_copy["emails"] = {
+            "counts": em.get("counts") or {},
+            "unique_count": len(em.get("unique") or []),
+        }
+        payload_display = payload_copy
+    except Exception:
+        try:
+            payload_display = json.loads(json.dumps(payload or {}))
+            payload_display.pop("emails", None)
+        except Exception:
+            payload_display = payload or {}
+
+    template_name = "result_public.html"
+    resp = templates.TemplateResponse(
+        template_name,
+        {
+            "request": request,
+            "domain": row.domain,
+            "path": row.path,
+            "query": row.query,
+            "canonical_url": row.canonical_url,
+            "visibility": "unlisted",  # Special badge
+            "key": None,  # No key for shared
+            "status": row.status,
+            "error": row.error,
+            "payload": payload_display,
+            "api_url": f"/api/analysis/private/{row.id}",
+            "abs_api_url": _abs_url(request, f"/api/analysis/private/{row.id}"),
+            "summary": summary,
+            "reason_stopped_label": (
+                friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
+                if payload and payload.get("summary")
+                else ""
+            ),
+            "csrf_token": "",
+            "is_owner": False,  # Shared viewers are not owners
+            "can_chat": False,
+            "can_select_pages": False,
+            "user_products": [],
+            "has_products": False,
+            "user_id": "",
+            "id": row.id,
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
+            "site_name": site_name,
+            "json_ld": None,
+            "created_at": "",
+            "claim_min_hours": 24,
+            "ownerless": False,
+            "can_view_leads": False,
+            "email_preview": [],
+            "email_count": 0,
+            "ai_chat_max_pages": 5,
+            "ai_chat_max_chars_per_page": 3000,
+            "ai_chat_max_total_chars": 15000,
+        },
+    )
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
 
 
 @router.get("/analysis/{ref}", response_class=HTMLResponse)
@@ -101,6 +246,7 @@ async def view_analysis(request: Request, ref: str):
 
         abs_page_url = _abs_url(request, f"/analysis/{row.id}")
         og_image_url = os.getenv("OG_IMAGE_URL") or None
+
         # JSON-LD: CreativeWork (LLM-first)
         try:
             # Derive counts from payload when available
@@ -209,6 +355,12 @@ async def view_analysis(request: Request, ref: str):
 
         summary = build_summary(row, payload)
 
+        reason_stopped_label = (
+            friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
+            if payload and payload.get("summary")
+            else ""
+        )
+
         api_url = f"/api/analysis/private/{row.id}"
         abs_api_url = _abs_url(request, api_url)
 
@@ -220,6 +372,18 @@ async def view_analysis(request: Request, ref: str):
         can_chat = (status_lc == "succeeded") and is_owner
         # Page selection and Shortcuts: owner-only on succeeded analyses
         can_select_pages = (status_lc == "succeeded") and is_owner
+
+        # Cooldown for retry
+        refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+        now = datetime.now(timezone.utc)
+        next_retry_eligible = row.updated_at + timedelta(minutes=refresh_min_age_minutes)
+        can_retry_cooldown = now >= next_retry_eligible
+        can_retry = (row.status != "running") and can_retry_cooldown
+        retry_eta = (
+            f"{int((next_retry_eligible - now).total_seconds() / 60)}m"
+            if not can_retry_cooldown
+            else ""
+        )
 
         # Query user products for compose section
         user_products = []
@@ -275,9 +439,11 @@ async def view_analysis(request: Request, ref: str):
                 "error": row.error,
                 "payload": payload,
                 "summary": summary,
+                "reason_stopped_label": reason_stopped_label,
                 "api_url": api_url,
                 "abs_api_url": abs_api_url,
-                "can_retry": (row.status != "running"),
+                "can_retry": can_retry,
+                "retry_eta": retry_eta,
                 "csrf_token": csrf_token,
                 # Ownership / gating
                 "is_owner": is_owner,
@@ -286,6 +452,7 @@ async def view_analysis(request: Request, ref: str):
                 "user_products": user_products,
                 "has_products": bool(user_products),
                 "user_id": (current_user.id if current_user else ""),
+                "can_view_leads": is_owner,
                 # SEO/Sharing
                 "page_title": page_title,
                 "meta_description": meta_description,
@@ -301,6 +468,11 @@ async def view_analysis(request: Request, ref: str):
                 "ai_chat_max_total_chars": int(
                     os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")
                 ),
+                # Owner toggles
+                "listed": row.listed,
+                "share_url": f"/analysis/shared/{row.share_key}" if row.share_key else "",
+                "can_refresh": can_retry,
+                "refresh_eta": retry_eta,
             },
         )
         # Prevent indexing of private results
@@ -480,6 +652,12 @@ async def view_analysis(request: Request, ref: str):
 
     summary = build_summary(row, payload)
 
+    reason_stopped_label = (
+        friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
+        if payload and payload.get("summary")
+        else ""
+    )
+
     # Email preview/count for anonymous gating (public view)
     email_preview = []
     email_count = 0
@@ -525,6 +703,32 @@ async def view_analysis(request: Request, ref: str):
 
     ownerless = getattr(row, "user_id", None) is None
 
+    # Cooldown for refresh (public domain root)
+    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+    now = datetime.now(timezone.utc)
+    can_refresh = False
+    refresh_eta = ""
+    with get_session() as s:
+        public_root = (
+            s.query(Crawl)
+            .filter(
+                Crawl.domain == row.domain,
+                Crawl.visibility == "public",
+                Crawl.path == "/",
+                Crawl.query == "",
+            )
+            .first()
+        )
+        if public_root:
+            next_refresh_eligible = public_root.updated_at + timedelta(
+                minutes=refresh_min_age_minutes
+            )
+            can_refresh = now >= next_refresh_eligible
+            if not can_refresh:
+                refresh_eta = (
+                    f"{int((next_refresh_eligible - now).total_seconds() / 60)}m"
+                )
+
     # Ownership/permissions (public view)
     current_user = getattr(request.state, "current_user", None)
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
@@ -566,10 +770,7 @@ async def view_analysis(request: Request, ref: str):
     try:
         if not current_user:
             # Work on a safe deep copy of the JSON payload (falls back to {} when missing/bad)
-            try:
-                payload_copy = json.loads(json.dumps(payload or {}))
-            except Exception:
-                payload_copy = {} if not isinstance(payload, dict) else dict(payload)
+            payload_copy = json.loads(json.dumps(payload or {}))
 
             # Recursive scrubber for any key that may contain emails
             def _scrub(obj):
@@ -620,6 +821,7 @@ async def view_analysis(request: Request, ref: str):
             "query": row.query,
             "canonical_url": row.canonical_url,
             "visibility": row.visibility,
+            "listed": row.listed,
             "key": row.key,
             "status": row.status,
             "error": row.error,
@@ -628,6 +830,7 @@ async def view_analysis(request: Request, ref: str):
             "abs_api_url": abs_api_url,
             # Enriched
             "summary": summary,
+            "reason_stopped_label": reason_stopped_label,
             "api_summary_url": api_summary_url,
             "emails_csv_url": emails_csv_url,
             "links_csv_url": links_csv_url,
@@ -653,6 +856,10 @@ async def view_analysis(request: Request, ref: str):
             "created_at": created_at_iso,
             "claim_min_hours": claim_min_hours,
             "ownerless": ownerless,
+            "can_view_leads": True if current_user else False,
+            # Refresh cooldown
+            "can_refresh": can_refresh,
+            "refresh_eta": refresh_eta,
             # Gating helpers for anonymous public
             "email_preview": email_preview,
             "email_count": email_count,
@@ -681,3 +888,75 @@ async def view_analysis(request: Request, ref: str):
     if row.status != "succeeded":
         resp.headers["X-Robots-Tag"] = "noindex"
     return resp
+
+
+@router.post("/analysis/{crawl_id}/set-listed")
+async def set_listed(request: Request, crawl_id: str):
+    """Set listed status for a public analysis (owner only)."""
+    user = await require_auth(request)
+    row = await require_ownership(request, crawl_id)
+    if row.visibility != "public":
+        raise HTTPException(
+            status_code=400, detail="Only public analyses can be listed/unlisted"
+        )
+
+    try:
+        data = await request.json()
+        listed = bool(data.get("listed", True))
+    except Exception:
+        listed = True
+
+    with get_session() as s:
+        db_row = s.get(Crawl, crawl_id)
+        if db_row:
+            db_row.listed = listed
+            s.commit()
+
+    return {"ok": True, "listed": listed}
+
+
+@router.post("/analysis/{crawl_id}/set-share")
+async def set_share(request: Request, crawl_id: str):
+    """Enable/disable shareable link for a private analysis (owner only)."""
+    user = await require_auth(request)
+    row = await require_ownership(request, crawl_id)
+    if row.visibility != "private":
+        raise HTTPException(
+            status_code=400, detail="Only private analyses can have share links"
+        )
+
+    # Rate limiting: max 5 toggles per hour per user
+    now = time.time()
+    user_key = f"share_toggle_{user.id}"
+    if user_key not in share_toggle_limits:
+        share_toggle_limits[user_key] = []
+    share_toggle_limits[user_key] = [
+        t for t in share_toggle_limits[user_key] if now - t < 3600
+    ]
+    if len(share_toggle_limits[user_key]) >= 5:
+        raise HTTPException(
+            status_code=429, detail="Too many share toggles. Try again later."
+        )
+    share_toggle_limits[user_key].append(now)
+
+    try:
+        data = await request.json()
+        enabled = bool(data.get("enabled", False))
+    except Exception:
+        enabled = False
+
+    share_key = None
+    if enabled:
+        share_key = secrets.token_urlsafe(16)  # 32 chars
+        # Ensure unique
+        with get_session() as s:
+            while s.query(Crawl).filter(Crawl.share_key == share_key).first():
+                share_key = secrets.token_urlsafe(16)
+
+    with get_session() as s:
+        db_row = s.get(Crawl, crawl_id)
+        if db_row:
+            db_row.share_key = share_key
+            s.commit()
+
+    return {"ok": True, "enabled": enabled, "share_key": share_key}

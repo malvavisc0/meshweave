@@ -74,7 +74,9 @@ async def home(request: Request, db: Session = Depends(get_db)):
     # Query latest public crawls with status ranking and limit 9
     rows: List[Crawl] = (
         db.query(Crawl)
-        .filter(Crawl.visibility == "public")
+        .filter(
+            Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed == True
+        )
         .order_by(
             case(
                 (Crawl.status == "succeeded", 0),

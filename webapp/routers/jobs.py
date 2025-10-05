@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional, cast
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
@@ -204,6 +204,12 @@ async def retry_crawl(
     # Auth + owner
     user = await require_auth(request)
     row = await require_ownership(request, crawl_id)
+
+    # Enforce cooldown
+    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+    now = datetime.now(timezone.utc)
+    if now - row.updated_at < timedelta(minutes=refresh_min_age_minutes):
+        raise HTTPException(status_code=429, detail="Retry not available yet")
 
     if row.status == "running":
         raise HTTPException(status_code=400, detail="Job is already running")

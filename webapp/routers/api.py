@@ -165,7 +165,9 @@ async def api_domain_index(domain: str):
     with get_session() as s:
         rows: List[Crawl] = (
             s.query(Crawl)
-            .filter(Crawl.domain == dom, Crawl.visibility == "public")
+            .filter(
+                Crawl.domain == dom, Crawl.visibility == "public", Crawl.listed == True
+            )
             .order_by(Crawl.updated_at.desc())
             .limit(100)
             .all()
@@ -223,7 +225,11 @@ async def sitemap_xml(request: Request):
     with get_session() as s:
         rows: List[Crawl] = (
             s.query(Crawl)
-            .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
+            .filter(
+                Crawl.visibility == "public",
+                Crawl.status == "succeeded",
+                Crawl.listed == True,
+            )
             .order_by(Crawl.updated_at.desc())
             .limit(500)
             .all()
@@ -452,15 +458,17 @@ async def api_public_summary(key: str):
 
 
 @router.get("/api/analysis/public/{key}/emails.csv", response_class=PlainTextResponse)
-async def api_public_emails_csv(key: str):
+async def api_public_emails_csv(request: Request, key: str):
     """Return unique emails for a public crawl as CSV.
 
     Args:
+        request (Request): Incoming request for auth check.
         key (str): Short key that identifies the public crawl.
 
     Returns:
         Response: text/csv attachment with a single 'email' column.
     """
+    await require_auth(request)
     row = _load_public_row_by_key_or_404(key)
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(

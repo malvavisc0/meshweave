@@ -113,10 +113,13 @@ class Crawl(Base):
         ),
         # Short public key used for URL access (unique across table, nullable for private)
         UniqueConstraint("key", name="uq_crawls_key"),
+        # Unique share_key for private unlisted sharing
+        UniqueConstraint("share_key", name="uq_crawls_share_key"),
         Index("ix_crawls_updated_at", "updated_at"),
         Index("ix_crawls_domain", "domain"),
         Index("ix_crawls_user_id", "user_id"),
         Index("ix_crawls_scope", "scope"),
+        Index("ix_crawls_visibility_user_id_listed", "visibility", "user_id", "listed"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -155,6 +158,12 @@ class Crawl(Base):
     )
     scope: Mapped[str] = mapped_column(String(10), default="page")  # "page" | "site"
     limits_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Phase 1B additions for listing and sharing
+    listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    share_key: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, unique=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
