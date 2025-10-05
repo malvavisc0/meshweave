@@ -26,6 +26,14 @@ else:
         # Fallback for dev runs
         templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
+# Trim Jinja control-structure whitespace to reduce output size
+try:
+    templates.env.trim_blocks = True
+    templates.env.lstrip_blocks = True
+except Exception:
+    # Never fail startup due to env option wiring
+    pass
+
 
 # Register Jinja filters (available regardless of template source)
 try:
