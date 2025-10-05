@@ -775,10 +775,14 @@ async def crawl(
     disable_cache: bool = False,
     cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Render a page, convert to markdown, classify links, optionally crawl internal pages, and extract emails.
+    """Render a page (or a bare domain), convert to markdown, classify links, optionally crawl internal pages, extract emails,
+    and when given a bare domain attempt sitemap discovery to seed the crawl.
 
     Parameters:
-        url (str): Starting URL.
+        url (str): Starting URL or bare domain (e.g., "example.com"). If a bare domain is provided:
+            - The crawler will start at https://{domain}/ (falling back to http:// on initial fetch failure).
+            - It will attempt to discover sitemap URLs via robots.txt and common endpoints (sitemap.xml, sitemap_index.xml).
+            - When crawl_internal is True, discovered sitemap URLs are used to seed the BFS queue alongside internal links.
         crawl_internal (bool): If True, BFS crawl internal links until crawl_max_pages is reached.
         crawl_max_pages (int): Hard cap on total pages visited, including the start page.
         same_domain_only (bool): If True, enforce visited pages remain on the starting domain after redirects.
@@ -795,7 +799,14 @@ async def crawl(
             links (dict): { "internal": list[str], "external": list[str] }
             metrics (dict): { "render": dict, "extraction": dict }
             emails (dict, optional): { "unique": list[str], "by_url": dict[str, list[str]], "sources": list[dict], "counts": dict }
-            crawl (dict): { "enabled": bool, "start_url": str, "visited": list[str], "limits": { "max_pages": int }, "reason_stopped": str }
+            crawl (dict): {
+              "enabled": bool,
+              "start_url": str,
+              "visited": list[str],
+              "limits": {"max_pages": int},
+              "reason_stopped": str,
+              "sitemap": {"used": bool, "sources": list, "urls_seeded": int, "discovered": int}
+            }
     """
     cache_dir_env = (
         cache_dir or os.getenv("MARKDOWNIFY_CACHE_DIR") or "/tmp/markdownify/cache"
@@ -810,13 +821,37 @@ async def crawl(
     # When disable_cache=True or env disables cache, bypass HTML cache entirely
     local_cache_dir = None if (disable_cache or disable_cache_env) else cache_dir_env
 
-    # Render start page
-    html, metrics = await render_page(
-        url=url,
-        cache_dir=local_cache_dir,
-        timeout=30.0,
-        progressive=True,
-    )
+    # Determine start URL and optional sitemap metadata if a bare domain is provided
+    input_value = url
+    sitemap_meta = {"used": False, "sources": [], "urls_seeded": 0, "discovered": 0}
+    is_domain_input = _looks_like_domain(input_value)
+    start_url = input_value
+    if is_domain_input:
+        dom = _normalize_domain(input_value)
+        start_url = f"https://{dom}/"
+
+    # Render start page with fallback to http for bare domains if https fails
+    try:
+        html, metrics = await render_page(
+            url=start_url,
+            cache_dir=local_cache_dir,
+            timeout=30.0,
+            progressive=True,
+        )
+    except Exception:
+        if is_domain_input and start_url.startswith("https://"):
+            try:
+                html, metrics = await render_page(
+                    url=start_url.replace("https://", "http://", 1),
+                    cache_dir=local_cache_dir,
+                    timeout=30.0,
+                    progressive=True,
+                )
+            except Exception:
+                # Re-raise if both https and http fail
+                raise
+        else:
+            raise
 
     final_url = str(getattr(metrics, "final_url", ""))
 
@@ -834,6 +869,33 @@ async def crawl(
     internal_links, external_links, extraction_metrics = _classify_links(
         soup_raw, base_url=final_url
     )
+
+    # Optionally discover sitemap URLs for bare domain input to seed BFS
+    sitemap_seeds: List[str] = []
+    if is_domain_input:
+        try:
+            base_dom = _domain_of(final_url or start_url)
+            discovered, sm_meta = await _discover_sitemap_urls(
+                base_dom, max_urls=max(1, crawl_max_pages * 5)
+            )
+            sitemap_meta["used"] = bool(discovered)
+            sitemap_meta["discovered"] = len(discovered)
+            sitemap_meta["sources"] = sm_meta.get("sources", [])
+
+            for u in discovered:
+                # Filter to domain and ignore paths/domains according to existing rules
+                if same_domain_only and not _same_domain(u, final_url or start_url):
+                    continue
+                if _is_ignored_domain(u):
+                    continue
+                if _should_ignore_path(urlsplit(u).path or ""):
+                    continue
+                normu = _normalize_abs_url(u, final_url or start_url)
+                if normu:
+                    sitemap_seeds.append(normu)
+        except Exception:
+            # ignore discovery failures; proceed without sitemap seeding
+            pass
 
     # Render metrics payload
     render_metrics = {
@@ -877,20 +939,36 @@ async def crawl(
     if crawl_internal and crawl_max_pages > 1:
         q: deque[str] = deque()
 
-        # Seed internal links
+        # Seed internal links discovered from the start page
         for href in internal_links:
-            absu = _normalize_abs_url(href, final_url or url)
+            absu = _normalize_abs_url(href, final_url or start_url)
             if not absu:
                 continue
-            if same_domain_only and not _same_domain(absu, final_url or url):
+            if same_domain_only and not _same_domain(absu, final_url or start_url):
                 continue
             if _should_ignore_path(urlsplit(absu).path or ""):
                 continue
             if _is_ignored_domain(absu):
                 continue
-            if absu not in visited_norm:
+            if absu not in visited_norm and (len(visited_list) + len(q)) < crawl_max_pages:
                 visited_norm.add(absu)
                 q.append(absu)
+
+        # Additionally seed sitemap URLs when available
+        if sitemap_seeds:
+            for su in sitemap_seeds:
+                if not su:
+                    continue
+                if same_domain_only and not _same_domain(su, final_url or start_url):
+                    continue
+                if _should_ignore_path(urlsplit(su).path or ""):
+                    continue
+                if _is_ignored_domain(su):
+                    continue
+                if su not in visited_norm and (len(visited_list) + len(q)) < crawl_max_pages:
+                    visited_norm.add(su)
+                    q.append(su)
+                    sitemap_meta["urls_seeded"] += 1
 
         while q and len(visited_list) < crawl_max_pages:
             u = q.popleft()
@@ -1003,10 +1081,210 @@ async def crawl(
 
     payload["crawl"] = {
         "enabled": bool(crawl_internal),
-        "start_url": final_url or url,
+        "start_url": final_url or start_url,
         "visited": visited_list,
         "limits": {"max_pages": int(crawl_max_pages)},
         "reason_stopped": stop_reason,
+        "sitemap": sitemap_meta,
     }
 
     return payload
+
+
+# -------------------------
+# Sitemap/domain helpers
+# -------------------------
+
+def _looks_like_domain(value: str) -> bool:
+    """Heuristic to detect a bare domain (no scheme/path)."""
+    v = (value or "").strip().lower()
+    if not v:
+        return False
+    if "://" in v:
+        return False
+    if v.startswith("www."):
+        v = v[4:]
+    # Simple FQDN check: labels with letters/digits/hyphen and a TLD of 2-24 letters
+    return bool(re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,24}", v))
+
+
+async def _fetch_bytes_async(url: str, timeout: float = 10.0) -> Optional[bytes]:
+    """Fetch raw bytes via urllib in a thread to avoid extra deps.
+
+    Returns:
+        bytes on success; None on failure.
+    """
+    import urllib.request
+    import urllib.error
+    import gzip
+    import io
+
+    def _fetch() -> Optional[bytes]:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "markdownify-crawler/1.0",
+                    "Accept": "*/*",
+                    "Accept-Encoding": "gzip, deflate",
+                },
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = resp.read()
+                enc = (resp.headers.get("Content-Encoding", "") or "").lower()
+                if enc == "gzip" or url.lower().endswith(".gz"):
+                    # Try to decompress
+                    try:
+                        return gzip.decompress(data)
+                    except Exception:
+                        try:
+                            with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
+                                return gz.read()
+                        except Exception:
+                            return data
+                return data
+        except Exception:
+            return None
+
+    return await asyncio.to_thread(_fetch)
+
+
+def _parse_sitemap_xml(xml_bytes: bytes, base_url: str) -> Tuple[List[str], List[str]]:
+    """Parse a sitemap XML payload and return (urls, child_sitemaps).
+
+    Args:
+        xml_bytes: Raw XML bytes (already decompressed if needed).
+        base_url: URL of the sitemap file for resolving relative loc entries.
+
+    Returns:
+        tuple[list[str], list[str]]: URLs and nested sitemap URLs (for sitemapindex).
+    """
+    import xml.etree.ElementTree as ET
+
+    urls: List[str] = []
+    sitemaps: List[str] = []
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except Exception:
+        return urls, sitemaps
+
+    def _lname(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+    # sitemapindex case: collect sitemap/loc
+    if _lname(root.tag) == "sitemapindex":
+        for el in root.iter():
+            if _lname(el.tag) == "loc":
+                loc = (el.text or "").strip()
+                if loc:
+                    sitemaps.append(urljoin(base_url, loc))
+        return urls, sitemaps
+
+    # urlset (or generic): collect url/loc
+    for el in root.iter():
+        if _lname(el.tag) == "loc":
+            loc = (el.text or "").strip()
+            if loc:
+                urls.append(urljoin(base_url, loc))
+    return urls, sitemaps
+
+
+async def _discover_sitemap_urls(domain: str, *, max_urls: int = 1000) -> Tuple[List[str], Dict[str, Any]]:
+    """Discover sitemap URLs for a given domain via robots.txt and common endpoints.
+
+    Args:
+        domain: Domain host (no scheme).
+        max_urls: Upper bound on number of page URLs to collect.
+
+    Returns:
+        tuple[list[str], dict]: (urls, meta) where meta has a 'sources' array describing attempts.
+    """
+    d = _normalize_domain(domain or "")
+    sources: List[Dict[str, Any]] = []
+    urls: List[str] = []
+    seen_sitemaps: Set[str] = set()
+
+    # Candidates: common endpoints
+    candidates: List[str] = []
+    if d:
+        candidates.extend(
+            [
+                f"https://{d}/sitemap.xml",
+                f"https://{d}/sitemap_index.xml",
+                f"http://{d}/sitemap.xml",
+                f"http://{d}/sitemap_index.xml",
+            ]
+        )
+
+        # robots.txt discovery
+        for scheme in ("https", "http"):
+            robots_url = f"{scheme}://{d}/robots.txt"
+            b = await _fetch_bytes_async(robots_url, timeout=8.0)
+            found = 0
+            status = "miss"
+            if b:
+                try:
+                    text = b.decode("utf-8", errors="ignore")
+                    for line in text.splitlines():
+                        if "sitemap:" in line.lower():
+                            try:
+                                loc = line.split(":", 1)[1].strip()
+                            except Exception:
+                                loc = ""
+                            if loc:
+                                candidates.append(loc)
+                                found += 1
+                    status = "ok"
+                except Exception:
+                    status = "error"
+            sources.append({"type": "robots", "url": robots_url, "found": found, "status": status})
+
+    # De-duplicate candidates preserving order
+    seen_c: Set[str] = set()
+    dedup_candidates: List[str] = []
+    for c in candidates:
+        c = str(c).strip()
+        if not c or c in seen_c:
+            continue
+        seen_c.add(c)
+        dedup_candidates.append(c)
+
+    fetch_queue: List[str] = list(dedup_candidates)
+    # Limit nested sitemap traversal to stay efficient
+    child_sitemap_limit = 20
+
+    while fetch_queue and len(urls) < max_urls:
+        sm_url = fetch_queue.pop(0)
+        if sm_url in seen_sitemaps:
+            continue
+        seen_sitemaps.add(sm_url)
+
+        b = await _fetch_bytes_async(sm_url, timeout=12.0)
+        meta: Dict[str, Any] = {"type": "sitemap", "url": sm_url, "ok": bool(b)}
+        if not b:
+            sources.append(meta)
+            continue
+
+        page_urls, child_sitemaps = _parse_sitemap_xml(b, base_url=sm_url)
+
+        # Enqueue child sitemaps within limit
+        for cs in child_sitemaps:
+            if len(seen_sitemaps) + len(fetch_queue) >= child_sitemap_limit:
+                break
+            if cs not in seen_sitemaps:
+                fetch_queue.append(cs)
+
+        # Collect URLs up to max
+        for u in page_urls:
+            if len(urls) >= max_urls:
+                break
+            urls.append(u)
+
+        meta["ok"] = True
+        meta["urls"] = len(page_urls)
+        meta["children"] = len(child_sitemaps)
+        sources.append(meta)
+
+    return urls, {"sources": sources}

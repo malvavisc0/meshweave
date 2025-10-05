@@ -106,7 +106,10 @@ def main_crawl() -> None:
     the resulting JSON payload.
 
     Arguments (parsed from CLI):
-        url (str): Target page URL (http/https).
+        url (str): Target URL or bare domain (e.g., example.com). When a bare domain is provided,
+            the crawler starts at https://{domain}/ (falling back to http:// if needed) and attempts
+            to discover sitemap URLs. When --crawl-internal is enabled, discovered sitemap URLs are
+            used to seed the BFS queue alongside links found on the start page.
         --crawl-internal (bool): Enable internal BFS crawl (default: false).
         --max-pages (int): Max pages to visit including start page (default: 25).
         --same-domain (bool): Restrict crawl to same domain (default: true).
@@ -125,9 +128,15 @@ def main_crawl() -> None:
 
     p = argparse.ArgumentParser(
         prog="markdownify-crawl",
-        description="Render, extract, and optionally crawl a site.",
+        description="Render, extract, and optionally crawl a site. Accepts a URL or a bare domain.",
     )
-    p.add_argument("url", help="Target page URL (http/https).")
+    p.add_argument(
+        "url",
+        help=(
+            "Target URL or bare domain (e.g., example.com). "
+            "If a bare domain is provided, the crawler attempts sitemap discovery to seed internal crawling."
+        ),
+    )
     p.add_argument(
         "--crawl-internal",
         type=_bool_flag,
