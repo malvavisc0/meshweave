@@ -236,12 +236,6 @@ async def submit(
         # Schedule site crawl (robust): BackgroundTasks + immediate task
         background_tasks.add_task(run_site_crawl_task, crawl_id, False)
         try:
-            import asyncio
-
-            asyncio.create_task(run_site_crawl_task(crawl_id, False))
-        except Exception:
-            pass
-        try:
             log_audit("site_crawl_enqueued", request=request, crawl_id=crawl_id)
         except Exception:
             pass

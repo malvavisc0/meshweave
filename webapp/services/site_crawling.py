@@ -156,6 +156,13 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
     )
     # Persist effective limits so progress API/UI can display totals (max_pages, etc.)
     try:
+        # Record a stable start timestamp for progress/ETA calculations (milliseconds since epoch)
+        try:
+            import time as _time
+
+            limits["started_at_ms"] = int(_time.time() * 1000)
+        except Exception:
+            pass
         with get_session() as s:
             r = s.get(Crawl, crawl_id)
             if r:
@@ -339,6 +346,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         except Exception:
             pass
 
+        # Heartbeat: bump updated_at after start page processed
+        try:
+            with get_session() as s:
+                hb_row = s.get(Crawl, crawl_id)
+                if hb_row:
+                    hb_row.updated_at = datetime.now(timezone.utc)
+        except Exception:
+            pass
+
         # Seed queue (depth 1) within domain
         visited.add(final0)
         start_domain_ok = final0
@@ -366,7 +382,12 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             try:
                 with get_session() as s:
                     _cur = s.get(Crawl, crawl_id)
-                if not _cur or (str(getattr(_cur, "status", "")).lower() != "running"):
+                if not _cur:
+                    return
+                _st = str(getattr(_cur, "status", "")).lower()
+
+                # Only handle explicit user cancellation here
+                if _st == "cancelled":
                     # Persist partial results and mark cancelled
                     with get_session() as s:
                         row = s.get(Crawl, crawl_id)
@@ -429,6 +450,10 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                         )
                     except Exception:
                         pass
+                    return
+
+                # If job already finished (succeeded/failed) or is not running, exit gracefully without overriding status
+                if _st in ("succeeded", "failed") or _st != "running":
                     return
             except Exception:
                 pass
@@ -531,6 +556,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                     external_links=external_i,
                     email_sources=src_i,
                 )
+            except Exception:
+                pass
+
+            # Heartbeat: bump updated_at after each BFS page
+            try:
+                with get_session() as s:
+                    hb_row = s.get(Crawl, crawl_id)
+                    if hb_row:
+                        hb_row.updated_at = datetime.now(timezone.utc)
             except Exception:
                 pass
 

@@ -214,10 +214,19 @@ async def api_progress(request: Request, crawl_id: str):
             except Exception:
                 limits["max_pages"] = 200
 
-    # Best-effort elapsed: time since updated_at while running (approximation)
+    # Elapsed: prefer started_at_ms from limits_json; fallback to updated_at heuristic
     elapsed_ms = None
     try:
-        if (row.status or "").lower() == "running" and row.updated_at:
+        now_ms = int(now.timestamp() * 1000)
+        started_ms = None
+        if (row.scope or "page") == "site":
+            try:
+                started_ms = int((limits or {}).get("started_at_ms"))  # type: ignore[arg-type]
+            except Exception:
+                started_ms = None
+        if started_ms is not None:
+            elapsed_ms = max(0, now_ms - started_ms)
+        elif (row.status or "").lower() == "running" and row.updated_at:
             elapsed_ms = int((now - row.updated_at).total_seconds() * 1000)
     except Exception:
         elapsed_ms = None
@@ -402,10 +411,19 @@ async def api_progress_public(key: str):
             except Exception:
                 limits["max_pages"] = 200
 
-    # Elapsed (approx)
+    # Elapsed: prefer started_at_ms from limits_json; fallback to updated_at heuristic
     elapsed_ms = None
     try:
-        if (row.status or "").lower() == "running" and row.updated_at:
+        now_ms = int(now.timestamp() * 1000)
+        started_ms = None
+        if (row.scope or "page") == "site":
+            try:
+                started_ms = int((limits or {}).get("started_at_ms"))  # type: ignore[arg-type]
+            except Exception:
+                started_ms = None
+        if started_ms is not None:
+            elapsed_ms = max(0, now_ms - started_ms)
+        elif (row.status or "").lower() == "running" and row.updated_at:
             elapsed_ms = int((now - row.updated_at).total_seconds() * 1000)
     except Exception:
         elapsed_ms = None
