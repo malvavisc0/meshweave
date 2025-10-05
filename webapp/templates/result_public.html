@@ -248,9 +248,12 @@
   </section>
   {% endif %}
 
-  {% if can_chat %}
+  {% if can_chat or (visibility == 'public' and not request.state.current_user) %}
   <section class="panel mt-2" id="compose-chat" role="region" aria-label="AI assistance">
     <h2>AI assistance</h2>
+    {% if not request.state.current_user %}
+    <div class="small">Login and claim this analysis to unlock AI assistance features for personalized help with this website.</div>
+    {% endif %}
 
     {% if request.state.current_user and not has_products %}
     <div id="compose-notices" class="small" style="margin-bottom:8px;">
@@ -357,7 +360,7 @@
   <div class="mobile-tabs" role="tablist" aria-label="Sections">
     {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-leads">Leads</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
-    {% if can_chat %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">AI assistance</button>{% endif %}
+    {% if can_chat or (visibility == 'public' and not request.state.current_user) %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">AI assistance</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-stats">External links</button>
   </div>
 
@@ -403,11 +406,15 @@
 
   <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel"></section>
 
-  {% if can_chat %}
+  {% if can_chat or (visibility == 'public' and not request.state.current_user) %}
   <section id="m-chat" class="mobile-section panel mt-2 hidden" role="region" aria-label="AI assistance">
     <h2>AI assistance</h2>
+    {% if not request.state.current_user %}
+    <div class="small">Login and claim this analysis to unlock AI assistance features.</div>
+    {% else %}
     <div class="small">Ask a question about the selected pages.</div>
     <button class="btn btn-primary" onclick="openChat()">Open Chat</button>
+    {% endif %}
   </section>
   {% endif %}
 
