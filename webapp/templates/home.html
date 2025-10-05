@@ -29,8 +29,9 @@
 
 <h1 class="hero-title">Extract Website Insights for Sales & Lead Discovery</h1>
 <p class="mb-3 hero-subtitle">Get website content, link maps, and contact intelligence with sources; use AI assistance to identify qualified lead signals and generate outreach tailored to your ideal customer profile — in minutes.</p>
+<div class="py-2"></div>
 
-<div class="panels-row">
+<div class="grid-2 panels-row">
    <section class="panel">
       <h2 id="site-heading">Analyze a website</h2>
       {% include "partials/site_crawl_form.html" %}
@@ -49,7 +50,7 @@
 </div>
 
 {% if community_metrics %}
-  <section class="panel mt-2 marketing-headline" role="region" aria-label="Community momentum">
+  <section class="panel mt-3 marketing-headline" role="region" aria-label="Community momentum">
     <p class="m0" aria-live="polite">
       From <span class="emph-num">{{ community_metrics.analyses_total | thousands }}</span> <span class="emph-label">Analyses</span>
       <span class="emph-num">{{ community_metrics.emails_total | thousands }}</span> <span class="emph-label">Potential Leads</span> emerged over
@@ -58,10 +59,10 @@
   </section>
 {% endif %}
 
-<h2 class="mt-2">Recent analyses</h2>
+<h2 class="mt-3">Recent analyses</h2>
 {% if items and items|length > 0 %}
   {% from 'partials/analysis_card.html' import analysis_card with context %}
-  <ul class="card-list mt-2">
+  <ul class="card-list mt-3">
     {% for item in items %}
       {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, emphasize_emails=true) }}
     {% endfor %}

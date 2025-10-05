@@ -8,7 +8,7 @@ Location of stylesheet:
 
 1) Design Tokens (CSS variables on :root)
 - Sizing & spacing
-  - `--gap`: 12px
+  - `--gap`: 16px
   - `--radius`: 8px
   - `--radius-sm`: 6px
   - `--radius-lg`: 12px
@@ -84,7 +84,7 @@ Location of stylesheet:
   - `.small`: 12px text and muted color
   - `.muted`: color var(--muted)
 - Spacing
-  - `.m0`, `.mt-1`, `.mt-2`, `.mt-3`, `.mb-1`, `.mb-2`, `.mb-3`, `.ml-1`, `.ml-2`, `.mr-1`, `.mr-2`
+  - `.m0`, `.mt-1`, `.mt-2`, `.mt-3`, `.mt-4`, `.mb-1`, `.mb-2`, `.mb-3`, `.mb-4`, `.ml-1`, `.ml-2`, `.mr-1`, `.mr-2`, `.py-2`
 - Display
   - `.hidden`, `.inline`, `.inline-block`, `.block`
 - Flex spacer
@@ -93,7 +93,7 @@ Location of stylesheet:
   - `.actions`: flexible action clusters (display:flex; gap; wrap)
   - `.toolbar`: generic inline toolbar (display:flex; gap; align-items:center; flex-wrap:wrap)
 - Grids
-  - `.form-grid`: responsive form grid (grid: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--gap))
+  - `.form-grid`: responsive form grid (grid: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--gap))
 - Width
   - `.w-full`: force width: 100% (inputs/controls)
 - A11y helpers
@@ -189,6 +189,8 @@ Location of stylesheet:
 - `.summary-grid`: 2 columns with gap
 - `.summary-item`: 13px font-size body content
 - `.col-span-all`: grid-column 1 / -1 for wide sections
+- `.grid-2`: 2 columns with gap
+- `.grid-3`: 3 columns with gap
 
 18) Responsive
 - <= 768px

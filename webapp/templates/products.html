@@ -4,13 +4,13 @@
 <div class="container">
 <h1>Products</h1>
 
-<section class="panel mt-2" role="region" aria-label="Products">
+<section class="panel mt-3" role="region" aria-label="Products">
   <div class="actions" role="toolbar" aria-label="Product Actions">
     <a href="/my" class="btn">Back to Dashboard</a>
   </div>
 
   <div class="table-wrap">
-    <table class="table mt-1" aria-label="Products Table">
+    <table class="table mt-2" aria-label="Products Table">
       <thead>
         <tr>
           <th>Name</th>
@@ -27,11 +27,11 @@
   </div>
 
   <!-- Product Form -->
-  <div id="product-form" class="panel mt-2" aria-label="Product Form">
+  <div id="product-form" class="panel mt-3" aria-label="Product Form">
     <h3 id="pf-title">New Product</h3>
     <div id="pf-global" class="small validation-error" role="status" aria-live="polite"></div>
     <div class="small">All fields are required.</div>
-    <div class="form-grid mt-2">
+    <div class="form-grid mt-3">
       <label>Name (required)<br>
         <input type="text" id="pf-name" placeholder="Product Name" aria-describedby="pf-name-err" aria-invalid="false" required>
         <br><small id="pf-name-err" class="small validation-error"></small>
@@ -49,7 +49,7 @@
         <br><small id="pf-description-err" class="small validation-error"></small>
       </label>
     </div>
-    <div class="mt-1" role="toolbar" aria-label="Product Form Actions">
+    <div class="mt-2" role="toolbar" aria-label="Product Form Actions">
       <button class="btn btn-primary" onclick="saveProduct()">Save</button>
       <button class="btn" onclick="closeProductForm()">Cancel</button>
     </div>

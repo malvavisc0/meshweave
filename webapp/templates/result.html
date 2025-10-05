@@ -11,6 +11,7 @@
     {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
   </span>
 </h1>
+<div class="py-2"></div>
 {% if request.state.current_user %}
 <div class="inline-block small mt-1" role="toolbar" aria-label="Prospect">
   <button type="button" class="btn btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
@@ -118,7 +119,7 @@
     {% set rm = payload.metrics.render %}
   {% endif %}
   <!-- Quick Stats -->
-  <div class="quick-stats panel mt-2" role="region" aria-label="Quick Stats">
+  <div class="quick-stats panel mt-3" role="region" aria-label="Quick Stats">
     <div class="stat-card">
       <div class="stat-k">HTTP</div>
       <div class="stat-v">{{ rm.response_status if rm.response_status is not none else "" }}</div>
@@ -194,7 +195,7 @@
 {% include "partials/metadata_panel.html" %}
 
 {% if is_owner and payload and payload.summary %}
-<section class="panel mt-2" role="region" aria-label="Crawl Summary">
+<section class="panel mt-3" role="region" aria-label="Crawl Summary">
   <h2>Crawl Summary</h2>
   <ul class="domain-list">
     <li>
@@ -314,7 +315,7 @@
   {% endif %}
 
   {% if can_chat %}
-  <section class="panel mt-2" id="compose-chat" role="region" aria-label="AI assistance">
+  <section class="panel mt-3" id="compose-chat" role="region" aria-label="AI assistance">
     <h2>AI assistance</h2>
 
     {% if request.state.current_user and not has_products %}
