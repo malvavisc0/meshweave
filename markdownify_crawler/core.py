@@ -348,7 +348,123 @@ _EMAIL_REGEX = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[A-Za-z]{2,})")
 
 # Common top-level domains for validation
 _COMMON_TLDS = {
-    "com", "org", "net", "edu", "gov", "mil", "info", "biz", "co", "uk", "de", "fr", "it", "es", "ca", "au", "jp", "cn", "in", "br", "mx", "nl", "se", "no", "fi", "dk", "pl", "ru", "be", "at", "ch", "pt", "cz", "gr", "tr", "hu", "sk", "si", "hr", "ba", "me", "rs", "mk", "al", "bg", "ro", "md", "ua", "by", "kz", "uz", "tj", "tm", "kg", "az", "am", "ge", "ee", "lv", "lt", "mt", "cy", "lu", "is", "ie", "gi", "pt", "ad", "li", "mc", "sm", "va", "ai", "io", "sh", "ac", "to", "tv", "cc", "st", "ms", "gs", "tc", "vg", "je", "gg", "im", "fo", "gl", "sj", "ax", "pm", "re", "wf", "tf", "yt", "mq", "gp", "gf", "pf", "nc", "vu", "sb", "fm", "ki", "nr", "pw", "ws", "as", "ck", "nu", "tk", "nf", "hm", "bv", "cx", "aq"
+    "com",
+    "org",
+    "net",
+    "edu",
+    "gov",
+    "mil",
+    "info",
+    "biz",
+    "co",
+    "uk",
+    "de",
+    "fr",
+    "it",
+    "es",
+    "ca",
+    "au",
+    "jp",
+    "cn",
+    "in",
+    "br",
+    "mx",
+    "nl",
+    "se",
+    "no",
+    "fi",
+    "dk",
+    "pl",
+    "ru",
+    "be",
+    "at",
+    "ch",
+    "pt",
+    "cz",
+    "gr",
+    "tr",
+    "hu",
+    "sk",
+    "si",
+    "hr",
+    "ba",
+    "me",
+    "rs",
+    "mk",
+    "al",
+    "bg",
+    "ro",
+    "md",
+    "ua",
+    "by",
+    "kz",
+    "uz",
+    "tj",
+    "tm",
+    "kg",
+    "az",
+    "am",
+    "ge",
+    "ee",
+    "lv",
+    "lt",
+    "mt",
+    "cy",
+    "lu",
+    "is",
+    "ie",
+    "gi",
+    "pt",
+    "ad",
+    "li",
+    "mc",
+    "sm",
+    "va",
+    "ai",
+    "io",
+    "sh",
+    "ac",
+    "to",
+    "tv",
+    "cc",
+    "st",
+    "ms",
+    "gs",
+    "tc",
+    "vg",
+    "je",
+    "gg",
+    "im",
+    "fo",
+    "gl",
+    "sj",
+    "ax",
+    "pm",
+    "re",
+    "wf",
+    "tf",
+    "yt",
+    "mq",
+    "gp",
+    "gf",
+    "pf",
+    "nc",
+    "vu",
+    "sb",
+    "fm",
+    "ki",
+    "nr",
+    "pw",
+    "ws",
+    "as",
+    "ck",
+    "nu",
+    "tk",
+    "nf",
+    "hm",
+    "bv",
+    "cx",
+    "aq",
 }
 
 
@@ -364,25 +480,28 @@ def _is_valid_email(email: str) -> bool:
     Returns:
         bool: True if the email passes validation checks.
     """
-    if not email or '@' not in email:
+    if not email or "@" not in email:
         return False
 
-    local, domain = email.split('@', 1)
+    local, domain = email.split("@", 1)
     if not local or not domain:
         return False
 
     # Local part checks
-    if (local.startswith('.') or local.endswith('.') or
-        '..' in local or len(local) < 2):
+    if local.startswith(".") or local.endswith(".") or ".." in local or len(local) < 2:
         return False
 
     # Domain checks
-    if ('.' not in domain or domain.startswith('.') or domain.endswith('.') or
-        '..' in domain):
+    if (
+        "." not in domain
+        or domain.startswith(".")
+        or domain.endswith(".")
+        or ".." in domain
+    ):
         return False
 
     # Stricter regex check
-    strict_regex = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    strict_regex = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
     if not strict_regex.fullmatch(email):
         return False
 
@@ -392,7 +511,7 @@ def _is_valid_email(email: str) -> bool:
         return False
 
     # Exclude emails with unusual domain extensions or patterns
-    domain_parts = domain.split('.')
+    domain_parts = domain.split(".")
     if len(domain_parts) < 2 or any(len(part) < 2 for part in domain_parts[-2:]):
         return False
 
@@ -619,12 +738,16 @@ def preprocess_soup(soup: BeautifulSoup, base_url: str, final_url: str) -> Beaut
         True, {"class": re.compile(r"(ad|ads|popup|modal|banner|overlay|tooltip)", re.I)}
     ):
         node.decompose()
-    for node in soup.find_all(True, id=re.compile(r"(ad|ads|popup|modal|banner|overlay)", re.I)):
+    for node in soup.find_all(
+        True, id=re.compile(r"(ad|ads|popup|modal|banner|overlay)", re.I)
+    ):
         node.decompose()
 
     # role-based additional removals
     for node in soup.find_all(
-        attrs={"role": re.compile(r"^(complementary|banner|contentinfo|dialog|alert)$", re.I)}
+        attrs={
+            "role": re.compile(r"^(complementary|banner|contentinfo|dialog|alert)$", re.I)
+        }
     ):
         node.decompose()
 
@@ -950,7 +1073,10 @@ async def crawl(
                 continue
             if _is_ignored_domain(absu):
                 continue
-            if absu not in visited_norm and (len(visited_list) + len(q)) < crawl_max_pages:
+            if (
+                absu not in visited_norm
+                and (len(visited_list) + len(q)) < crawl_max_pages
+            ):
                 visited_norm.add(absu)
                 q.append(absu)
 
@@ -965,7 +1091,10 @@ async def crawl(
                     continue
                 if _is_ignored_domain(su):
                     continue
-                if su not in visited_norm and (len(visited_list) + len(q)) < crawl_max_pages:
+                if (
+                    su not in visited_norm
+                    and (len(visited_list) + len(q)) < crawl_max_pages
+                ):
                     visited_norm.add(su)
                     q.append(su)
                     sitemap_meta["urls_seeded"] += 1
@@ -1095,6 +1224,7 @@ async def crawl(
 # Sitemap/domain helpers
 # -------------------------
 
+
 def _looks_like_domain(value: str) -> bool:
     """Heuristic to detect a bare domain (no scheme/path)."""
     v = (value or "").strip().lower()
@@ -1114,10 +1244,10 @@ async def _fetch_bytes_async(url: str, timeout: float = 10.0) -> Optional[bytes]
     Returns:
         bytes on success; None on failure.
     """
-    import urllib.request
-    import urllib.error
     import gzip
     import io
+    import urllib.error
+    import urllib.request
 
     def _fetch() -> Optional[bytes]:
         try:
@@ -1191,7 +1321,9 @@ def _parse_sitemap_xml(xml_bytes: bytes, base_url: str) -> Tuple[List[str], List
     return urls, sitemaps
 
 
-async def _discover_sitemap_urls(domain: str, *, max_urls: int = 1000) -> Tuple[List[str], Dict[str, Any]]:
+async def _discover_sitemap_urls(
+    domain: str, *, max_urls: int = 1000
+) -> Tuple[List[str], Dict[str, Any]]:
     """Discover sitemap URLs for a given domain via robots.txt and common endpoints.
 
     Args:
@@ -1239,7 +1371,9 @@ async def _discover_sitemap_urls(domain: str, *, max_urls: int = 1000) -> Tuple[
                     status = "ok"
                 except Exception:
                     status = "error"
-            sources.append({"type": "robots", "url": robots_url, "found": found, "status": status})
+            sources.append(
+                {"type": "robots", "url": robots_url, "found": found, "status": status}
+            )
 
     # De-duplicate candidates preserving order
     seen_c: Set[str] = set()
