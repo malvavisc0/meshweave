@@ -14,6 +14,9 @@
     {% if item.is_new %}
       <span class="badge ml-1" title="Recently updated">NEW</span>
     {% endif %}
+    {% if item.status == "failed" %}
+      <span class="badge status-failed ml-1" title="Analysis failed">FAILED</span>
+    {% endif %}
   </div>
 
   <div class="card-subtitle small">
