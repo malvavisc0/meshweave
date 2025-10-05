@@ -1997,17 +1997,17 @@
             }
         } catch(_){}
 
-        // Start progress polling (private by id or public by key)
-        const hasId = !!(__ctx.crawl_id);
-        const hasKey = !!(__ctx.public_key);
-        const st = String(__ctx.status || '').toLowerCase();
-        if (st === 'running' || st === 'pending') {
-            if (hasId) {
-                startProgressPolling(__ctx.crawl_id);
-            } else if (hasKey) {
-                startPublicProgressPolling(__ctx.public_key);
-            }
-        }
+                // Start progress polling (prefer public when available to work for anonymous viewers and non-owners)
+                const hasId = !!(__ctx.crawl_id);
+                const hasKey = !!(__ctx.public_key);
+                const st = String(__ctx.status || '').toLowerCase();
+                if (st === 'running' || st === 'pending') {
+                    if (hasKey) {
+                        startPublicProgressPolling(__ctx.public_key);
+                    } else if (hasId) {
+                        startProgressPolling(__ctx.crawl_id);
+                    }
+                }
     })();
 
     // Expose functions used by inline onclick in templates
