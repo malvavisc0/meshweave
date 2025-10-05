@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import types
 
 import pytest
@@ -51,4 +52,6 @@ def _stable_env(monkeypatch):
     monkeypatch.setenv("MARKDOWNIFY_DISABLE_CACHE", "true")
     # No slowmo by default
     monkeypatch.delenv("MARKDOWNIFY_DEBUG_SLOWMO_MS", raising=False)
+    # Set SQLite path to a writable location for tests
+    monkeypatch.setenv("SQLITE_PATH", "/tmp/test_app.db")
     yield
