@@ -92,11 +92,13 @@
         <input type="hidden" name="url" value="{{ canonical_url }}">
         <input type="hidden" name="public" value="on">
         <button type="submit" class="btn" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}"{% endif %}>Refresh</button>
+        {% if not can_refresh %}<small class="ml-1">Available in {{ refresh_eta }}</small>{% endif %}
       </form>
     {% elif can_retry %}
       <form method="post" action="/retry/{{ id }}" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" class="btn">Retry</button>
+        <button type="submit" class="btn" {% if not can_retry %}disabled title="Available in {{ retry_eta }}"{% endif %}>Retry</button>
+        {% if not can_retry %}<small class="ml-1">Available in {{ retry_eta }}</small>{% endif %}
       </form>
     {% endif %}
   </div>
