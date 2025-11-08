@@ -27,36 +27,63 @@
   </div>
 {% endif %}
 
-<h1 class="hero-title">Extract Website Insights for Sales & Lead Discovery</h1>
-<p class="mb-3 hero-subtitle">Get website content, link maps, and contact intelligence with sources; use AI assistance to identify qualified lead signals and generate outreach tailored to your ideal customer profile — in minutes.</p>
+<h1 class="hero-title">Chat with any website. Find leads. Draft the first email.</h1>
+<p class="mb-3 hero-subtitle">Paste a URL. AI reads the site, maps links, pulls the people and proof, answers questions in chat, and drafts a ready-to-send opener — with sources, in minutes.</p>
 <div class="py-2"></div>
 
 <div class="grid-2 panels-row">
    <section class="panel">
       <h2 id="site-heading">Analyze a website</h2>
       {% include "partials/site_crawl_form.html" %}
+      <div class="mt-1">
+        <a href="/all?sort=recent" class="btn btn-secondary" data-track="see_live_example_click">See a live example</a>
+      </div>
+      <p class="small hero-trust">Used by founders, agency SDRs, and growth teams.</p>
    </section>
 
    <section class="panel">
-      <h2>Features Overview</h2>
+      <h2>Capabilities</h2>
       <ul class="benefits small m0 mt-1">
-        <li>Clean Markdown versions of website pages for easy content review.</li>
-        <li>Detailed maps of internal navigation and external connections links.</li>
-        <li>Email addresses tied to their pages for targeted outreach.</li>
-        <li>AI assistance grounded in real content for generating outreach drafts.</li>
-        <li>Analysis pages with unique URLs for easy sharing and collaboration.</li>
+        <li><strong>Chat with the website</strong> — ask about pricing, partners, roles, anything.</li>
+        <li><strong>Leads with proof</strong> — emails tied to the exact page and quote.</li>
+        <li><strong>Content analysis</strong> — instant brief in clean Markdown.</li>
+        <li><strong>Outreach, started</strong> — suggested openers grounded in their words.</li>
+        <li><strong>Early access</strong> — Persona fit and content gap insights vs your ICP.</li>
       </ul>
+      <div class="preview-card mt-2">
+        <div class="preview-row">
+          <span class="chip chip-lead" aria-label="Lead email">jane@acme.com</span>
+          <span class="chip chip-status">NEW</span>
+        </div>
+        <div class="preview-excerpt small mt-1">“We partner with fast-growing startups across fintech and SaaS.”</div>
+        <div class="preview-opener mt-1 small">Suggested opener: “Congrats on the new launch — noticed your fintech partnerships…”</div>
+      </div>
    </section>
 </div>
 
 {% if community_metrics %}
-  <section class="panel mt-3 marketing-headline" role="region" aria-label="Community momentum">
-    <p class="m0" aria-live="polite">
-      From <span class="emph-num">{{ community_metrics.analyses_total | thousands }}</span> <span class="emph-label">Analyses</span>
-      <span class="emph-num">{{ community_metrics.emails_total | thousands }}</span> <span class="emph-label">Potential Leads</span> emerged over
-      <span class="emph-num">{{ community_metrics.pages_total | thousands }}</span> <span class="emph-label">Pages</span> — and counting
-    </p>
-  </section>
+  <a href="/all?sort=recent" class="panel mt-3 momentum" role="region" aria-label="See community feed" data-track="momentum_bar_click">
+    <div class="momentum-inner" aria-live="polite">
+      <span class="live-dot" aria-hidden="true"></span>
+      <span class="label small">Live community momentum</span>
+      <span class="stat">
+        <span class="emph-num" data-countup data-target="{{ community_metrics.analyses_total }}">0</span>
+        <span class="emph-label">analyses</span>
+      </span>
+      <span class="sep">•</span>
+      <span class="stat">
+        <span class="emph-num" data-countup data-target="{{ community_metrics.emails_total }}">0</span>
+        <span class="emph-label">leads</span>
+      </span>
+      <span class="sep">•</span>
+      <span class="stat">
+        <span class="emph-num" data-countup data-target="{{ community_metrics.pages_total }}">0</span>
+        <span class="emph-label">pages processed</span>
+      </span>
+      <span class="spacer"></span>
+      <span class="cta small">See community feed</span>
+    </div>
+  </a>
 {% endif %}
 
 <h2 class="mt-3">Recent analyses</h2>
@@ -74,6 +101,40 @@
   <p>No recent public analyses yet.</p>
 {% endif %}
 
+<!-- FAQ -->
+<section class="panel mt-3 faq" role="region" aria-label="FAQ">
+  <h2>FAQ</h2>
+  <details>
+    <summary>What does “Chat with the website” mean?</summary>
+    <p class="small m0">Ask natural questions about the site. The assistant answers using crawled pages and cites sources.</p>
+  </details>
+  <details>
+    <summary>How do emails and leads get found?</summary>
+    <p class="small m0">Emails are extracted from published site content and tied to the exact page/section. No guessing; everything is sourced.</p>
+  </details>
+  <details>
+    <summary>What does an analysis include?</summary>
+    <p class="small m0">A browsable brief in clean Markdown, a lead list with sources, and suggested email openers grounded in the site’s own words.</p>
+  </details>
+  <details>
+    <summary>Are analyses public or private?</summary>
+    <p class="small m0">Signed-in users keep analyses private. Anonymous runs are public by default.</p>
+  </details>
+  <details>
+    <summary>Can outreach be drafted here?</summary>
+    <p class="small m0">Yes. Use the integrated assistant to generate a first email based on page context and quotes.</p>
+  </details>
+  <details>
+    <summary>What’s coming next?</summary>
+    <p class="small m0">Early access: Persona fit and Content Gap insights—AI infers likely buyer persona and site alignment with target ICP.</p>
+  </details>
+  <details>
+    <summary>Can results be shared?</summary>
+    <p class="small m0">Yes. Each analysis has a unique URL for sharing with team or client.</p>
+  </details>
+</section>
+
+<script src="/static/js/home-hero.js"></script>
 <script src="/static/js/site-crawl.js"></script>
 
 </div>
