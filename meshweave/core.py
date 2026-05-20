@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .crawling import (
@@ -124,6 +125,7 @@ def _build_payload(
     # Merge start page markdown with crawled page markdowns
     markdowns: dict[str, dict[str, Any]] = dict(crawl_result.get("markdowns", {}))
     if origin and page_data.get("markdown"):
+        start_page_emails = emails_by_url.get(origin, [])
         markdowns.setdefault(
             origin,
             {
@@ -131,6 +133,13 @@ def _build_payload(
                 "page": page_data["page_meta"],
                 "headings": page_data.get("headings", {}),
                 "content_metrics": page_data.get("content_metrics", {}),
+                "render_metrics": render_metrics,
+                "links": {
+                    "internal": page_data.get("internal_links", []),
+                    "external": page_data.get("external_links", []),
+                },
+                "extraction_metrics": page_data.get("extraction_metrics", {}),
+                "emails_unique": start_page_emails,
             },
         )
 
@@ -145,6 +154,33 @@ def _build_payload(
             "render": render_metrics,
             "extraction": page_data["extraction_metrics"],
         },
+    }
+
+    # Build pages[] array from markdowns dict
+    pages: list[dict[str, Any]] = []
+    for url, entry in markdowns.items():
+        pages.append({
+            "url": url,
+            "page": entry.get("page", {}),
+            "markdown": entry.get("markdown", ""),
+            "headings": entry.get("headings", {}),
+            "content_metrics": entry.get("content_metrics", {}),
+            "metrics": {
+                "render": entry.get("render_metrics", {}),
+                "extraction": entry.get("extraction_metrics", {}),
+            },
+            "emails": {"unique": entry.get("emails_unique", [])},
+            "links": entry.get("links", {}),
+        })
+    payload["pages"] = pages
+
+    # Webapp convenience fields
+    payload["scope"] = "site" if crawl_internal else "page"
+    payload["domain"] = domain_of(origin)
+    payload["canonical_url"] = origin
+    payload["summary"] = {
+        "visited_count": len(crawl_result["visited"]),
+        "reason_stopped": crawl_result["stop_reason"],
     }
 
     if include_emails:
@@ -193,6 +229,7 @@ async def crawl(
     *,
     crawl_internal: bool = False,
     crawl_max_pages: int = 25,
+    max_depth: int = 0,
     same_domain_only: bool = True,
     include_emails: bool = True,
     deobfuscate_emails: bool = True,
@@ -200,6 +237,9 @@ async def crawl(
     per_page_timeout: float = 15.0,
     disable_cache: bool = False,
     cache_dir: str | None = None,
+    on_page_crawled: (Callable[[str, dict[str, Any]], Awaitable[None]] | None) = None,
+    should_continue: (Callable[[], Awaitable[bool]] | None) = None,
+    url_filter: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Render a page/domain, convert to markdown, classify
     links, optionally BFS-crawl internal pages, extract emails.
@@ -331,6 +371,7 @@ async def crawl(
                 page_data["internal_links"],
                 session=session,
                 crawl_max_pages=crawl_max_pages,
+                max_depth=max_depth,
                 same_domain_only=same_domain_only,
                 include_emails=include_emails,
                 deobfuscate_emails=deobfuscate_emails,
@@ -338,6 +379,9 @@ async def crawl(
                 per_page_timeout=per_page_timeout,
                 cache_dir=local_cache,
                 sitemap_seeds=sitemap_seeds,
+                on_page_crawled=on_page_crawled,
+                should_continue=should_continue,
+                url_filter=url_filter,
             )
 
         # 7) Merge and deduplicate

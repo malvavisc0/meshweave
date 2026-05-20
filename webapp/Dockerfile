@@ -39,7 +39,7 @@ COPY alembic ./alembic
 # - Sync core deps from uv.lock (meshweave crawler library)
 # - Install the webapp package with its runtime extras
 RUN uv sync --frozen --no-dev --no-install-project && \
-    uv pip install --system ".[renderer]" && \
+    uv pip install --system . && \
     uv pip install --system /app/webapp[runtime]
 
 # --- Final stage: minimal image without Rust ---
@@ -119,8 +119,13 @@ RUN uv pip uninstall --system rjsmin rcssmin || true
 # Install curl for container healthchecks and diagnostics
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright Chromium and system deps
+# Install Chromium system shared libraries (libglib2.0, libnss3, etc.)
+RUN python -m playwright install-deps chromium
+
+# Install CloakBrowser stealth Chromium binary
 RUN python -m cloakbrowser install
+
+RUN rm -rf /var/lib/apt/lists/*
 
 # Create cache dir
 RUN mkdir -p /tmp/meshweave/cache

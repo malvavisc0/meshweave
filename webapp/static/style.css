@@ -1152,36 +1152,6 @@ label {
 }
 
 /* Momentum bar (legacy — kept for community link) */
-.momentum {
-  display: block;
-  text-decoration: none;
-  border: 1px solid var(--color-hairline);
-  background: var(--color-surface-1);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-none);
-  margin: var(--space-lg) 0;
-}
-
-.momentum-inner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-  font: var(--font-body-sm);
-  color: var(--color-ink-muted);
-}
-
-.momentum .emph-num {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.momentum .sep {
-  color: var(--color-hairline-strong);
-  opacity: 0.3;
-}
-
 .live-dot {
   width: 6px;
   height: 6px;

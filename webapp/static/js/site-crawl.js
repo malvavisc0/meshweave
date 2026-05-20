@@ -17,6 +17,23 @@
     }
   }
 
+  // Extract full normalized URL (with path) from user input
+  function toFullUrl(value) {
+    try {
+      var v = (value || '').trim();
+      if (!v) return '';
+      if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+      var u = new URL(v);
+      var host = (u.hostname || '').toLowerCase();
+      if (host.startsWith('www.')) host = host.slice(4);
+      var path = u.pathname || '/';
+      if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1);
+      return 'https://' + host + path;
+    } catch (e) {
+      return '';
+    }
+  }
+
   function initSiteCrawlForm() {
     try {
       var siteForm = document.getElementById('site-form');
@@ -66,12 +83,18 @@
       } catch (_) { }
 
       // Submit handler
+      // Double-click guard
+      var __submitting = false;
+
       siteForm.addEventListener('submit', function (e) {
+        if (__submitting) { e.preventDefault(); return; }
+        __submitting = true;
         try { trackEvent('submit_click'); } catch (_) { }
         var val = (siteInput && siteInput.value) ? siteInput.value.trim() : '';
         var dom = toDomain(val);
         if (!dom || !dom.includes('.')) {
           e.preventDefault();
+          __submitting = false;
           if (siteInput) {
             try {
               siteInput.setCustomValidity('Enter a valid domain like example.com');
@@ -85,8 +108,12 @@
           return;
         }
         if (siteDomain) siteDomain.value = dom;
+        // Populate hidden url field with full URL (preserving path)
+        var fullUrl = toFullUrl(val);
+        var urlField = siteForm.querySelector('input[name="url"]');
+        if (urlField && fullUrl) urlField.value = fullUrl;
         try { if (siteInput) siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
-        // For anonymous users allow private override
+        // Toggle public hidden field based on checkbox (runs for all users)
         if (sitePublic) { sitePublic.value = (sitePrivate && sitePrivate.checked) ? '' : '1'; }
       });
     } catch (_) { /* swallow */ }

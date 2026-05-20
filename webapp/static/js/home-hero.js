@@ -36,7 +36,7 @@
       var val = Math.round(start + (target - start) * eased);
       setText(el, val);
       if (p < 1) {
-        try { requestAnimationFrame(step); } catch (_) { setTimeout(function(){ step(Date.now()); }, 16); }
+        try { requestAnimationFrame(step); } catch (_) { setTimeout(function () { step(Date.now()); }, 16); }
       } else {
         setText(el, target);
         if (el.dataset) el.dataset.counted = '1';
@@ -47,7 +47,7 @@
 
   function initCountups() {
     try {
-      var bar = document.querySelector('.momentum');
+      var bar = document.querySelector('.stats-bar');
       if (!bar) return;
       var nums = bar.querySelectorAll('[data-countup]');
       if (!nums || nums.length === 0) return;
@@ -73,7 +73,7 @@
           entries.forEach(function (e) {
             if (!once && e.isIntersecting) {
               once = true;
-              try { io.disconnect(); } catch (_) {}
+              try { io.disconnect(); } catch (_) { }
               run();
             }
           });

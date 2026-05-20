@@ -58,7 +58,7 @@ async def submit(
         raise HTTPException(status_code=400, detail="Invalid submission")
 
     # SITE MODE
-    if mode_val == "site" or (domain and not url):
+    if mode_val == "site" or (domain and (not url or not (url or "").strip())):
         # CSRF validation (same as old /submit-site)
         if _env_bool("WEBAPP_CSRF_ENABLED", False):
             cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
@@ -109,12 +109,24 @@ async def submit(
             except Exception:
                 pass
 
+        # Derive start_url from the url field if it contains a path, else default to domain root
+        _site_url = (url or "").strip()
+        if _site_url and _site_url.startswith("http"):
+            from webapp.utils.url import canonicalize_url as _canon
+
+            _s_dom, _s_path, _s_query, _s_canon = _canon(_site_url)
+            start_url = _s_canon
+            site_path = _s_path
+        else:
+            start_url = f"https://{dom}/"
+            site_path = "/"
+
         # Upsert crawl row (unique on visibility+domain+path+query)
-        start_url = f"https://{dom}/"
         now = datetime.now(UTC)
         with get_session() as s:
             existing = (
-                s.query(Crawl)
+                s
+                .query(Crawl)
                 .filter(
                     Crawl.visibility == visibility,
                     Crawl.domain == dom,
@@ -382,7 +394,8 @@ async def submit(
             # Default all public analyses to site scope (domain root) so pages[] with markdown is available
             start_url = f"https://{dom}/"
             existing = (
-                s.query(Crawl)
+                s
+                .query(Crawl)
                 .filter(
                     Crawl.visibility == "public",
                     Crawl.domain == dom,
@@ -445,7 +458,8 @@ async def submit(
                 key_val = row.key
         else:
             existing = (
-                s.query(Crawl)
+                s
+                .query(Crawl)
                 .filter(
                     Crawl.visibility == "private",
                     Crawl.domain == dom,

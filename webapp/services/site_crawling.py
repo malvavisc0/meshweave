@@ -1,54 +1,22 @@
+"""Site crawl background task — thin wrapper around meshweave.core.crawl()."""
+
 import json
 import os
 import time
-from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
-from meshweave.crawling import BrowserSession, get_rendered_html
-from meshweave.extraction import (
-    classify_links,
-    extract_emails,
-    extract_page_meta,
-    preprocess_soup,
-    soup_from_html,
-    to_markdown,
-)
-from meshweave.urls import is_ignored_domain, normalize_abs_url, should_ignore_path
+from meshweave.core import crawl as core_crawl
+from meshweave.urls import normalize_domain, should_ignore_path
 from webapp.db import get_session
 from webapp.models import Crawl
-from webapp.services.persist import clear_crawl_data, persist_page
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
 
 
-def _norm_domain_from_url(u: str) -> str:
-    """Normalize a URL's netloc for strict same-registrable-domain checks.
-
-    Args:
-        u (str): Input URL.
-
-    Returns:
-        str: Lowercased netloc without leading 'www.' when present; empty string on error.
-    """
-    try:
-        host = (urlsplit(u or "").netloc or "").lower().strip()
-        return host[4:] if host.startswith("www.") else host
-    except Exception:
-        return ""
-
-
 def _int_env(name: str, default: int) -> int:
-    """Read an integer environment variable with a fallback.
-
-    Args:
-        name (str): Environment variable name.
-        default (int): Fallback value when unset or invalid.
-
-    Returns:
-        int: Parsed integer value or the provided default.
-    """
+    """Read an integer environment variable with a fallback."""
     try:
         return int(os.getenv(name, str(default)))
     except Exception:
@@ -56,15 +24,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 def _limits_from_row(row: Crawl) -> dict[str, int]:
-    """Resolve crawl limits from row.crawl_params and env defaults/caps.
-
-    Args:
-        row (Crawl): Crawl ORM row whose crawl_params may contain requested values.
-
-    Returns:
-        Dict[str, int]: Dict with keys 'max_pages', 'max_depth', and 'time_budget_ms'
-            after applying defaults and caps.
-    """
+    """Resolve crawl limits from row.crawl_params and env defaults/caps."""
     defaults = {
         "max_pages": _int_env("AUTH_SITE_MAX_PAGES_DEFAULT", 200),
         "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_DEFAULT", 3),
@@ -74,8 +34,9 @@ def _limits_from_row(row: Crawl) -> dict[str, int]:
         "max_pages": _int_env("AUTH_SITE_MAX_PAGES_CAP", 500),
         "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_CAP", 5),
         "time_budget_ms": max(
-            60_000, _int_env("AUTH_SITE_TIME_BUDGET_MS_CAP", 3_600_000)
-        ),  # min 60s
+            60_000,
+            _int_env("AUTH_SITE_TIME_BUDGET_MS_CAP", 3_600_000),
+        ),
     }
     req = row.crawl_params or {}
     lim = {
@@ -90,66 +51,58 @@ def _limits_from_row(row: Crawl) -> dict[str, int]:
             or defaults["time_budget_ms"]
         ),
     }
-    # Apply caps
     lim["max_pages"] = max(1, min(lim["max_pages"], caps["max_pages"]))
     lim["max_depth"] = max(0, min(lim["max_depth"], caps["max_depth"]))
     lim["time_budget_ms"] = max(
-        60_000, min(lim["time_budget_ms"], caps["time_budget_ms"])
+        60_000,
+        min(lim["time_budget_ms"], caps["time_budget_ms"]),
     )
     return lim
 
 
 async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
-    """Background task to perform a site crawl (BFS) and persist per-URL details.
+    """Background task: site crawl via meshweave.core.crawl().
 
-    Behavior
-    - BFS within same domain (based on start page final URL domain).
-    - Enforce max_pages (including start), max_depth (0 = only start page), time budget.
-    - On time budget exhaustion, status='failed' with error='time_budget_exceeded'.
-    - Store per-URL details in payload_json under 'pages' list with summary and limits.
-
-    Args:
-        crawl_id (str): Parent crawl row id (scope='site').
-        force_refresh (bool): Disable cache on renders when true.
-
-    Returns:
-        None: Performs side effects (DB updates and metrics) and does not return a value.
+    Transitions the Crawl row through pending → running →
+    succeeded/failed/cancelled, delegates actual crawling to the
+    unified core, and stores the resulting payload_json.
     """
     now = datetime.now(UTC)
-    start_url: str | None = None
+    started_overall = time.monotonic()
 
-    # Transition to running atomically
+    # ── 1. Transition to running ─────────────────────────────────
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if not row:
             return
         start_url = row.url
         updated = (
-            s.query(Crawl)
+            s
+            .query(Crawl)
             .filter(
                 Crawl.id == crawl_id,
                 Crawl.status.in_(("pending", "failed", "succeeded")),
             )
-            .update({"status": "running", "updated_at": now})
+            .update({
+                "status": "running",
+                "updated_at": now,
+            })
         )
         if updated == 0:
             return
 
-    started_monotonic = time.monotonic()
+    # ── 2. Resolve limits and persist for progress API ───────────
     limits = (
         _limits_from_row(row)
         if start_url
-        else {"max_pages": 1, "max_depth": 0, "time_budget_ms": 600_000}
+        else {
+            "max_pages": 1,
+            "max_depth": 0,
+            "time_budget_ms": 600_000,
+        }
     )
-    # Persist effective limits so progress API/UI can display totals (max_pages, etc.)
+    limits["started_at_ms"] = int(time.time() * 1000)
     try:
-        # Record a stable start timestamp for progress/ETA calculations (milliseconds since epoch)
-        try:
-            import time as _time
-
-            limits["started_at_ms"] = int(_time.time() * 1000)
-        except Exception:
-            pass
         with get_session() as s:
             r = s.get(Crawl, crawl_id)
             if r:
@@ -157,615 +110,151 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
                 r.updated_at = datetime.now(UTC)
     except Exception:
         pass
-    time_budget_s = max(1.0, float(limits.get("time_budget_ms", 600_000)) / 1000.0)
 
-    started_monotonic_overall = time.monotonic()
-    try:
+    time_budget_s = max(1.0, float(limits["time_budget_ms"]) / 1000.0)
+    max_depth = limits["max_depth"]
+
+    # ── 3. Domain whitelist for url_filter ───────────────────────
+    allowed_domain: str | None = None
+    if start_url:
         try:
-            log_audit("site_crawl_started", crawl_id=crawl_id)
+            parts = urlsplit(start_url)
+            allowed_domain = normalize_domain(parts.netloc or "")
         except Exception:
             pass
 
-        # Clear any previously persisted links/emails for this crawl (idempotent)
+    def _url_filter(u: str) -> bool:
+        """Reject URLs outside the allowed domain or on
+        ignore lists."""
         try:
-            clear_crawl_data(crawl_id)
+            p = urlsplit(u)
+            dom = normalize_domain(p.netloc or "")
+            if allowed_domain and dom != allowed_domain:
+                return False
+            if should_ignore_path(p.path or ""):
+                return False
         except Exception:
-            pass
+            return False
+        return True
 
-        # Render the start page
-        pages: list[dict[str, Any]] = []
-        visited: set[str] = set()
-        queue: deque[tuple[str, int]] = deque()
-        stop_reason = "queue_empty"
-        # Aggregate emails across pages
-        all_emails_set: set[str] = set()
-        emails_by_url: dict[str, list[str]] = {}
-        # Track sources per (email,url) with modes like 'mailto'|'text'|'obfuscated'
-        email_sources_map: dict[tuple[str, str], set[str]] = {}
+    # ── 4. Callbacks for heartbeats and cancellation ─────────────
+    started_monotonic = time.monotonic()
 
-        # Aggregate links across pages
-        all_internal_paths: set[str] = set()
-        all_external_abs: set[str] = set()
-
-        async with BrowserSession() as session:
-            # Render function wrapper
-            async def _fetch(url: str):
-                """Render a URL and return the HTML and render
-                metrics.
-
-                Args:
-                    url (str): Absolute URL to fetch and render.
-
-                Returns:
-                    Tuple[str, Any]: Tuple of raw HTML string
-                        and a render metrics object.
-                """
-                cache = (
-                    None
-                    if (
-                        force_refresh
-                        or (
-                            os.getenv(
-                                "MARKDOWNIFYMESHWEAVE_DISABLE_CACHE",
-                                "",
-                            )
-                            .strip()
-                            .lower()
-                            in ("1", "true", "yes", "on")
-                        )
-                    )
-                    else (os.getenv("MESHWEAVE_CACHE_DIR") or "/tmp/markdownify/cache")
-                )
-                html, metrics = await get_rendered_html(
-                    url=url,
-                    session=session,
-                    cache_dir=cache,
-                    timeout=30.0,
-                    progressive_scroll=True,
-                    return_metrics=True,
-                    wait_until="domcontentloaded",
-                )
-                return html, metrics
-
-            # Helper to add page record
-            def _record_page(
-                final_url: str,
-                meta: dict[str, Any],
-                markdown: str,
-                render_metrics: dict[str, Any],
-                extraction_metrics: dict[str, Any],
-                emails_unique: list[str],
-                internal_links: list[str],
-                external_links: list[str],
-            ):
-                """Append a normalized page record."""
-                pages.append(
-                    {
-                        "url": final_url,
-                        "page": meta,
-                        "markdown": markdown,
-                        "metrics": {
-                            "render": render_metrics,
-                            "extraction": (extraction_metrics),
-                        },
-                        "emails": {
-                            "unique": emails_unique,
-                        },
-                        "links": {
-                            "internal": internal_links,
-                            "external": external_links,
-                        },
-                    }
-                )
-
-            # 1) Start page
-            html0, m0 = await _fetch(start_url)  # type: ignore
-            final0 = str(getattr(m0, "final_url", start_url or "")) or (start_url or "")
-            base_domain_val = _norm_domain_from_url(final0)
-            soup0 = soup_from_html(html0)
-            meta0 = extract_page_meta(soup0)
-            # Classify links, then preprocess for markdown
-            internal0, external0, extraction0 = classify_links(soup0, base_url=final0)
-            soup0_pp = preprocess_soup(
-                soup0,
-                base_url=start_url or final0,
-                final_url=final0,
-            )
-            md0 = to_markdown(soup0_pp)
-
-            # Aggregate links for site-level summary
-            try:
-                for href in internal0:
-                    absu = normalize_abs_url(href, final0)
-                    if absu:
-                        pth = urlsplit(absu).path or "/"
-                        if not pth.startswith("/"):
-                            pth = "/" + pth
-                        all_internal_paths.add(pth)
-                for href in external0:
-                    absu = normalize_abs_url(href, final0)
-                    if absu:
-                        all_external_abs.add(absu)
-            except Exception:
-                pass
-
-            # Emails on start page
-            emails0_set, src0 = extract_emails(html0, deobfuscate=True)
-            emails0 = sorted(list(emails0_set))
-            if emails0:
-                emails_by_url[final0] = emails0
-            all_emails_set |= emails0_set
-            # Record sources for start page
-            try:
-                for s in src0 or []:
-                    e = (s.get("email") or "").lower()
-                    mode = s.get("found_as") or "text"
-                    if e:
-                        email_sources_map.setdefault((e, final0), set()).add(mode)
-            except Exception:
-                pass
-
-            render_metrics0 = {
-                "final_url": final0,
-                "response_status": int(getattr(m0, "response_status", 0)),
-                "network_requests": int(getattr(m0, "network_requests", 0)),
-                "content_length": int(getattr(m0, "content_length", 0)),
-                "load_time_ms": round(
-                    float(getattr(m0, "load_time", 0.0)) * 1000.0,
-                    2,
-                ),
-                "cache_hit": bool(getattr(m0, "cache_hit", False)),
-            }
-            _record_page(
-                final0,
-                meta0,
-                md0,
-                render_metrics0,
-                extraction0,
-                emails0,
-                internal0,
-                external0,
-            )
-
-            # Persist start page links/emails
-            try:
-                persist_page(
-                    crawl_id=crawl_id,
-                    page_url=final0,
-                    base_domain=_norm_domain_from_url(final0),
-                    internal_links=internal0,
-                    external_links=external0,
-                    email_sources=src0,
-                )
-            except Exception:
-                pass
-
-            # Heartbeat
-            try:
-                with get_session() as s:
-                    hb_row = s.get(Crawl, crawl_id)
-                    if hb_row:
-                        hb_row.updated_at = datetime.now(UTC)
-            except Exception:
-                pass
-
-            # Seed queue (depth 1) within domain
-            visited.add(final0)
-            start_domain_ok = final0
-
-            # Strict domain whitelist enforcement
-            allowed_domains = {_norm_domain_from_url(start_domain_ok)}
-
-            for href in internal0:
-                absu = normalize_abs_url(href, final0)
-                if not absu:
-                    continue
-                if _norm_domain_from_url(absu) not in allowed_domains:
-                    continue
-                if should_ignore_path(urlsplit(absu).path or "") or is_ignored_domain(
-                    absu
-                ):
-                    continue
-                if absu in visited:
-                    continue
-                queue.append((absu, 1))
-                visited.add(absu)
-
-            # 2) BFS
-            while queue and len(pages) < limits["max_pages"]:
-                # Cooperative cancellation
-                try:
-                    with get_session() as s:
-                        _cur = s.get(Crawl, crawl_id)
-                    if not _cur:
-                        return
-                    _st = str(getattr(_cur, "status", "")).lower()
-
-                    if _st == "cancelled":
-                        with get_session() as s:
-                            row = s.get(Crawl, crawl_id)
-                            if not row:
-                                return
-                            row.status = "cancelled"
-                            row.error = "cancelled_by_user"
-                            try:
-                                email_sources_list = [
-                                    {
-                                        "email": k[0],
-                                        "url": k[1],
-                                        "found_as": sorted(list(v)),
-                                    }
-                                    for (
-                                        k,
-                                        v,
-                                    ) in email_sources_map.items()
-                                ]
-                            except Exception:
-                                email_sources_list = []
-                            row.payload_json = json.dumps(
-                                {
-                                    "scope": "site",
-                                    "start_url": start_url,
-                                    "limits": limits,
-                                    "domain": (base_domain_val),
-                                    "canonical_url": (final0),
-                                    "links": {
-                                        "internal": sorted(list(all_internal_paths)),
-                                        "external": sorted(list(all_external_abs)),
-                                    },
-                                    "metrics": {
-                                        "extraction": {
-                                            "base_domain": (base_domain_val),
-                                            "internal_count": len(all_internal_paths),
-                                            "external_count": len(all_external_abs),
-                                        }
-                                    },
-                                    "emails": {
-                                        "unique": sorted(all_emails_set),
-                                        "by_url": (emails_by_url),
-                                        "sources": (email_sources_list),
-                                        "counts": {
-                                            "total_unique": len(all_emails_set),
-                                            "total_mentions": sum(
-                                                len(v) for v in emails_by_url.values()
-                                            ),
-                                        },
-                                    },
-                                    "pages": pages,
-                                    "summary": {
-                                        "visited_count": len(pages),
-                                        "reason_stopped": ("cancelled"),
-                                    },
-                                }
-                            )
-                            row.updated_at = datetime.now(UTC)
-                        try:
-                            log_audit(
-                                "site_crawl_cancelled",
-                                crawl_id=crawl_id,
-                            )
-                        except Exception:
-                            pass
-                        try:
-                            job_duration.labels("site", "cancelled").observe(
-                                max(
-                                    0.0,
-                                    time.monotonic() - started_monotonic_overall,
-                                )
-                            )
-                        except Exception:
-                            pass
-                        return
-
-                    if _st in ("succeeded", "failed") or _st != "running":
-                        return
-                except Exception:
-                    pass
-                # Time budget check
-                if (time.monotonic() - started_monotonic) > time_budget_s:
-                    stop_reason = "time_budget_exceeded"
-                    break
-
-                url_i, depth_i = queue.popleft()
-                if depth_i > limits["max_depth"]:
-                    stop_reason = "max_depth"
-                    continue
-
-                try:
-                    html_i, m_i = await _fetch(url_i)
-                except Exception:
-                    continue
-
-                final_i = str(getattr(m_i, "final_url", url_i)) or url_i
-
-                if _norm_domain_from_url(final_i) not in allowed_domains:
-                    continue
-
-                if is_ignored_domain(final_i) or should_ignore_path(
-                    urlsplit(final_i).path or ""
-                ):
-                    continue
-
-                # Emails
-                emails_i_set, src_i = extract_emails(html_i, deobfuscate=True)
-                emails_i = sorted(list(emails_i_set))
-                if emails_i:
-                    emails_by_url[final_i] = emails_i
-                all_emails_set |= emails_i_set
-                try:
-                    for s in src_i or []:
-                        e = (s.get("email") or "").lower()
-                        mode = s.get("found_as") or "text"
-                        if e:
-                            email_sources_map.setdefault((e, final_i), set()).add(mode)
-                except Exception:
-                    pass
-
-                # Links and markdown
-                soup_i = soup_from_html(html_i)
-                meta_i = extract_page_meta(soup_i)
-                internal_i, external_i, extraction_i = classify_links(
-                    soup_i, base_url=final_i
-                )
-                soup_i_pp = preprocess_soup(
-                    soup_i,
-                    base_url=final_i,
-                    final_url=final_i,
-                )
-                md_i = to_markdown(soup_i_pp)
-
-                try:
-                    for href in internal_i:
-                        absu2 = normalize_abs_url(href, final_i)
-                        if absu2:
-                            p2 = urlsplit(absu2).path or "/"
-                            if not p2.startswith("/"):
-                                p2 = "/" + p2
-                            all_internal_paths.add(p2)
-                    for href in external_i:
-                        absu3 = normalize_abs_url(href, final_i)
-                        if absu3:
-                            all_external_abs.add(absu3)
-                except Exception:
-                    pass
-
-                render_metrics_i = {
-                    "final_url": final_i,
-                    "response_status": int(getattr(m_i, "response_status", 0)),
-                    "network_requests": int(getattr(m_i, "network_requests", 0)),
-                    "content_length": int(getattr(m_i, "content_length", 0)),
-                    "load_time_ms": round(
-                        float(getattr(m_i, "load_time", 0.0)) * 1000.0,
-                        2,
-                    ),
-                    "cache_hit": bool(getattr(m_i, "cache_hit", False)),
-                }
-                _record_page(
-                    final_i,
-                    meta_i,
-                    md_i,
-                    render_metrics_i,
-                    extraction_i,
-                    emails_i,
-                    internal_i,
-                    external_i,
-                )
-
-                try:
-                    persist_page(
-                        crawl_id=crawl_id,
-                        page_url=final_i,
-                        base_domain=(_norm_domain_from_url(final_i)),
-                        internal_links=internal_i,
-                        external_links=external_i,
-                        email_sources=src_i,
-                    )
-                except Exception:
-                    pass
-
-                # Heartbeat
-                try:
-                    with get_session() as s:
-                        hb_row = s.get(Crawl, crawl_id)
-                        if hb_row:
-                            hb_row.updated_at = datetime.now(UTC)
-                except Exception:
-                    pass
-
-                # Enqueue neighbors
-                for href2 in internal_i:
-                    abs2 = normalize_abs_url(href2, final_i)
-                    if not abs2:
-                        continue
-                    if _norm_domain_from_url(abs2) not in allowed_domains:
-                        continue
-                    if should_ignore_path(
-                        urlsplit(abs2).path or ""
-                    ) or is_ignored_domain(abs2):
-                        continue
-                    if abs2 in visited:
-                        continue
-                    projected_total = len(pages) + len(queue) + 1
-                    if projected_total > limits["max_pages"]:
-                        stop_reason = "max_pages"
-                        break
-                    queue.append((abs2, depth_i + 1))
-                    visited.add(abs2)
-
-            # Decide final status and reason
-            if (time.monotonic() - started_monotonic) > time_budget_s:
-                with get_session() as s:
-                    row = s.get(Crawl, crawl_id)
-                    if not row:
-                        return
-                    row.status = "failed"
-                    row.error = "time_budget_exceeded"
-                    try:
-                        email_sources_list = [
-                            {
-                                "email": k[0],
-                                "url": k[1],
-                                "found_as": sorted(list(v)),
-                            }
-                            for (
-                                k,
-                                v,
-                            ) in email_sources_map.items()
-                        ]
-                    except Exception:
-                        email_sources_list = []
-                    row.payload_json = json.dumps(
-                        {
-                            "scope": "site",
-                            "start_url": start_url,
-                            "limits": limits,
-                            "domain": base_domain_val,
-                            "canonical_url": final0,
-                            "links": {
-                                "internal": sorted(list(all_internal_paths)),
-                                "external": sorted(list(all_external_abs)),
-                            },
-                            "metrics": {
-                                "extraction": {
-                                    "base_domain": (base_domain_val),
-                                    "internal_count": len(all_internal_paths),
-                                    "external_count": len(all_external_abs),
-                                }
-                            },
-                            "emails": {
-                                "unique": sorted(all_emails_set),
-                                "by_url": emails_by_url,
-                                "sources": (email_sources_list),
-                                "counts": {
-                                    "total_unique": len(all_emails_set),
-                                    "total_mentions": sum(
-                                        len(v) for v in emails_by_url.values()
-                                    ),
-                                },
-                            },
-                            "pages": pages,
-                            "summary": {
-                                "visited_count": len(pages),
-                                "reason_stopped": ("time_budget_exceeded"),
-                            },
-                        }
-                    )
-                    row.updated_at = datetime.now(UTC)
-                try:
-                    log_audit(
-                        "site_crawl_failed_time_budget",
-                        crawl_id=crawl_id,
-                    )
-                except Exception:
-                    pass
-                try:
-                    job_duration.labels("site", "failed").observe(
-                        max(
-                            0.0,
-                            time.monotonic() - started_monotonic_overall,
-                        )
-                    )
-                except Exception:
-                    pass
-                return
-
-            # Completed within budget
-            if queue and len(pages) >= limits["max_pages"]:
-                stop_reason = "max_pages"
-            elif any(d > limits["max_depth"] for _, d in queue):
-                stop_reason = "max_depth"
-            else:
-                stop_reason = "queue_empty"
-
+    async def _should_continue() -> bool:
+        """Check cancellation and time budget."""
+        if (time.monotonic() - started_monotonic) > time_budget_s:
+            return False
+        try:
             with get_session() as s:
-                row = s.get(Crawl, crawl_id)
-                if not row:
-                    return
-                row.status = "succeeded"
-                row.error = None
-                try:
-                    email_sources_list = [
-                        {
-                            "email": k[0],
-                            "url": k[1],
-                            "found_as": sorted(list(v)),
-                        }
-                        for (
-                            k,
-                            v,
-                        ) in email_sources_map.items()
-                    ]
-                except Exception:
-                    email_sources_list = []
-                row.payload_json = json.dumps(
-                    {
-                        "scope": "site",
-                        "start_url": start_url,
-                        "limits": limits,
-                        "domain": base_domain_val,
-                        "canonical_url": final0,
-                        "links": {
-                            "internal": sorted(list(all_internal_paths)),
-                            "external": sorted(list(all_external_abs)),
-                        },
-                        "metrics": {
-                            "extraction": {
-                                "base_domain": (base_domain_val),
-                                "internal_count": len(all_internal_paths),
-                                "external_count": len(all_external_abs),
-                            }
-                        },
-                        "emails": {
-                            "unique": sorted(all_emails_set),
-                            "by_url": emails_by_url,
-                            "sources": (email_sources_list),
-                            "counts": {
-                                "total_unique": len(all_emails_set),
-                                "total_mentions": sum(
-                                    len(v) for v in emails_by_url.values()
-                                ),
-                            },
-                        },
-                        "pages": pages,
-                        "summary": {
-                            "visited_count": len(pages),
-                            "reason_stopped": stop_reason,
-                        },
-                    }
-                )
-                row.updated_at = datetime.now(UTC)
-            try:
-                log_audit(
-                    "site_crawl_succeeded",
-                    crawl_id=crawl_id,
-                )
-            except Exception:
-                pass
-            try:
-                job_duration.labels("site", "succeeded").observe(
-                    max(
-                        0.0,
-                        time.monotonic() - started_monotonic_overall,
-                    )
-                )
-            except Exception:
-                pass
+                r = s.get(Crawl, crawl_id)
+            if not r:
+                return False
+            st = str(getattr(r, "status", "")).lower()
+            return st == "running"
+        except Exception:
+            return False
 
-    except Exception as e:
-        with get_session() as s:
-            row = s.get(Crawl, crawl_id)
-            if not row:
-                return
-            row.status = "failed"
-            row.error = str(e)
-            row.updated_at = datetime.now(UTC)
+    async def _on_page(url: str, data: dict[str, Any]) -> None:
+        """Heartbeat: touch updated_at after each page."""
         try:
-            log_audit("site_crawl_failed", crawl_id=crawl_id)
+            with get_session() as s:
+                r = s.get(Crawl, crawl_id)
+                if r:
+                    r.updated_at = datetime.now(UTC)
         except Exception:
             pass
+
+    # ── 5. Run the unified crawl ────────────────────────────────
+    try:
+        log_audit("site_crawl_started", crawl_id=crawl_id)
+    except Exception:
+        pass
+
+    try:
+        payload = await core_crawl(
+            url=start_url or "",
+            crawl_internal=True,
+            crawl_max_pages=limits["max_pages"],
+            max_depth=max_depth,
+            same_domain_only=True,
+            include_emails=True,
+            deobfuscate_emails=True,
+            per_page_timeout=30.0,
+            disable_cache=force_refresh,
+            on_page_crawled=_on_page,
+            should_continue=_should_continue,
+            url_filter=_url_filter,
+        )
+    except Exception as e:
+        _finish_task(crawl_id, "failed", error=str(e))
+        return
+
+    # ── 6. Determine final status ───────────────────────────────
+    stop_reason = payload.get("summary", {}).get("reason_stopped", "queue_empty")
+    timed_out = (time.monotonic() - started_monotonic) > time_budget_s
+    elapsed = max(0.0, time.monotonic() - started_overall)
+
+    if timed_out:
+        _finish_task(
+            crawl_id,
+            "failed",
+            error="time_budget_exceeded",
+            payload=payload,
+            audit_event="site_crawl_failed_time_budget",
+            metric_status="failed",
+            elapsed=elapsed,
+        )
+    elif stop_reason == "cancelled":
+        _finish_task(
+            crawl_id,
+            "cancelled",
+            error="cancelled_by_user",
+            payload=payload,
+            audit_event="site_crawl_cancelled",
+            metric_status="cancelled",
+            elapsed=elapsed,
+        )
+    else:
+        _finish_task(
+            crawl_id,
+            "succeeded",
+            payload=payload,
+            audit_event="site_crawl_succeeded",
+            metric_status="succeeded",
+            elapsed=elapsed,
+        )
+
+
+def _finish_task(
+    crawl_id: str,
+    status: str,
+    *,
+    error: str | None = None,
+    payload: dict[str, Any] | None = None,
+    audit_event: str = "",
+    metric_status: str = "",
+    elapsed: float = 0.0,
+) -> None:
+    """Write final status/payload to DB and emit observability."""
+    try:
+        with get_session() as s:
+            r = s.get(Crawl, crawl_id)
+            if not r:
+                return
+            r.status = status
+            r.error = error
+            r.updated_at = datetime.now(UTC)
+            if payload is not None:
+                r.payload_json = json.dumps(payload)
+    except Exception:
+        pass
+    if audit_event:
         try:
-            job_duration.labels("site", "failed").observe(
-                max(0.0, time.monotonic() - started_monotonic_overall)
-            )
+            log_audit(audit_event, crawl_id=crawl_id)
+        except Exception:
+            pass
+    if metric_status:
+        try:
+            job_duration.labels("site", metric_status).observe(elapsed)
         except Exception:
             pass

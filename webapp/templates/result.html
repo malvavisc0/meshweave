@@ -2,38 +2,41 @@
 
 {% block content %}
 <div class="container">
-<h1>
-  Website insights
-  <span class="badges" role="group" aria-label="Job state badges">
-    {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
-    {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
-    <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
-    {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
-  </span>
-</h1>
-<div class="py-2"></div>
-{% if request.state.current_user %}
-<div class="inline-block small mt-1" role="toolbar" aria-label="Prospect">
-  <button type="button" class="btn btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
-  <span id="prospect-status-chip" class="badge">Shortlisted</span>
-  <button type="button" class="btn btn-sm" onclick="openProspectManage()">Manage Prospect</button>
-</div>
-{% endif %}
+  <h1>
+    Website insights
+    <span class="badges" role="group" aria-label="Job state badges">
+      {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
+      {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
+      <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and
+        summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
+      {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
+    </span>
+  </h1>
+  <div class="py-2"></div>
+  {% if request.state.current_user %}
+  <div class="inline-block small mt-1" role="toolbar" aria-label="Prospect">
+    <button type="button" class="btn btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
+    <span id="prospect-status-chip" class="badge">Shortlisted</span>
+    <button type="button" class="btn btn-sm" onclick="openProspectManage()">Manage Prospect</button>
+  </div>
+  {% endif %}
 
-{# Auth/leads gating helpers #}
-{% set show_leads = not (visibility == 'public' and not request.state.current_user) %}
+  {# Auth/leads gating helpers #}
+  {% set show_leads = not (visibility == 'public' and not request.state.current_user) %}
 
-{% if visibility == "public" and abs_page_url %}
+  {% if visibility == "public" and abs_page_url %}
   <p class="small">
     <strong>Share:</strong>
-    <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Post on X</a> •
-    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener" onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Share on LinkedIn</a> •
+    <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener"
+      onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Post on X</a> •
+    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener"
+      onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Share on LinkedIn</a> •
     <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>
   </p>
-{% endif %}
+  {% endif %}
 
 
-{% if status in ["pending", "running"] %}
+  {% if status in ["pending", "running"] %}
   <p>Status: {{ status }}. Processing...</p>
 
   <div id="progress-panel" class="panel mt-1 mb-2" role="status" aria-live="polite">
@@ -66,17 +69,44 @@
   </div>
 
   {% if status == "running" and request.state.current_user and id %}
-    <div class="actions" role="toolbar" aria-label="Job Controls">
-      <form method="post" action="/cancel/{{ id }}" class="inline-block">
-        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" class="btn btn-danger-soft">Cancel</button>
-      </form>
-    </div>
+  <div class="actions" role="toolbar" aria-label="Job Controls">
+    <form method="post" action="/cancel/{{ id }}" class="inline-block">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <button type="submit" class="btn btn-danger-soft">Cancel</button>
+    </form>
+  </div>
   {% endif %}
-{% elif status == "failed" %}
-  <p>Status: failed.</p>
-  <pre>{{ error }}</pre>
-{% elif status == "succeeded" and payload %}
+  {% elif status == "failed" %}
+  <div class="panel mt-2" role="alert" aria-label="Analysis failed">
+    <h2>Analysis failed</h2>
+    <p class="small" style="color:var(--color-ink-muted);">
+      Could not complete the analysis for
+      <strong>{{ canonical_url or (domain ~ (path or '/')) }}</strong>.
+    </p>
+    <div style="background:var(--color-surface-1);border:1px solid var(--color-hairline);padding:16px;margin-top:12px;">
+      <pre
+        style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:var(--font-mono);font-size:var(--font-size-sm);color:var(--color-ink);">{{ error }}</pre>
+    </div>
+    <div class="actions mt-2">
+      {% if visibility != "public" and id %}
+      <form method="post" action="/retry/{{ id }}" class="inline-block">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+        <button type="submit" class="btn">Retry</button>
+      </form>
+      {% endif %}
+      {% if visibility == "public" %}
+      <form method="post" action="/submit" class="inline-block">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+        <input type="hidden" name="url" value="{{ canonical_url }}">
+        <input type="hidden" name="public" value="on">
+        <button type="submit" class="btn">Refresh</button>
+      </form>
+      {% endif %}
+      <a class="btn" href="{{ canonical_url or ('https://' ~ domain ~ (path or '/')) }}" target="_blank"
+        rel="noopener">Open Website</a>
+    </div>
+  </div>
+  {% elif status == "succeeded" and payload %}
   <!-- Actions Row -->
   <div class="actions" role="toolbar" aria-label="Actions">
     {% if can_chat %}<button type="button" class="btn" onclick="openChat()">Chat</button>{% endif %}
@@ -84,39 +114,42 @@
     <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Website</a>
     <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
     {% if visibility == "public" and abs_page_url %}
-      <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
+    <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
     {% endif %}
     <span class="spacer"></span>
     {% if visibility == "public" %}
-      <form method="post" action="/submit" class="inline-block">
-        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <input type="hidden" name="url" value="{{ canonical_url }}">
-        <input type="hidden" name="public" value="on">
-        <button type="submit" class="btn" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}"{% endif %}>Refresh</button>
-        {% if not can_refresh %}<small class="ml-1">Available in {{ refresh_eta }}</small>{% endif %}
-      </form>
+    <form method="post" action="/submit" class="inline-block">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <input type="hidden" name="url" value="{{ canonical_url }}">
+      <input type="hidden" name="public" value="on">
+      <button type="submit" class="btn" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}" {% endif
+        %}>Refresh</button>
+      {% if not can_refresh %}<small class="ml-1">Available in {{ refresh_eta }}</small>{% endif %}
+    </form>
     {% elif can_retry %}
-      <form method="post" action="/retry/{{ id }}" class="inline-block">
-        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" class="btn" {% if not can_retry %}disabled title="Available in {{ retry_eta }}"{% endif %}>Retry</button>
-        {% if not can_retry %}<small class="ml-1">Available in {{ retry_eta }}</small>{% endif %}
-      </form>
+    <form method="post" action="/retry/{{ id }}" class="inline-block">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <button type="submit" class="btn" {% if not can_retry %}disabled title="Available in {{ retry_eta }}" {% endif
+        %}>Retry</button>
+      {% if not can_retry %}<small class="ml-1">Available in {{ retry_eta }}</small>{% endif %}
+    </form>
     {% endif %}
   </div>
 
   {% set rm = {} %}
   {# Prefer summary metrics only when they contain any render values; otherwise fall back to payload #}
   {% if summary and summary.metrics and summary.metrics.render and (
-        (summary.metrics.render.response_status is not none) or
-        (summary.metrics.render.load_time_ms is not none) or
-        (summary.metrics.render.content_length is not none) or
-        (summary.metrics.render.network_requests is not none)
-     ) %}
-    {% set rm = summary.metrics.render %}
-  {% elif payload and payload.pages and payload.pages[0] and payload.pages[0].metrics and payload.pages[0].metrics.render %}
-    {% set rm = payload.pages[0].metrics.render %}
+  (summary.metrics.render.response_status is not none) or
+  (summary.metrics.render.load_time_ms is not none) or
+  (summary.metrics.render.content_length is not none) or
+  (summary.metrics.render.network_requests is not none)
+  ) %}
+  {% set rm = summary.metrics.render %}
+  {% elif payload and payload.pages and payload.pages[0] and payload.pages[0].metrics and
+  payload.pages[0].metrics.render %}
+  {% set rm = payload.pages[0].metrics.render %}
   {% elif payload and payload.metrics and payload.metrics.render %}
-    {% set rm = payload.metrics.render %}
+  {% set rm = payload.metrics.render %}
   {% endif %}
   <!-- Quick Stats -->
   <div class="quick-stats panel mt-3" role="region" aria-label="Quick Stats">
@@ -129,11 +162,11 @@
       <div class="stat-v">
         {% set _load_ms = (rm.load_time_ms if rm and (rm.load_time_ms is not none) else None) %}
         {% if _load_ms is not none %}
-          {% if _load_ms >= 1000 %}
-            {{ (_load_ms / 1000.0) | round(1) }} s
-          {% else %}
-            {{ _load_ms | int }} ms
-          {% endif %}
+        {% if _load_ms >= 1000 %}
+        {{ (_load_ms / 1000.0) | round(1) }} s
+        {% else %}
+        {{ _load_ms | int }} ms
+        {% endif %}
         {% else %}{{ "" }}{% endif %}
       </div>
     </div>
@@ -142,13 +175,13 @@
       <div class="stat-v">
         {% set _bytes = (rm.content_length if rm and (rm.content_length is not none) else None) %}
         {% if _bytes is not none %}
-          {% if _bytes >= 1048576 %}
-            {{ (_bytes / 1048576.0) | round(1) }} MB
-          {% elif _bytes >= 1024 %}
-            {{ (_bytes / 1024.0) | round(1) }} KB
-          {% else %}
-            {{ _bytes | int }} B
-          {% endif %}
+        {% if _bytes >= 1048576 %}
+        {{ (_bytes / 1048576.0) | round(1) }} MB
+        {% elif _bytes >= 1024 %}
+        {{ (_bytes / 1024.0) | round(1) }} KB
+        {% else %}
+        {{ _bytes | int }} B
+        {% endif %}
         {% else %}{{ "" }}{% endif %}
       </div>
     </div>
@@ -169,11 +202,12 @@
       <div class="stat-v">
         {# Use actual pages count; fallback to visited_count; then extraction internal_count #}
         {% if payload and payload.pages %}
-          {{ payload.pages|length }}
+        {{ payload.pages|length }}
         {% elif payload and payload.summary and (payload.summary.visited_count is not none) %}
-          {{ payload.summary.visited_count }}
-        {% elif summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.internal_count is not none) %}
-          {{ summary.metrics.extraction.internal_count }}
+        {{ payload.summary.visited_count }}
+        {% elif summary and summary.metrics and summary.metrics.extraction and
+        (summary.metrics.extraction.internal_count is not none) %}
+        {{ summary.metrics.extraction.internal_count }}
         {% else %}0{% endif %}
       </div>
     </div>
@@ -181,91 +215,93 @@
       <div class="stat-k">Links</div>
       <div class="stat-v">
         {# Prefer summary extraction external_count; fallback to payload.metrics or links count #}
-        {% if summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.external_count is not none) %}
-          {{ summary.metrics.extraction.external_count }}
-        {% elif payload and payload.metrics and payload.metrics.extraction and (payload.metrics.extraction.external_count is not none) %}
-          {{ payload.metrics.extraction.external_count }}
+        {% if summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.external_count
+        is not none) %}
+        {{ summary.metrics.extraction.external_count }}
+        {% elif payload and payload.metrics and payload.metrics.extraction and
+        (payload.metrics.extraction.external_count is not none) %}
+        {{ payload.metrics.extraction.external_count }}
         {% elif payload and payload.links and payload.links.external %}
-          {{ payload.links.external|length }}
+        {{ payload.links.external|length }}
         {% else %}0{% endif %}
       </div>
     </div>
   </div>
 
-{% include "partials/metadata_panel.html" %}
+  {% include "partials/metadata_panel.html" %}
 
-{% if is_owner and payload and payload.summary %}
-<section class="panel mt-3" role="region" aria-label="Crawl Summary">
-  <h2>Crawl Summary</h2>
-  <ul class="domain-list">
-    <li>
-      <span class="small">Pages Visited</span>
-      <span>{{ payload.summary.visited_count or 'N/A' }}</span>
-    </li>
-    <li>
-      <span class="small">Reason Stopped</span>
-      <span>{{ reason_stopped_label or 'N/A' }}</span>
-    </li>
-  </ul>
-</section>
-{% endif %}
+  {% if is_owner and payload and payload.summary %}
+  <section class="panel mt-3" role="region" aria-label="Crawl Summary">
+    <h2>Crawl Summary</h2>
+    <ul class="domain-list">
+      <li>
+        <span class="small">Pages Visited</span>
+        <span>{{ payload.summary.visited_count or 'N/A' }}</span>
+      </li>
+      <li>
+        <span class="small">Reason Stopped</span>
+        <span>{{ reason_stopped_label or 'N/A' }}</span>
+      </li>
+    </ul>
+  </section>
+  {% endif %}
 
-{% if is_owner and payload and (payload.scope or payload.start_url or payload.limits) %}
-<section class="panel mt-2" role="region" aria-label="Crawl Configuration">
-  <h2>Crawl Configuration</h2>
-  <ul class="domain-list">
-    {% if payload.scope %}
-    <li>
-      <span class="small">Scope</span>
-      <span>{{ payload.scope|title }}</span>
-    </li>
-    {% endif %}
-    {% if payload.start_url %}
-    <li>
-      <span class="small">Start URL</span>
-      <span><a href="{{ payload.start_url }}" target="_blank" rel="noopener">{{ payload.start_url }}</a></span>
-    </li>
-    {% endif %}
-    {% if payload.limits %}
-    <li>
-      <span class="small">Max Pages</span>
-      <span>{{ payload.limits.max_pages or 'N/A' }}</span>
-    </li>
-    <li>
-      <span class="small">Max Depth</span>
-      <span>{{ payload.limits.max_depth or 'N/A' }}</span>
-    </li>
-    <li>
-      <span class="small">Time Budget</span>
-      <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A' }}s</span>
-    </li>
-    {% endif %}
-  </ul>
-</section>
-{% endif %}
+  {% if is_owner and payload and (payload.scope or payload.start_url or payload.limits) %}
+  <section class="panel mt-2" role="region" aria-label="Crawl Configuration">
+    <h2>Crawl Configuration</h2>
+    <ul class="domain-list">
+      {% if payload.scope %}
+      <li>
+        <span class="small">Scope</span>
+        <span>{{ payload.scope|title }}</span>
+      </li>
+      {% endif %}
+      {% if payload.start_url %}
+      <li>
+        <span class="small">Start URL</span>
+        <span><a href="{{ payload.start_url }}" target="_blank" rel="noopener">{{ payload.start_url }}</a></span>
+      </li>
+      {% endif %}
+      {% if payload.limits %}
+      <li>
+        <span class="small">Max Pages</span>
+        <span>{{ payload.limits.max_pages or 'N/A' }}</span>
+      </li>
+      <li>
+        <span class="small">Max Depth</span>
+        <span>{{ payload.limits.max_depth or 'N/A' }}</span>
+      </li>
+      <li>
+        <span class="small">Time Budget</span>
+        <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A' }}s</span>
+      </li>
+      {% endif %}
+    </ul>
+  </section>
+  {% endif %}
 
-{% if request.state.current_user and visibility == 'public' and key and ownerless %}
-<section class="panel mt-2" role="region" aria-label="Claim Analysis">
-  <h2>Claim Analysis</h2>
-  <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
-  <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
-</section>
-{% endif %}
+  {% if request.state.current_user and visibility == 'public' and key and ownerless %}
+  <section class="panel mt-2" role="region" aria-label="Claim Analysis">
+    <h2>Claim Analysis</h2>
+    <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
+    <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
+  </section>
+  {% endif %}
 
-{% if is_owner %}
-<section class="panel mt-2" role="region" aria-label="Owner Controls">
-  <h2>Owner Controls</h2>
-  <div class="form-grid">
-    <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in discovery</label>
-    <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
-  </div>
-  <div class="form-grid">
-    <label><input type="checkbox" id="share-toggle" {% if share_url %}checked{% endif %}> Shareable link</label>
-    <button type="button" id="share-btn" class="btn btn-sm">Update</button>
-    {% if share_url %}<button type="button" id="copy-share-btn" class="btn btn-sm">Copy Link</button>{% endif %}
-  </div>
-</section>
-{% endif %}
+  {% if is_owner %}
+  <section class="panel mt-2" role="region" aria-label="Owner Controls">
+    <h2>Owner Controls</h2>
+    <div class="form-grid">
+      <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in discovery</label>
+      <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
+    </div>
+    <div class="form-grid">
+      <label><input type="checkbox" id="share-toggle" {% if share_url %}checked{% endif %}> Shareable link</label>
+      <button type="button" id="share-btn" class="btn btn-sm">Update</button>
+      {% if share_url %}<button type="button" id="copy-share-btn" class="btn btn-sm">Copy Link</button>{% endif %}
+    </div>
+  </section>
+  {% endif %}
 
 
 
@@ -280,7 +316,8 @@
       <button class="btn btn-sm" onclick="clearAllPages()">Clear</button>
       <span class="selection-summary ml-1">
         Included pages: <span id="selected-count">0</span>
-        <span class="small" id="selected-chars-wrap"> • ~chars: <span id="selected-chars">0</span>/<span id="selected-chars-max"></span></span>
+        <span class="small" id="selected-chars-wrap"> • ~chars: <span id="selected-chars">0</span>/<span
+            id="selected-chars-max"></span></span>
       </span>
       {% endif %}
     </div>
@@ -303,7 +340,8 @@
           <span>
             <button class="btn btn-sm" onclick="copyCurrentPage()">Copy content</button>
             <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
-            {% if can_chat %}<button class="btn btn-sm btn-ai" onclick="runClarityAssessmentForCurrentPage()" title="AI Clarity Assessment" aria-label="Assess Clarity">Assess Clarity</button>{% endif %}
+            {% if can_chat %}<button class="btn btn-sm btn-ai" onclick="runClarityAssessmentForCurrentPage()"
+              title="AI Clarity Assessment" aria-label="Assess Clarity">Assess Clarity</button>{% endif %}
           </span>
         </div>
         <div class="panel pages-panel">
@@ -373,7 +411,8 @@
       </div>
       <div class="actions small m0 mb-2">
         <span class="spacer"></span>
-        <button class="btn btn-danger-soft" id="chat-clear" onclick="clearChatHistory()" title="Clear conversation history">Clear Conversation</button>
+        <button class="btn btn-danger-soft" id="chat-clear" onclick="clearChatHistory()"
+          title="Clear conversation history">Clear Conversation</button>
       </div>
       <div class="chat-area">
         <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-atomic="false">
@@ -391,13 +430,15 @@
   <section class="mobile-section panel mt-2" role="region" aria-label="Contact intelligence">
     <h2>Contact intelligence</h2>
     <div class="actions" id="emails-toolbar">
-      <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)" aria-label="Filter by domain">
+      <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)"
+        aria-label="Filter by domain">
       <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
       <label class="small"><input type="checkbox" class="lead-type" value="text"> text</label>
       <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
       <button class="btn" onclick="clearLeadFilters()">Clear</button>
       <span class="spacer"></span>
-      <button class="btn" onclick="exportEmailsCsv()" data-track="export_emails_click" aria-label="Download all emails as CSV">Download CSV</button>
+      <button class="btn" onclick="exportEmailsCsv()" data-track="export_emails_click"
+        aria-label="Download all emails as CSV">Download CSV</button>
       <button class="btn" onclick="openAddLead()">Add Email</button>
     </div>
     <div class="table-wrap">
@@ -425,7 +466,8 @@
       <div class="form-grid">
         <label>Email<br><input type="text" id="add-email" placeholder="name@example.com"></label>
         <label>Source URL (optional)<br><input type="text" id="add-source" placeholder="https://..."></label>
-        <label>Social URL (optional)<br><input type="text" id="add-social" placeholder="https://linkedin.com/in/..."></label>
+        <label>Social URL (optional)<br><input type="text" id="add-social"
+            placeholder="https://linkedin.com/in/..."></label>
         <label>Role/Title (optional)<br><input type="text" id="add-role" placeholder="Founder, CEO"></label>
         <label>Tags (comma-separated)<br><input type="text" id="add-tags" placeholder="vip, partner"></label>
       </div>
@@ -436,54 +478,60 @@
     </div>
   </section>
   {% endif %}
-   {% if visibility == 'public' and not request.state.current_user and (email_count or 0) > 0 %}
-   <section class="panel gate-locked mt-2" role="region" aria-label="Email Contacts (Preview)">
-     <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ </h2>
-     {% if email_preview and email_preview|length > 0 %}
-     <div class="gate-preview small">
-       Preview ({{ email_preview|length }} of {{ email_count or 0 }}):
-       <ul class="domain-list">
-         {% for e in email_preview %}
-           <li><span><code>{{ e }}</code></span> <span class="small"></span></li>
-         {% endfor %}
-       </ul>
-     </div>
-     {% endif %}
-     <div class="actions cta-row">
-       <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}" onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
-     </div>
-   </section>
-   {% endif %}
-   <!-- Social panel -->
-   <section class="panel mt-2" role="region" aria-label="Social Links">
-     <h2>Social Links</h2>
-     <div id="social-groups"><!-- filled by JS --></div>
-   </section>
-   <!-- Links panel -->
-   <section class="panel mt-2" role="region" aria-label="External links">
-     <h2>External links</h2>
-     {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
-       <ul class="domain-list">
-         <li class="small" style="font-weight:600;">
-           <span class="small">URL</span> <span class="small">Count</span>
-         </li>
-         {% for td in summary.links.top_external_domains %}
-           <li><a href="https://{{ td.domain }}" target="_blank" rel="noopener">{{ td.domain }}</a> <span class="small">{{ td.count }}</span></li>
-         {% endfor %}
-       </ul>
-     {% else %}
-       <div class="small">No external domains detected.</div>
-     {% endif %}
-   </section>
+  {% if visibility == 'public' and not request.state.current_user and (email_count or 0) > 0 %}
+  <section class="panel gate-locked mt-2" role="region" aria-label="Email Contacts (Preview)">
+    <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ </h2>
+    {% if email_preview and email_preview|length > 0 %}
+    <div class="gate-preview small">
+      Preview ({{ email_preview|length }} of {{ email_count or 0 }}):
+      <ul class="domain-list">
+        {% for e in email_preview %}
+        <li><span><code>{{ e }}</code></span> <span class="small"></span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <div class="actions cta-row">
+      <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}"
+        onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
+    </div>
+  </section>
+  {% endif %}
+  <!-- Social panel -->
+  <section class="panel mt-2" role="region" aria-label="Social Links">
+    <h2>Social Links</h2>
+    <div id="social-groups"><!-- filled by JS --></div>
+  </section>
+  <!-- Links panel -->
+  <section class="panel mt-2" role="region" aria-label="External links">
+    <h2>External links</h2>
+    {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length
+    > 0 %}
+    <ul class="domain-list">
+      <li class="small" style="font-weight:600;">
+        <span class="small">URL</span> <span class="small">Count</span>
+      </li>
+      {% for td in summary.links.top_external_domains %}
+      <li><a href="https://{{ td.domain }}" target="_blank" rel="noopener">{{ td.domain }}</a> <span class="small">{{
+          td.count }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="small">No external domains detected.</div>
+    {% endif %}
+  </section>
 
 
 
   <!-- Mobile Tabs (hidden on desktop by base.css) -->
   <div class="mobile-tabs" role="tablist" aria-label="Sections">
-    {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="true" data-target="#m-leads">Leads</button>{% endif %}
+    {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="true"
+      data-target="#m-leads">Leads</button>{% endif %}
     <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
-    {% if can_chat %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">AI assistance</button>{% endif %}
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-stats">External links</button>
+    {% if can_chat %}<button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-chat">AI
+      assistance</button>{% endif %}
+    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-stats">External
+      links</button>
   </div>
 
   <!-- Sections -->
@@ -493,7 +541,8 @@
   {% if false %}
   <section id="m-pages" class="mobile-section panel" role="region" aria-label="Pages (Site Scope)">
     <h2>Pages ({{ payload.pages|length }})</h2>
-    <input type="text" id="pages-search" placeholder="Search pages..." aria-label="Search pages" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+    <input type="text" id="pages-search" placeholder="Search pages..." aria-label="Search pages"
+      style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
     <div class="pages-panel">
       <ul class="pages-list" id="pages-list">
         {% for p in payload.pages %}
@@ -504,21 +553,22 @@
         {% endfor %}
       </ul>
     </div>
-   <section id="m-stats" class="mobile-section panel mt-2" role="region" aria-label="Links">
-     <h2>Links</h2>
-     {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length > 0 %}
-       <ul class="domain-list">
-         <li class="small" style="font-weight:600;">
-           <span class="small">URL</span> <span class="small">Count</span>
-         </li>
-         {% for td in summary.links.top_external_domains %}
-           <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
-         {% endfor %}
-       </ul>
-     {% else %}
-       <div class="small">No external domains detected.</div>
-     {% endif %}
-   </section>
+    <section id="m-stats" class="mobile-section panel mt-2" role="region" aria-label="Links">
+      <h2>Links</h2>
+      {% if summary and summary.links and summary.links.top_external_domains and
+      summary.links.top_external_domains|length > 0 %}
+      <ul class="domain-list">
+        <li class="small" style="font-weight:600;">
+          <span class="small">URL</span> <span class="small">Count</span>
+        </li>
+        {% for td in summary.links.top_external_domains %}
+        <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="small">No external domains detected.</div>
+      {% endif %}
+    </section>
     <div class="small" style="margin-top:6px;">
       <label><input type="checkbox" id="pages-has-emails"> Show only pages with emails</label>
       <label style="margin-left:8px;"><input type="checkbox" id="pages-sort-depth"> Sort by path length</label>
@@ -537,13 +587,14 @@
   {% endif %}
 
   <!-- Hidden markdown for download only (no inline render in site scope) -->
-  <pre id="markdown-content" class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
-{% else %}
+  <pre id="markdown-content"
+    class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
+  {% else %}
   <p>No data available.</p>
-{% endif %}
+  {% endif %}
 
 
-<!-- removed Prompt Builder drawer -->
+  <!-- removed Prompt Builder drawer -->
 
 </div>
 {% endblock %}

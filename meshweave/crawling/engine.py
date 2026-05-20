@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections import deque
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ..extraction import (
@@ -25,12 +26,29 @@ __all__ = [
 ]
 
 
+def _render_metrics_to_dict(metrics: Any) -> dict[str, Any]:
+    """Extract render metrics dict from a metrics dataclass."""
+    return {
+        "final_url": str(getattr(metrics, "final_url", "")),
+        "response_status": int(getattr(metrics, "response_status", 0)),
+        "network_requests": int(getattr(metrics, "network_requests", 0)),
+        "content_length": int(getattr(metrics, "content_length", 0)),
+        "load_time_ms": round(
+            float(getattr(metrics, "load_time", 0.0)) * 1000,
+            2,
+        ),
+        "cache_hit": bool(getattr(metrics, "cache_hit", False)),
+        "errors": list(getattr(metrics, "errors", [])),
+    }
+
+
 async def bfs_crawl(
     origin: str,
     internal_links: list[str],
     *,
     session: BrowserSession,
     crawl_max_pages: int = 25,
+    max_depth: int = 0,
     same_domain_only: bool = True,
     include_emails: bool = True,
     deobfuscate_emails: bool = True,
@@ -38,11 +56,53 @@ async def bfs_crawl(
     per_page_timeout: float = 15.0,
     cache_dir: str | None = None,
     sitemap_seeds: list[str] | None = None,
+    on_page_crawled: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
+    should_continue: Callable[[], Awaitable[bool]] | None = None,
+    url_filter: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Run BFS crawl starting from origin, returning crawl state.
 
-    Returns a dict with keys: visited, stop_reason, seeded,
-    all_emails, emails_by_url, email_sources.
+    Parameters
+    ----------
+    origin:
+        Canonical start URL.
+    internal_links:
+        Seed internal links discovered from the start page.
+    session:
+        Active browser session.
+    crawl_max_pages:
+        Maximum pages to visit (including the origin).
+    max_depth:
+        Maximum link depth from origin.  0 means unlimited.
+    same_domain_only:
+        Restrict BFS to the origin's registrable domain.
+    include_emails:
+        Extract email addresses from pages.
+    deobfuscate_emails:
+        Attempt to deobfuscate email addresses.
+    throttle_ms:
+        Milliseconds to sleep between page fetches.
+    per_page_timeout:
+        Timeout per page render in seconds.
+    cache_dir:
+        Directory for rendered HTML cache.  None disables caching.
+    sitemap_seeds:
+        Additional URLs discovered from sitemaps.
+    on_page_crawled:
+        Async callback ``(url, page_data)`` invoked after each page is
+        processed.  Used by the webapp for heartbeats.
+    should_continue:
+        Async callback ``()`` checked before each BFS iteration.
+        Return ``False`` to stop the crawl (cancellation).
+    url_filter:
+        Synchronous predicate ``(url) -> bool`` applied to candidate
+        URLs before enqueuing.  Return ``False`` to skip.
+
+    Returns
+    -------
+    dict
+        Keys: ``visited``, ``markdowns``, ``stop_reason``, ``seeded``,
+        ``all_emails``, ``emails_by_url``, ``email_sources``.
     """
     visited_norm: set[str] = set()
     visited_list: list[str] = []
@@ -58,9 +118,9 @@ async def bfs_crawl(
     email_sources: list[dict[str, Any]] = []
     emails_by_url: dict[str, list[str]] = {}
 
-    q: deque[str] = deque()
+    q: deque[tuple[str, int]] = deque()
 
-    def _enqueue(href: str, base: str):
+    def _enqueue(href: str, base: str, depth: int) -> bool:
         absu = normalize_abs_url(href, base)
         if (
             absu
@@ -68,24 +128,37 @@ async def bfs_crawl(
             and absu not in visited_norm
             and len(visited_norm) < crawl_max_pages
         ):
+            if url_filter and not url_filter(absu):
+                return False
             visited_norm.add(absu)
-            q.append(absu)
+            q.append((absu, depth))
             return True
         return False
 
-    # Seed from start page links
+    # Seed from start page links (depth 1)
     for href in internal_links:
-        _enqueue(href, origin)
+        _enqueue(href, origin, 1)
 
-    # Seed from sitemap
+    # Seed from sitemap (depth 1)
     seeded = 0
     for su in sitemap_seeds or []:
-        if _enqueue(su, origin):
+        if _enqueue(su, origin, 1):
             seeded += 1
 
     # BFS loop
     while q and len(visited_list) < crawl_max_pages:
-        u = q.popleft()
+        # Cooperative cancellation check
+        if should_continue and not (await should_continue()):
+            stop_reason = "cancelled"
+            break
+
+        u, depth = q.popleft()
+
+        # Depth limit
+        if max_depth > 0 and depth > max_depth:
+            stop_reason = "max_depth"
+            continue
+
         try:
             html2, m2 = await get_rendered_html(
                 url=u,
@@ -121,8 +194,12 @@ async def bfs_crawl(
 
         visited_list.append(final_u)
 
+        # Per-page render metrics
+        render_metrics = _render_metrics_to_dict(m2)
+
         # Generate markdown and extract metadata for crawled page
         soup_raw = None
+        page_data: dict[str, Any] = {}
         try:
             soup_raw = soup_from_html(html2)
             page_meta = extract_page_meta(soup_raw)
@@ -132,15 +209,17 @@ async def bfs_crawl(
                 final_url=final_u,
             )
             md = to_markdown(soup_pre)
-            markdowns[final_u] = {
+            page_data = {
                 "markdown": md,
                 "page": page_meta,
                 "headings": extract_headings(soup_raw),
                 "content_metrics": extract_content_metrics(soup_raw, markdown=md),
             }
+            markdowns[final_u] = page_data
         except Exception:
             logger.debug("Extraction failed for %s", final_u, exc_info=True)
 
+        # Per-page emails
         collect_emails(
             html2,
             final_u,
@@ -151,11 +230,24 @@ async def bfs_crawl(
             email_sources=email_sources,
         )
 
-        # Expand BFS frontier (reuse soup_raw if available)
+        # Per-page links and extraction metrics
         link_soup = soup_raw if soup_raw is not None else soup_from_html(html2)
-        new_int, _, _ = classify_links(link_soup, base_url=final_u)
+        new_int, new_ext, ext_metrics = classify_links(link_soup, base_url=final_u)
+        page_data["links"] = {"internal": new_int, "external": new_ext}
+        page_data["extraction_metrics"] = ext_metrics
+        page_data["render_metrics"] = render_metrics
+        page_data["emails_unique"] = emails_by_url.get(final_u, [])
+
+        # Expand BFS frontier
         for href2 in new_int:
-            _enqueue(href2, final_u)
+            _enqueue(href2, final_u, depth + 1)
+
+        # Heartbeat callback
+        if on_page_crawled:
+            try:
+                await on_page_crawled(final_u, page_data)
+            except Exception:
+                logger.debug("on_page_crawled callback failed", exc_info=True)
 
         if throttle_ms > 0:
             await asyncio.sleep(throttle_ms / 1000)
