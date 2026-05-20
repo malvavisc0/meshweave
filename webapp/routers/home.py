@@ -72,7 +72,8 @@ async def home(request: Request, db: Session = Depends(get_db)):
 
     # Query latest public crawls with status ranking and limit 9
     rows: list[Crawl] = (
-        db.query(Crawl)
+        db
+        .query(Crawl)
         .filter(Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed)
         .order_by(
             case(
@@ -163,31 +164,30 @@ async def home(request: Request, db: Session = Depends(get_db)):
                     md = ""
                 summary_snippet = _first_sentence(md, 160)
 
-        items.append(
-            {
-                "key": r.key,
-                "domain": r.domain,
-                "path": r.path,
-                "query": r.query,
-                "canonical_url": r.canonical_url,
-                "title": title or r.canonical_url or f"{r.domain}{r.path or ''}",
-                "scope": "site" if r.crawl_params else "page",
-                "status": r.status,
-                "page_count": page_counts_map.get(r.id, 0),
-                "email_count": email_counts_map.get(r.id, 0),
-                "updated_iso": updated_iso,
-                "updated_relative": updated_relative,
-                "is_new": bool(is_new),
-                "summary_snippet": (summary_snippet if bool(r.crawl_params) else ""),
-                # Back-compat fields (legacy templates)
-                "updated_at": updated_iso,
-            }
-        )
+        items.append({
+            "key": r.key,
+            "domain": r.domain,
+            "path": r.path,
+            "query": r.query,
+            "canonical_url": r.canonical_url,
+            "title": title or r.canonical_url or f"{r.domain}{r.path or ''}",
+            "scope": "site" if r.crawl_params else "page",
+            "status": r.status,
+            "page_count": page_counts_map.get(r.id, 0),
+            "email_count": email_counts_map.get(r.id, 0),
+            "updated_iso": updated_iso,
+            "updated_relative": updated_relative,
+            "is_new": bool(is_new),
+            "summary_snippet": (summary_snippet if bool(r.crawl_params) else ""),
+            # Back-compat fields (legacy templates)
+            "updated_at": updated_iso,
+        })
 
     # Community metrics (lifetime totals) computed inline (no caching)
     try:
         analyses_total = (
-            db.query(Crawl)
+            db
+            .query(Crawl)
             .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .count()
         ) or 0
@@ -198,7 +198,8 @@ async def home(request: Request, db: Session = Depends(get_db)):
         external_domains: set[str] = set()
         pages_total = 0
         public_crawls = (
-            db.query(Crawl.payload_json)
+            db
+            .query(Crawl.payload_json)
             .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .all()
         )
@@ -258,11 +259,11 @@ async def home(request: Request, db: Session = Depends(get_db)):
 
     # SEO meta for home (LLM-first)
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-    page_title = f"{site_name} — AEO & GEO Scoring for AI Search Visibility"
+    page_title = f"{site_name} — AEO & GEO Scoring for AI Search Optimization"
     meta_description = (
-        "Get your AEO and GEO score. See how visible your website is to "
-        "Google AI Overviews, ChatGPT, Claude, and Perplexity — with "
-        "actionable recommendations."
+        "AI engines are becoming the way people discover products and "
+        "services. Get your AEO & GEO score and see if your site is "
+        "optimized for AI to find, remember, and recommend."
     )
     abs_page_url = _abs_url(request, "/")
     og_image_url = os.getenv("OG_IMAGE_URL") or None

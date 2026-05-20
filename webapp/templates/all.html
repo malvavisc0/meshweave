@@ -1,69 +1,114 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-{% if filter_domain %}
-<h1>Insights for {{ filter_domain }}</h1>
-<p>Explore public analyses for {{ filter_domain }}. Filter by status to find relevant insights. Each card shows page and email counts with the latest update.</p>
-{% else %}
-<h1>Discover community insights</h1>
-<p>Explore public website analyses. Filter by domain or status to find relevant insights. Each card shows page and email counts with the latest update.</p>
-{% endif %}
-<!-- Removed redundant Back to Home link (header already provides Home) -->
 
-<form method="get" action="/all" class="mb-2" onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
-  <label for="f-domain">Domain:</label>
-  <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com" title="Enter a domain like example.com">
+<!-- HEADER -->
+<header class="browse-header" aria-label="Community analyses">
+  <div class="container">
+    {% if filter_domain %}
+    <h1 class="browse-header-title">AI search analysis for {{ filter_domain }}</h1>
+    <p class="browse-header-subtitle">Explore AEO & GEO scores for {{ filter_domain }}. See how this site
+      performs across the factors AI engines care about.</p>
+    {% else %}
+    <h1 class="browse-header-title">Public AI search analyses</h1>
+    <p class="browse-header-subtitle">Explore AEO & GEO scores submitted by the community. See how sites
+      perform across the factors AI engines care about.</p>
+    {% endif %}
+  </div>
+</header>
 
-  <label for="f-status" class="ml-2">Status:</label>
-  <select id="f-status" name="status">
-    <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
-    <option value="pending" {% if filter_status=='pending' %}selected{% endif %}>pending</option>
-    <option value="running" {% if filter_status=='running' %}selected{% endif %}>running</option>
-    <option value="succeeded" {% if filter_status=='succeeded' %}selected{% endif %}>succeeded</option>
-    <option value="failed" {% if filter_status=='failed' %}selected{% endif %}>failed</option>
-  </select>
+<!-- FILTERS -->
+<section class="browse-filters" aria-label="Filters">
+  <div class="container">
+    <form method="get" action="/all" class="panel filter-bar"
+      onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
 
-  <label class="ml-2 small">
-    <input type="checkbox" id="f-has-emails" name="has_emails" value="1" {% if filter_has_emails %}checked{% endif %}>
-    Has emails
-  </label>
+      <div class="filter-field">
+        <label for="f-domain">Domain</label>
+        <input type="text" id="f-domain" name="domain" value="{{ filter_domain }}" placeholder="example.com"
+          title="Enter a domain like example.com">
+      </div>
 
-  <label for="f-sort" class="ml-2">Sort:</label>
-  <select id="f-sort" name="sort">
-    <option value="recent" {% if sort=='recent' %}selected{% endif %}>Most Recent</option>
-    <option value="emails" {% if sort=='emails' %}selected{% endif %}>Most Emails</option>
-    <option value="pages" {% if sort=='pages' %}selected{% endif %}>Pages</option>
-  </select>
+      <div class="filter-field">
+        <label for="f-status">Status</label>
+        <select id="f-status" name="status">
+          <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
+          <option value="pending" {% if filter_status=='pending' %}selected{% endif %}>Pending</option>
+          <option value="running" {% if filter_status=='running' %}selected{% endif %}>Running</option>
+          <option value="succeeded" {% if filter_status=='succeeded' %}selected{% endif %}>Succeeded</option>
+          <option value="failed" {% if filter_status=='failed' %}selected{% endif %}>Failed</option>
+        </select>
+      </div>
 
-  <label for="f-page-size" class="ml-2">Page size:</label>
-  <select id="f-page-size" name="page_size">
-    <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
-    <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
-    <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
-  </select>
+      <div class="filter-field">
+        <label for="f-sort">Sort by</label>
+        <select id="f-sort" name="sort">
+          <option value="recent" {% if sort=='recent' %}selected{% endif %}>Most Recent</option>
+          <option value="emails" {% if sort=='emails' %}selected{% endif %}>Most Emails</option>
+          <option value="pages" {% if sort=='pages' %}selected{% endif %}>Pages</option>
+        </select>
+      </div>
 
-  <button type="submit" class="btn ml-2">Apply</button>
-</form>
+      <div class="filter-field">
+        <label for="f-page-size">Per page</label>
+        <select id="f-page-size" name="page_size">
+          <option value="25" {% if page_size==25 %}selected{% endif %}>25</option>
+          <option value="50" {% if page_size==50 %}selected{% endif %}>50</option>
+          <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
+        </select>
+      </div>
 
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Apply filters</button>
+      </div>
 
-{% if items and items|length > 0 %}
-  {% from 'partials/analysis_card.html' import analysis_card with context %}
-  <ul class="card-list mt-2">
-    {% for item in items %}
+    </form>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section style="padding: var(--space-xl) 0;" aria-label="Results">
+  <div class="container">
+
+    <div class="results-header">
+      <span class="results-count">
+        {% if items and items|length > 0 %}
+        Showing {{ items|length }} analyses
+        {% endif %}
+      </span>
+    </div>
+
+    {% if items and items|length > 0 %}
+    {% from 'partials/analysis_card.html' import analysis_card with context %}
+    <ul class="card-list">
+      {% for item in items %}
       {{ analysis_card(item, show_summary=(item.scope=='site'), dense=true, show_share=true, emphasize_emails=true) }}
-    {% endfor %}
-  </ul>
- 
-  {% if has_prev or has_next %}
-  <nav class="mt-2" aria-label="Pagination">
-    {% if has_prev %}<a href="{{ prev_url }}">&larr; Prev</a>{% endif %}
-    {% if has_prev and has_next %}&nbsp;&nbsp;{% endif %}
-    {% if has_next %}<a href="{{ next_url }}">Next &rarr;</a>{% endif %}
-  </nav>
-  {% endif %}
-{% else %}
-  <p>No results found.</p>
-{% endif %}
-</div>
+      {% endfor %}
+    </ul>
+
+    {% if has_prev or has_next %}
+    <nav class="pagination" aria-label="Pagination">
+      <div>
+        {% if has_prev %}
+        <a href="{{ prev_url }}" class="btn btn-sm">&larr; Previous</a>
+        {% endif %}
+      </div>
+      <div>
+        {% if has_next %}
+        <a href="{{ next_url }}" class="btn btn-sm">Next &rarr;</a>
+        {% endif %}
+      </div>
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state">
+      <h3>No analyses found</h3>
+      <p>Try adjusting your filters or <a href="/">submit a new URL</a> for analysis.</p>
+    </div>
+    {% endif %}
+
+  </div>
+</section>
+
 {% endblock %}

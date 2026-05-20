@@ -2,20 +2,148 @@
 {% block head_extra %}{% endblock %}
 
 {% block content %}
-<div class="container">
-  <h1>Privacy Policy</h1>
-  <p class="small">Last updated: <time datetime="{{ (request.headers.get('date') or '') }}">{{
-      (request.headers.get('date') or '') }}</time></p>
 
-  <section class="panel mt-2">
-    <p>MeshWeave is committed to transparent data practices.</p>
-    <ul>
-      <li>Public/Private: Public by default when not signed in. Sign in to keep results private.</li>
-      <li>Data collected: Input URLs you submit and crawl metadata required to perform analysis.</li>
-      <li>Cookies: Session cookies are used for authentication and CSRF protection.</li>
-      <li>Community: Public results may be shown on browsing pages like “Latest public analyses”.</li>
-    </ul>
-    <p>Questions? Contact <a href="mailto:{{ FOOTER_CONTACT_EMAIL }}">{{ FOOTER_CONTACT_EMAIL }}</a>.</p>
+<!-- PAGE HEADER -->
+<header class="page-header" aria-label="Privacy Policy">
+  <div class="container">
+    <h1 class="page-header-title">Privacy Policy</h1>
+    <p class="page-header-subtitle">MeshWeave is committed to transparent, minimal data practices. We collect only
+      what is necessary to analyze your site for AI search optimization and operate the service.</p>
+    <p class="caption" style="color: var(--color-ink-subtle);">Last updated: <time datetime="{{ last_updated }}">{{
+        last_updated }}</time></p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- OVERVIEW -->
+  <section class="prose-section" aria-label="Privacy overview">
+    <h2>Our commitment to your privacy</h2>
+    <p class="m0">MeshWeave is an open-source AI search optimization platform. We believe you should understand exactly
+      what data we collect,
+      why we collect it, and how it is used. This policy explains our practices in plain language.</p>
   </section>
+
+  <!-- DATA COLLECTION & USAGE -->
+  <section class="prose-section" aria-label="Data collection and usage">
+    <h2>Data collection & usage</h2>
+    <div class="side-by-side">
+      <div>
+        <h3>What we collect</h3>
+        <ul class="structured-list m0">
+          <li><strong>Input URLs</strong> — the website addresses you submit for analysis.</li>
+          <li><strong>Crawl metadata</strong> — page titles, HTML structure, JSON-LD, robots.txt policies, llms.txt
+            files, heading hierarchies, content metrics, and entity signals extracted during analysis.</li>
+          <li><strong>Account information</strong> — if you sign in with Google, we receive your email address and
+            basic profile information for authentication.</li>
+          <li><strong>Session cookies</strong> — used exclusively for authentication and CSRF protection (see
+            below).</li>
+        </ul>
+      </div>
+      <div>
+        <h3>How we use it</h3>
+        <ul class="structured-list m0">
+          <li><strong>Perform analyses</strong> — crawl and score the websites you submit for AEO and GEO factors.</li>
+          <li><strong>Community feed</strong> — public analyses may be displayed on browsing pages like "Latest
+            public analyses" and domain index pages.</li>
+          <li><strong>Service improvement</strong> — aggregated, anonymised metrics help us understand usage patterns
+            and improve the scoring engine.</li>
+          <li><strong>Authentication</strong> — session cookies enable secure sign-in and protect your private
+            results.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- PUBLIC VS PRIVATE -->
+  <section class="prose-section" aria-label="Public and private results">
+    <h2>Public vs. private results</h2>
+    <p class="m0"><strong>Anonymous submissions are public by default.</strong> When you submit a URL without
+      signing in, the analysis results — including scores, recommendations, and extracted data — are publicly
+      accessible via a unique shareable URL and may appear in the community feed.</p>
+    <p class="mt-3 m0"><strong>Signed-in users get private results.</strong> When you are authenticated, your
+      analyses are private by default. They are accessible only via their unique UUID URL and are not listed in
+      community browsing pages. Private pages include a <code>noindex</code> meta tag to prevent search engine
+      indexing.</p>
+    <p class="mt-3 m0"><strong>Claiming public results.</strong> If you submit an analysis while not signed in
+      and later create an account, you may claim public ownerless analyses after
+      {{ CLAIM_PUBLIC_MIN_AGE_HOURS or 24 }} hours.</p>
+  </section>
+
+  <!-- COOKIES & AUTHENTICATION -->
+  <section class="prose-section" aria-label="Cookies and authentication">
+    <h2>Cookies & authentication</h2>
+    <p class="m0">MeshWeave uses a <strong>single session cookie</strong> for the following purposes:</p>
+    <ul class="mt-2 structured-list">
+      <li><strong>Authentication session</strong> — keeps you signed in across page loads. This cookie is
+        <code>HttpOnly</code> and <code>Secure</code>.
+      </li>
+      <li><strong>CSRF protection</strong> — a token cookie used to prevent cross-site request forgery on form
+        submissions.</li>
+    </ul>
+    <p class="mt-3 m0">We do <strong>not</strong> use tracking cookies, advertising cookies, analytics cookies
+      (e.g., Google Analytics), or any third-party cookies. We do not use fingerprinting techniques or local storage
+      for tracking purposes.</p>
+  </section>
+
+  <!-- DATA RETENTION -->
+  <section class="prose-section" aria-label="Data retention">
+    <h2>Data retention & deletion</h2>
+    <div class="side-by-side">
+      <div>
+        <h3>How long we keep data</h3>
+        <p class="m0">Analysis results are retained indefinitely to support the community feed, historical
+          tracking, and domain index pages. Crawl metadata (HTML snapshots, raw page content) is processed in-memory
+          and is not permanently stored beyond what is needed to display scores and recommendations.</p>
+      </div>
+      <div>
+        <h3>Requesting deletion</h3>
+        <p class="m0">You may request deletion of your account data and associated private analyses at any time
+          by contacting us at <a href="mailto:{{ FOOTER_CONTACT_EMAIL }}">{{ FOOTER_CONTACT_EMAIL }}</a>. We will
+          process deletion requests within 30 days. Public analyses submitted anonymously cannot be individually
+          deleted but may be claimed and then removed by an authenticated user.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- THIRD-PARTY SERVICES -->
+  <section class="prose-section" aria-label="Third-party services">
+    <h2>Third-party services</h2>
+    <p class="m0">MeshWeave integrates with the following third-party services:</p>
+    <ul class="mt-2 structured-list">
+      <li><strong>Google OAuth</strong> — used for authentication. When you sign in with Google, we receive your
+        email address and basic profile information. We do not access your Google account data beyond what is
+        necessary for authentication. See <a href="https://policies.google.com/privacy" target="_blank"
+          rel="noopener noreferrer">Google's Privacy Policy</a>.</li>
+      <li><strong>Target websites</strong> — the URLs you submit are crawled using a headless browser to extract
+        content for analysis. We do not transmit your identity or account information to crawled websites.</li>
+    </ul>
+    <p class="mt-3 m0">We do not sell, rent, or share your personal data with third parties for marketing or
+      advertising purposes.</p>
+  </section>
+
+  <!-- YOUR RIGHTS -->
+  <section class="prose-section" aria-label="Your rights">
+    <h2>Your rights</h2>
+    <p class="m0">Depending on your jurisdiction, you may have the following rights regarding your personal
+      data:</p>
+    <ul class="mt-2 structured-list">
+      <li><strong>Access</strong> — request a copy of the personal data we hold about you.</li>
+      <li><strong>Correction</strong> — request correction of inaccurate or incomplete data.</li>
+      <li><strong>Deletion</strong> — request deletion of your account and associated data.</li>
+      <li><strong>Portability</strong> — request your data in a structured, machine-readable format.</li>
+      <li><strong>Objection</strong> — object to processing of your personal data where applicable.</li>
+    </ul>
+    <p class="mt-3 m0">To exercise any of these rights, contact us at <a href="mailto:{{ FOOTER_CONTACT_EMAIL }}">{{
+        FOOTER_CONTACT_EMAIL }}</a>.</p>
+  </section>
+
+  <!-- CONTACT -->
+  <div class="prose-contact">
+    <p>Questions about your privacy? We are happy to help.</p>
+    <a href="mailto:{{ FOOTER_CONTACT_EMAIL }}" class="btn btn-primary">Contact us</a>
+  </div>
+
 </div>
+
 {% endblock %}
