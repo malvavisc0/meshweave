@@ -1,12 +1,10 @@
 import asyncio
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import AsyncIterator
+from datetime import UTC, datetime
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -18,7 +16,6 @@ from starlette.middleware.gzip import GZipMiddleware
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates
 from webapp.routers import (
-    ai,
     all_public,
     analysis,
     api,
@@ -28,8 +25,7 @@ from webapp.routers import (
     legal,
     products,
     progress,
-    prospects,
-    prospects_page,
+    scoring,
     submissions,
 )
 from webapp.utils.auth import AuthSessionMiddleware
@@ -51,7 +47,7 @@ async def _sleep_until(event: asyncio.Event, seconds: float):
     """
     try:
         await asyncio.wait_for(event.wait(), timeout=seconds)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
 
@@ -67,7 +63,7 @@ async def _cleanup_auth_sessions_loop(stop_event: asyncio.Event):
     while True:
         if stop_event.is_set():
             break
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         try:
             with get_session() as s:
                 s.execute(
@@ -105,7 +101,7 @@ async def _cleanup_oauth_states_loop(stop_event: asyncio.Event):
     while True:
         if stop_event.is_set():
             break
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         try:
             with get_session() as s:
                 s.execute(
@@ -115,38 +111,6 @@ async def _cleanup_oauth_states_loop(stop_event: asyncio.Event):
         except Exception:
             pass
         await _sleep_until(stop_event, 900.0)
-
-
-def _auto_migrate_on_start() -> None:
-    """Optionally run Alembic migrations on startup (all dialects).
-
-    Controlled by WEBAPP_AUTO_MIGRATE=true|1|yes|on. Fails fast on errors.
-    """
-    from webapp.utils.config import _env_bool
-
-    if not _env_bool("WEBAPP_AUTO_MIGRATE", False):
-        return
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    ini_path = os.path.join(base_dir, "alembic.ini")
-    script_loc = os.path.join(base_dir, "alembic")
-
-    cfg = AlembicConfig(ini_path if os.path.exists(ini_path) else None)
-    # Ensure script_location is set, even if alembic.ini is missing or minimal
-    if os.path.isdir(script_loc):
-        cfg.set_main_option("script_location", script_loc)
-
-    # If DATABASE_URL is provided, prefer it; otherwise fallback to SQLite path
-    db_url = os.getenv("DATABASE_URL", "").strip()
-    if not db_url:
-        sqlite_path = os.getenv("SQLITE_PATH", "/db/app.db").strip()
-        db_url = f"sqlite:///{sqlite_path}"
-    cfg.set_main_option("sqlalchemy.url", db_url)
-
-    try:
-        alembic_command.upgrade(cfg, "head")
-    except Exception as exc:
-        # Fail fast with a clear error; deployment should provide logs
-        raise RuntimeError(f"Automatic DB migration failed: {exc}") from exc
 
 
 @asynccontextmanager
@@ -162,7 +126,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         None: Control back to FastAPI to run the application.
     """
     init_logging()
-    _auto_migrate_on_start()
     init_db()
 
     # Enforce OAuth config in prod if policy requires (fail-fast)
@@ -235,7 +198,9 @@ def create_app() -> FastAPI:
             JSONResponse: 422 with generic detail.
         """
         try:
-            log_audit("request_validation_error", request=request, level=logging.WARNING)
+            log_audit(
+                "request_validation_error", request=request, level=logging.WARNING
+            )
         except Exception:
             pass
         return JSONResponse(
@@ -271,9 +236,9 @@ def create_app() -> FastAPI:
         meta_description = "An unexpected error occurred."
         abs_page_url = str(request.url)
         resp = templates.TemplateResponse(
+            request,
             "500.html",
             {
-                "request": request,
                 "site_name": site_name,
                 "page_title": page_title,
                 "meta_description": meta_description,
@@ -315,9 +280,9 @@ def create_app() -> FastAPI:
             meta_description = "The page you requested was not found."
             abs_page_url = str(request.url)
             resp = templates.TemplateResponse(
+                request,
                 "404.html",
                 {
-                    "request": request,
                     "site_name": site_name,
                     "page_title": page_title,
                     "meta_description": meta_description,
@@ -353,9 +318,9 @@ def create_app() -> FastAPI:
                 meta_description = "You need to sign in to access this page."
                 abs_page_url = str(request.url)
                 resp = templates.TemplateResponse(
+                    request,
                     "401.html",
                     {
-                        "request": request,
                         "site_name": site_name,
                         "page_title": page_title,
                         "meta_description": meta_description,
@@ -373,9 +338,9 @@ def create_app() -> FastAPI:
                 meta_description = "You don't have permission to access this page."
                 abs_page_url = str(request.url)
                 resp = templates.TemplateResponse(
+                    request,
                     "403.html",
                     {
-                        "request": request,
                         "site_name": site_name,
                         "page_title": page_title,
                         "meta_description": meta_description,
@@ -417,13 +382,13 @@ def create_app() -> FastAPI:
     app.include_router(progress.router)
     app.include_router(jobs.router)
     app.include_router(all_public.router)
-    # Prospects/Contacts/Products APIs
-    app.include_router(prospects.router)
-    # Pages: Products and Prospects management pages
+    # Pages: Products management page
     app.include_router(products.router)
-    app.include_router(prospects_page.router)
-    # AI chat router
-    app.include_router(ai.router)
+    # Scoring methodology page
+    app.include_router(scoring.router)
+    # AI chat router (temporarily disabled — ChatThread/ChatMessage removed;
+    # will be reimplemented using Crawl.ai_analysis_json)
+    # app.include_router(ai.router)
     # API router remains last
     app.include_router(api.router)
 
@@ -438,12 +403,14 @@ def create_app() -> FastAPI:
                 "FOOTER_CONTACT_EMAIL": os.getenv(
                     "FOOTER_CONTACT_EMAIL", "hello@meshweave.com"
                 ).strip(),
-                "FOOTER_PRIVACY_URL": os.getenv("FOOTER_PRIVACY_URL", "/privacy").strip(),
+                "FOOTER_PRIVACY_URL": os.getenv(
+                    "FOOTER_PRIVACY_URL", "/privacy"
+                ).strip(),
                 "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
                 # Branding defaults for templates (used as fallbacks)
-                "SITE_NAME_DEFAULT": os.getenv("SITE_NAME", "Meshweave").strip(),
+                "SITE_NAME_DEFAULT": os.getenv("SITE_NAME", "MeshWeave").strip(),
                 # Convenience for footer ©
-                "CURRENT_YEAR": datetime.now(timezone.utc).year,
+                "CURRENT_YEAR": datetime.now(UTC).year,
             }
         )
     except Exception:

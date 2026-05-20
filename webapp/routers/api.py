@@ -2,9 +2,8 @@ import csv
 import json
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import StringIO
-from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
@@ -65,7 +64,9 @@ async def api_public_by_key(request: Request, key: str):
             log_audit("invalid_stored_payload", key=key, crawl_id=row.id)
         except Exception:
             pass
-        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
 
     # Scrub emails for anonymous users (do not return any email addresses)
     try:
@@ -145,7 +146,9 @@ async def api_private(request: Request, crawl_id: str):
             log_audit("invalid_stored_payload", crawl_id=row.id)
         except Exception:
             pass
-        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
     resp = JSONResponse(content=payload)
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
@@ -163,11 +166,9 @@ async def api_domain_index(domain: str):
     """
     dom = (domain or "").lower()
     with get_session() as s:
-        rows: List[Crawl] = (
+        rows: list[Crawl] = (
             s.query(Crawl)
-            .filter(
-                Crawl.domain == dom, Crawl.visibility == "public", Crawl.listed == True
-            )
+            .filter(Crawl.domain == dom, Crawl.visibility == "public", Crawl.listed)
             .order_by(Crawl.updated_at.desc())
             .limit(100)
             .all()
@@ -185,7 +186,7 @@ async def api_domain_index(domain: str):
                 "query": r.query,
                 "canonical_url": r.canonical_url,
                 "status": r.status,
-                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+                "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
             }
         )
     return JSONResponse(content={"domain": dom, "items": items})
@@ -223,12 +224,12 @@ async def sitemap_xml(request: Request):
     """
     base = _get_base_url(request)
     with get_session() as s:
-        rows: List[Crawl] = (
+        rows: list[Crawl] = (
             s.query(Crawl)
             .filter(
                 Crawl.visibility == "public",
                 Crawl.status == "succeeded",
-                Crawl.listed == True,
+                Crawl.listed,
             )
             .order_by(Crawl.updated_at.desc())
             .limit(500)
@@ -237,9 +238,7 @@ async def sitemap_xml(request: Request):
     parts = []
     for r in rows:
         loc = f"{base}/analysis/{r.key}"
-        lastmod = (r.updated_at or datetime.now(timezone.utc)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        lastmod = (r.updated_at or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
         parts.append(f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>")
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -370,7 +369,7 @@ async def api_public_summary(key: str):
         except Exception:
             return ""
 
-    top_ext: Dict[str, int] = {}
+    top_ext: dict[str, int] = {}
     for u in links.get("external") or []:
         dom = normalize_domain(u)
         if not dom:
@@ -572,7 +571,7 @@ async def api_public_top_domains_csv(key: str):
     payload = _parse_payload_or_500(row, key=key)
     links = payload.get("links") or {}
     external = links.get("external") or []
-    counts: Dict[str, int] = {}
+    counts: dict[str, int] = {}
     for u in external:
         dom = normalize_domain(u)
         if not dom:
@@ -610,7 +609,7 @@ async def claim_public(request: Request, key: str):
         min_age_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
     except Exception:
         min_age_hours = 24
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(hours=min_age_hours)
 
     with get_session() as s:
@@ -680,7 +679,7 @@ async def api_status(request: Request, crawl_id: str):
             "visibility": row.visibility,
             "status": row.status,
             "error": row.error,
-            "updated_at": (row.updated_at or datetime.now(timezone.utc)).isoformat(),
+            "updated_at": (row.updated_at or datetime.now(UTC)).isoformat(),
             "key": getattr(row, "key", None),
             "report_url": f"{base}{report_path}",
         }
@@ -776,8 +775,8 @@ def _product_to_dict(p: Product) -> dict:
         "description": p.description or "",
         "website": p.website or None,
         "contact_info": p.contact_info or None,
-        "created_at": (p.created_at or datetime.now(timezone.utc)).isoformat(),
-        "updated_at": (p.updated_at or datetime.now(timezone.utc)).isoformat(),
+        "created_at": (p.created_at or datetime.now(UTC)).isoformat(),
+        "updated_at": (p.updated_at or datetime.now(UTC)).isoformat(),
     }
 
 
@@ -855,7 +854,7 @@ async def update_product(request: Request, product_id: str):
     if not re.match(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$", contact_info):
         raise HTTPException(status_code=400, detail="invalid_contact_info")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with get_session() as s:
         row = (
             s.query(Product)

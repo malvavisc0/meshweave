@@ -1,9 +1,9 @@
 import csv
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -18,20 +18,20 @@ from webapp.utils.metrics import contacts_create, prospects_patch, prospects_ups
 router = APIRouter()
 
 
-def _parse_cursor(cur: Optional[str]) -> Optional[Tuple[datetime, str]]:
+def _parse_cursor(cur: str | None) -> tuple[datetime, str] | None:
     if not cur:
         return None
     try:
         ts_str, pid = cur.split("|", 1)
         ts = datetime.fromisoformat(ts_str)
         if not ts.tzinfo:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
         return (ts, pid)
     except Exception:
         return None
 
 
-def _make_cursor(dt: Optional[datetime], pid: Optional[str]) -> Optional[str]:
+def _make_cursor(dt: datetime | None, pid: str | None) -> str | None:
     if not dt or not pid:
         return None
     try:
@@ -43,18 +43,18 @@ def _make_cursor(dt: Optional[datetime], pid: Optional[str]) -> Optional[str]:
 @router.get("/api/prospects")
 async def list_prospects(
     request: Request,
-    status: Optional[str] = None,
-    q: Optional[str] = None,
-    tag: Optional[str] = None,
+    status: str | None = None,
+    q: str | None = None,
+    tag: str | None = None,
     limit: int = 25,
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
 ):
     user = await require_auth(request)
     limit = max(1, min(100, limit))
     cur = _parse_cursor(cursor)
 
-    items: List[Dict[str, Any]] = []
-    next_cursor: Optional[str] = None
+    items: list[dict[str, Any]] = []
+    next_cursor: str | None = None
 
     with get_session() as s:
         qry = s.query(Prospect).filter(Prospect.user_id == user.id)
@@ -70,7 +70,9 @@ async def list_prospects(
             )
         if tag:
             like_tag = f"%{tag.strip().lower()}%"
-            qry = qry.filter(func.lower(func.coalesce(Prospect.tags, "")).like(like_tag))
+            qry = qry.filter(
+                func.lower(func.coalesce(Prospect.tags, "")).like(like_tag)
+            )
 
         # Cursor: created_at desc, id desc pagination
         qry = qry.order_by(Prospect.created_at.desc(), Prospect.id.desc())
@@ -96,9 +98,7 @@ async def list_prospects(
                     "notes": r.notes,
                     "socials": json.loads(r.socials_json) if r.socials_json else [],
                     "crawl_id": r.crawl_id,
-                    "created_at": (
-                        r.created_at or datetime.now(timezone.utc)
-                    ).isoformat(),
+                    "created_at": (r.created_at or datetime.now(UTC)).isoformat(),
                 }
             )
         if len(rows) > limit:
@@ -136,7 +136,7 @@ async def upsert_prospect(request: Request):
             .filter(Prospect.user_id == user.id, Prospect.domain == domain)
             .one_or_none()
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if row:
             # Update partial fields
             row.url = url if url is not None else row.url
@@ -211,7 +211,7 @@ async def patch_prospect(request: Request, prospect_id: str):
             except Exception:
                 pass
         if changed:
-            row.updated_at = datetime.now(timezone.utc)
+            row.updated_at = datetime.now(UTC)
         try:
             prospects_patch.inc()
         except Exception:
@@ -260,7 +260,7 @@ async def create_contact(request: Request, prospect_id: str):
             social_url=social_url,
             tags=tags,
             role_title=role_title,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         try:
             s.add(c)
@@ -279,7 +279,7 @@ async def create_contact(request: Request, prospect_id: str):
             "social_url": c.social_url,
             "tags": c.tags,
             "role_title": c.role_title,
-            "created_at": (c.created_at or datetime.now(timezone.utc)).isoformat(),
+            "created_at": (c.created_at or datetime.now(UTC)).isoformat(),
         }
 
 
@@ -302,7 +302,9 @@ async def export_contacts_csv(request: Request, prospect_id: str):
         )
     buf = StringIO()
     w = csv.writer(buf)
-    w.writerow(["email", "source_url", "social_url", "tags", "role_title", "created_at"])
+    w.writerow(
+        ["email", "source_url", "social_url", "tags", "role_title", "created_at"]
+    )
     for r in rows:
         w.writerow(
             [
@@ -311,7 +313,7 @@ async def export_contacts_csv(request: Request, prospect_id: str):
                 r.social_url or "",
                 r.tags or "",
                 r.role_title or "",
-                (r.created_at or datetime.now(timezone.utc)).isoformat(),
+                (r.created_at or datetime.now(UTC)).isoformat(),
             ]
         )
     return Response(
@@ -349,7 +351,7 @@ async def list_contacts(request: Request, prospect_id: str):
                 "social_url": r.social_url,
                 "tags": r.tags,
                 "role_title": r.role_title,
-                "created_at": (r.created_at or datetime.now(timezone.utc)).isoformat(),
+                "created_at": (r.created_at or datetime.now(UTC)).isoformat(),
             }
             for r in rows
         ]

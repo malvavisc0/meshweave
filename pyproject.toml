@@ -1,18 +1,16 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=82.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "markdownify-crawler"
-version = "0.1.0"
+name = "meshweave"
+version = "0.0.1"
 description = "Render pages with Playwright, extract markdown, links, emails, and optionally crawl internal links."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.14"
 license = { text = "MIT" }
-authors = [
-  { name = "Your Name", email = "you@example.com" }
-]
-keywords = ["markdown", "crawler", "playwright", "fastapi", "emails", "links"]
+authors = [{ name = "Malvavisc0" }]
+keywords = ["markdown", "crawler", "emails", "links"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: MIT License",
@@ -23,32 +21,38 @@ classifiers = [
 
 dependencies = [
   "beautifulsoup4",
+  "cloakbrowser",
   "html-to-markdown[lxml]",
+  "langchain",
+  "psycopg2-binary",
+  "pydantic",
+  "sqlalchemy",
 ]
 
-[project.optional-dependencies]
-renderer = ["playwright"]
-server = ["fastapi[standard]", "uvicorn[standard]"]
-test = ["pytest>=7", "pytest-asyncio>=0.21"]
+[dependency-groups]
+dev = [
+  "pre-commit",
+  "ruff",
+  "pyinstaller",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-xdist",
+  "lxml",
+]
 
 [project.urls]
-Homepage = "https://example.com/markdownify-crawler"
-Repository = "https://example.com/markdownify-crawler"
+Homepage = "https://github.com/malvavisc0/meshweave"
+Repository = "https://github.com/malvavisc0/meshweave"
 
 [project.scripts]
-markdownify-crawl = "markdownify_crawler.cli:main_crawl"
-markdownify-serve = "markdownify_crawler.cli:main_serve"
+meshweave = "meshweave.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["markdownify_crawler*"]
+include = ["meshweave*"]
 
 [tool.pytest.ini_options]
-# Only collect tests from the tests/ directory
-testpaths = [
-  "tests",
-]
-
-# Prevent pytest from recursing into data volumes and other non-test dirs
+testpaths = ["tests"]
 norecursedirs = [
   ".git",
   ".cache",
@@ -59,13 +63,29 @@ norecursedirs = [
   "alembic/versions",
   "docs",
   "webapp/static",
-  "webapp/templates"
+  "webapp/templates",
 ]
-
-# Standard discovery patterns
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-
-# Default options: quiet output
 addopts = "-q"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.14"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pre-commit]
+default_stages = ["commit"]

@@ -1,8 +1,8 @@
 import logging
 import os
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -171,8 +171,7 @@ def init_db() -> None:
         return bool(res)
 
     def _ensure_users_table(conn) -> None:
-        conn.exec_driver_sql(
-            """
+        conn.exec_driver_sql("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE,
@@ -185,16 +184,16 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 UNIQUE(provider, provider_id)
             )
-            """
+            """)
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)"
         )
-        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)")
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_users_provider ON users(provider, provider_id)"
         )
 
     def _ensure_auth_sessions_table(conn) -> None:
-        conn.exec_driver_sql(
-            """
+        conn.exec_driver_sql("""
             CREATE TABLE IF NOT EXISTS auth_sessions (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -204,8 +203,7 @@ def init_db() -> None:
                 last_activity TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             )
-            """
-        )
+            """)
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_auth_sessions_session_id ON auth_sessions(session_id)"
         )
@@ -217,8 +215,7 @@ def init_db() -> None:
         )
 
     def _ensure_oauth_states_table(conn) -> None:
-        conn.exec_driver_sql(
-            """
+        conn.exec_driver_sql("""
             CREATE TABLE IF NOT EXISTS oauth_states (
                 id TEXT PRIMARY KEY,
                 sid TEXT,
@@ -227,8 +224,7 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL
             )
-            """
-        )
+            """)
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_oauth_states_expires_at ON oauth_states(expires_at)"
         )
@@ -237,18 +233,11 @@ def init_db() -> None:
         # Ensure columns exist on crawls
         if not _column_exists(conn, "crawls", "user_id"):
             conn.exec_driver_sql("ALTER TABLE crawls ADD COLUMN user_id TEXT")
-        if not _column_exists(conn, "crawls", "scope"):
-            conn.exec_driver_sql(
-                "ALTER TABLE crawls ADD COLUMN scope TEXT DEFAULT 'page'"
-            )
-        if not _column_exists(conn, "crawls", "limits_json"):
-            conn.exec_driver_sql("ALTER TABLE crawls ADD COLUMN limits_json TEXT")
+        if not _column_exists(conn, "crawls", "crawl_params"):
+            conn.exec_driver_sql("ALTER TABLE crawls ADD COLUMN crawl_params TEXT")
         # Indexes (names align with SQLAlchemy model where possible)
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_crawls_user_id ON crawls(user_id)"
-        )
-        conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_crawls_scope ON crawls(scope)"
         )
 
     def _unique_indexes_columns(conn, table: str) -> dict:
@@ -349,10 +338,12 @@ def init_db() -> None:
                     )
 
             # Required columns
-            required_crawls_cols = ("user_id", "scope", "limits_json")
+            required_crawls_cols = ("user_id", "crawl_params")
             for c in required_crawls_cols:
                 if not _column_exists(conn, "crawls", c):
-                    raise RuntimeError(f"Column '{c}' missing on 'crawls' post-migration")
+                    raise RuntimeError(
+                        f"Column '{c}' missing on 'crawls' post-migration"
+                    )
 
     except Exception as exc:
         # Fail fast with clear message; let startup abort

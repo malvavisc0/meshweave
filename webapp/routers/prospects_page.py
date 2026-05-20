@@ -36,9 +36,9 @@ async def prospects_page(request: Request):
     )
 
     resp = templates.TemplateResponse(
+        request,
         "prospects.html",
         {
-            "request": request,
             "site_name": site_name,
             "page_title": page_title,
             "meta_description": meta_description,

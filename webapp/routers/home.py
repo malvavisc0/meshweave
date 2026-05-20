@@ -1,17 +1,16 @@
 import json
 import os
 import uuid
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import case, distinct, func
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from webapp.db import get_db
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail, CrawlLink
+from webapp.models import Crawl
 from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
 from webapp.utils.security import _make_csrf_token
@@ -52,10 +51,10 @@ async def home(request: Request, db: Session = Depends(get_db)):
 
     def _relative_time(dt: datetime) -> str:
         try:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             base = dt or now
             if base.tzinfo is None:
-                base = base.replace(tzinfo=timezone.utc)
+                base = base.replace(tzinfo=UTC)
             diff = now - base
             secs = int(max(0, diff.total_seconds()))
             if secs < 60:
@@ -72,11 +71,9 @@ async def home(request: Request, db: Session = Depends(get_db)):
             return ""
 
     # Query latest public crawls with status ranking and limit 9
-    rows: List[Crawl] = (
+    rows: list[Crawl] = (
         db.query(Crawl)
-        .filter(
-            Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed == True
-        )
+        .filter(Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed)
         .order_by(
             case(
                 (Crawl.status == "succeeded", 0),
@@ -91,30 +88,32 @@ async def home(request: Request, db: Session = Depends(get_db)):
 
     ids = [r.id for r in rows] or ["-"]
 
-    # Bulk counts to avoid N+1
-    email_counts_map = {}
-    page_counts_map = {}
+    # Bulk counts from payload_json (CrawlLink/CrawlEmail tables removed)
+    email_counts_map: dict[str, int] = {}
+    page_counts_map: dict[str, int] = {}
 
     if ids and len(rows) > 0:
-        for cid, cnt in (
-            db.query(CrawlEmail.crawl_id, func.count(distinct(CrawlEmail.email)))
-            .filter(CrawlEmail.crawl_id.in_(ids))
-            .group_by(CrawlEmail.crawl_id)
-            .all()
-        ):
-            email_counts_map[cid] = int(cnt or 0)
-
-        for cid, cnt in (
-            db.query(CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url)))
-            .filter(CrawlLink.crawl_id.in_(ids), CrawlLink.type == "internal")
-            .group_by(CrawlLink.crawl_id)
-            .all()
-        ):
-            page_counts_map[cid] = int(cnt or 0)
+        for r in rows:
+            try:
+                p = json.loads(r.payload_json) if r.payload_json else {}
+                if isinstance(p, dict):
+                    # Email count from payload
+                    emails_data = p.get("emails") or {}
+                    unique_emails = emails_data.get("unique") or []
+                    email_counts_map[r.id] = len(unique_emails)
+                    # Page count from payload (number of pages in site crawl)
+                    pages_list = p.get("pages") or []
+                    if isinstance(pages_list, list):
+                        page_counts_map[r.id] = len(pages_list)
+                    else:
+                        page_counts_map[r.id] = 0
+            except Exception:
+                email_counts_map[r.id] = 0
+                page_counts_map[r.id] = 0
 
     # Build item payloads
     items = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for r in rows:
         payload = _safe_json_load(r.payload_json or "")
         title = ""
@@ -122,14 +121,16 @@ async def home(request: Request, db: Session = Depends(get_db)):
         og_desc = ""
         try:
             if isinstance(payload, dict):
-                if r.scope == "site":
+                if r.crawl_params:
                     # For site crawls, title from first page
                     pages = payload.get("pages") or []
                     if pages and isinstance(pages, list) and len(pages) > 0:
                         pg = pages[0].get("page") or {}
                         title = (pg.get("title") or "").strip()
                         description = (pg.get("description") or "").strip()
-                        og_desc = ((pg.get("og") or {}).get("description") or "").strip()
+                        og_desc = (
+                            (pg.get("og") or {}).get("description") or ""
+                        ).strip()
                 else:
                     # For page crawls
                     pg = payload.get("page") or {}
@@ -142,7 +143,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
         updated_dt = r.updated_at or now
         try:
             if updated_dt.tzinfo is None:
-                updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                updated_dt = updated_dt.replace(tzinfo=UTC)
         except Exception:
             updated_dt = now
         updated_iso = updated_dt.isoformat()
@@ -150,7 +151,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
         is_new = (now - updated_dt).total_seconds() <= 2 * 3600
 
         summary_snippet = ""
-        if (r.scope or "page") == "site":
+        if bool(r.crawl_params):
             if description:
                 summary_snippet = _first_sentence(description, 160)
             elif og_desc:
@@ -170,16 +171,14 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 "query": r.query,
                 "canonical_url": r.canonical_url,
                 "title": title or r.canonical_url or f"{r.domain}{r.path or ''}",
-                "scope": r.scope,
+                "scope": "site" if r.crawl_params else "page",
                 "status": r.status,
                 "page_count": page_counts_map.get(r.id, 0),
                 "email_count": email_counts_map.get(r.id, 0),
                 "updated_iso": updated_iso,
                 "updated_relative": updated_relative,
                 "is_new": bool(is_new),
-                "summary_snippet": (
-                    summary_snippet if (r.scope or "page") == "site" else ""
-                ),
+                "summary_snippet": (summary_snippet if bool(r.crawl_params) else ""),
                 # Back-compat fields (legacy templates)
                 "updated_at": updated_iso,
             }
@@ -193,42 +192,48 @@ async def home(request: Request, db: Session = Depends(get_db)):
             .count()
         ) or 0
 
-        emails_total = (
-            db.query(func.count(distinct(CrawlEmail.email)))
-            .select_from(CrawlEmail)
-            .join(Crawl, Crawl.id == CrawlEmail.crawl_id)
-            .filter(Crawl.visibility == "public")
-            .scalar()
-            or 0
-        )
-
-        links_external_total = (
-            db.query(func.count(CrawlLink.id))
-            .join(Crawl, Crawl.id == CrawlLink.crawl_id)
-            .filter(Crawl.visibility == "public", CrawlLink.type == "external")
-            .scalar()
-            or 0
-        )
-
-        external_domains_total = (
-            db.query(func.count(distinct(CrawlLink.domain)))
-            .join(Crawl, Crawl.id == CrawlLink.crawl_id)
-            .filter(Crawl.visibility == "public", CrawlLink.type == "external")
-            .scalar()
-            or 0
-        )
-
-        # Sum per-crawl distinct internal pages
-        per_crawl_pages = (
-            db.query(
-                CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url)).label("cnt")
-            )
-            .join(Crawl, Crawl.id == CrawlLink.crawl_id)
-            .filter(Crawl.visibility == "public", CrawlLink.type == "internal")
-            .group_by(CrawlLink.crawl_id)
+        # Compute community metrics from payload_json
+        all_emails: set[str] = set()
+        links_external_total = 0
+        external_domains: set[str] = set()
+        pages_total = 0
+        public_crawls = (
+            db.query(Crawl.payload_json)
+            .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .all()
         )
-        pages_total = int(sum(int(c or 0) for _, c in per_crawl_pages))
+        for (pj,) in public_crawls:
+            try:
+                p = json.loads(pj) if pj else {}
+                if not isinstance(p, dict):
+                    continue
+                # Emails
+                emails_data = p.get("emails") or {}
+                for em in emails_data.get("unique") or []:
+                    if em:
+                        all_emails.add(str(em).lower())
+                # Pages count
+                pages_list = p.get("pages") or []
+                if isinstance(pages_list, list):
+                    pages_total += len(pages_list)
+                # External links and domains
+                links_data = p.get("links") or {}
+                for ext in links_data.get("external") or []:
+                    links_external_total += 1
+                    try:
+                        from urllib.parse import urlsplit
+
+                        dom = urlsplit(str(ext)).netloc.lower()
+                        if dom.startswith("www."):
+                            dom = dom[4:]
+                        if dom:
+                            external_domains.add(dom)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        emails_total = len(all_emails)
+        external_domains_total = len(external_domains)
         community_metrics = {
             "analyses_total": int(analyses_total),
             "emails_total": int(emails_total),
@@ -252,11 +257,12 @@ async def home(request: Request, db: Session = Depends(get_db)):
     )
 
     # SEO meta for home (LLM-first)
-    site_name = os.getenv("SITE_NAME", "Meshweave")
-    page_title = f"{site_name} — Generate Website Insights for Sales & Lead Discovery"
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    page_title = f"{site_name} — AEO & GEO Scoring for AI Search Visibility"
     meta_description = (
-        "End-to-end site analysis and content extraction. Turn websites into clean Markdown, "
-        "link and email intelligence, and shareable insights with AI-assisted outputs."
+        "Get your AEO and GEO score. See how visible your website is to "
+        "Google AI Overviews, ChatGPT, Claude, and Perplexity — with "
+        "actionable recommendations."
     )
     abs_page_url = _abs_url(request, "/")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
@@ -291,9 +297,9 @@ async def home(request: Request, db: Session = Depends(get_db)):
     submitted_is_private = True if request.query_params.get("private") else False
 
     resp = templates.TemplateResponse(
+        request,
         "home.html",
         {
-            "request": request,
             "items": items,
             "community_metrics": community_metrics,
             "csrf_token": csrf_token,

@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import time
-from typing import Optional
 
 from .config import _get_secret_key
 
@@ -16,7 +15,7 @@ def _hash_ip(ip: str, salt: str) -> str:
     Returns:
         str: Hex-encoded SHA-256 digest of "ip|salt".
     """
-    s = f"{ip}|{salt}".encode("utf-8")
+    s = f"{ip}|{salt}".encode()
     return hashlib.sha256(s).hexdigest()
 
 
@@ -38,7 +37,7 @@ def _make_csrf_token(session_id: str) -> str:
 
 
 def _verify_csrf_token(
-    token: Optional[str], session_id: str, max_age_seconds: int = 7200
+    token: str | None, session_id: str, max_age_seconds: int = 7200
 ) -> bool:
     """Verify a CSRF token for the given session id and max age.
 
@@ -62,7 +61,7 @@ def _verify_csrf_token(
             return False
         expected = hmac.new(
             _get_secret_key(),
-            f"{session_id}:{ts_s}:submit".encode("utf-8"),
+            f"{session_id}:{ts_s}:submit".encode(),
             hashlib.sha256,
         ).hexdigest()
         return hmac.compare_digest(expected, mac)

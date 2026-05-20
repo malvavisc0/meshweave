@@ -1,10 +1,11 @@
 import uuid
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     String,
@@ -18,7 +19,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# New: Users table (Phase 1 schema)
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
@@ -30,38 +30,100 @@ class User(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="google")
     provider_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    avatar_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Relationship to crawls (owner)
-    crawls: Mapped[List["Crawl"]] = relationship(
+    crawls: Mapped[list[Crawl]] = relationship(
         "Crawl", back_populates="user", cascade="save-update"
     )
 
 
-# New: Auth sessions table (Phase 1 schema)
+class Prospect(Base):
+    __tablename__ = "prospects"
+    __table_args__ = (
+        UniqueConstraint("user_id", "domain", name="uq_prospects_user_domain"),
+        Index("ix_prospects_user_id", "user_id"),
+        Index("ix_prospects_domain", "domain"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    crawl_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("crawls.id", ondelete="SET NULL"), nullable=True
+    )
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="shortlisted"
+    )
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    socials_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class ProspectContact(Base):
+    __tablename__ = "prospect_contacts"
+    __table_args__ = (
+        UniqueConstraint("prospect_id", "email", name="uq_prospect_contacts_email"),
+        Index("ix_prospect_contacts_prospect_id", "prospect_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    prospect_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("prospects.id", ondelete="CASCADE"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    social_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
-    __table_args__ = (
-        Index("ix_auth_sessions_session_id", "session_id"),
-        Index("ix_auth_sessions_expires_at", "expires_at"),
-    )
+    __table_args__ = (Index("ix_auth_sessions_expires_at", "expires_at"),)
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
@@ -74,14 +136,16 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     last_activity: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -92,16 +156,18 @@ class OAuthState(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    sid: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sid: Mapped[str | None] = mapped_column(String(64), nullable=True)
     state: Mapped[str] = mapped_column(String(255), nullable=False)
-    next_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    next_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class Crawl(Base):
@@ -118,7 +184,6 @@ class Crawl(Base):
         Index("ix_crawls_updated_at", "updated_at"),
         Index("ix_crawls_domain", "domain"),
         Index("ix_crawls_user_id", "user_id"),
-        Index("ix_crawls_scope", "scope"),
         Index("ix_crawls_visibility_user_id_listed", "visibility", "user_id", "listed"),
     )
 
@@ -140,7 +205,7 @@ class Crawl(Base):
     canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Short URL-safe key for public access (/analysis/public/{key}); nullable for private rows
-    key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    key: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Visibility and crawl state
     visibility: Mapped[str] = mapped_column(
@@ -149,50 +214,46 @@ class Crawl(Base):
     status: Mapped[str] = mapped_column(
         String(10), default="pending"
     )  # "pending" | "running" | "succeeded" | "failed"
-    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # Phase 1 schema additions for ownership and site crawling
-    user_id: Mapped[Optional[str]] = mapped_column(
+    user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    scope: Mapped[str] = mapped_column(String(10), default="page")  # "page" | "site"
-    limits_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    crawl_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # Phase 1B additions for listing and sharing
-    listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    share_key: Mapped[Optional[str]] = mapped_column(
-        String(32), nullable=True, unique=True
+    # AEO/GEO scores (computed deterministically from payload_json)
+    aeo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aeo_rating: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    geo_rating: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ai_analysis_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    scoring_version: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="1.0"
     )
+    has_manual_input: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    share_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Relationships
-    user: Mapped[Optional["User"]] = relationship("User", back_populates="crawls")
-    submissions: Mapped[list["Submission"]] = relationship(
+    user: Mapped[User | None] = relationship("User", back_populates="crawls")
+    submissions: Mapped[list[Submission]] = relationship(
         "Submission",
-        back_populates="crawl",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    links: Mapped[list["CrawlLink"]] = relationship(
-        "CrawlLink",
-        back_populates="crawl",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    emails: Mapped[list["CrawlEmail"]] = relationship(
-        "CrawlEmail",
         back_populates="crawl",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -201,6 +262,12 @@ class Crawl(Base):
 
 class Submission(Base):
     __tablename__ = "submissions"
+    __table_args__ = (
+        Index("ix_submissions_created_at", "created_at"),
+        Index("ix_submissions_domain", "domain"),
+        Index("ix_submissions_client_ip", "client_ip"),
+        Index("ix_submissions_session_id", "session_id"),
+    )
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
@@ -218,178 +285,30 @@ class Submission(Base):
     force_refresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status_at_submit: Mapped[str] = mapped_column(String(10), nullable=False)
 
-    client_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    client_ip_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    forwarded_for: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    x_real_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    client_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    forwarded_for: Mapped[str | None] = mapped_column(Text, nullable=True)
+    x_real_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    accept_language: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    referer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    origin: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    accept_language: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    referer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    host: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    session_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    headers_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    cookies_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    headers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cookies_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
 
     # Relationship back to crawl
-    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="submissions")
-
-    __table_args__ = (
-        Index("ix_submissions_created_at", "created_at"),
-        Index("ix_submissions_domain", "domain"),
-        Index("ix_submissions_client_ip", "client_ip"),
-        Index("ix_submissions_session_id", "session_id"),
-    )
-
-
-class CrawlLink(Base):
-    __tablename__ = "crawl_links"
-    __table_args__ = (
-        UniqueConstraint(
-            "crawl_id", "page_url", "absolute_url", "type", name="uq_crawl_links_unique"
-        ),
-        Index("ix_crawl_links_crawl_id", "crawl_id"),
-        Index("ix_crawl_links_domain", "domain"),
-        Index("ix_crawl_links_type", "type"),
-    )
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    crawl_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("crawls.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    page_url: Mapped[str] = mapped_column(Text, nullable=False)
-    url: Mapped[str] = mapped_column(Text, nullable=False)
-    absolute_url: Mapped[str] = mapped_column(Text, nullable=False)
-    type: Mapped[str] = mapped_column(
-        String(10), nullable=False
-    )  # "internal" | "external"
-    domain: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    # Relationship back to crawl
-    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="links")
-
-
-class CrawlEmail(Base):
-    __tablename__ = "crawl_emails"
-    __table_args__ = (
-        UniqueConstraint("crawl_id", "page_url", "email", name="uq_crawl_emails_unique"),
-        Index("ix_crawl_emails_crawl_id", "crawl_id"),
-        Index("ix_crawl_emails_email", "email"),
-    )
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    crawl_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("crawls.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    page_url: Mapped[str] = mapped_column(Text, nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False)  # lowercased
-    found_as: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True
-    )  # e.g. "mailto,text"
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    # Relationship back to crawl
-    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="emails")
-
-
-# --- Phase 1B Models ---
-
-
-class Prospect(Base):
-    __tablename__ = "prospects"
-    __table_args__ = (
-        UniqueConstraint("user_id", "domain", name="uq_prospects_user_domain"),
-        Index("ix_prospects_user_id", "user_id"),
-        Index("ix_prospects_domain", "domain"),
-    )
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    crawl_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("crawls.id", ondelete="SET NULL"), nullable=True
-    )
-    domain: Mapped[str] = mapped_column(String(255), nullable=False)
-    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="shortlisted"
-    )  # shortlisted|contacted|replied|won|lost
-    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # comma-separated
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    socials_json: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )  # JSON [{"platform":"linkedin","url":"...","handle":"..."}]
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-
-class ProspectContact(Base):
-    __tablename__ = "prospect_contacts"
-    __table_args__ = (
-        UniqueConstraint("prospect_id", "email", name="uq_prospect_contacts_email"),
-        Index("ix_prospect_contacts_prospect_id", "prospect_id"),
-        Index("ix_prospect_contacts_email", "email"),
-    )
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    prospect_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("prospects.id", ondelete="CASCADE"), nullable=False
-    )
-    email: Mapped[str] = mapped_column(String(320), nullable=False)  # lowercased
-    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    social_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    role_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
+    crawl: Mapped[Crawl] = relationship("Crawl", back_populates="submissions")
 
 
 class Product(Base):
@@ -409,86 +328,18 @@ class Product(Base):
     website: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     contact_info: Mapped[str] = mapped_column(Text, nullable=False)
-    defaults_json: Mapped[Optional[str]] = mapped_column(
+    defaults_json: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # {"tone":"...","cta":"...","length":"..."}
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
-
-
-# ---- Chat persistence (threads + messages) ----
-
-
-class ChatThread(Base):
-    __tablename__ = "chat_threads"
-    __table_args__ = (
-        UniqueConstraint("user_id", "crawl_id", name="uq_chat_threads_user_crawl"),
-        Index("ix_chat_threads_user_id", "user_id"),
-        Index("ix_chat_threads_crawl_id", "crawl_id"),
-    )
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    crawl_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("crawls.id", ondelete="CASCADE"), nullable=False
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    # Relationships
-    messages: Mapped[List["ChatMessage"]] = relationship(
-        "ChatMessage",
-        back_populates="thread",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-
-class ChatMessage(Base):
-    __tablename__ = "chat_messages"
-    __table_args__ = (
-        Index("ix_chat_messages_thread_id_created_at", "thread_id", "created_at"),
-    )
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    thread_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("chat_threads.id", ondelete="CASCADE"), nullable=False
-    )
-    role: Mapped[str] = mapped_column(String(10), nullable=False)  # "user" | "ai"
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    # Relationship
-    thread: Mapped["ChatThread"] = relationship("ChatThread", back_populates="messages")

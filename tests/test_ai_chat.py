@@ -1,4 +1,3 @@
-import types
 from types import SimpleNamespace
 
 import pytest
@@ -115,6 +114,7 @@ def test_ai_chat_streaming_success(monkeypatch):
             async def _gen():
                 yield "Hello "
                 yield "world"
+
             return _gen()
 
     monkeypatch.setattr(ai, "get_agent", lambda **kwargs: _AgentOK(), raising=True)

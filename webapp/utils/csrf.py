@@ -1,4 +1,3 @@
-from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -11,7 +10,7 @@ from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
 
 
-def _host_of(u: Optional[str]) -> str:
+def _host_of(u: str | None) -> str:
     """Extract netloc host from a URL-like string in lowercase.
 
     Args:

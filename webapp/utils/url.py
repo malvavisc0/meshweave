@@ -1,6 +1,5 @@
 import base64
 import uuid
-from typing import Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import Request
@@ -63,7 +62,7 @@ def _normalize_query(q: str) -> str:
         return (q or "").lstrip("?").strip()
 
 
-def canonicalize_url(url: str) -> Tuple[str, str, str, str]:
+def canonicalize_url(url: str) -> tuple[str, str, str, str]:
     """Canonicalize a URL into components and a normalized absolute form.
 
     Returns a tuple (domain, path, query, canonical_url), where:
@@ -125,7 +124,7 @@ def _abs_url(request: Request, path: str) -> str:
     return f"{base}{path}"
 
 
-def _safe_summary(text: Optional[str], max_len: int = 160) -> str:
+def _safe_summary(text: str | None, max_len: int = 160) -> str:
     """Create a one-line safe summary from text.
 
     Collapses newlines, trims carriage returns, and truncates with an ellipsis.

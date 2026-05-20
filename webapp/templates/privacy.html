@@ -4,10 +4,11 @@
 {% block content %}
 <div class="container">
   <h1>Privacy Policy</h1>
-  <p class="small">Last updated: <time datetime="{{ (request.headers.get('date') or '') }}">{{ (request.headers.get('date') or '') }}</time></p>
+  <p class="small">Last updated: <time datetime="{{ (request.headers.get('date') or '') }}">{{
+      (request.headers.get('date') or '') }}</time></p>
 
   <section class="panel mt-2">
-    <p>Meshweave is committed to transparent data practices.</p>
+    <p>MeshWeave is committed to transparent data practices.</p>
     <ul>
       <li>Public/Private: Public by default when not signed in. Sign in to keep results private.</li>
       <li>Data collected: Input URLs you submit and crawl metadata required to perform analysis.</li>

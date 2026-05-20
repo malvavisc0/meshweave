@@ -13,20 +13,23 @@
   </div>
 
   <label for="site-input" class="mb-1 block">Domain (e.g., example.com):</label>
-  <input type="text" id="site-input" placeholder="example.com" required aria-describedby="site-help domain-feedback" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" aria-invalid="false">
-  <button type="submit" id="site-btn" class="btn btn-primary-gradient ml-2" data-track="start_analysis_click" aria-label="Start analysis">Start analysis</button>
+  <input type="text" id="site-input" placeholder="example.com" required aria-describedby="site-help domain-feedback"
+    autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" aria-invalid="false">
+  <button type="submit" id="site-btn" class="btn btn-primary-gradient mt-2" data-track="start_analysis_click"
+    aria-label="Start analysis">Start analysis</button>
   <div id="domain-feedback" class="small mt-1" aria-live="polite"></div>
 
   {% if request.state.current_user %}
-    <div class="mt-2 mb-2"><label for="site-private"><input type="checkbox" id="site-private" checked="checked"> Keep private</label></div>
+  <div class="mt-2 mb-2"><label for="site-private"><input type="checkbox" id="site-private" checked="checked"> Keep
+      private</label></div>
   {% endif %}
 
   <div id="site-help" class="small mt-2">
-  {% if request.state.current_user %}
+    {% if request.state.current_user %}
     <p>Analyses are private by default when logged in.</p>
-  {% else %}
-    <p>Analyses are public by default when not logged in. <a href="/login?provider=google&next={{ abs_page_url or '/' }}">Sign in</a> to keep them private.</p>
-    <p>Public analyses can be claimed after 24 hours for full access.</p>
-  {% endif %}
+    {% else %}
+    <p>Analyses are public by default when not logged in. <a
+        href="/login?provider=google&next={{ abs_page_url or '/' }}">Sign in</a> to keep them private.</p>
+    {% endif %}
   </div>
 </form>

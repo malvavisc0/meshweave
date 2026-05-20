@@ -24,7 +24,9 @@ else:
         templates = Jinja2Templates(directory=str(templates_dir))
     except Exception:
         # Fallback for dev runs
-        templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+        templates = Jinja2Templates(
+            directory=str(Path(__file__).parent / "templates"),
+        )
 
 # Trim Jinja control-structure whitespace to reduce output size
 try:
@@ -77,7 +79,8 @@ def mount_static(app: FastAPI) -> None:
       - If unset, packaged resources are used when available, else local.
     """
     prefer_local_static = os.getenv(
-        "WEBAPP_PREFER_LOCAL_STATIC", os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false")
+        "WEBAPP_PREFER_LOCAL_STATIC",
+        os.getenv("WEBAPP_PREFER_LOCAL_TEMPLATES", "false"),
     ).strip().lower() in {"1", "true", "yes", "on"}
 
     if prefer_local_static:
@@ -99,6 +102,8 @@ def mount_static(app: FastAPI) -> None:
     except Exception:
         app.mount(
             "/static",
-            StaticFiles(directory=str(Path(__file__).parent / "static"), check_dir=False),
+            StaticFiles(
+                directory=str(Path(__file__).parent / "static"), check_dir=False
+            ),
             name="static",
         )

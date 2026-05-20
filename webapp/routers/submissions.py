@@ -1,8 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -32,17 +31,17 @@ async def submit(
     request: Request,
     background_tasks: BackgroundTasks,
     # Unified form fields (page or site)
-    mode: Optional[str] = Form(None),
-    url: Optional[str] = Form(None),
-    domain: Optional[str] = Form(None),
-    public: Optional[str] = Form(None),  # checkbox presence => public (page mode only)
+    mode: str | None = Form(None),
+    url: str | None = Form(None),
+    domain: str | None = Form(None),
+    public: str | None = Form(None),  # checkbox presence => public (page mode only)
     # Site optional limits
-    max_pages: Optional[str] = Form(None),
-    max_depth: Optional[str] = Form(None),
-    time_budget_ms: Optional[str] = Form(None),
+    max_pages: str | None = Form(None),
+    max_depth: str | None = Form(None),
+    time_budget_ms: str | None = Form(None),
     # Shared security
-    csrf_token: Optional[str] = Form(None),
-    website: Optional[str] = Form(None),  # honeypot
+    csrf_token: str | None = Form(None),
+    website: str | None = Form(None),  # honeypot
 ):
     """Unified submit handler for analyzing a page or crawling a site.
 
@@ -112,7 +111,7 @@ async def submit(
 
         # Upsert crawl row (unique on visibility+domain+path+query)
         start_url = f"https://{dom}/"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with get_session() as s:
             existing = (
                 s.query(Crawl)
@@ -130,7 +129,9 @@ async def submit(
                 try:
                     ex_owner = getattr(existing, "user_id", None)
                     if ex_owner:
-                        if (user and ex_owner != getattr(user, "id", None)) or (not user):
+                        if (user and ex_owner != getattr(user, "id", None)) or (
+                            not user
+                        ):
                             can_update = False
                 except Exception:
                     can_update = False
@@ -152,10 +153,7 @@ async def submit(
 
                     existing.url = start_url
                     existing.canonical_url = start_url
-                    existing.scope = "site"
-                    existing.limits_json = (
-                        json.dumps(lim_req) if lim_req else json.dumps({})
-                    )
+                    existing.crawl_params = lim_req or {}
                     # Attach ownership when logged in and missing
                     try:
                         if user and not getattr(existing, "user_id", None):
@@ -188,12 +186,11 @@ async def submit(
                         canonical_url=start_url,
                         key=key,
                         visibility=visibility,
-                        scope="site",
                         status="pending",
                         payload_json=None,
                         error=None,
                         user_id=(getattr(user, "id", None) if user else None),
-                        limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
+                        crawl_params=lim_req or {},
                         created_at=now,
                         updated_at=now,
                     )
@@ -220,12 +217,11 @@ async def submit(
                     canonical_url=start_url,
                     key=key,
                     visibility=visibility,
-                    scope="site",
                     status="pending",
                     payload_json=None,
                     error=None,
                     user_id=(getattr(user, "id", None) if user else None),
-                    limits_json=(json.dumps(lim_req) if lim_req else json.dumps({})),
+                    crawl_params=lim_req or {},
                     created_at=now,
                     updated_at=now,
                 )
@@ -274,7 +270,7 @@ async def submit(
     except Exception:
         pass
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Security: origin validation, honeypot already handled, CSRF, and simple rate limiting
     enforce_origin = _env_bool("WEBAPP_ENFORCE_ORIGIN", True)
@@ -283,7 +279,7 @@ async def submit(
         origin_hdr = request.headers.get("origin")
         referer_hdr = request.headers.get("referer")
 
-        def _host_of(u: Optional[str]) -> str:
+        def _host_of(u: str | None) -> str:
             """Extract lowercase host from a URL-like string."""
             try:
                 from urllib.parse import urlparse
@@ -380,7 +376,7 @@ async def submit(
     # - private: create new or update only if safe to do so
     with get_session() as s:
         crawl_id = None
-        key_val: Optional[str] = None
+        key_val: str | None = None
 
         if is_public:
             # Default all public analyses to site scope (domain root) so pages[] with markdown is available
@@ -397,14 +393,17 @@ async def submit(
             )
             if existing:
                 # Enforce cooldown for public refresh
-                refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-                if now - existing.updated_at < timedelta(minutes=refresh_min_age_minutes):
+                refresh_min_age_minutes = int(
+                    os.getenv("REFRESH_MIN_AGE_MINUTES", "60")
+                )
+                if now - existing.updated_at < timedelta(
+                    minutes=refresh_min_age_minutes
+                ):
                     return RedirectResponse(url="/?notice=cooldown", status_code=303)
 
-                # Convert/refresh existing public entry to site-scope crawl on domain root
+                # Convert/refresh existing public entry on domain root
                 existing.url = start_url
                 existing.canonical_url = start_url
-                existing.scope = "site"
                 # If a run is already in progress, keep it running; else reset to pending
                 if existing.status not in {"running"}:
                     existing.status = "pending"
@@ -434,7 +433,6 @@ async def submit(
                     canonical_url=start_url,
                     key=key_try,
                     visibility="public",
-                    scope="site",
                     status="pending",
                     payload_json=None,
                     error=None,
@@ -458,8 +456,12 @@ async def submit(
             )
             if existing:
                 # Enforce cooldown for public refresh
-                refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-                if now - existing.updated_at < timedelta(minutes=refresh_min_age_minutes):
+                refresh_min_age_minutes = int(
+                    os.getenv("REFRESH_MIN_AGE_MINUTES", "60")
+                )
+                if now - existing.updated_at < timedelta(
+                    minutes=refresh_min_age_minutes
+                ):
                     return RedirectResponse(url="/?notice=cooldown", status_code=303)
 
                 # Guard against updating private rows owned by another user.
@@ -467,7 +469,9 @@ async def submit(
                 try:
                     ex_owner = getattr(existing, "user_id", None)
                     if ex_owner:
-                        if (user and ex_owner != getattr(user, "id", None)) or (not user):
+                        if (user and ex_owner != getattr(user, "id", None)) or (
+                            not user
+                        ):
                             can_update = False
                 except Exception:
                     can_update = False
@@ -556,7 +560,9 @@ async def submit(
 
         # Client identity
         client_ip = _client_ip_from_request(request, trust_proxy=trust_proxy)
-        client_ip_hash = _hash_ip(client_ip, ip_salt) if (client_ip and mask_ip) else None
+        client_ip_hash = (
+            _hash_ip(client_ip, ip_salt) if (client_ip and mask_ip) else None
+        )
         raw_client_ip = None if mask_ip else (client_ip or None)
 
         headers_subset = _collect_headers_subset(request) if log_headers else None
@@ -604,7 +610,9 @@ async def submit(
                         request.cookies.get(os.getenv("WEBAPP_COOKIE_NAME", "sid"))
                         or None
                     ),
-                    headers_json=(json.dumps(headers_subset) if headers_subset else None),
+                    headers_json=(
+                        json.dumps(headers_subset) if headers_subset else None
+                    ),
                     cookies_json=(json.dumps(cookies_obj) if cookies_obj else None),
                 )
             )

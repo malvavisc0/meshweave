@@ -1,10 +1,10 @@
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 
 from webapp.db import get_session
-from webapp.models import Crawl, CrawlEmail, CrawlLink
+from webapp.models import Crawl
 from webapp.utils.auth import require_ownership
 from webapp.utils.metrics import stale_finalize_attempts, stale_finalize_finished
 
@@ -32,7 +32,6 @@ def finalize_stale_job(crawl_id: str) -> str:
     Returns: "ok" (finalized), "race" (row no longer running), "noop" (not running), "err" (failed).
     """
     import json
-    from collections import defaultdict
 
     try:
         with get_session() as s:
@@ -42,70 +41,31 @@ def finalize_stale_job(crawl_id: str) -> str:
             if str(getattr(row, "status", "")).lower() != "running":
                 return "noop"
 
-            # Load persisted links/emails
-            link_rows = s.query(CrawlLink).filter(CrawlLink.crawl_id == crawl_id).all()
-            email_rows = s.query(CrawlEmail).filter(CrawlEmail.crawl_id == crawl_id).all()
+            # Extract links/emails from existing payload_json or build minimal
+            existing_payload = {}
+            try:
+                existing_payload = json.loads(row.payload_json or "{}")
+            except Exception:
+                existing_payload = {}
+            if not isinstance(existing_payload, dict):
+                existing_payload = {}
 
-            # Dedup and aggregate
-            internal = sorted(
-                {
-                    (lr.absolute_url or "").strip()
-                    for lr in link_rows
-                    if (lr.type or "") == "internal" and (lr.absolute_url or "").strip()
-                }
-            )
-            external = sorted(
-                {
-                    (lr.absolute_url or "").strip()
-                    for lr in link_rows
-                    if (lr.type or "") == "external" and (lr.absolute_url or "").strip()
-                }
-            )
-            visited_pages_count = len(
-                {
-                    (lr.page_url or "").strip()
-                    for lr in link_rows
-                    if (lr.page_url or "").strip()
-                }
-            )
+            internal = sorted(existing_payload.get("links", {}).get("internal", []))
+            external = sorted(existing_payload.get("links", {}).get("external", []))
+            visited_pages_count = len(existing_payload.get("pages", []))
 
-            emails_unique_set = set()
-            by_url = defaultdict(set)  # url -> set(emails)
-            src_map = {}  # (email,url) -> set(found_as)
-            for er in email_rows:
-                em = (er.email or "").strip().lower()
-                if not em:
-                    continue
-                pg = (er.page_url or "").strip() or row.canonical_url or row.url
-                emails_unique_set.add(em)
-                by_url[pg].add(em)
-                fas = []
-                try:
-                    fas = [
-                        x.strip().lower()
-                        for x in (er.found_as or "").split(",")
-                        if x.strip()
-                    ]
-                except Exception:
-                    fas = []
-                key = (em, pg)
-                if key not in src_map:
-                    src_map[key] = set()
-                src_map[key].update(fas)
-
-            emails_unique = sorted(emails_unique_set)
-            emails_by_url = {u: sorted(list(v)) for u, v in by_url.items()}
-            sources = [
-                {"email": k[0], "url": k[1], "found_as": sorted(list(v))}
-                for k, v in src_map.items()
-            ]
-            total_mentions = sum(len(v) for v in emails_by_url.values())
+            emails_unique = sorted(existing_payload.get("emails", {}).get("unique", []))
+            emails_by_url = existing_payload.get("emails", {}).get("by_url", {})
+            sources = existing_payload.get("emails", {}).get("sources", [])
+            total_mentions = (
+                existing_payload.get("emails", {})
+                .get("counts", {})
+                .get("total_mentions", 0)
+            )
 
             # Limits (best-effort)
             try:
-                import json as _json
-
-                limits = _json.loads(row.limits_json or "{}")
+                limits = row.crawl_params or {}
             except Exception:
                 limits = {}
 
@@ -143,7 +103,7 @@ def finalize_stale_job(crawl_id: str) -> str:
             }
 
             # Attempt optimistic finalize (avoid racing a live worker)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             updated = (
                 s.query(Crawl)
                 .filter(Crawl.id == crawl_id, Crawl.status == "running")
@@ -185,24 +145,23 @@ async def api_progress(request: Request, crawl_id: str):
         }
     """
     row = await require_ownership(request, crawl_id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
-    # Count distinct page_url's we have already persisted (works for both page/site)
-    with get_session() as s:
-        visited_pages = (
-            s.query(CrawlLink.page_url)
-            .filter(CrawlLink.crawl_id == crawl_id)
-            .distinct()
-            .count()
-        )
+    # Count visited pages from payload_json (CrawlLink table removed)
+    visited_pages = 0
+    try:
+        import json as _pj
+
+        _p = _pj.loads(row.payload_json or "{}")
+        visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
+    except Exception:
+        visited_pages = 0
 
     # Limits (for site crawls)
     limits = {}
-    if (row.scope or "page") == "site":
+    if bool(row.crawl_params):
         try:
-            import json
-
-            limits = json.loads(row.limits_json or "{}")
+            limits = row.crawl_params or {}
         except Exception:
             limits = {}
         # Fallback if effective limits not yet persisted
@@ -210,16 +169,18 @@ async def api_progress(request: Request, crawl_id: str):
             limits = {}
         if ("max_pages" not in limits) or (not limits.get("max_pages")):
             try:
-                limits["max_pages"] = int(os.getenv("AUTH_SITE_MAX_PAGES_DEFAULT", "200"))
+                limits["max_pages"] = int(
+                    os.getenv("AUTH_SITE_MAX_PAGES_DEFAULT", "200")
+                )
             except Exception:
                 limits["max_pages"] = 200
 
-    # Elapsed: prefer started_at_ms from limits_json; fallback to updated_at heuristic
+    # Elapsed: prefer started_at_ms from crawl_params; fallback to updated_at heuristic
     elapsed_ms = None
     try:
         now_ms = int(now.timestamp() * 1000)
         started_ms = None
-        if (row.scope or "page") == "site":
+        if bool(row.crawl_params):
             try:
                 started_ms = int((limits or {}).get("started_at_ms"))  # type: ignore[arg-type]
             except Exception:
@@ -236,7 +197,7 @@ async def api_progress(request: Request, crawl_id: str):
     time_budget_ms_val = None
     time_budget_remaining_ms = None
     try:
-        if (row.scope or "page") == "site":
+        if bool(row.crawl_params):
             # ensure integer max_pages
             total = None
             v_total = limits.get("max_pages") if isinstance(limits, dict) else None
@@ -250,7 +211,9 @@ async def api_progress(request: Request, crawl_id: str):
                 rem_pages = max(0, total - done)
                 est_remaining_ms = int(avg * rem_pages)
             # time budget info if available
-            v_budget = limits.get("time_budget_ms") if isinstance(limits, dict) else None
+            v_budget = (
+                limits.get("time_budget_ms") if isinstance(limits, dict) else None
+            )
             try:
                 time_budget_ms_val = int(v_budget) if v_budget is not None else None
             except Exception:
@@ -267,7 +230,7 @@ async def api_progress(request: Request, crawl_id: str):
         time_budget_remaining_ms = None
 
     # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
-    if (row.scope or "page") == "site" and time_budget_ms_val is None:
+    if bool(row.crawl_params) and time_budget_ms_val is None:
         try:
             time_budget_ms_val = int(
                 os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000")
@@ -286,9 +249,9 @@ async def api_progress(request: Request, crawl_id: str):
     try:
         if (
             _env_bool("STALE_FINALIZE_ENABLED", True)
-            and str((row.status or "")).lower() == "running"
+            and str(row.status or "").lower() == "running"
         ):
-            scope = row.scope or "page"
+            scope = "site" if row.crawl_params else "page"
             stale = False
             if scope == "site":
                 grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
@@ -318,39 +281,25 @@ async def api_progress(request: Request, crawl_id: str):
     except Exception:
         pass
 
-    # Incremental counters (best-effort; cheap counts)
+    # Incremental counters from payload_json (CrawlLink/CrawlEmail removed)
+    emails_so_far = 0
+    links_internal_so_far = 0
+    external_domains_so_far = 0
     try:
-        with get_session() as s:
-            emails_so_far = (
-                s.query(CrawlEmail.email)
-                .filter(CrawlEmail.crawl_id == row.id)
-                .distinct()
-                .count()
-            )
-            links_internal_so_far = (
-                s.query(CrawlLink.id)
-                .filter(CrawlLink.crawl_id == row.id, CrawlLink.type == "internal")
-                .count()
-            )
-            external_domains_so_far = (
-                s.query(CrawlLink.domain)
-                .filter(
-                    CrawlLink.crawl_id == row.id,
-                    CrawlLink.type == "external",
-                    CrawlLink.domain.isnot(None),
-                )
-                .distinct()
-                .count()
-            )
+        import json as _pj
+
+        _cp = _pj.loads(row.payload_json or "{}")
+        if isinstance(_cp, dict):
+            emails_so_far = len((_cp.get("emails") or {}).get("unique", []))
+            links_internal_so_far = len((_cp.get("links") or {}).get("internal", []))
+            external_domains_so_far = len((_cp.get("links") or {}).get("external", []))
     except Exception:
-        emails_so_far = 0
-        links_internal_so_far = 0
-        external_domains_so_far = 0
+        pass
 
     return {
         "id": row.id,
         "status": row.status,
-        "scope": row.scope or "page",
+        "scope": "site" if row.crawl_params else "page",
         "visited_pages": visited_pages,
         "limits": limits,
         "elapsed_ms": elapsed_ms,
@@ -383,40 +332,41 @@ async def api_progress_public(key: str):
 
             raise HTTPException(status_code=404, detail="Not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
-    # Count distinct page_url's already persisted
-    with get_session() as s:
-        visited_pages = (
-            s.query(CrawlLink.page_url)
-            .filter(CrawlLink.crawl_id == row.id)
-            .distinct()
-            .count()
-        )
+    # Count visited pages from payload_json (CrawlLink table removed)
+    visited_pages = 0
+    try:
+        import json as _pj
+
+        _p = _pj.loads(row.payload_json or "{}")
+        visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
+    except Exception:
+        visited_pages = 0
 
     # Limits (for site crawls)
     limits = {}
-    if (row.scope or "page") == "site":
+    if bool(row.crawl_params):
         try:
-            import json
-
-            limits = json.loads(row.limits_json or "{}")
+            limits = row.crawl_params or {}
         except Exception:
             limits = {}
         if not isinstance(limits, dict):
             limits = {}
         if ("max_pages" not in limits) or (not limits.get("max_pages")):
             try:
-                limits["max_pages"] = int(os.getenv("AUTH_SITE_MAX_PAGES_DEFAULT", "200"))
+                limits["max_pages"] = int(
+                    os.getenv("AUTH_SITE_MAX_PAGES_DEFAULT", "200")
+                )
             except Exception:
                 limits["max_pages"] = 200
 
-    # Elapsed: prefer started_at_ms from limits_json; fallback to updated_at heuristic
+    # Elapsed: prefer started_at_ms from crawl_params; fallback to updated_at heuristic
     elapsed_ms = None
     try:
         now_ms = int(now.timestamp() * 1000)
         started_ms = None
-        if (row.scope or "page") == "site":
+        if bool(row.crawl_params):
             try:
                 started_ms = int((limits or {}).get("started_at_ms"))  # type: ignore[arg-type]
             except Exception:
@@ -433,7 +383,7 @@ async def api_progress_public(key: str):
     time_budget_ms_val = None
     time_budget_remaining_ms = None
     try:
-        if (row.scope or "page") == "site":
+        if bool(row.crawl_params):
             total = None
             v_total = limits.get("max_pages") if isinstance(limits, dict) else None
             try:
@@ -445,7 +395,9 @@ async def api_progress_public(key: str):
                 avg = float(elapsed_ms) / float(done)
                 rem_pages = max(0, total - done)
                 est_remaining_ms = int(avg * rem_pages)
-            v_budget = limits.get("time_budget_ms") if isinstance(limits, dict) else None
+            v_budget = (
+                limits.get("time_budget_ms") if isinstance(limits, dict) else None
+            )
             try:
                 time_budget_ms_val = int(v_budget) if v_budget is not None else None
             except Exception:
@@ -462,7 +414,7 @@ async def api_progress_public(key: str):
         time_budget_remaining_ms = None
 
     # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
-    if (row.scope or "page") == "site" and time_budget_ms_val is None:
+    if bool(row.crawl_params) and time_budget_ms_val is None:
         try:
             time_budget_ms_val = int(
                 os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000")
@@ -481,9 +433,9 @@ async def api_progress_public(key: str):
     try:
         if (
             _env_bool("STALE_FINALIZE_ENABLED", True)
-            and str((row.status or "")).lower() == "running"
+            and str(row.status or "").lower() == "running"
         ):
-            scope = row.scope or "page"
+            scope = "site" if row.crawl_params else "page"
             stale = False
             if scope == "site":
                 grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
@@ -512,38 +464,24 @@ async def api_progress_public(key: str):
     except Exception:
         pass
 
-    # Incremental counters (best-effort; cheap counts)
+    # Incremental counters from payload_json (CrawlLink/CrawlEmail removed)
+    emails_so_far = 0
+    links_internal_so_far = 0
+    external_domains_so_far = 0
     try:
-        with get_session() as s:
-            emails_so_far = (
-                s.query(CrawlEmail.email)
-                .filter(CrawlEmail.crawl_id == row.id)
-                .distinct()
-                .count()
-            )
-            links_internal_so_far = (
-                s.query(CrawlLink.id)
-                .filter(CrawlLink.crawl_id == row.id, CrawlLink.type == "internal")
-                .count()
-            )
-            external_domains_so_far = (
-                s.query(CrawlLink.domain)
-                .filter(
-                    CrawlLink.crawl_id == row.id,
-                    CrawlLink.type == "external",
-                    CrawlLink.domain.isnot(None),
-                )
-                .distinct()
-                .count()
-            )
+        import json as _pj
+
+        _cp = _pj.loads(row.payload_json or "{}")
+        if isinstance(_cp, dict):
+            emails_so_far = len((_cp.get("emails") or {}).get("unique", []))
+            links_internal_so_far = len((_cp.get("links") or {}).get("internal", []))
+            external_domains_so_far = len((_cp.get("links") or {}).get("external", []))
     except Exception:
-        emails_so_far = 0
-        links_internal_so_far = 0
-        external_domains_so_far = 0
+        pass
 
     return {
         "status": row.status,
-        "scope": row.scope or "page",
+        "scope": "site" if row.crawl_params else "page",
         "visited_pages": visited_pages,
         "limits": limits,
         "elapsed_ms": elapsed_ms,

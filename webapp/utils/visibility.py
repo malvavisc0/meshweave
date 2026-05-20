@@ -1,7 +1,4 @@
-from typing import Optional
-
-
-def resolve_page_visibility(is_authed: bool, public_param: Optional[str]) -> bool:
+def resolve_page_visibility(is_authed: bool, public_param: str | None) -> bool:
     """Determine page-mode visibility (public vs private).
 
     Rules:
@@ -17,7 +14,7 @@ def resolve_page_visibility(is_authed: bool, public_param: Optional[str]) -> boo
     return True if (public_param is None) else bool(public_param)
 
 
-def resolve_site_visibility(is_authed: bool, public_param: Optional[str]) -> str:
+def resolve_site_visibility(is_authed: bool, public_param: str | None) -> str:
     """Determine site-mode visibility string ('public' or 'private').
 
     Rules:

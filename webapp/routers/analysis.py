@@ -2,15 +2,14 @@ import json
 import os
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail, Product
+from webapp.models import Crawl, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.reasons import friendly_reason
@@ -38,7 +37,7 @@ async def view_shared_analysis(request: Request, share_key: str):
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
 
-    payload: Optional[dict] = None
+    payload: dict | None = None
     if row.payload_json:
         try:
             payload = json.loads(row.payload_json)
@@ -57,7 +56,7 @@ async def view_shared_analysis(request: Request, share_key: str):
     except Exception:
         pass
 
-    site_name = os.getenv("SITE_NAME", "Meshweave")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     scope_val = str(getattr(row, "scope", "") or "").strip().lower()
     domain_val = (row.domain or "").strip()
     path_val = (row.path or "").strip() or "/"
@@ -115,9 +114,9 @@ async def view_shared_analysis(request: Request, share_key: str):
 
     template_name = "result_public.html"
     resp = templates.TemplateResponse(
+        request,
         template_name,
         {
-            "request": request,
             "domain": row.domain,
             "path": row.path,
             "query": row.query,
@@ -195,7 +194,7 @@ async def view_analysis(request: Request, ref: str):
             else:
                 row = await require_ownership(request, ref)
 
-        payload: Optional[dict] = None
+        payload: dict | None = None
         if row.payload_json:
             try:
                 payload = json.loads(row.payload_json)
@@ -214,7 +213,7 @@ async def view_analysis(request: Request, ref: str):
             pass
 
         # Site branding
-        site_name = os.getenv("SITE_NAME", "Meshweave")
+        site_name = os.getenv("SITE_NAME", "MeshWeave")
 
         # Build SEO-friendly page title
         try:
@@ -296,13 +295,13 @@ async def view_analysis(request: Request, ref: str):
                 {
                     "@context": "https://schema.org",
                     "@type": "CreativeWork",
-                    "name": "Meshweave Analysis",
+                    "name": "MeshWeave Analysis",
                     "identifier": str(row.id),
                     "about": (row.domain or "").strip(),
                     "url": abs_page_url,
-                    "dateModified": (
-                        row.updated_at or datetime.now(timezone.utc)
-                    ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
                     "creativeWorkStatus": (row.status or "").title(),
                     "measurementTechnique": [
                         "web-crawl",
@@ -346,7 +345,7 @@ async def view_analysis(request: Request, ref: str):
                 {
                     "@context": "https://schema.org",
                     "@type": "CreativeWork",
-                    "name": "Meshweave Analysis",
+                    "name": "MeshWeave Analysis",
                     "identifier": str(row.id),
                     "about": (row.domain or "").strip(),
                     "url": abs_page_url,
@@ -366,7 +365,9 @@ async def view_analysis(request: Request, ref: str):
 
         # Compute ownership/permissions for UI gating
         current_user = getattr(request.state, "current_user", None)
-        is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
+        is_owner = bool(
+            current_user and getattr(row, "user_id", None) == current_user.id
+        )
         status_lc = str(getattr(row, "status", "") or "").lower()
         # Chat: owners-only on succeeded analyses
         can_chat = (status_lc == "succeeded") and is_owner
@@ -375,8 +376,10 @@ async def view_analysis(request: Request, ref: str):
 
         # Cooldown for retry
         refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-        now = datetime.now(timezone.utc)
-        next_retry_eligible = row.updated_at + timedelta(minutes=refresh_min_age_minutes)
+        now = datetime.now(UTC)
+        next_retry_eligible = row.updated_at + timedelta(
+            minutes=refresh_min_age_minutes
+        )
         can_retry_cooldown = now >= next_retry_eligible
         can_retry = (row.status != "running") and can_retry_cooldown
         retry_eta = (
@@ -402,12 +405,8 @@ async def view_analysis(request: Request, ref: str):
                         "description": p.description or "",
                         "website": p.website or None,
                         "contact_info": p.contact_info or None,
-                        "created_at": (
-                            p.created_at or datetime.now(timezone.utc)
-                        ).isoformat(),
-                        "updated_at": (
-                            p.updated_at or datetime.now(timezone.utc)
-                        ).isoformat(),
+                        "created_at": (p.created_at or datetime.now(UTC)).isoformat(),
+                        "updated_at": (p.updated_at or datetime.now(UTC)).isoformat(),
                     }
                     for p in products
                 ]
@@ -426,9 +425,9 @@ async def view_analysis(request: Request, ref: str):
         )
 
         resp = templates.TemplateResponse(
+            request,
             "result.html",
             {
-                "request": request,
                 "id": row.id,
                 "domain": row.domain,
                 "path": row.path,
@@ -470,7 +469,9 @@ async def view_analysis(request: Request, ref: str):
                 ),
                 # Owner toggles
                 "listed": row.listed,
-                "share_url": f"/analysis/shared/{row.share_key}" if row.share_key else "",
+                "share_url": (
+                    f"/analysis/shared/{row.share_key}" if row.share_key else ""
+                ),
                 "can_refresh": can_retry,
                 "refresh_eta": retry_eta,
             },
@@ -502,7 +503,7 @@ async def view_analysis(request: Request, ref: str):
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
 
-    payload: Optional[dict] = None
+    payload: dict | None = None
     if row.payload_json:
         try:
             payload = json.loads(row.payload_json)
@@ -521,7 +522,7 @@ async def view_analysis(request: Request, ref: str):
         pass
 
     # Site branding first
-    site_name = os.getenv("SITE_NAME", "Meshweave")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
 
     # Build SEO-friendly page title for public view
     try:
@@ -598,11 +599,11 @@ async def view_analysis(request: Request, ref: str):
             {
                 "@context": "https://schema.org",
                 "@type": "CreativeWork",
-                "name": "Meshweave Analysis",
+                "name": "MeshWeave Analysis",
                 "identifier": str(row.key),
                 "about": (row.domain or "").strip(),
                 "url": abs_page_url,
-                "dateModified": (row.updated_at or datetime.now(timezone.utc)).strftime(
+                "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 ),
                 "creativeWorkStatus": (row.status or "").title(),
@@ -613,7 +614,12 @@ async def view_analysis(request: Request, ref: str):
                     "email-detection",
                 ],
                 "isAccessibleForFree": True,
-                "keywords": ["markdown", "link map", "email intelligence", "ai summary"],
+                "keywords": [
+                    "markdown",
+                    "link map",
+                    "email intelligence",
+                    "ai summary",
+                ],
                 "additionalProperty": [
                     {
                         "@type": "PropertyValue",
@@ -643,7 +649,7 @@ async def view_analysis(request: Request, ref: str):
             {
                 "@context": "https://schema.org",
                 "@type": "CreativeWork",
-                "name": "Meshweave Analysis",
+                "name": "MeshWeave Analysis",
                 "identifier": str(row.key),
                 "about": (row.domain or "").strip(),
                 "url": abs_page_url,
@@ -662,11 +668,13 @@ async def view_analysis(request: Request, ref: str):
     email_preview = []
     email_count = 0
     try:
-        with get_session() as s:
-            q = s.query(CrawlEmail.email).filter(CrawlEmail.crawl_id == row.id).distinct()
-            email_count = q.count()
-            preview_rows = q.limit(3).all()
-            email_preview = [r[0] for r in preview_rows]
+        # Extract emails from payload_json (CrawlEmail table removed)
+        import json as _json
+
+        emails_data = _json.loads(row.payload_json or "{}")
+        all_emails_list = (emails_data.get("emails") or {}).get("unique") or []
+        email_count = len(all_emails_list)
+        email_preview = all_emails_list[:3]
     except Exception:
         email_preview = []
         email_count = 0
@@ -697,7 +705,7 @@ async def view_analysis(request: Request, ref: str):
         claim_min_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
     except Exception:
         claim_min_hours = 24
-    created_at_iso = (row.created_at or datetime.now(timezone.utc)).strftime(
+    created_at_iso = (row.created_at or datetime.now(UTC)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
 
@@ -705,7 +713,7 @@ async def view_analysis(request: Request, ref: str):
 
     # Cooldown for refresh (public domain root)
     refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     can_refresh = False
     refresh_eta = ""
     with get_session() as s:
@@ -755,12 +763,8 @@ async def view_analysis(request: Request, ref: str):
                     "description": p.description or "",
                     "website": p.website or None,
                     "contact_info": p.contact_info or None,
-                    "created_at": (
-                        p.created_at or datetime.now(timezone.utc)
-                    ).isoformat(),
-                    "updated_at": (
-                        p.updated_at or datetime.now(timezone.utc)
-                    ).isoformat(),
+                    "created_at": (p.created_at or datetime.now(UTC)).isoformat(),
+                    "updated_at": (p.updated_at or datetime.now(UTC)).isoformat(),
                 }
                 for p in products
             ]
@@ -813,9 +817,9 @@ async def view_analysis(request: Request, ref: str):
 
     template_name = "result_public.html" if not current_user else "result.html"
     resp = templates.TemplateResponse(
+        request,
         template_name,
         {
-            "request": request,
             "domain": row.domain,
             "path": row.path,
             "query": row.query,
@@ -868,7 +872,9 @@ async def view_analysis(request: Request, ref: str):
             "ai_chat_max_chars_per_page": int(
                 os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")
             ),
-            "ai_chat_max_total_chars": int(os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")),
+            "ai_chat_max_total_chars": int(
+                os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")
+            ),
         },
     )
     # Set session cookie if newly created for CSRF
@@ -893,7 +899,7 @@ async def view_analysis(request: Request, ref: str):
 @router.post("/analysis/{crawl_id}/set-listed")
 async def set_listed(request: Request, crawl_id: str):
     """Set listed status for a public analysis (owner only)."""
-    user = await require_auth(request)
+    await require_auth(request)
     row = await require_ownership(request, crawl_id)
     if row.visibility != "public":
         raise HTTPException(

@@ -4,8 +4,8 @@ import os
 import sys
 import traceback
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional, cast
+from datetime import UTC, datetime
+from typing import Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -26,8 +26,8 @@ class JsonFormatter(logging.Formatter):
         Returns:
             str: JSON-encoded string for structured logging.
         """
-        base: Dict[str, Any] = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+        base: dict[str, Any] = {
+            "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
@@ -153,13 +153,13 @@ def _redact_sensitive(value):
 def log_audit(
     event: str,
     *,
-    request: Optional[Request] = None,
+    request: Request | None = None,
     level: int = logging.INFO,
     **fields: Any,
 ) -> None:
     """Emit a structured audit log event."""
     logger = get_audit_logger()
-    extra: Dict[str, Any] = {"event": event}
+    extra: dict[str, Any] = {"event": event}
     if request is not None:
         try:
             extra.update(
@@ -176,11 +176,11 @@ def log_audit(
     if fields:
         extra.update(fields)
     # Redact sensitive information before logging
-    extra = cast(Dict[str, Any], _redact_sensitive(extra))
+    extra = cast(dict[str, Any], _redact_sensitive(extra))
     logger.log(level, event, extra={"extra": extra})
 
 
-def _client_ip(request: Request) -> Optional[str]:
+def _client_ip(request: Request) -> str | None:
     """Best-effort client IP extraction.
 
     Args:

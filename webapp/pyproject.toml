@@ -1,15 +1,32 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=82", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshweave"
 version = "0.1.0"
 description = "Turn websites into words and signals"
-requires-python = ">=3.9"
+requires-python = ">=3.14"
 readme = ""
 authors = [{ name = "MeshWeave", email = "hello@meshweave.com" }]
-dependencies = []  # Runtime deps are installed at image level
+dependencies = []
+
+[project.optional-dependencies]
+runtime = [
+  "fastapi[standard]",
+  "uvicorn[standard]",
+  "jinja2",
+  "sqlalchemy",
+  "psycopg2-binary",
+  "python-multipart",
+  "httpx",
+  "authlib",
+  "cryptography",
+  "prometheus-client",
+  "alembic",
+  "openai",
+  "redis",
+]
 
 [tool.setuptools]
 packages = ["meshweave"]
@@ -22,7 +39,7 @@ meshweave = [
   "static/**/*.css",
   "static/**/*.js",
   "static/**/*.map",
-  "static/**/*.*"
+  "static/**/*.*",
 ]
 
 [project.scripts]

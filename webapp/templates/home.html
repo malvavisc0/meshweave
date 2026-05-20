@@ -1,141 +1,277 @@
 {% extends "base.html" %}
-{% block head_extra %}{% endblock %}
+{% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What are AEO and GEO scores?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "AEO measures how well your site captures Google AI Overviews and featured snippets. GEO measures how visible your content is to ChatGPT, Claude, and Perplexity. Both scored 0–100."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is the AEO score calculated?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Six weighted factors: Capture Rate (30%), Schema (20%), Content Structure (20%), Query Match (15%), Voice Rate (10%), Freshness (5%). Three are auto-scored from crawl data, three need manual input."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is the GEO score calculated?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Six weighted factors: AI Citations (30%), Topical Authority (20%), E-E-A-T (15%), Crawl Access (15%), Content Depth (10%), Entity Consistency (10%). Four are auto-scored from crawl data."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What data do you need?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Just a URL. The engine auto-scores schema coverage, content structure, entity signals, LLM crawl accessibility, and content depth. Optionally add Search Console data or voice results for a complete score."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What are the most impactful improvements I can make?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The highest-impact fixes: (1) Add FAQPage schema (+10–15 AEO), (2) Add Organization JSON-LD with sameAs links (+10–15 GEO), (3) Publish llms.txt (+10–20 GEO), (4) Clear heading hierarchy. Each analysis includes site-specific recommendations."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Are results public or private?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Signed-in users: private by default. Anonymous runs: public. Public analyses can be claimed after signing in."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can results be shared?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Each analysis has a unique URL. Shared pages show score gauges and factor breakdowns — no account needed."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "MeshWeave",
+  "url": "http://localhost:8080/",
+  "description": "AEO & GEO scoring platform for AI search visibility.",
+  "sameAs": [
+    "https://github.com/malvavisc0/meshweave"
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
-<div class="container">
+
 {% if login_error %}
+<div class="container">
   <div role="alert" class="alert alert-err">
     Sign-in failed. Please try again.
   </div>
+</div>
 {% endif %}
 
 {% if submitted_id %}
+<div class="container">
   <div role="status" aria-live="polite" class="alert alert-info">
     Site crawl started. Status endpoint:
     {% if submitted_status_url %}
-      <a href="{{ submitted_status_url }}">{{ submitted_status_url }}</a>
+    <a href="{{ submitted_status_url }}">{{ submitted_status_url }}</a>
     {% else %}
-      /api/status/{{ submitted_id }}
+    /api/status/{{ submitted_id }}
     {% endif %}
     {% if not request.state.current_user %}
-      {% if request.query_params.get('private') %}
-        <br><span class="small">This result is private. Sign in to view when ready.</span>
-      {% else %}
-        <br><span class="small">This result is public. You can follow status via the endpoint above.</span>
-      {% endif %}
+    {% if request.query_params.get('private') %}
+    <br><span class="small">This result is private. Sign in to view when ready.</span>
+    {% else %}
+    <br><span class="small">This result is public. You can follow status via the endpoint above.</span>
+    {% endif %}
     {% endif %}
   </div>
-{% endif %}
-
-<h1 class="hero-title">Chat with any website. Find leads. Draft the first email.</h1>
-<p class="mb-3 hero-subtitle">Paste a URL. AI reads the site, maps links, pulls the people and proof, answers questions in chat, and drafts a ready-to-send opener — with sources, in minutes.</p>
-<div class="py-2"></div>
-
-<div class="grid-2 panels-row">
-   <section class="panel">
-      <h2 id="site-heading">Analyze a website</h2>
-      {% include "partials/site_crawl_form.html" %}
-      <div class="mt-1">
-        <a href="/all?sort=recent" class="btn btn-secondary" data-track="see_live_example_click">See a live example</a>
-      </div>
-      <p class="small hero-trust">Used by founders, agency SDRs, and growth teams.</p>
-   </section>
-
-   <section class="panel">
-      <h2>Capabilities</h2>
-      <ul class="benefits small m0 mt-1">
-        <li><strong>Chat with the website</strong> — ask about pricing, partners, roles, anything.</li>
-        <li><strong>Leads with proof</strong> — emails tied to the exact page and quote.</li>
-        <li><strong>Content analysis</strong> — instant brief in clean Markdown.</li>
-        <li><strong>Outreach, started</strong> — suggested openers grounded in their words.</li>
-        <li><strong>Early access</strong> — Persona fit and content gap insights vs your ICP.</li>
-      </ul>
-      <div class="preview-card mt-2">
-        <div class="preview-row">
-          <span class="chip chip-lead" aria-label="Lead email">jane@acme.com</span>
-          <span class="chip chip-status">NEW</span>
-        </div>
-        <div class="preview-excerpt small mt-1">“We partner with fast-growing startups across fintech and SaaS.”</div>
-        <div class="preview-opener mt-1 small">Suggested opener: “Congrats on the new launch — noticed your fintech partnerships…”</div>
-      </div>
-   </section>
 </div>
+{% endif %}
 
-{% if community_metrics %}
-  <a href="/all?sort=recent" class="panel mt-3 momentum" role="region" aria-label="See community feed" data-track="momentum_bar_click">
-    <div class="momentum-inner" aria-live="polite">
-      <span class="live-dot" aria-hidden="true"></span>
-      <span class="label small">Live community momentum</span>
-      <span class="stat">
-        <span class="emph-num" data-countup data-target="{{ community_metrics.analyses_total }}">0</span>
-        <span class="emph-label">analyses</span>
-      </span>
-      <span class="sep">•</span>
-      <span class="stat">
-        <span class="emph-num" data-countup data-target="{{ community_metrics.emails_total }}">0</span>
-        <span class="emph-label">leads</span>
-      </span>
-      <span class="sep">•</span>
-      <span class="stat">
-        <span class="emph-num" data-countup data-target="{{ community_metrics.pages_total }}">0</span>
-        <span class="emph-label">pages processed</span>
-      </span>
-      <span class="spacer"></span>
-      <span class="cta small">See community feed</span>
+<!-- HERO -->
+<section class="landing-hero" aria-label="MeshWeave AEO and GEO scoring">
+  <div class="container">
+    <h1 class="landing-hero-title">How visible is your site to AI&nbsp;search?</h1>
+    <p class="landing-hero-subtitle">MeshWeave is an AEO & GEO scoring platform. Submit any URL and get a clear,
+      actionable score for Answer Engine Optimization and Generative Engine Optimization — see exactly where your site
+      stands with AI search and what to fix.</p>
+    <p class="small landing-hero-audience">Used by marketers, SEOs, content teams, and founders preparing for AI search.
+    </p>
+
+    <div class="landing-hero-form mt-3">
+      <h2 class="sr-only" id="site-heading">Score a website</h2>
+      {% include "partials/site_crawl_form.html" %}
     </div>
-  </a>
-{% endif %}
-
-<h2 class="mt-3">Recent analyses</h2>
-{% if items and items|length > 0 %}
-  {% from 'partials/analysis_card.html' import analysis_card with context %}
-  <ul class="card-list mt-3">
-    {% for item in items %}
-      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, emphasize_emails=true) }}
-    {% endfor %}
-  </ul>
-  <div class="mt-2">
-    <a href="/all?sort=recent">View all →</a>
   </div>
-{% else %}
-  <p>No recent public analyses yet.</p>
-{% endif %}
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="landing-section band-surface" id="how-it-works" aria-label="How it works">
+  <div class="container">
+    <h2 class="landing-section-title">How it works</h2>
+    <p class="small m0 mb-3">MeshWeave crawls your site, extracts structured data, and produces two composite scores
+      from measured factors.</p>
+
+    <div class="grid-3">
+      <div class="panel">
+        <h3>Crawl</h3>
+        <p class="small m0">Enter a domain or URL. MeshWeave crawls the site, collecting raw HTML, JSON-LD structured
+          data, robots.txt policies, llms.txt files, heading hierarchies, content metrics, and entity signals across
+          every page. Pages are fetched in parallel and results are available within seconds.</p>
+      </div>
+      <div class="panel">
+        <h3>Analyze</h3>
+        <p class="small m0">The scoring engine evaluates 12 factors across AEO and GEO — including schema coverage,
+          content structure, entity consistency, LLM crawl accessibility, content depth, and E-E-A-T signals.</p>
+      </div>
+      <div class="panel">
+        <h3>Score</h3>
+        <p class="small m0">Get your AEO score (0–100) and GEO score (0–100) with a full factor breakdown, prioritized
+          recommendations ranked by estimated impact, and a shareable report. Re-analyze after changes to
+          track improvement over time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RECENT ANALYSES (with stats merged in) -->
+<section class="landing-section" aria-label="Recent analyses">
+  <div class="container">
+    <h2 class="landing-section-title">Recent analyses</h2>
+
+    {% if community_metrics %}
+    <div class="stats-bar no-md">
+      <div class="stat-item">
+        <span class="stat-number" data-countup data-target="{{ community_metrics.analyses_total }}">0</span>
+        <span class="label">Analyses run</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-number" data-countup data-target="{{ community_metrics.emails_total }}">0</span>
+        <span class="label">Domains scored</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-number" data-countup data-target="{{ community_metrics.pages_total }}">0</span>
+        <span class="label">Pages evaluated</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if items and items|length > 0 %}
+    {% from 'partials/analysis_card.html' import analysis_card with context %}
+    <ul class="card-list m0 mt-3">
+      {% for item in items %}
+      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, emphasize_emails=true)
+      }}
+      {% endfor %}
+    </ul>
+    <p class="mt-2">
+      <a href="/all?sort=recent">View all →</a>
+    </p>
+    {% else %}
+    <p class="small m0 mt-3">No recent public analyses yet. Be the first — enter a URL above.</p>
+    {% endif %}
+  </div>
+</section>
 
 <!-- FAQ -->
-<section class="panel mt-3 faq" role="region" aria-label="FAQ">
-  <h2>FAQ</h2>
-  <details>
-    <summary>What does “Chat with the website” mean?</summary>
-    <p class="small m0">Ask natural questions about the site. The assistant answers using crawled pages and cites sources.</p>
-  </details>
-  <details>
-    <summary>How do emails and leads get found?</summary>
-    <p class="small m0">Emails are extracted from published site content and tied to the exact page/section. No guessing; everything is sourced.</p>
-  </details>
-  <details>
-    <summary>What does an analysis include?</summary>
-    <p class="small m0">A browsable brief in clean Markdown, a lead list with sources, and suggested email openers grounded in the site’s own words.</p>
-  </details>
-  <details>
-    <summary>Are analyses public or private?</summary>
-    <p class="small m0">Signed-in users keep analyses private. Anonymous runs are public by default.</p>
-  </details>
-  <details>
-    <summary>Can outreach be drafted here?</summary>
-    <p class="small m0">Yes. Use the integrated assistant to generate a first email based on page context and quotes.</p>
-  </details>
-  <details>
-    <summary>What’s coming next?</summary>
-    <p class="small m0">Early access: Persona fit and Content Gap insights—AI infers likely buyer persona and site alignment with target ICP.</p>
-  </details>
-  <details>
-    <summary>Can results be shared?</summary>
-    <p class="small m0">Yes. Each analysis has a unique URL for sharing with team or client.</p>
-  </details>
+<section class="landing-section band-surface faq" id="faq" role="region" aria-label="FAQ">
+  <div class="container">
+    <h2 class="landing-section-title">Frequently asked questions</h2>
+
+    <div class="faq-item">
+      <h3>What are AEO and GEO scores?</h3>
+      <p class="small m0"><strong>AEO</strong> measures how well your site captures Google AI Overviews and featured
+        snippets. <strong>GEO</strong> measures how visible your content is to ChatGPT, Claude, and Perplexity. Both
+        scored 0–100.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>How is the AEO score calculated?</h3>
+      <p class="small m0">Six weighted factors: Capture Rate (30%), Schema (20%), Content Structure (20%), Query Match
+        (15%), Voice Rate (10%), Freshness (5%). Three are auto-scored from crawl data, three need manual input.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>How is the GEO score calculated?</h3>
+      <p class="small m0">Six weighted factors: AI Citations (30%), Topical Authority (20%), E-E-A-T (15%), Crawl
+        Access (15%), Content Depth (10%), Entity Consistency (10%). Four are auto-scored from crawl data.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>What data do you need?</h3>
+      <p class="small m0">Just a URL. The engine auto-scores schema coverage, content structure, entity signals, LLM
+        crawl accessibility, and content depth. Optionally add Search Console data or voice results for a complete
+        score.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>What are the most impactful improvements I can make?</h3>
+      <p class="small m0">The highest-impact fixes: (1) Add FAQPage schema (+10–15 AEO), (2) Add Organization JSON-LD
+        with sameAs links (+10–15 GEO), (3) Publish llms.txt (+10–20 GEO), (4) Clear heading hierarchy. Each analysis
+        includes site-specific recommendations.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Are results public or private?</h3>
+      <p class="small m0">Signed-in users: private by default. Anonymous runs: public. Public analyses can be claimed
+        after signing in.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Can results be shared?</h3>
+      <p class="small m0">Yes. Each analysis has a unique URL. Shared pages show score gauges and factor breakdowns — no
+        account needed.</p>
+    </div>
+  </div>
 </section>
+
+<!-- CTA BANNER — last section before footer -->
+{% if request.state.current_user %}
+<section class="cta-banner" role="complementary" aria-label="Go to dashboard">
+  <div class="container">
+    <h2>Ready to see how AI sees your site?</h2>
+    <p class="m0 mt-1" style="font: var(--font-body-lg); opacity: 0.9;">Go to your dashboard to run analyses, view
+      history, and share results.</p>
+    <a href="/my" class="btn btn-cta mt-3">Go to Dashboard →</a>
+  </div>
+</section>
+{% else %}
+<section class="cta-banner" role="complementary" aria-label="Sign up">
+  <div class="container">
+    <h2>Get more from MeshWeave</h2>
+    <p class="m0 mt-1" style="font: var(--font-body-lg); opacity: 0.9;">Sign in to unlock private analyses, score
+      history, and re-analyze after changes.</p>
+    <ul class="cta-benefits">
+      <li>Private analyses — not in community feed</li>
+      <li>Score history — track improvements over time</li>
+      <li>Re-analyze — compare before and after changes</li>
+    </ul>
+    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in with Google</a>
+  </div>
+</section>
+{% endif %}
 
 <script src="/static/js/home-hero.js"></script>
 <script src="/static/js/site-crawl.js"></script>
 
-</div>
 {% endblock %}

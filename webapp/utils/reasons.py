@@ -1,10 +1,9 @@
 """Friendly reason stopped mappings for crawl summaries."""
 
 import re
-from typing import Dict
 
 # Mapping of internal stop reasons to user-friendly labels
-REASON_MAPPINGS: Dict[str, str] = {
+REASON_MAPPINGS: dict[str, str] = {
     "time_budget_exhausted": "Time budget reached",
     "max_pages_reached": "Max pages reached",
     "max_depth_reached": "Max depth reached",

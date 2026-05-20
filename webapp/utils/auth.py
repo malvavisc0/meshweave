@@ -1,8 +1,7 @@
 import os
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, Request, Response
 from sqlalchemy import text
@@ -61,7 +60,7 @@ def _resolve_cookie_name_for_set() -> str:
     return base
 
 
-def _resolve_cookie_names_for_read() -> Tuple[str, str]:
+def _resolve_cookie_names_for_read() -> tuple[str, str]:
     """Return candidate cookie names for reading.
 
     Returns:
@@ -112,7 +111,7 @@ def _max_user_sessions() -> int:
 # -----------------------------
 # Public helpers
 # -----------------------------
-def get_auth_cookie_value(request: Request) -> Optional[str]:
+def get_auth_cookie_value(request: Request) -> str | None:
     """Read the auth cookie value using secure name first then base.
 
     Args:
@@ -163,7 +162,7 @@ def clear_auth_cookie(resp: Response) -> None:
     resp.delete_cookie(key=name, path="/")
 
 
-def sanitize_next(next_path: Optional[str]) -> str:
+def sanitize_next(next_path: str | None) -> str:
     """Allow only same-origin, relative paths. Default to '/'.
 
     Args:
@@ -182,7 +181,7 @@ def sanitize_next(next_path: Optional[str]) -> str:
     return p or "/"
 
 
-async def get_current_user(request: Request) -> Optional[User]:
+async def get_current_user(request: Request) -> User | None:
     """Return the current user from an unexpired auth session, else None.
 
     Args:
@@ -197,9 +196,9 @@ async def get_current_user(request: Request) -> Optional[User]:
     sid_cookie = get_auth_cookie_value(request)
     if not sid_cookie:
         return None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with get_session() as s:
-        sess: Optional[AuthSession] = (
+        sess: AuthSession | None = (
             s.query(AuthSession)
             .filter(AuthSession.session_id == sid_cookie)
             .one_or_none()
@@ -210,7 +209,7 @@ async def get_current_user(request: Request) -> Optional[User]:
         if sess.expires_at and isinstance(sess.expires_at, datetime):
             if now >= sess.expires_at:
                 return None
-        user: Optional[User] = s.get(User, sess.user_id)
+        user: User | None = s.get(User, sess.user_id)
         return user
 
 
@@ -255,11 +254,15 @@ async def require_ownership(request: Request, crawl_id: str) -> Crawl:
     """
     user = await require_auth(request)
     with get_session() as s:
-        row: Optional[Crawl] = s.get(Crawl, crawl_id)
+        row: Crawl | None = s.get(Crawl, crawl_id)
         if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+            )
         if not row.user_id or row.user_id != user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
+            )
         return row
 
 
@@ -272,7 +275,7 @@ def _now() -> datetime:
     Returns:
         datetime: Now in UTC.
     """
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def create_auth_session(user_id: str) -> AuthSession:
@@ -292,7 +295,7 @@ def create_auth_session(user_id: str) -> AuthSession:
         HTTPException: 429 when the user already has the maximum number of active sessions.
     """
     delays = [0.05, 0.15, 0.3]  # incremental backoff in seconds
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
 
     for i, delay in enumerate(delays):
         now = _now()
@@ -313,7 +316,9 @@ def create_auth_session(user_id: str) -> AuthSession:
                 # Enforce concurrent sessions atomically within this transaction
                 active_count = (
                     s.query(AuthSession)
-                    .filter(AuthSession.user_id == user_id, AuthSession.expires_at > now)
+                    .filter(
+                        AuthSession.user_id == user_id, AuthSession.expires_at > now
+                    )
                     .count()
                 )
                 if active_count >= _max_user_sessions():
@@ -417,7 +422,9 @@ def slide_session_expiry(session: AuthSession) -> AuthSession:
     session.last_activity = now
     session.expires_at = new_exp
     with get_session() as s:
-        db_sess = s.query(AuthSession).filter(AuthSession.id == session.id).one_or_none()
+        db_sess = (
+            s.query(AuthSession).filter(AuthSession.id == session.id).one_or_none()
+        )
         if db_sess:
             db_sess.last_activity = session.last_activity
             db_sess.expires_at = session.expires_at
@@ -444,7 +451,7 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
         sid_cookie = get_auth_cookie_value(request)
 
         if sid_cookie:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             # Load and validate session
             with get_session() as s:
                 sess = (

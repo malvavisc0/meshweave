@@ -1,18 +1,17 @@
 import contextlib
 import json
 import os
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import and_, distinct, func, or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from webapp.db import get_db
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail, CrawlLink
+from webapp.models import Crawl
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
@@ -23,12 +22,12 @@ async def view_all(
     request: Request,
     page: int = 1,
     page_size: int = 50,
-    domain: Optional[str] = None,
-    status: Optional[str] = None,
-    cursor: Optional[str] = None,
-    dir: Optional[str] = "next",
+    domain: str | None = None,
+    status: str | None = None,
+    cursor: str | None = None,
+    dir: str | None = "next",
     has_emails: bool = False,
-    sort: Optional[str] = None,
+    sort: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Paginated listing of public results with optional filters.
@@ -72,7 +71,7 @@ async def view_all(
     if cursor:
         try:
             parts = cursor.split(":", 1)
-            cursor_ts = datetime.fromtimestamp(int(parts[0]), tz=timezone.utc)
+            cursor_ts = datetime.fromtimestamp(int(parts[0]), tz=UTC)
             cursor_id = parts[1]
         except Exception:
             cursor_ts = None
@@ -84,43 +83,59 @@ async def view_all(
 
     with contextlib.nullcontext(db) as s:
         if srt != "recent" and not cursor:
-            # Aggregation ordering (no keyset cursor support in this branch)
-            q = (
-                s.query(
-                    Crawl,
-                    func.count(distinct(CrawlEmail.email)).label("email_count"),
-                    func.count(distinct(CrawlLink.page_url)).label("page_count"),
-                )
-                .outerjoin(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
-                .outerjoin(CrawlLink, CrawlLink.crawl_id == Crawl.id)
-                .filter(
-                    Crawl.visibility == "public",
-                    Crawl.user_id.is_(None),
-                    Crawl.listed == True,
-                )
+            # Aggregation ordering — query Crawl only, compute counts from payload_json
+            q = s.query(Crawl).filter(
+                Crawl.visibility == "public",
+                Crawl.user_id.is_(None),
+                Crawl.listed,
             )
             if dom:
                 q = q.filter(Crawl.domain == dom)
             if st:
                 q = q.filter(Crawl.status == st)
 
-            q = q.group_by(Crawl.id)
+            rows_db_raw = q.limit(500).all()
 
+            # Compute email/page counts from payload_json
+            def _counts_from_payload(row: Crawl) -> tuple[int, int]:
+                try:
+                    p = json.loads(row.payload_json) if row.payload_json else {}
+                    if not isinstance(p, dict):
+                        return 0, 0
+                    emails = (p.get("emails") or {}).get("unique") or []
+                    pages = p.get("pages") or []
+                    page_cnt = len(pages) if isinstance(pages, list) else 0
+                    return len(emails), page_cnt
+                except Exception:
+                    return 0, 0
+
+            row_counts = [(_counts_from_payload(r), r) for r in rows_db_raw]
             if has_emails:
-                q = q.having(func.count(distinct(CrawlEmail.email)) > 0)
-
+                row_counts = [(c, r) for c, r in row_counts if c[0] > 0]
             if srt == "emails":
-                q = q.order_by(
-                    func.count(distinct(CrawlEmail.email)).desc(),
-                    Crawl.updated_at.desc(),
+                row_counts.sort(
+                    key=lambda x: (
+                        -x[0][0],
+                        x[1].updated_at or datetime.min.replace(tzinfo=UTC),
+                    )
                 )
             elif srt == "pages":
-                q = q.order_by(
-                    func.count(distinct(CrawlLink.page_url)).desc(),
-                    Crawl.updated_at.desc(),
+                row_counts.sort(
+                    key=lambda x: (
+                        -x[0][1],
+                        x[1].updated_at or datetime.min.replace(tzinfo=UTC),
+                    )
+                )
+            else:
+                row_counts.sort(
+                    key=lambda x: (
+                        -(
+                            x[1].updated_at or datetime.min.replace(tzinfo=UTC)
+                        ).timestamp()
+                    )
                 )
 
-            rows_db = q.limit(page_size).all()
+            rows_db = [(r, ec, pc) for (ec, pc), r in row_counts[:page_size]]
 
             for row, email_count, page_count in rows_db:
                 title = ""
@@ -128,7 +143,7 @@ async def view_all(
                 try:
                     if row.payload_json:
                         payload = json.loads(row.payload_json)
-                        if row.scope == "site":
+                        if bool(row.crawl_params):
                             pages = payload.get("pages") or []
                             if pages and isinstance(pages, list) and len(pages) > 0:
                                 title = (pages[0].get("page") or {}).get("title") or ""
@@ -138,16 +153,16 @@ async def view_all(
                     title = ""
 
                 # Compute relative/iso times and "new" flag (2h threshold)
-                updated_dt = row.updated_at or datetime.now(timezone.utc)
+                updated_dt = row.updated_at or datetime.now(UTC)
                 try:
                     if updated_dt.tzinfo is None:
-                        updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                        updated_dt = updated_dt.replace(tzinfo=UTC)
                 except Exception:
-                    updated_dt = datetime.now(timezone.utc)
+                    updated_dt = datetime.now(UTC)
                 updated_iso = updated_dt.isoformat()
                 # Relative time
                 try:
-                    now_ = datetime.now(timezone.utc)
+                    now_ = datetime.now(UTC)
                     secs = int(max(0, (now_ - updated_dt).total_seconds()))
                     if secs < 60:
                         updated_relative = f"{secs}s ago"
@@ -164,14 +179,12 @@ async def view_all(
                                 updated_relative = f"{days}d ago"
                 except Exception:
                     updated_relative = updated_iso
-                is_new = (
-                    datetime.now(timezone.utc) - updated_dt
-                ).total_seconds() <= 2 * 3600
+                is_new = (datetime.now(UTC) - updated_dt).total_seconds() <= 2 * 3600
 
                 # Summary snippet (site scope only) using heuristics
                 summary_snippet = ""
                 try:
-                    scope_val = row.scope or "page"
+                    scope_val = "site" if row.crawl_params else "page"
                 except Exception:
                     scope_val = "page"
                 if scope_val == "site":
@@ -220,14 +233,16 @@ async def view_all(
                         "canonical_url": row.canonical_url,
                         "title": title,
                         "status": row.status,
-                        "scope": row.scope,
+                        "scope": "site" if row.crawl_params else "page",
                         "updated_at": updated_iso,
                         "updated_iso": updated_iso,
                         "updated_relative": updated_relative,
                         "is_new": bool(is_new),
                         "email_count": int(email_count or 0),
                         "page_count": int(page_count or 0),
-                        "summary_snippet": summary_snippet if scope_val == "site" else "",
+                        "summary_snippet": (
+                            summary_snippet if scope_val == "site" else ""
+                        ),
                     }
                 )
             # For this branch, we omit keyset prev/next (could add page-based later)
@@ -238,18 +253,15 @@ async def view_all(
             q = s.query(Crawl).filter(
                 Crawl.visibility == "public",
                 Crawl.user_id.is_(None),
-                Crawl.listed == True,
+                Crawl.listed,
             )
             if dom:
                 q = q.filter(Crawl.domain == dom)
             if st:
                 q = q.filter(Crawl.status == st)
             if has_emails:
-                q = (
-                    q.join(CrawlEmail, CrawlEmail.crawl_id == Crawl.id)
-                    .group_by(Crawl.id)
-                    .having(func.count(distinct(CrawlEmail.email)) > 0)
-                )
+                # Filter has_emails post-query (no CrawlEmail table)
+                pass
 
             if cursor_ts and cursor_id:
                 if direction == "next":
@@ -275,39 +287,34 @@ async def view_all(
 
             rows_db = q.limit(page_size + 1).all()
 
-            # Compute counts in bulk
-            ids = [r.id for r in rows_db] or ["-"]
-            email_counts_map = {}
-            page_counts_map = {}
+            # Compute counts from payload_json (CrawlLink/CrawlEmail tables removed)
+            email_counts_map: dict[str, int] = {}
+            page_counts_map: dict[str, int] = {}
 
-            if ids:
-                for cid, cnt in (
-                    s.query(CrawlEmail.crawl_id, func.count(distinct(CrawlEmail.email)))
-                    .filter(CrawlEmail.crawl_id.in_(ids))
-                    .group_by(CrawlEmail.crawl_id)
-                    .all()
-                ):
-                    email_counts_map[cid] = int(cnt or 0)
-
-                for cid, cnt in (
-                    s.query(CrawlLink.crawl_id, func.count(distinct(CrawlLink.page_url)))
-                    .filter(CrawlLink.crawl_id.in_(ids))
-                    .group_by(CrawlLink.crawl_id)
-                    .all()
-                ):
-                    page_counts_map[cid] = int(cnt or 0)
+            for r in rows_db:
+                try:
+                    p = json.loads(r.payload_json) if r.payload_json else {}
+                    if isinstance(p, dict):
+                        emails = (p.get("emails") or {}).get("unique") or []
+                        email_counts_map[r.id] = len(emails)
+                        pages_list = p.get("pages") or []
+                        page_counts_map[r.id] = (
+                            len(pages_list) if isinstance(pages_list, list) else 0
+                        )
+                except Exception:
+                    email_counts_map[r.id] = 0
+                    page_counts_map[r.id] = 0
 
             # Build items
             more = len(rows_db) > page_size
             rows = rows_db[:page_size]
             for r in rows:
-
                 title = ""
                 payload = None
                 try:
                     if r.payload_json:
                         payload = json.loads(r.payload_json)
-                        if r.scope == "site":
+                        if bool(r.crawl_params):
                             pages = payload.get("pages") or []
                             if pages and isinstance(pages, list) and len(pages) > 0:
                                 title = (pages[0].get("page") or {}).get("title") or ""
@@ -318,16 +325,16 @@ async def view_all(
                     title = ""
 
                 # Compute relative/iso times and "new" flag (2h threshold)
-                updated_dt = r.updated_at or datetime.now(timezone.utc)
+                updated_dt = r.updated_at or datetime.now(UTC)
                 try:
                     if updated_dt.tzinfo is None:
-                        updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                        updated_dt = updated_dt.replace(tzinfo=UTC)
                 except Exception:
-                    updated_dt = datetime.now(timezone.utc)
+                    updated_dt = datetime.now(UTC)
                 updated_iso = updated_dt.isoformat()
                 # Relative time
                 try:
-                    now_ = datetime.now(timezone.utc)
+                    now_ = datetime.now(UTC)
                     secs = int(max(0, (now_ - updated_dt).total_seconds()))
                     if secs < 60:
                         updated_relative = f"{secs}s ago"
@@ -344,14 +351,12 @@ async def view_all(
                                 updated_relative = f"{days}d ago"
                 except Exception:
                     updated_relative = updated_iso
-                is_new = (
-                    datetime.now(timezone.utc) - updated_dt
-                ).total_seconds() <= 2 * 3600
+                is_new = (datetime.now(UTC) - updated_dt).total_seconds() <= 2 * 3600
 
                 # Summary snippet (site scope only) using heuristics
                 summary_snippet = ""
                 try:
-                    scope_val = r.scope or "page"
+                    scope_val = "site" if r.crawl_params else "page"
                 except Exception:
                     scope_val = "page"
                 if scope_val == "site":
@@ -411,14 +416,16 @@ async def view_all(
                         "canonical_url": r.canonical_url,
                         "title": title,
                         "status": r.status,
-                        "scope": r.scope,
+                        "scope": "site" if r.crawl_params else "page",
                         "updated_at": updated_iso,
                         "updated_iso": updated_iso,
                         "updated_relative": updated_relative,
                         "is_new": bool(is_new),
                         "email_count": email_counts_map.get(r.id, 0),
                         "page_count": page_counts_map.get(r.id, 0),
-                        "summary_snippet": summary_snippet if scope_val == "site" else "",
+                        "summary_snippet": (
+                            summary_snippet if scope_val == "site" else ""
+                        ),
                     }
                 )
 
@@ -432,7 +439,7 @@ async def view_all(
                 Returns:
                     str: Cursor of the form "epoch:id".
                 """
-                ts = int((row.updated_at or datetime.now(timezone.utc)).timestamp())
+                ts = int((row.updated_at or datetime.now(UTC)).timestamp())
                 return f"{ts}:{row.id}"
 
             prev_url = None
@@ -498,7 +505,7 @@ async def view_all(
         # Trending section removed to avoid duplication on the All page.
 
     # SEO
-    site_name = os.getenv("SITE_NAME", "Meshweave")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     title_bits = ["All public results"]
     if dom:
         title_bits.append(f"for {dom}")
@@ -511,11 +518,11 @@ async def view_all(
     if dom and st:
         meta_description = f"Browse public results for {dom} with status {st}. Filter, sort, and paginate."
     elif dom:
-        meta_description = f"Browse public results for {dom}. Filter, sort, and paginate."
-    elif st:
         meta_description = (
-            f"Browse public results filtered by status {st}. Filter, sort, and paginate."
+            f"Browse public results for {dom}. Filter, sort, and paginate."
         )
+    elif st:
+        meta_description = f"Browse public results filtered by status {st}. Filter, sort, and paginate."
     else:
         meta_description = "Browse public website analyses. Filter by domain or status to find relevant insights."
 
@@ -544,7 +551,7 @@ async def view_all(
                         "name": f"Analysis for {it.get('domain') or 'site'}",
                         "identifier": it.get("key", ""),
                         "about": (it.get("domain") or "").strip(),
-                        "url": _abs_url(request, f"/analysis/{it.get('key','')}"),
+                        "url": _abs_url(request, f"/analysis/{it.get('key', '')}"),
                         "dateModified": str(it.get("updated_at", ""))[:19],  # ISO-like
                         "keywords": ["markdown", "links", "emails"],
                     }
@@ -562,9 +569,9 @@ async def view_all(
         json_ld = None
 
     return templates.TemplateResponse(
+        request,
         "all.html",
         {
-            "request": request,
             "items": items,
             "page": page,
             "page_size": page_size,

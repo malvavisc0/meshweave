@@ -1,9 +1,9 @@
-# markdownify-crawler
+# meshweave
 
-Render pages with Playwright, extract markdown, classify links, find emails, and optionally crawl internal links. Includes a reusable Python library, a FastAPI server, and a CLI.
+Render pages with Playwright, extract markdown, classify links, find emails, and optionally crawl internal links. Includes a reusable Python library and a CLI.
 
-Package name: markdownify-crawler  
-Import name: markdownify_crawler  
+Package name: meshweave
+Import name: meshweave
 License: MIT
 
 ## Install
@@ -14,10 +14,10 @@ Install with minimal core dependencies:
 pip install -e .
 ```
 
-To enable the Playwright renderer and FastAPI server:
+To enable the Playwright renderer:
 
 ```
-pip install -e ".[renderer,server]"
+pip install -e ".[renderer]"
 playwright install --with-deps chromium
 ```
 
@@ -25,68 +25,54 @@ Note: Playwright requires a browser install (see command above).
 
 ## CLI
 
-- Crawl a URL (no internal crawl):
+The CLI provides the **`crawl`** subcommand.
+Running `meshweave <url>` without a subcommand automatically uses `crawl`.
+
+### `meshweave crawl`
+
+Render a single page and extract markdown, links, and emails:
+
 ```
-markdownify-crawl "https://example.com" -o output.json
+meshweave crawl https://example.com
 ```
 
-- Crawl internal links up to 25 pages:
-```
-markdownify-crawl "https://example.com" --crawl-internal=true --max-pages=25 -o output.json
-```
+Crawl internal links (up to 50 pages, output to file):
 
-- Customize behavior:
 ```
-markdownify-crawl \
-  "https://example.com" \
-  --crawl-internal=true \
-  --max-pages=50 \
-  --same-domain=true \
-  --include-emails=true \
-  --deobfuscate=true \
-  --throttle-ms=100 \
-  --per-page-timeout=20.0 \
-  --disable-cache=false \
-  --cache-dir=.cache \
+meshweave crawl https://example.com \
+  --crawl-internal --max-pages 50 \
   -o output.json
 ```
 
+All flags use `--flag` / `--no-flag` toggles (no `=true` needed):
+
+```
+meshweave crawl https://example.com \
+  --crawl-internal \
+  --max-pages 50 \
+  --same-domain \
+  --include-emails \
+  --deobfuscate \
+  --throttle-ms 100 \
+  --per-page-timeout 20.0 \
+  --disable-cache \
+  --cache-dir .cache \
+  -o output.json
+```
+
+Run `meshweave crawl --help` for the full list of options.
+
 ### Environment variables
 
-- `MARKDOWNIFY_CACHE_DIR`: directory for HTML cache (default: `/tmp/markdownify/cache`)
-- `MARKDOWNIFY_IGNORE_PATHS`: comma-separated regex patterns to ignore in internal links (in addition to built-in defaults)
-- `MARKDOWNIFY_IGNORE_DOMAINS`: comma-separated list of domains to never follow or include (case-insensitive, `www.` stripped).  
-  Examples: `github.com,youtube.com,play.google.com`.  
-  Matching is suffix-based for subdomains (e.g., `github.com` matches `docs.github.com`; `play.google.com` matches only that subdomain).
-- `MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS`: if `true` (default), links to ignored domains are filtered out from the output lists.
-
-## FastAPI Server
-
-Run the packaged server (requires server extras):
-
-```
-markdownify-serve
-# or explicitly:
-uvicorn markdownify_crawler.server:app --host 0.0.0.0 --port 8000
-```
-
-Endpoint:
-
-```
-GET /crawl?url=...&crawl_internal=bool&crawl_max_pages=int&same_domain_only=bool&include_emails=bool&deobfuscate_emails=bool&throttle_ms=int&per_page_timeout=float&force_refresh=bool
-```
-
-Example:
-
-```
-curl -s 'http://127.0.0.1:8000/crawl?url=https%3A%2F%2Fexample.com&crawl_internal=1&crawl_max_pages=10' | jq .
-```
+- `MESHWEAVE_CACHE_DIR`: directory for HTML cache (default: `/tmp/markdownify/cache`)
+- `MARKDOWNIFYMESHWEAVE_DISABLE_CACHE`: when `"true"` / `"1"` / `"yes"` / `"on"`, bypass cache globally for a run
 
 ## Library usage
 
 ```python
 import asyncio
-from markdownify_crawler import crawl
+from meshweave import crawl
+
 
 async def main():
     payload = await crawl(
@@ -98,7 +84,7 @@ async def main():
         deobfuscate_emails=True,
         throttle_ms=0,
         per_page_timeout=15.0,
-        cache_dir=".cache",  # or None to use MARKDOWNIFY_CACHE_DIR / default
+        cache_dir=".cache",  # or None to use MESHWEAVE_CACHE_DIR / default
     )
     # payload contains:
     # - page: { title, description, og: { title, description, image, url }, canonical }
@@ -108,18 +94,27 @@ async def main():
     # - emails: { unique, by_url, sources (deduped found_as array), counts }
     # - crawl: { enabled, start_url, visited, limits: { max_pages }, reason_stopped }
 
+
 asyncio.run(main())
 ```
 
 If you want only rendering/markdown:
 
 ```python
-from markdownify_crawler import render_page, soup_from_html, preprocess_soup, to_markdown, extract_page_meta
+from meshweave import (
+    render_page,
+    soup_from_html,
+    preprocess_soup,
+    to_markdown,
+    extract_page_meta,
+)
 
 html, metrics = asyncio.run(render_page("https://example.com", cache_dir=".cache"))
 soup = soup_from_html(html)
 meta = extract_page_meta(soup)
-soup = preprocess_soup(soup, base_url="https://example.com", final_url=metrics.final_url)
+soup = preprocess_soup(
+    soup, base_url="https://example.com", final_url=metrics.final_url
+)
 md = to_markdown(soup)
 ```
 
@@ -139,25 +134,23 @@ md = to_markdown(soup)
 
 ## Web App (FastAPI UI)
 
-A modern web UI is included under `webapp/` for submitting URLs and viewing results, with recent improvements for better UX (see [docs/ui-ux-results-plan.md](docs/ui-ux-results-plan.md) for details).
+A modern web UI is included under `webapp/` for submitting URLs and viewing results.
 
 Run the web app:
 
 ```
-markdownify-webapp
-# or explicitly:
 uvicorn webapp.main:app --host 0.0.0.0 --port 8080
 ```
 
 Environment:
 - `SQLITE_PATH` (default: `/db/app.db`) controls the SQLite DB location used by the web UI.
-- The web UI requires the crawler server extras (Playwright) at runtime to render pages.
+- The web UI requires the renderer extras (Playwright) at runtime to render pages.
 - `APP_VERSION` (optional): value displayed in the site footer, e.g. "1.3.2".
-- `FOOTER_REPO_URL` (optional, default: `https://github.com/your-org/markdownify-crawler`): Open Source link in the footer.
+- `FOOTER_REPO_URL` (optional, default: `https://github.com/malvavisc0/meshweave`): Open Source link in the footer.
 - `FOOTER_CONTACT_EMAIL` (optional, default: `hello@acme.com`): Contact email used in the footer and legal pages.
 - `FOOTER_PRIVACY_URL` (optional, default: `/privacy`): URL/path for the Privacy link in the footer.
 - `FOOTER_TERMS_URL` (optional, default: `/terms`): URL/path for the Terms link in the footer.
-- `CLAIM_PUBLIC_MIN_AGE_HOURS` (optional, default: `24`): Minimum age in hours before a public, ownerless analysis becomes claimable by a logged‑in user.
+- `CLAIM_PUBLIC_MIN_AGE_HOURS` (optional, default: `24`): Minimum age in hours before a public, ownerless analysis becomes claimable by a logged-in user.
 
 ### Key Features
 - **Submission**: Form on homepage to input URL, options for public/private, crawl depth, email inclusion.
@@ -206,13 +199,6 @@ Deduplication behavior:
 Security:
 - Basic CSRF tokening, simple rate limiting, and optional request metadata logging are implemented in the web UI.
 
-### Recent UI/UX Improvements
-The webapp UI has been refined for modernity:
-- Flat design: Clean, minimal styling with solid colors, rounded corners, and subtle interactions (no heavy shadows).
-- Slack-inspired chat: Simple bubbles, sticky input, streaming responses.
-- Responsiveness: Vertical stacking on mobile, collapsible sections to reduce scroll.
-- Full details: See [docs/ui-ux-results-plan.md](docs/ui-ux-results-plan.md) and [docs/webapp-explanation.md](docs/webapp-explanation.md).
-
 ## Authentication & Crawl Site Spec
 
 See the unified spec at:
@@ -222,26 +208,19 @@ See the unified spec at:
 
 - Editable install:
 ```
-pip install -e ".[renderer,server]"
+pip install -e ".[renderer]"
 playwright install --with-deps chromium
-```
-
-- Run the server:
-```
-markdownify-serve
 ```
 
 - Run the CLI:
 ```
-markdownify-crawl "https://example.com" --crawl-internal=true --max-pages=10
+meshweave crawl https://example.com --crawl-internal --max-pages 10
 ```
 
 - Environment variables:
 ```
-export MARKDOWNIFY_CACHE_DIR=.cache
-export MARKDOWNIFY_IGNORE_PATHS="^/feed/,^/wp-json/"
-export MARKDOWNIFY_IGNORE_DOMAINS="github.com,youtube.com,play.google.com"
-export MARKDOWNIFY_FILTER_IGNORED_DOMAINS_IN_LINKS=true
+export MESHWEAVE_CACHE_DIR=.cache
+export MARKDOWNIFYMESHWEAVE_DISABLE_CACHE=true
 ```
 
 ## License
@@ -251,12 +230,10 @@ MIT
 
 ## Testing
 
-- Install test extras:
-  - pip install -e ".[test]"
 - Run tests:
   - pytest -q
 - The test suite avoids launching a real browser:
-  - A lightweight Playwright shim is provided in [tests/conftest.py](tests/conftest.py) so imports of [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:275) work without installing browsers.
+  - A lightweight Playwright shim is provided in [tests/conftest.py](tests/conftest.py) so imports of [fetcher.get_rendered_html()](meshweave/fetcher.py) work without installing browsers.
 - Relevant tests:
   - Cache key determinism: [tests/test_fetcher_cache.py](tests/test_fetcher_cache.py)
   - Link classification and root-path skip: [tests/test_links.py](tests/test_links.py)
@@ -265,24 +242,22 @@ MIT
 ## Security and behavior defaults
 
 - TLS verification is ON by default:
-  - [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:275) parameter ignore_https_errors defaults to False. Pages with invalid TLS will fail fast.
+  - [fetcher.get_rendered_html()](meshweave/fetcher.py) parameter ignore_https_errors defaults to False. Pages with invalid TLS will fail fast.
 - Resource blocking is reliable:
-  - Requests are blocked by resource type via a unified route in [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:475) (e.g., "image", "stylesheet", "font", "media").
+  - Requests are blocked by resource type via a unified route in [fetcher.get_rendered_html()](meshweave/fetcher.py) (e.g., "image", "stylesheet", "font", "media").
 - Viewport is applied consistently:
-  - The effective viewport is selected with [_select_viewport()](markdownify_crawler/fetcher.py:165) and set on the browser context in [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:461).
+  - The effective viewport is selected with [_select_viewport()](meshweave/fetcher.py) and set on the browser context in [fetcher.get_rendered_html()](meshweave/fetcher.py).
 - Link classification clarifications:
-  - Root path "/" is skipped intentionally; internal links only include meaningful paths, via [_classify_links()](markdownify_crawler/core.py:262).
+  - Root path "/" is skipped intentionally; internal links only include meaningful paths, via [_classify_links()](meshweave/core.py).
 
 ## Cache controls and semantics
 
 - Expanded cache keys ensure deterministic behavior:
-  - Cache keys now include effective viewport, resolved user agent, wait flags, headers, referer, TLS flag, resource blocking, stealth, and more, all within [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:391).
+  - Cache keys now include effective viewport, resolved user agent, wait flags, headers, referer, TLS flag, resource blocking, stealth, and more, all within [fetcher.get_rendered_html()](meshweave/fetcher.py).
 - When a custom intercept_requests handler is provided, caching is bypassed (callables are not hashed).
 - CLI:
-  - --disable-cache flag added; see [cli.main_crawl()](markdownify_crawler/cli.py:102).
-- Server:
-  - /crawl exposes force_refresh=bool; see [server.crawl_endpoint()](markdownify_crawler/server.py:11).
+  - --disable-cache flag added; see [cli.main_crawl()](meshweave/cli.py).
 - Environment variables:
-  - MARKDOWNIFY_CACHE_DIR: HTML cache directory (default: /tmp/markdownify/cache)
-  - MARKDOWNIFY_DISABLE_CACHE: when "true"/"1"/"yes"/"on", bypass cache globally for a run
+  - MESHWEAVE_CACHE_DIR: HTML cache directory (default: /tmp/markdownify/cache)
+  - MARKDOWNIFYMESHWEAVE_DISABLE_CACHE: when "true"/"1"/"yes"/"on", bypass cache globally for a run
   - MARKDOWNIFY_DEBUG_SLOWMO_MS: when set (e.g., "50"), adds Playwright slow_mo for debugging only

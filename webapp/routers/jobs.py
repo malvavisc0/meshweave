@@ -1,7 +1,7 @@
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional, cast
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,12 +9,10 @@ from sqlalchemy import func
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, CrawlEmail, Product, Prospect
+from webapp.models import Crawl, Product
 
 # Treat SQLAlchemy declarative models as Any for type checkers to avoid circular/forward-ref analysis issues
 Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
-CrawlEmail = cast(Any, CrawlEmail)  # pyright: ignore[reportGeneralTypeIssues]
-Prospect = cast(Any, Prospect)  # pyright: ignore[reportGeneralTypeIssues]
 Product = cast(Any, Product)  # pyright: ignore[reportGeneralTypeIssues]
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
@@ -46,7 +44,7 @@ async def my_jobs(
         page_size = 25
 
     with get_session() as s:
-        rows_db: List[Any] = (
+        rows_db: list[Any] = (
             s.query(Crawl)
             .filter(Crawl.user_id == user.id)
             .order_by(Crawl.updated_at.desc(), Crawl.id.desc())
@@ -61,14 +59,14 @@ async def my_jobs(
         items.append(
             {
                 "id": r.id,
-                "scope": r.scope or "page",
+                "scope": "site" if r.crawl_params else "page",
                 "domain": r.domain,
                 "path": r.path,
                 "query": r.query,
                 "canonical_url": r.canonical_url,
                 "visibility": r.visibility,
                 "status": r.status,
-                "updated_at": (r.updated_at or datetime.now(timezone.utc)).isoformat(),
+                "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
             }
         )
 
@@ -90,9 +88,9 @@ async def my_jobs(
     )
 
     resp = templates.TemplateResponse(
+        request,
         "my.html",
         {
-            "request": request,
             "items": items,
             "has_prev": False,
             "has_next": False,
@@ -132,14 +130,16 @@ async def cancel_crawl_no_id(request: Request):
 @router.get("/cancel/{crawl_id}")
 async def cancel_crawl_get(request: Request, crawl_id: str):
     # Do not perform cancellation on GET to avoid CSRF; just inform user and redirect
-    return RedirectResponse(url=f"/my?notice=cancel_get&job={crawl_id}", status_code=303)
+    return RedirectResponse(
+        url=f"/my?notice=cancel_get&job={crawl_id}", status_code=303
+    )
 
 
 @router.post("/cancel/{crawl_id}")
 async def cancel_crawl(
     request: Request,
     crawl_id: str,
-    csrf_token: Optional[str] = Form(None),
+    csrf_token: str | None = Form(None),
 ):
     """Cancel a running crawl (owner only)."""
     # CSRF validation
@@ -166,7 +166,7 @@ async def cancel_crawl(
             url=f"/my?notice=not_running&job={crawl_id}", status_code=303
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with get_session() as s:
         db_row = s.get(Crawl, crawl_id)
         if not db_row:
@@ -190,7 +190,7 @@ async def retry_crawl(
     request: Request,
     background_tasks: BackgroundTasks,
     crawl_id: str,
-    csrf_token: Optional[str] = Form(None),
+    csrf_token: str | None = Form(None),
 ):
     """Retry a crawl (owner only) when not running."""
     # CSRF validation
@@ -207,7 +207,7 @@ async def retry_crawl(
 
     # Enforce cooldown
     refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if now - row.updated_at < timedelta(minutes=refresh_min_age_minutes):
         raise HTTPException(status_code=429, detail="Retry not available yet")
 
@@ -216,11 +216,11 @@ async def retry_crawl(
 
     # Enforce quotas
     enforce_concurrent_jobs_limit(user.id)
-    if (row.scope or "page") == "site":
+    if bool(row.crawl_params):
         enforce_daily_site_crawl_limit(user.id)
 
     # Reset and schedule
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with get_session() as s:
         db_row = s.get(Crawl, crawl_id)
         if not db_row:
@@ -236,7 +236,7 @@ async def retry_crawl(
         db_row.updated_at = now
 
     # Schedule task with force_refresh=True
-    if (row.scope or "page") == "site":
+    if bool(row.crawl_params):
         background_tasks.add_task(run_site_crawl_task, crawl_id, True)
     else:
         background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
@@ -246,11 +246,9 @@ async def retry_crawl(
 
 @router.get("/api/my/quick-stats")
 async def my_quick_stats(request: Request):
-    """Aggregate user metrics (all time): analyses_completed, emails_extracted, prospects_added, products_count."""
     user = await require_auth(request)
     analyses_completed = 0
     emails_extracted = 0
-    prospects_added = 0
     products_count = 0
     with get_session() as s:
         analyses_completed = (
@@ -261,21 +259,29 @@ async def my_quick_stats(request: Request):
             )
             .count()
         )
-        emails_extracted = (
-            s.query(func.count(func.distinct(CrawlEmail.email)))
-            .join(Crawl, CrawlEmail.crawl_id == Crawl.id)
+        # Emails extracted — count unique emails from payload_json across user's crawls
+        emails_extracted = 0
+        user_crawls = (
+            s.query(Crawl.payload_json)
             .filter(
                 Crawl.user_id == user.id,
+                Crawl.status == "succeeded",
+                Crawl.payload_json.isnot(None),
             )
-            .scalar()
-            or 0
+            .all()
         )
-        prospects_added = s.query(Prospect).filter(Prospect.user_id == user.id).count()
+        all_emails: set[str] = set()
+        for (payload,) in user_crawls:
+            if isinstance(payload, dict):
+                emails_data = payload.get("emails") or {}
+                for em in emails_data.get("unique") or []:
+                    if em:
+                        all_emails.add(str(em).lower())
+        emails_extracted = len(all_emails)
         products_count = s.query(Product).filter(Product.user_id == user.id).count()
     return {
         "analyses_completed": int(analyses_completed or 0),
         "emails_extracted": int(emails_extracted or 0),
-        "prospects_added": int(prospects_added or 0),
         "products_count": int(products_count or 0),
     }
 
@@ -283,11 +289,11 @@ async def my_quick_stats(request: Request):
 @router.get("/api/my/jobs")
 async def api_my_jobs(
     request: Request,
-    status: Optional[str] = None,
-    q: Optional[str] = None,
+    status: str | None = None,
+    q: str | None = None,
     sort: str = "updated_desc",
     limit: int = 25,
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
 ):
     """List current user's jobs with server-side filters and keyset pagination.
 
@@ -317,14 +323,14 @@ async def api_my_jobs(
             cur_ts = _dt.fromisoformat(ts_s)
             # If tz-naive, assume UTC
             if not getattr(cur_ts, "tzinfo", None):
-                cur_ts = cur_ts.replace(tzinfo=timezone.utc)
+                cur_ts = cur_ts.replace(tzinfo=UTC)
             cur_id = pid
         except Exception:
             cur_ts = None
             cur_id = None
 
-    items: List[dict] = []
-    next_cursor: Optional[str] = None
+    items: list[dict] = []
+    next_cursor: str | None = None
 
     with get_session() as s:
         qry = s.query(Crawl).filter(Crawl.user_id == user.id)
@@ -355,23 +361,23 @@ async def api_my_jobs(
             items.append(
                 {
                     "id": r.id,
-                    "scope": r.scope or "page",
+                    "scope": "site" if r.crawl_params else "page",
                     "domain": r.domain,
                     "path": r.path,
                     "query": r.query,
                     "canonical_url": r.canonical_url,
                     "visibility": r.visibility,
                     "status": r.status,
-                    "updated_at": (
-                        r.updated_at or datetime.now(timezone.utc)
-                    ).isoformat(),
+                    "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
                 }
             )
 
         if len(rows) > limit:
             last = rows[limit - 1]
             try:
-                next_cursor = f"{(last.updated_at or datetime.now(timezone.utc)).isoformat()}|{last.id}"
+                next_cursor = (
+                    f"{(last.updated_at or datetime.now(UTC)).isoformat()}|{last.id}"
+                )
             except Exception:
                 next_cursor = None
 
@@ -415,7 +421,7 @@ async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
         )
 
     retried = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for row in rows:
         # Only retry when not running
         if (row.status or "").lower() == "running":
@@ -424,7 +430,7 @@ async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
         # Enforce quotas per job retry
         try:
             enforce_concurrent_jobs_limit(user.id)
-            if (row.scope or "page") == "site":
+            if bool(row.crawl_params):
                 enforce_daily_site_crawl_limit(user.id)
         except HTTPException:
             # Skip this job if quota prevents retry
@@ -450,7 +456,7 @@ async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
 
         # Schedule background task with force_refresh=True
         try:
-            if (row.scope or "page") == "site":
+            if bool(row.crawl_params):
                 background_tasks.add_task(run_site_crawl_task, row.id, True)
             else:
                 background_tasks.add_task(run_crawl_task, row.id, True, user_id=user.id)

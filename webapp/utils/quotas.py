@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from starlette import status
@@ -15,7 +15,7 @@ def _now() -> datetime:
     Returns:
         datetime: Now in UTC.
     """
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _start_of_utc_day(dt: datetime) -> datetime:
@@ -27,7 +27,7 @@ def _start_of_utc_day(dt: datetime) -> datetime:
     Returns:
         datetime: The same date at 00:00:00 with UTC tzinfo.
     """
-    return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
 
 
 def _int_env(name: str, default: int) -> int:

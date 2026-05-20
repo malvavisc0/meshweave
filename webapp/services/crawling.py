@@ -1,10 +1,8 @@
 import json
 import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from markdownify_crawler.core import crawl as crawler_run
-
+from meshweave.core import crawl as crawler_run
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.services.persist import clear_crawl_data, persist_page
@@ -13,7 +11,7 @@ from webapp.utils.metrics import job_duration
 
 
 async def run_crawl_task(
-    crawl_id: str, force_refresh: bool = False, user_id: Optional[str] = None
+    crawl_id: str, force_refresh: bool = False, user_id: str | None = None
 ) -> None:
     """Background task to execute a crawl and persist results.
 
@@ -30,8 +28,8 @@ async def run_crawl_task(
         None: Performs side effects (DB updates and metrics) and does not return a value.
     """
     # Attempt to transition to 'running' atomically to avoid races
-    url: Optional[str] = None
-    now = datetime.now(timezone.utc)
+    url: str | None = None
+    now = datetime.now(UTC)
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if not row:
@@ -44,7 +42,8 @@ async def run_crawl_task(
         updated = (
             s.query(Crawl)
             .filter(
-                Crawl.id == crawl_id, Crawl.status.in_(["pending", "failed", "succeeded"])
+                Crawl.id == crawl_id,
+                Crawl.status.in_(["pending", "failed", "succeeded"]),
             )
             .update({"status": "running", "updated_at": now})
         )
@@ -66,7 +65,7 @@ async def run_crawl_task(
             include_emails=True,
             deobfuscate_emails=True,
             disable_cache=force_refresh,
-            cache_dir=None,  # env MARKDOWNIFY_CACHE_DIR applies in core
+            cache_dir=None,  # env MESHWEAVE_CACHE_DIR applies in core
         )
 
         # Best-effort cancellation: if user cancelled while rendering, skip persistence
@@ -76,7 +75,9 @@ async def run_crawl_task(
             if st_row and str(getattr(st_row, "status", "")).lower() == "cancelled":
                 # Do not persist payload; honor cancellation
                 try:
-                    log_audit("page_crawl_cancelled", crawl_id=crawl_id, user_id=user_id)
+                    log_audit(
+                        "page_crawl_cancelled", crawl_id=crawl_id, user_id=user_id
+                    )
                 except Exception:
                     pass
                 try:
@@ -89,7 +90,7 @@ async def run_crawl_task(
                 with get_session() as s:
                     row2 = s.get(Crawl, crawl_id)
                     if row2:
-                        row2.updated_at = datetime.now(timezone.utc)
+                        row2.updated_at = datetime.now(UTC)
                 return
         except Exception:
             # On any error, proceed with normal persist flow
@@ -135,7 +136,7 @@ async def run_crawl_task(
             row.payload_json = payload_json
             row.status = "succeeded"
             row.error = None
-            row.updated_at = datetime.now(timezone.utc)
+            row.updated_at = datetime.now(UTC)
         try:
             log_audit("crawl_succeeded", crawl_id=crawl_id, user_id=user_id)
         except Exception:
@@ -153,7 +154,7 @@ async def run_crawl_task(
                 return
             row.status = "failed"
             row.error = str(e)
-            row.updated_at = datetime.now(timezone.utc)
+            row.updated_at = datetime.now(UTC)
         try:
             log_audit("crawl_failed", crawl_id=crawl_id, user_id=user_id)
         except Exception:

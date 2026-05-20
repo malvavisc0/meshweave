@@ -1,10 +1,8 @@
-from typing import Dict, List, Optional
-
 from webapp.models import Crawl
 from webapp.utils.url import canonicalize_url, normalize_domain
 
 
-def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
+def build_summary(row: Crawl, payload: dict | None) -> dict:
     """Build a computed summary object for a crawl payload.
 
     Parameters:
@@ -54,10 +52,10 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
     """
     summary: dict = {}
     try:
-        payload_dict: Dict = payload if isinstance(payload, dict) else {}
+        payload_dict: dict = payload if isinstance(payload, dict) else {}
         # Prefer top-level page metadata; fallback to first page entry when missing
-        pages_arr: List[Dict] = payload_dict.get("pages") or []
-        pg: Dict = payload_dict.get("page") or {}
+        pages_arr: list[dict] = payload_dict.get("pages") or []
+        pg: dict = payload_dict.get("page") or {}
         if not pg:
             try:
                 if (
@@ -69,11 +67,11 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
                     pg = pages_arr[0].get("page") or {}
             except Exception:
                 pg = {}
-        og: Dict = pg.get("og") or {}
-        metrics: Dict = payload_dict.get("metrics") or {}
+        og: dict = pg.get("og") or {}
+        metrics: dict = payload_dict.get("metrics") or {}
         # Derive render metrics strictly from the first page (home "/")
         try:
-            first_page_metrics: Dict = (
+            first_page_metrics: dict = (
                 (pages_arr[0].get("metrics") or {})
                 if (
                     isinstance(pages_arr, list)
@@ -84,20 +82,20 @@ def build_summary(row: Crawl, payload: Optional[dict]) -> dict:
             )
         except Exception:
             first_page_metrics = {}
-        render: Dict = first_page_metrics.get("render") or {}
-        extraction: Dict = metrics.get("extraction") or {}
-        lks: Dict = payload_dict.get("links") or {}
-        em: Dict = payload_dict.get("emails") or {}
+        render: dict = first_page_metrics.get("render") or {}
+        extraction: dict = metrics.get("extraction") or {}
+        lks: dict = payload_dict.get("links") or {}
+        em: dict = payload_dict.get("emails") or {}
 
         base_domain = (extraction.get("base_domain") or row.domain or "").strip()
 
         # Top external domains
-        top_ext: Dict[str, int] = {}
+        top_ext: dict[str, int] = {}
         for u in lks.get("external") or []:
             dom = normalize_domain(u)
             if dom:
                 top_ext[dom] = top_ext.get(dom, 0) + 1
-        top_external_domains: List[Dict[str, object]] = [
+        top_external_domains: list[dict[str, object]] = [
             {"domain": d, "count": c}
             for d, c in sorted(top_ext.items(), key=lambda kv: (-kv[1], kv[0]))
         ]

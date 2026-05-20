@@ -1,22 +1,23 @@
 """initial_schema
 
-Revision ID: aa3be343c70f
+Revision ID: 51a67e6dac99
 Revises:
-Create Date: 2025-09-14 10:44:04.180785
+Create Date: 2026-05-19 19:02:29.181071
 """
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "aa3be343c70f"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "51a67e6dac99"
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -68,9 +69,6 @@ def upgrade() -> None:
     op.create_index(
         "ix_auth_sessions_expires_at", "auth_sessions", ["expires_at"], unique=False
     )
-    op.create_index(
-        "ix_auth_sessions_session_id", "auth_sessions", ["session_id"], unique=False
-    )
     op.create_table(
         "crawls",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -83,60 +81,53 @@ def upgrade() -> None:
         sa.Column("visibility", sa.String(length=10), nullable=False),
         sa.Column("status", sa.String(length=10), nullable=False),
         sa.Column("error", sa.Text(), nullable=True),
-        sa.Column("payload_json", sa.Text(), nullable=True),
+        sa.Column("payload_json", sa.JSON(), nullable=True),
         sa.Column("user_id", sa.String(length=36), nullable=True),
-        sa.Column("scope", sa.String(length=10), nullable=False),
-        sa.Column("limits_json", sa.Text(), nullable=True),
+        sa.Column("crawl_params", sa.JSON(), nullable=True),
+        sa.Column("aeo_score", sa.Float(), nullable=True),
+        sa.Column("geo_score", sa.Float(), nullable=True),
+        sa.Column("aeo_rating", sa.String(length=32), nullable=True),
+        sa.Column("geo_rating", sa.String(length=32), nullable=True),
+        sa.Column("ai_analysis_json", sa.JSON(), nullable=True),
+        sa.Column("scoring_version", sa.String(length=16), nullable=False),
+        sa.Column("has_manual_input", sa.Boolean(), nullable=False),
+        sa.Column("listed", sa.Boolean(), nullable=False),
+        sa.Column("share_key", sa.String(length=32), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("key", name="uq_crawls_key"),
+        sa.UniqueConstraint("share_key", name="uq_crawls_share_key"),
         sa.UniqueConstraint(
             "visibility", "domain", "path", "query", name="uq_crawls_vis_dom_path_query"
         ),
     )
     op.create_index("ix_crawls_domain", "crawls", ["domain"], unique=False)
-    op.create_index("ix_crawls_scope", "crawls", ["scope"], unique=False)
     op.create_index("ix_crawls_updated_at", "crawls", ["updated_at"], unique=False)
     op.create_index("ix_crawls_user_id", "crawls", ["user_id"], unique=False)
-    op.create_table(
-        "crawl_emails",
-        sa.Column("id", sa.String(length=36), nullable=False),
-        sa.Column("crawl_id", sa.String(length=36), nullable=False),
-        sa.Column("page_url", sa.Text(), nullable=False),
-        sa.Column("email", sa.String(length=320), nullable=False),
-        sa.Column("found_as", sa.String(length=64), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["crawl_id"], ["crawls.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "crawl_id", "page_url", "email", name="uq_crawl_emails_unique"
-        ),
-    )
     op.create_index(
-        "ix_crawl_emails_crawl_id", "crawl_emails", ["crawl_id"], unique=False
+        "ix_crawls_visibility_user_id_listed",
+        "crawls",
+        ["visibility", "user_id", "listed"],
+        unique=False,
     )
-    op.create_index("ix_crawl_emails_email", "crawl_emails", ["email"], unique=False)
     op.create_table(
-        "crawl_links",
+        "products",
         sa.Column("id", sa.String(length=36), nullable=False),
-        sa.Column("crawl_id", sa.String(length=36), nullable=False),
-        sa.Column("page_url", sa.Text(), nullable=False),
-        sa.Column("url", sa.Text(), nullable=False),
-        sa.Column("absolute_url", sa.Text(), nullable=False),
-        sa.Column("type", sa.String(length=10), nullable=False),
-        sa.Column("domain", sa.String(length=255), nullable=True),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
+        sa.Column("website", sa.Text(), nullable=False),
+        sa.Column("description", sa.Text(), nullable=False),
+        sa.Column("contact_info", sa.Text(), nullable=False),
+        sa.Column("defaults_json", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["crawl_id"], ["crawls.id"], ondelete="CASCADE"),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "crawl_id", "page_url", "absolute_url", "type", name="uq_crawl_links_unique"
-        ),
+        sa.UniqueConstraint("user_id", "name", name="uq_products_user_name"),
     )
-    op.create_index("ix_crawl_links_crawl_id", "crawl_links", ["crawl_id"], unique=False)
-    op.create_index("ix_crawl_links_domain", "crawl_links", ["domain"], unique=False)
-    op.create_index("ix_crawl_links_type", "crawl_links", ["type"], unique=False)
+    op.create_index("ix_products_user_id", "products", ["user_id"], unique=False)
     op.create_table(
         "submissions",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -182,19 +173,13 @@ def downgrade() -> None:
     op.drop_index("ix_submissions_created_at", table_name="submissions")
     op.drop_index("ix_submissions_client_ip", table_name="submissions")
     op.drop_table("submissions")
-    op.drop_index("ix_crawl_links_type", table_name="crawl_links")
-    op.drop_index("ix_crawl_links_domain", table_name="crawl_links")
-    op.drop_index("ix_crawl_links_crawl_id", table_name="crawl_links")
-    op.drop_table("crawl_links")
-    op.drop_index("ix_crawl_emails_email", table_name="crawl_emails")
-    op.drop_index("ix_crawl_emails_crawl_id", table_name="crawl_emails")
-    op.drop_table("crawl_emails")
+    op.drop_index("ix_products_user_id", table_name="products")
+    op.drop_table("products")
+    op.drop_index("ix_crawls_visibility_user_id_listed", table_name="crawls")
     op.drop_index("ix_crawls_user_id", table_name="crawls")
     op.drop_index("ix_crawls_updated_at", table_name="crawls")
-    op.drop_index("ix_crawls_scope", table_name="crawls")
     op.drop_index("ix_crawls_domain", table_name="crawls")
     op.drop_table("crawls")
-    op.drop_index("ix_auth_sessions_session_id", table_name="auth_sessions")
     op.drop_index("ix_auth_sessions_expires_at", table_name="auth_sessions")
     op.drop_table("auth_sessions")
     op.drop_index("ix_users_provider", table_name="users")

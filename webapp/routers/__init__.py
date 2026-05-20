@@ -1,11 +1,4 @@
-"""Route modules for the web application.
-
-This package exposes router submodules for convenient import like:
-    from webapp.routers import (home, analysis, api, auth, all_public, jobs, progress, prospects, submissions, legal)
-"""
-
 from . import (
-    ai,
     all_public,
     analysis,
     api,
@@ -33,5 +26,4 @@ __all__ = [
     "submissions",
     "legal",
     "products",
-    "ai",
 ]

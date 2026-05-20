@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.get("/privacy", response_class=HTMLResponse)
 async def privacy(request: Request):
-    site_name = os.getenv("SITE_NAME", "Meshweave")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Privacy Policy — {site_name}"
     # Plan-aligned description
     meta_description = (
@@ -48,9 +48,9 @@ async def privacy(request: Request):
         json_ld = None
 
     return templates.TemplateResponse(
+        request,
         "privacy.html",
         {
-            "request": request,
             "site_name": site_name,
             "page_title": page_title,
             "meta_description": meta_description,
@@ -63,9 +63,9 @@ async def privacy(request: Request):
 
 @router.get("/terms", response_class=HTMLResponse)
 async def terms(request: Request):
-    site_name = os.getenv("SITE_NAME", "Meshweave")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Terms of Service — {site_name}"
-    meta_description = "Use Meshweave for lawful analysis. Do not bypass paywalls or technical restrictions."
+    meta_description = "Use MeshWeave for lawful analysis. Do not bypass paywalls or technical restrictions."
     abs_page_url = _abs_url(request, "/terms")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
@@ -81,7 +81,7 @@ async def terms(request: Request):
                 "mainEntity": {
                     "@type": "CreativeWork",
                     "name": "Terms of Service",
-                    "text": "Use Meshweave for lawful analysis. Do not bypass paywalls or technical restrictions.",
+                    "text": "Use MeshWeave for lawful analysis. Do not bypass paywalls or technical restrictions.",
                 },
             }
         )
@@ -89,9 +89,9 @@ async def terms(request: Request):
         json_ld = None
 
     return templates.TemplateResponse(
+        request,
         "terms.html",
         {
-            "request": request,
             "site_name": site_name,
             "page_title": page_title,
             "meta_description": meta_description,

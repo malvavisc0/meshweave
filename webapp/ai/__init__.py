@@ -1,30 +1,17 @@
-from agno.agent import Agent
-from agno.db.redis import RedisDb
-from agno.models.openrouter import OpenRouter
+from langchain.agents import create_agent
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.graph.state import CompiledStateGraph
 
 
-def model(model_id: str, api_key: str) -> OpenRouter:
-    return OpenRouter(id=model_id, api_key=api_key)
-
-
-def db(redis_url: str) -> RedisDb:
-    return RedisDb(db_url=redis_url)
-
-
-def agent(
-    user_id: str,
-    session_id: str,
-    db: RedisDb,
-    model: OpenRouter,
-    markdown: bool = True,
-    stream: bool = True,
-):
-    return Agent(
-        user_id=user_id,
-        session_id=session_id,
-        model=model,
-        db=db,
-        enable_user_memories=True,
-        markdown=markdown,
-        stream=stream,
+def model(model_id: str, api_key: str, base_url: str) -> BaseChatModel:
+    return init_chat_model(
+        model=model_id,
+        model_provider="openai",
+        api_key=api_key,
+        base_url=base_url,
     )
+
+
+def agent(user_id: str, session_id: str, model: BaseChatModel) -> CompiledStateGraph:
+    return create_agent(model=model, user_id=user_id, session_id=session_id)

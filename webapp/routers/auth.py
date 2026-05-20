@@ -1,8 +1,7 @@
 import os
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -129,7 +128,7 @@ def _client_secret() -> str:
     return cs
 
 
-def _allowed_domains() -> Optional[set]:
+def _allowed_domains() -> set | None:
     """Domains allowed to authenticate, if enforced.
 
     Returns:
@@ -143,7 +142,7 @@ def _allowed_domains() -> Optional[set]:
     return set(vals) if vals else None
 
 
-async def _rate_limit_login(sid: Optional[str]) -> None:
+async def _rate_limit_login(sid: str | None) -> None:
     """Rate-limit login attempts using oauth_states records.
 
     Args:
@@ -156,7 +155,7 @@ async def _rate_limit_login(sid: Optional[str]) -> None:
     window_sec = _login_rate_limit_window_sec()
     if max_attempts <= 0:
         return
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_start = now - timedelta(seconds=window_sec)
     # Count recent oauth_states for this sid
     with get_session() as s:
@@ -201,7 +200,7 @@ def _build_redirect_uri(request: Request) -> str:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login(request: Request, provider: str = "google", next: Optional[str] = None):
+async def login(request: Request, provider: str = "google", next: str | None = None):
     """Start Google OAuth login, store server-side state, and redirect to the provider.
 
     Args:
@@ -236,7 +235,7 @@ async def login(request: Request, provider: str = "google", next: Optional[str] 
 
     # Store state server-side
     state = secrets.token_urlsafe(16)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + timedelta(seconds=_oauth_state_ttl())
     with get_session() as s:
         s.execute(
@@ -286,9 +285,9 @@ async def login(request: Request, provider: str = "google", next: Optional[str] 
 @router.get("/auth/callback")
 async def auth_callback(
     request: Request,
-    state: Optional[str] = None,
-    code: Optional[str] = None,
-    error: Optional[str] = None,
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
 ):
     """Handle OAuth redirect, validate state, exchange code, upsert user, and set auth cookie.
 
@@ -338,10 +337,10 @@ async def auth_callback(
             elif isinstance(expires_val, str):
                 expires_at = datetime.fromisoformat(expires_val)
             else:
-                expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+                expires_at = datetime.now(UTC) - timedelta(seconds=1)
         except Exception:
-            expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-        if datetime.now(timezone.utc) > expires_at:
+            expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        if datetime.now(UTC) > expires_at:
             # delete the state and fail
             s.execute(text("DELETE FROM oauth_states WHERE id = :id"), {"id": row.id})
             raise HTTPException(status_code=400, detail="State expired")
@@ -438,8 +437,8 @@ async def auth_callback(
                 email=email,
                 name=name,
                 avatar_url=picture,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             s.add(user)
             s.flush()
@@ -456,7 +455,7 @@ async def auth_callback(
                 user.avatar_url = picture
                 changed = True
             if changed:
-                user.updated_at = datetime.now(timezone.utc)
+                user.updated_at = datetime.now(UTC)
 
         # Create auth session (enforces concurrent limit)
         # Commit user upsert before creating session in a separate DB transaction
@@ -486,7 +485,7 @@ async def auth_callback(
 
 
 @router.post("/logout")
-async def logout(request: Request, csrf_token: Optional[str] = Form(None)):
+async def logout(request: Request, csrf_token: str | None = Form(None)):
     """Logout current session.
 
     For authenticated users, CSRF is not required to allow logout even if session state is stale.
@@ -529,7 +528,7 @@ async def logout(request: Request, csrf_token: Optional[str] = Form(None)):
 
 
 @router.post("/logout-all")
-async def logout_all(request: Request, csrf_token: Optional[str] = Form(None)):
+async def logout_all(request: Request, csrf_token: str | None = Form(None)):
     """Logout all sessions for current user (CSRF required).
 
     Args:
