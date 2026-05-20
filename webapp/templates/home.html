@@ -10,23 +10,7 @@
       "name": "What are AEO and GEO scores?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "AEO measures how well your site captures Google AI Overviews and featured snippets. GEO measures how visible your content is to ChatGPT, Claude, and Perplexity. Both scored 0–100."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How is the AEO score calculated?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Six weighted factors: Capture Rate (30%), Schema (20%), Content Structure (20%), Query Match (15%), Voice Rate (10%), Freshness (5%). Three are auto-scored from crawl data, three need manual input."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How is the GEO score calculated?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Six weighted factors: AI Citations (30%), Topical Authority (20%), E-E-A-T (15%), Crawl Access (15%), Content Depth (10%), Entity Consistency (10%). Four are auto-scored from crawl data."
+        "text": "AEO (Answer Engine Optimization) measures how well your site captures Google AI Overviews and featured snippets. GEO (Generative Engine Optimization) measures how visible your content is to ChatGPT, Claude, and Perplexity. Both scored 0–100."
       }
     },
     {
@@ -35,14 +19,6 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "Just a URL. The engine auto-scores schema coverage, content structure, entity signals, LLM crawl accessibility, and content depth. Optionally add Search Console data or voice results for a complete score."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What are the most impactful improvements I can make?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "The highest-impact fixes: (1) Add FAQPage schema (+10–15 AEO), (2) Add Organization JSON-LD with sameAs links (+10–15 GEO), (3) Publish llms.txt (+10–20 GEO), (4) Clear heading hierarchy. Each analysis includes site-specific recommendations."
       }
     },
     {
@@ -112,7 +88,9 @@
 <section class="landing-hero" aria-label="MeshWeave AEO and GEO scoring">
   <div class="container">
     <h1 class="landing-hero-title">How visible is your site to AI&nbsp;search?</h1>
-    <p class="landing-hero-subtitle">MeshWeave is an AEO & GEO scoring platform. Submit any URL and get a clear,
+    <p class="landing-hero-subtitle">MeshWeave is an <strong>open-source AEO &amp; GEO scoring platform</strong>. Submit
+      any URL and get a
+      clear,
       actionable score for Answer Engine Optimization and Generative Engine Optimization — see exactly where your site
       stands with AI search and what to fix.</p>
     <p class="small landing-hero-audience">Used by marketers, SEOs, content teams, and founders preparing for AI search.
@@ -188,7 +166,10 @@
       <a href="/all?sort=recent">View all →</a>
     </p>
     {% else %}
-    <p class="small m0 mt-3">No recent public analyses yet. Be the first — enter a URL above.</p>
+    <p class="small m0 mt-3">Analyses scored so far include score gauges for AEO and GEO, a full factor-by-factor
+      breakdown, and prioritized recommendations ranked by estimated impact. Each analysis has a unique shareable URL.
+    </p>
+    <p class="mt-2"><a href="/all">View all public analyses →</a></p>
     {% endif %}
   </div>
 </section>
@@ -200,21 +181,11 @@
 
     <div class="faq-item">
       <h3>What are AEO and GEO scores?</h3>
-      <p class="small m0"><strong>AEO</strong> measures how well your site captures Google AI Overviews and featured
-        snippets. <strong>GEO</strong> measures how visible your content is to ChatGPT, Claude, and Perplexity. Both
+      <p class="small m0"><strong>AEO</strong> (Answer Engine Optimization) measures how well your site captures Google
+        AI Overviews and featured
+        snippets. <strong>GEO</strong> (Generative Engine Optimization) measures how visible your content is to ChatGPT,
+        Claude, and Perplexity. Both
         scored 0–100.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>How is the AEO score calculated?</h3>
-      <p class="small m0">Six weighted factors: Capture Rate (30%), Schema (20%), Content Structure (20%), Query Match
-        (15%), Voice Rate (10%), Freshness (5%). Three are auto-scored from crawl data, three need manual input.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>How is the GEO score calculated?</h3>
-      <p class="small m0">Six weighted factors: AI Citations (30%), Topical Authority (20%), E-E-A-T (15%), Crawl
-        Access (15%), Content Depth (10%), Entity Consistency (10%). Four are auto-scored from crawl data.</p>
     </div>
 
     <div class="faq-item">
@@ -222,13 +193,6 @@
       <p class="small m0">Just a URL. The engine auto-scores schema coverage, content structure, entity signals, LLM
         crawl accessibility, and content depth. Optionally add Search Console data or voice results for a complete
         score.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>What are the most impactful improvements I can make?</h3>
-      <p class="small m0">The highest-impact fixes: (1) Add FAQPage schema (+10–15 AEO), (2) Add Organization JSON-LD
-        with sameAs links (+10–15 GEO), (3) Publish llms.txt (+10–20 GEO), (4) Clear heading hierarchy. Each analysis
-        includes site-specific recommendations.</p>
     </div>
 
     <div class="faq-item">
@@ -259,12 +223,12 @@
 <section class="cta-banner" role="complementary" aria-label="Sign up">
   <div class="container">
     <h2>Get more from MeshWeave</h2>
-    <p class="m0 mt-1" style="font: var(--font-body-lg); opacity: 0.9;">Sign in to unlock private analyses, score
-      history, and re-analyze after changes.</p>
+    <p class="m0 mt-1" style="font: var(--font-body-lg); opacity: 0.9;">Sign in to unlock the full MeshWeave experience.
+      Free accounts include everything you need to measure and improve your AI search visibility.</p>
     <ul class="cta-benefits">
-      <li>Private analyses — not in community feed</li>
-      <li>Score history — track improvements over time</li>
-      <li>Re-analyze — compare before and after changes</li>
+      <li><strong>Private analyses</strong> — not in community feed</li>
+      <li><strong>Score history</strong> — track improvements over time</li>
+      <li><strong>Re-analyze</strong> — compare before and after changes</li>
     </ul>
     <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in with Google</a>
   </div>
