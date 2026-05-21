@@ -107,31 +107,9 @@ async def run_crawl_task(
 
         # Compute AEO/GEO scores after successful crawl
         try:
-            from meshweave.scoring.engine import compute_scores
-            from meshweave.scoring.ratings import aeo_rating, geo_rating
-            from webapp.models import ScoreSnapshot
+            from webapp.services.scoring import score_crawl
 
-            score_json = compute_scores(payload)
-            aeo_composite = score_json.get("aeo", {}).get("composite")
-            geo_composite = score_json.get("geo", {}).get("composite")
-            with get_session() as s:
-                row = s.get(Crawl, crawl_id)
-                if row:
-                    row.aeo_score = aeo_composite
-                    row.geo_score = geo_composite
-                    row.aeo_rating = aeo_rating(aeo_composite)
-                    row.geo_rating = geo_rating(geo_composite)
-                    snap = ScoreSnapshot(
-                        crawl_id=crawl_id,
-                        user_id=row.user_id,
-                        domain=row.domain or "",
-                        aeo_score=aeo_composite,
-                        geo_score=geo_composite,
-                        aeo_rating=aeo_rating(aeo_composite),
-                        geo_rating=geo_rating(geo_composite),
-                        score_json=score_json,
-                    )
-                    s.add(snap)
+            score_crawl(crawl_id, payload=payload)
         except Exception:
             pass
 

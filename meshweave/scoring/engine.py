@@ -106,7 +106,9 @@ def compute_scores(
     geo_auto_composite = _weighted_composite(geo_auto_only, GEO_WEIGHTS)
 
     # --- Recommendations ---
-    recommendations = generate_recommendations(aeo_factors, geo_factors)
+    recommendations = generate_recommendations(
+        aeo_factors, geo_factors, payload=payload
+    )
 
     # --- Build score_json ---
     return {

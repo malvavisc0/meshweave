@@ -42,6 +42,10 @@ def is_valid_email(email: str) -> bool:
     # A valid domain TLD must not be purely numeric.
     if parts[-1].isdigit():
         return False
+    # Reject domains embedding an IP address (4+ consecutive numeric segments)
+    for i in range(len(parts) - 3):
+        if all(parts[i + j].isdigit() for j in range(4)):
+            return False
     # Reject domains with implausibly long TLDs
     if len(parts[-1]) > 8:
         return False

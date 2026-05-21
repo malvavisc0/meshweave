@@ -3,9 +3,8 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from meshweave.scoring.engine import compute_scores
 from webapp.db import get_session
-from webapp.models import Crawl, ScoreSnapshot
+from webapp.models import Crawl
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.scoring import build_manual_input_fields as _build_manual_input_fields
 from webapp.utils.scoring import (
@@ -77,46 +76,37 @@ async def update_manual_inputs(request: Request, crawl_id: str):
     if not inputs:
         raise HTTPException(status_code=400, detail="No valid inputs provided")
 
-    # Load existing score snapshot
-    snapshot = row.score_snapshot
-    if not snapshot:
+    if not row.score_snapshot:
         raise HTTPException(status_code=404, detail="Scores not computed yet")
 
-    payload = row.payload_json or {}
-    if isinstance(payload, str):
-        import json
+    # Recompute via scoring service
+    from webapp.services.scoring import update_manual_inputs as _update
 
-        try:
-            payload = json.loads(payload)
-        except json.JSONDecodeError:
-            payload = {}
+    try:
+        score_json = _update(crawl_id, inputs)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-    # Recompute with manual inputs
-    score_json = compute_scores(payload, manual_inputs=inputs)
     score_data = _build_score_data_for_template(score_json)
-
-    # Update snapshot
-    with get_session() as s:
-        snap = s.get(ScoreSnapshot, snapshot.id)
-        if snap:
-            snap.score_json = score_json
-            snap.aeo_score = score_json.get("aeo", {}).get("composite")
-            snap.geo_score = score_json.get("geo", {}).get("composite")
-            from meshweave.scoring.ratings import aeo_rating, geo_rating
-
-            snap.aeo_rating = aeo_rating(snap.aeo_score)
-            snap.geo_rating = geo_rating(snap.geo_score)
-            snap.has_manual_input = True
 
     return JSONResponse(
         content={
             "crawl_id": crawl_id,
-            "aeo_score": snapshot.aeo_score,
-            "geo_score": snapshot.geo_score,
-            "aeo_rating": snapshot.aeo_rating,
-            "geo_rating": snapshot.geo_rating,
+            "aeo_score": score_json.get("aeo", {}).get("composite"),
+            "geo_score": score_json.get("geo", {}).get("composite"),
+            "aeo_rating": row.score_snapshot.aeo_rating if row.score_snapshot else None,
+            "geo_rating": row.score_snapshot.geo_rating if row.score_snapshot else None,
             "score_data": score_data,
             "manual_input_fields": _build_manual_input_fields(score_json),
             "has_manual_missing": _has_manual_missing(score_json),
         }
     )
+
+
+@router.get("/api/scores/domain/{domain}")
+async def get_domain_scores(domain: str, limit: int = 10):
+    """Score history for a domain."""
+    from webapp.services.scoring import get_score_history
+
+    history = get_score_history(domain, limit=min(limit, 50))
+    return JSONResponse(content={"domain": domain, "history": history})

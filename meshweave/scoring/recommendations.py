@@ -8,10 +8,18 @@ from typing import Any
 def generate_recommendations(
     aeo_factors: dict[str, dict],
     geo_factors: dict[str, dict],
+    payload: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate actionable recommendations based on factor scores.
 
-    Returns a list of recommendation dicts sorted by priority.
+    Args:
+        aeo_factors: AEO factor score dicts.
+        geo_factors: GEO factor score dicts.
+        payload: Optional crawl payload for audit.meta data
+            (canonical_issues, duplicate_og_titles, etc.).
+
+    Returns:
+        List of recommendation dicts sorted by priority.
     """
     recs: list[dict[str, Any]] = []
 
@@ -200,6 +208,70 @@ def generate_recommendations(
                 "impact": "GEO +5-10 points estimated",
             }
         )
+
+    # --- Payload-based recommendations (audit.meta) ---
+    if payload:
+        audit = payload.get("audit") or {}
+        meta = audit.get("meta") or {}
+
+        # Canonical issues
+        canonical_issues = meta.get("canonical_issues") or []
+        if canonical_issues:
+            recs.append(
+                {
+                    "factor": "schema",
+                    "priority": "medium",
+                    "title": f"Fix canonical URL mismatches on {len(canonical_issues)} page(s)",
+                    "detail": (
+                        "These pages have canonical URLs pointing to a different "
+                        "page. This confuses search engines and hurts snippet "
+                        "capture."
+                    ),
+                    "impact": "AEO +3-5 points estimated",
+                }
+            )
+
+        # Duplicate OG titles
+        dup_titles = meta.get("duplicate_og_titles") or {}
+        if dup_titles:
+            recs.append(
+                {
+                    "factor": "content_structure",
+                    "priority": "medium",
+                    "title": f"Differentiate OG titles — {len(dup_titles)} group(s) share the same title",
+                    "detail": (
+                        "Multiple pages share identical OG titles. This reduces "
+                        "click-through rates and confuses social previews."
+                    ),
+                    "impact": "AEO +2-3 points estimated",
+                }
+            )
+
+        # Site-wide image alt text
+        md_dict = payload.get("markdowns") or {}
+        if isinstance(md_dict, dict) and md_dict:
+            total_imgs = 0
+            imgs_with_alt = 0
+            for _url, pg in md_dict.items():
+                if isinstance(pg, dict):
+                    cm = pg.get("content_metrics") or {}
+                    total_imgs += cm.get("images_total") or 0
+                    imgs_with_alt += cm.get("images_with_alt") or 0
+            if total_imgs > 0 and (imgs_with_alt / total_imgs) < 0.5:
+                missing = total_imgs - imgs_with_alt
+                recs.append(
+                    {
+                        "factor": "content_structure",
+                        "priority": "medium",
+                        "title": f"Add alt text to {missing} image(s) across the site",
+                        "detail": (
+                            f"Only {imgs_with_alt}/{total_imgs} images have alt "
+                            "text. Add descriptive alt text to improve "
+                            "accessibility and image search visibility."
+                        ),
+                        "impact": "AEO +3-5 points estimated",
+                    }
+                )
 
     # Positive callouts (green)
     if coverage_pct >= 80:

@@ -320,13 +320,17 @@ def score_content_depth(payload: dict) -> dict:
     # Has tables (original data signal)
     tables_bonus = 10 if pages_with_tables > 0 else 0
 
-    # Unique content pages scaled
-    (
+    # Unique content pages scaled (> 200 words)
+    content_ratio = (
         min((content_pages_gt200 / total_pages) * 100, 100) if total_pages > 0 else 0
     )
 
     score = (
-        word_score * 0.4 + depth_ratio * 0.3 + code_bonus * 0.15 + tables_bonus * 0.15
+        word_score * 0.35
+        + depth_ratio * 0.25
+        + content_ratio * 0.15
+        + code_bonus * 0.15
+        + tables_bonus * 0.10
     )
     score = min(100.0, score)
 

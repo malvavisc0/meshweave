@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>404 — Page Not Found</h1>
-<p>The page you requested was not found.</p>
-<p><a href="/">Try submitting a URL</a></p>
+<div class="container">
+    <section class="panel mt-2" role="region" aria-label="Page Not Found">
+        <h1>404 — Page Not Found</h1>
+        <p>The page you requested was not found.</p>
+
+        <div class="actions mt-1">
+            <a class="btn btn-primary" href="/">Try submitting a URL</a>
+        </div>
+    </section>
+</div>
 {% endblock %}

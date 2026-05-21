@@ -253,31 +253,9 @@ def _finish_task(
     # Compute AEO/GEO scores after successful crawl
     if status == "succeeded" and payload is not None:
         try:
-            from meshweave.scoring.engine import compute_scores
-            from meshweave.scoring.ratings import aeo_rating, geo_rating
-            from webapp.models import ScoreSnapshot
+            from webapp.services.scoring import score_crawl
 
-            score_json = compute_scores(payload)
-            aeo_composite = score_json.get("aeo", {}).get("composite")
-            geo_composite = score_json.get("geo", {}).get("composite")
-            with get_session() as s:
-                r = s.get(Crawl, crawl_id)
-                if r:
-                    r.aeo_score = aeo_composite
-                    r.geo_score = geo_composite
-                    r.aeo_rating = aeo_rating(aeo_composite)
-                    r.geo_rating = geo_rating(geo_composite)
-                    snap = ScoreSnapshot(
-                        crawl_id=crawl_id,
-                        user_id=r.user_id,
-                        domain=r.domain or "",
-                        aeo_score=aeo_composite,
-                        geo_score=geo_composite,
-                        aeo_rating=aeo_rating(aeo_composite),
-                        geo_rating=geo_rating(geo_composite),
-                        score_json=score_json,
-                    )
-                    s.add(snap)
+            score_crawl(crawl_id, payload=payload)
         except Exception:
             pass
 
