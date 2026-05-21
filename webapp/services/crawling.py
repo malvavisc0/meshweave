@@ -1,4 +1,3 @@
-import json
 import time
 from datetime import UTC, datetime
 
@@ -18,13 +17,12 @@ async def run_crawl_task(
     the resulting payload or error.
 
     Args:
-        crawl_id (str): Identifier of the Crawl row.
-        force_refresh (bool, optional): Disable cache for the crawl run. Defaults to False.
-        user_id (Optional[str], optional): ID of the user who initiated the crawl, used for
-            audit/metrics context. Defaults to None.
+        crawl_id: Identifier of the Crawl row.
+        force_refresh: Disable cache for the crawl run.
+        user_id: ID of the user who initiated the crawl.
 
     Returns:
-        None: Performs side effects (DB updates and metrics) and does not return a value.
+        None: Side effects only (DB updates and metrics).
     """
     # Attempt to transition to 'running' atomically to avoid races
     url: str | None = None
@@ -93,25 +91,26 @@ async def run_crawl_task(
             # On any error, proceed with normal persist flow
             pass
 
-        payload_json = json.dumps(payload)
+        # Compute AEO/GEO scores before writing so they're
+        # included in payload_json
+        try:
+            from webapp.services.scoring import score_crawl
+
+            score_json = score_crawl(crawl_id, payload=payload)
+            payload["scores"] = score_json
+        except Exception:
+            pass
+
         with get_session() as s:
             row = s.get(Crawl, crawl_id)
             if not row:
                 return
-            row.payload_json = payload_json
+            row.payload_json = payload
             row.status = "succeeded"
             row.error = None
             row.updated_at = datetime.now(UTC)
 
-        # Compute AEO/GEO scores after successful crawl
-        try:
-            from webapp.services.scoring import score_crawl
-
-            score_crawl(crawl_id, payload=payload)
-        except Exception:
-            pass
-
-        # Run AAX analysis (async, non-blocking)
+        # Run AAX analysis — will update payload_json when done
         try:
             from webapp.services.scoring import run_aax_for_crawl
 

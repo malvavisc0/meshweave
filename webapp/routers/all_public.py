@@ -99,7 +99,7 @@ async def view_all(
             # Compute email/page counts from payload_json
             def _counts_from_payload(row: Crawl) -> tuple[int, int]:
                 try:
-                    p = json.loads(row.payload_json) if row.payload_json else {}
+                    p = row.payload_json or {} if row.payload_json else {}
                     if not isinstance(p, dict):
                         return 0, 0
                     emails = (p.get("emails") or {}).get("unique") or []
@@ -142,7 +142,7 @@ async def view_all(
                 payload = None
                 try:
                     if row.payload_json:
-                        payload = json.loads(row.payload_json)
+                        payload = row.payload_json or {}
                         if bool(row.crawl_params):
                             pages = payload.get("pages") or []
                             if pages and isinstance(pages, list) and len(pages) > 0:
@@ -293,7 +293,7 @@ async def view_all(
 
             for r in rows_db:
                 try:
-                    p = json.loads(r.payload_json) if r.payload_json else {}
+                    p = r.payload_json or {} if r.payload_json else {}
                     if isinstance(p, dict):
                         emails = (p.get("emails") or {}).get("unique") or []
                         email_counts_map[r.id] = len(emails)
@@ -313,7 +313,7 @@ async def view_all(
                 payload = None
                 try:
                     if r.payload_json:
-                        payload = json.loads(r.payload_json)
+                        payload = r.payload_json or {}
                         if bool(r.crawl_params):
                             pages = payload.get("pages") or []
                             if pages and isinstance(pages, list) and len(pages) > 0:
@@ -367,7 +367,7 @@ async def view_all(
                             payload = (
                                 payload
                                 if isinstance(payload, dict)
-                                else json.loads(r.payload_json)
+                                else r.payload_json or {}
                             )
                         else:
                             payload = payload if isinstance(payload, dict) else None

@@ -1,5 +1,4 @@
 import csv
-import json
 import os
 import re
 from datetime import UTC, datetime, timedelta
@@ -14,7 +13,6 @@ from webapp.db import get_session
 from webapp.models import Crawl, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
-from webapp.utils.logging import log_audit
 from webapp.utils.metrics import (
     homepage_advanced_toggle_clicks,
     homepage_signin_cta_clicks,
@@ -57,16 +55,7 @@ async def api_public_by_key(request: Request, key: str):
             status_code=202,
         )
 
-    try:
-        payload = json.loads(row.payload_json)
-    except json.JSONDecodeError:
-        try:
-            log_audit("invalid_stored_payload", key=key, crawl_id=row.id)
-        except Exception:
-            pass
-        return JSONResponse(
-            status_code=500, content={"detail": "Internal Server Error"}
-        )
+    payload = row.payload_json or {}
 
     # Scrub emails for anonymous users (do not return any email addresses)
     try:
@@ -139,16 +128,7 @@ async def api_private(request: Request, crawl_id: str):
             status_code=202,
         )
 
-    try:
-        payload = json.loads(row.payload_json)
-    except json.JSONDecodeError:
-        try:
-            log_audit("invalid_stored_payload", crawl_id=row.id)
-        except Exception:
-            pass
-        return JSONResponse(
-            status_code=500, content={"detail": "Internal Server Error"}
-        )
+    payload = row.payload_json or {}
     resp = JSONResponse(content=payload)
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
@@ -284,14 +264,7 @@ def _parse_payload_or_500(row: Crawl, key: str = "") -> dict:
     Raises:
         HTTPException: 500 Internal Server Error if payload_json is invalid.
     """
-    try:
-        return json.loads(row.payload_json or "{}")
-    except json.JSONDecodeError:
-        try:
-            log_audit("invalid_stored_payload", key=key or row.key, crawl_id=row.id)
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    return row.payload_json or {}
 
 
 @router.get("/api/analysis/public/{key}/summary")

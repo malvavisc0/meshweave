@@ -31,7 +31,6 @@ def finalize_stale_job(crawl_id: str) -> str:
 
     Returns: "ok" (finalized), "race" (row no longer running), "noop" (not running), "err" (failed).
     """
-    import json
 
     try:
         with get_session() as s:
@@ -44,7 +43,7 @@ def finalize_stale_job(crawl_id: str) -> str:
             # Extract links/emails from existing payload_json or build minimal
             existing_payload = {}
             try:
-                existing_payload = json.loads(row.payload_json or "{}")
+                existing_payload = row.payload_json or {}
             except Exception:
                 existing_payload = {}
             if not isinstance(existing_payload, dict):
@@ -111,7 +110,7 @@ def finalize_stale_job(crawl_id: str) -> str:
                     {
                         "status": "succeeded",
                         "error": "finalized_stale",
-                        "payload_json": json.dumps(payload),
+                        "payload_json": payload,
                         "updated_at": now,
                     },
                     synchronize_session=False,
@@ -150,9 +149,8 @@ async def api_progress(request: Request, crawl_id: str):
     # Count visited pages from payload_json (CrawlLink table removed)
     visited_pages = 0
     try:
-        import json as _pj
 
-        _p = _pj.loads(row.payload_json or "{}")
+        _p = row.payload_json or {}
         visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
     except Exception:
         visited_pages = 0
@@ -286,9 +284,8 @@ async def api_progress(request: Request, crawl_id: str):
     links_internal_so_far = 0
     external_domains_so_far = 0
     try:
-        import json as _pj
 
-        _cp = _pj.loads(row.payload_json or "{}")
+        _cp = row.payload_json or {}
         if isinstance(_cp, dict):
             emails_so_far = len((_cp.get("emails") or {}).get("unique", []))
             links_internal_so_far = len((_cp.get("links") or {}).get("internal", []))
@@ -337,9 +334,8 @@ async def api_progress_public(key: str):
     # Count visited pages from payload_json (CrawlLink table removed)
     visited_pages = 0
     try:
-        import json as _pj
 
-        _p = _pj.loads(row.payload_json or "{}")
+        _p = row.payload_json or {}
         visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
     except Exception:
         visited_pages = 0
@@ -469,9 +465,8 @@ async def api_progress_public(key: str):
     links_internal_so_far = 0
     external_domains_so_far = 0
     try:
-        import json as _pj
 
-        _cp = _pj.loads(row.payload_json or "{}")
+        _cp = row.payload_json or {}
         if isinstance(_cp, dict):
             emails_so_far = len((_cp.get("emails") or {}).get("unique", []))
             links_internal_so_far = len((_cp.get("links") or {}).get("internal", []))

@@ -95,7 +95,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
     if ids and len(rows) > 0:
         for r in rows:
             try:
-                p = json.loads(r.payload_json) if r.payload_json else {}
+                p = r.payload_json or {} if r.payload_json else {}
                 if isinstance(p, dict):
                     # Email count from payload
                     emails_data = p.get("emails") or {}

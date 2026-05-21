@@ -11,6 +11,8 @@ import json
 import logging
 from typing import Any
 
+from sqlalchemy.orm.attributes import flag_modified
+
 from meshweave.scoring.engine import compute_aax_score, compute_scores
 from meshweave.scoring.ratings import aeo_rating, geo_rating
 from webapp.db import get_session
@@ -150,18 +152,38 @@ async def run_aax_for_crawl(
     # Compute AAX composite score
     aax_score_json = compute_aax_score(aax_result)
 
-    # Persist to DB
+    # Persist to DB — ScoreSnapshot and payload_json
     with get_session() as s:
         snap = s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id == crawl_id).first()
         if snap:
-            # Merge AAX into existing ai_analysis_json
             existing = snap.ai_analysis_json or {}
             existing["aax"] = aax_result
             snap.ai_analysis_json = existing
+            flag_modified(snap, "ai_analysis_json")
 
-            # Store AAX composite in score_json
             if aax_score_json and snap.score_json:
                 snap.score_json["aax"] = aax_score_json
+                flag_modified(snap, "score_json")
+
+        # Inject AAX into payload_json so the API returns it
+        row = s.get(Crawl, crawl_id)
+        if row and row.payload_json:
+            try:
+                p = (
+                    row.payload_json or {}
+                    if isinstance(row.payload_json, str)
+                    else row.payload_json
+                )
+                if isinstance(p, dict):
+                    p["aax"] = aax_result
+                    if aax_score_json:
+                        scores = p.get("scores") or {}
+                        scores["aax"] = aax_score_json
+                        p["scores"] = scores
+                    row.payload_json = p
+                    flag_modified(row, "payload_json")
+            except json.JSONDecodeError, TypeError:
+                pass
 
     return aax_score_json
 

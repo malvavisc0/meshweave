@@ -1,6 +1,5 @@
 """Site crawl background task — thin wrapper around meshweave.core.crawl()."""
 
-import json
 import os
 import time
 from datetime import UTC, datetime
@@ -251,6 +250,16 @@ def _finish_task(
     elapsed: float = 0.0,
 ) -> None:
     """Write final status/payload to DB and emit observability."""
+    # Compute AEO/GEO scores before writing so they're included in payload_json
+    if status == "succeeded" and payload is not None:
+        try:
+            from webapp.services.scoring import score_crawl
+
+            score_json = score_crawl(crawl_id, payload=payload)
+            payload["scores"] = score_json
+        except Exception:
+            pass
+
     try:
         with get_session() as s:
             r = s.get(Crawl, crawl_id)
@@ -260,20 +269,12 @@ def _finish_task(
             r.error = error
             r.updated_at = datetime.now(UTC)
             if payload is not None:
-                r.payload_json = json.dumps(payload)
+                r.payload_json = payload
     except Exception:
         pass
 
-    # Compute AEO/GEO scores after successful crawl
+    # Run AAX analysis (async, best-effort) — will update payload_json when done
     if status == "succeeded" and payload is not None:
-        try:
-            from webapp.services.scoring import score_crawl
-
-            score_crawl(crawl_id, payload=payload)
-        except Exception:
-            pass
-
-        # Run AAX analysis (async, best-effort)
         try:
             import asyncio
 

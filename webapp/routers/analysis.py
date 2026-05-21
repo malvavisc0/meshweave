@@ -46,7 +46,7 @@ async def view_shared_analysis(request: Request, share_key: str):
     payload: dict | None = None
     if row.payload_json:
         try:
-            payload = json.loads(row.payload_json)
+            payload = row.payload_json or {}
         except json.JSONDecodeError:
             payload = None
 
@@ -163,7 +163,7 @@ async def view_analysis(request: Request, ref: str):
         payload: dict | None = None
         if row.payload_json:
             try:
-                payload = json.loads(row.payload_json)
+                payload = row.payload_json or {}
             except json.JSONDecodeError:
                 payload = None
 
@@ -434,7 +434,7 @@ async def view_analysis(request: Request, ref: str):
     payload: dict | None = None
     if row.payload_json:
         try:
-            payload = json.loads(row.payload_json)
+            payload = row.payload_json or {}
         except json.JSONDecodeError:
             payload = None
 

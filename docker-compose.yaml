@@ -95,8 +95,8 @@ services:
       AUTH_SITE_MAX_PAGES_CAP: 500
       AUTH_SITE_MAX_DEPTH_CAP: 5
       # Anonymous user quotas (stricter)
-      ANON_SITE_MAX_PAGES_DEFAULT: 20
-      ANON_SITE_MAX_PAGES_CAP: 30
+      ANON_SITE_MAX_PAGES_DEFAULT: 50
+      ANON_SITE_MAX_PAGES_CAP: 60
       # OAuth (Google)
       OAUTH_PROVIDER: google
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
@@ -116,6 +116,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL}
+      AAX_ENABLED : ${AAX_ENABLED}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DEBUG: yes
       # Database pool tuning (Postgres)
