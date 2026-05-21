@@ -1319,6 +1319,55 @@
             }
         } catch (_) { }
 
+        // Manual input form handling
+        try {
+            var miForm = document.getElementById('manual-input-form');
+            if (miForm) {
+                miForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var fd = new FormData(miForm);
+                    var body = {};
+                    for (var _it = fd.keys(), _k = _it.next(); !_k.done; _k = _it.next()) {
+                        var key = _k.value;
+                        var val = fd.get(key);
+                        if (val !== '' && val !== null) {
+                            var num = parseFloat(String(val));
+                            body[key] = isNaN(num) ? null : Math.max(0, Math.min(100, num));
+                        }
+                    }
+                    var cid = miForm.getAttribute('data-crawl-id');
+                    if (!cid) { return; }
+                    var btn = miForm.querySelector('button[type="submit"]');
+                    if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+                    apiJson('/api/scores/' + encodeURIComponent(cid) + '/inputs', 'POST', body)
+                        .then(function (res) {
+                            if (btn) { btn.disabled = false; btn.textContent = 'Recalculate Scores'; }
+                            showToast('Scores updated');
+                            // Refresh the page to show new scores (simplest approach)
+                            window.location.reload();
+                        })
+                        .catch(function (e) {
+                            if (btn) { btn.disabled = false; btn.textContent = 'Recalculate Scores'; }
+                            showToast('Failed to update scores');
+                        });
+                });
+            }
+        } catch (_) { }
+
+        // Scroll helpers for score sections
+        try {
+            window.scrollToSection = function (id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            };
+            window.resetManualInputs = function () {
+                var miForm = document.getElementById('manual-input-form');
+                if (miForm) { miForm.reset(); }
+            };
+        } catch (_) { }
+
         // Start progress polling (prefer public when available to work for anonymous viewers and non-owners)
         try {
             var _pubKey = __ctx.public_key || '';

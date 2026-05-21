@@ -71,6 +71,42 @@ def audit_meta_uniqueness(
     }
 
 
+def _extract_orgs_recursive(
+    obj: Any,
+    _visited: set[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Recursively extract Organization objects from JSON-LD structures.
+
+    Traverses nested dicts and lists, looking for objects with
+    ``@type == "Organization"``.  Fields like ``provider``,
+    ``publisher``, ``about``, and ``parentOrganization`` often
+    contain nested Organization data that top-level scanning misses.
+    """
+    if _visited is None:
+        _visited = set()
+
+    results: list[dict[str, Any]] = []
+
+    if isinstance(obj, dict):
+        obj_id = id(obj)
+        if obj_id in _visited:
+            return results
+        _visited.add(obj_id)
+
+        if obj.get("@type") == "Organization":
+            results.append(obj)
+
+        # Recurse into all values
+        for v in obj.values():
+            results.extend(_extract_orgs_recursive(v, _visited))
+
+    elif isinstance(obj, list):
+        for item in obj:
+            results.extend(_extract_orgs_recursive(item, _visited))
+
+    return results
+
+
 def audit_entity_consistency(
     markdowns: dict[str, dict[str, Any]],
     start_page_meta: dict[str, Any] | None = None,
@@ -79,6 +115,9 @@ def audit_entity_consistency(
 
     Extracts name, description, and sameAs from Organization
     JSON-LD across all crawled pages and flags inconsistencies.
+    Recursively traverses nested JSON-LD objects to find
+    Organization schemas inside ``provider``, ``publisher``,
+    ``about``, ``parentOrganization``, etc.
     """
     names: list[str] = []
     descriptions: list[str] = []
@@ -94,17 +133,17 @@ def audit_entity_consistency(
 
     for url, page in all_pages.items():
         for item in page.get("jsonld", []):
-            if item.get("@type") != "Organization":
-                continue
-            name = item.get("name", "").strip()
-            desc = item.get("description", "").strip()
-            if name:
-                names.append(name)
-            if desc:
-                descriptions.append(desc)
-            for sa in item.get("sameAs", []):
-                if sa and sa not in same_as_all:
-                    same_as_all.append(sa)
+            orgs = _extract_orgs_recursive(item)
+            for org in orgs:
+                name = org.get("name", "").strip()
+                desc = org.get("description", "").strip()
+                if name:
+                    names.append(name)
+                if desc:
+                    descriptions.append(desc)
+                for sa in org.get("sameAs", []):
+                    if sa and sa not in same_as_all:
+                        same_as_all.append(sa)
 
     name_counts = Counter(names)
     desc_counts = Counter(descriptions)

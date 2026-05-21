@@ -77,16 +77,17 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             return
         start_url = row.url
         updated = (
-            s
-            .query(Crawl)
+            s.query(Crawl)
             .filter(
                 Crawl.id == crawl_id,
                 Crawl.status.in_(("pending", "failed", "succeeded")),
             )
-            .update({
-                "status": "running",
-                "updated_at": now,
-            })
+            .update(
+                {
+                    "status": "running",
+                    "updated_at": now,
+                }
+            )
         )
         if updated == 0:
             return
@@ -248,6 +249,38 @@ def _finish_task(
                 r.payload_json = json.dumps(payload)
     except Exception:
         pass
+
+    # Compute AEO/GEO scores after successful crawl
+    if status == "succeeded" and payload is not None:
+        try:
+            from meshweave.scoring.engine import compute_scores
+            from meshweave.scoring.ratings import aeo_rating, geo_rating
+            from webapp.models import ScoreSnapshot
+
+            score_json = compute_scores(payload)
+            aeo_composite = score_json.get("aeo", {}).get("composite")
+            geo_composite = score_json.get("geo", {}).get("composite")
+            with get_session() as s:
+                r = s.get(Crawl, crawl_id)
+                if r:
+                    r.aeo_score = aeo_composite
+                    r.geo_score = geo_composite
+                    r.aeo_rating = aeo_rating(aeo_composite)
+                    r.geo_rating = geo_rating(geo_composite)
+                    snap = ScoreSnapshot(
+                        crawl_id=crawl_id,
+                        user_id=r.user_id,
+                        domain=r.domain or "",
+                        aeo_score=aeo_composite,
+                        geo_score=geo_composite,
+                        aeo_rating=aeo_rating(aeo_composite),
+                        geo_rating=geo_rating(geo_composite),
+                        score_json=score_json,
+                    )
+                    s.add(snap)
+        except Exception:
+            pass
+
     if audit_event:
         try:
             log_audit(audit_event, crawl_id=crawl_id)

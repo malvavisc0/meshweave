@@ -116,17 +116,14 @@ async def submit(
 
             _s_dom, _s_path, _s_query, _s_canon = _canon(_site_url)
             start_url = _s_canon
-            site_path = _s_path
         else:
             start_url = f"https://{dom}/"
-            site_path = "/"
 
         # Upsert crawl row (unique on visibility+domain+path+query)
         now = datetime.now(UTC)
         with get_session() as s:
             existing = (
-                s
-                .query(Crawl)
+                s.query(Crawl)
                 .filter(
                     Crawl.visibility == visibility,
                     Crawl.domain == dom,
@@ -394,8 +391,7 @@ async def submit(
             # Default all public analyses to site scope (domain root) so pages[] with markdown is available
             start_url = f"https://{dom}/"
             existing = (
-                s
-                .query(Crawl)
+                s.query(Crawl)
                 .filter(
                     Crawl.visibility == "public",
                     Crawl.domain == dom,
@@ -458,8 +454,7 @@ async def submit(
                 key_val = row.key
         else:
             existing = (
-                s
-                .query(Crawl)
+                s.query(Crawl)
                 .filter(
                     Crawl.visibility == "private",
                     Crawl.domain == dom,

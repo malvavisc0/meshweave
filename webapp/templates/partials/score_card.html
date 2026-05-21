@@ -1,0 +1,21 @@
+<!-- Partial: AEO/GEO Score Card for external list views -->
+{% if score_snapshot %}
+<div class="score-card-condensed" role="group" aria-label="AEO and GEO Scores">
+    <div class="score-gauge-mini">
+        <span class="gauge-label">AEO</span>
+        <span class="gauge-value-mini {{ score_snapshot.aeo_rating_class }}">{{ score_snapshot.aeo_score | round(1)
+            }}</span>
+        <span class="gauge-rating-mini">{{ score_snapshot.aeo_rating }}</span>
+    </div>
+    <div class="score-gauge-mini">
+        <span class="gauge-label">GEO</span>
+        <span class="gauge-value-mini {{ score_snapshot.geo_rating_class }}">{{ score_snapshot.geo_score | round(1)
+            }}</span>
+        <span class="gauge-rating-mini">{{ score_snapshot.geo_rating }}</span>
+    </div>
+</div>
+{% else %}
+<div class="score-card-condensed score-unavailable" role="status" aria-label="Score unavailable">
+    <span class="small">Score not yet available</span>
+</div>
+{% endif %}

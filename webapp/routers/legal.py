@@ -27,25 +27,27 @@ async def privacy(request: Request):
 
     # JSON-LD: WebPage with mainEntity (LLM-first)
     try:
-        json_ld = json.dumps({
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            "name": "Privacy Policy",
-            "url": abs_page_url,
-            "isPartOf": _abs_url(request, "/"),
-            "contactPoint": {
-                "@type": "ContactPoint",
-                "email": os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweave.com"),
-            },
-            "mainEntity": {
-                "@type": "CreativeWork",
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "WebPage",
                 "name": "Privacy Policy",
-                "text": (
-                    "Public by default when not signed in. "
-                    "Sign in to keep results private."
-                ),
-            },
-        })
+                "url": abs_page_url,
+                "isPartOf": _abs_url(request, "/"),
+                "contactPoint": {
+                    "@type": "ContactPoint",
+                    "email": os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweave.com"),
+                },
+                "mainEntity": {
+                    "@type": "CreativeWork",
+                    "name": "Privacy Policy",
+                    "text": (
+                        "Public by default when not signed in. "
+                        "Sign in to keep results private."
+                    ),
+                },
+            }
+        )
     except Exception:
         json_ld = None
 
@@ -78,22 +80,24 @@ async def terms(request: Request):
 
     # JSON-LD: WebPage with mainEntity (LLM-first)
     try:
-        json_ld = json.dumps({
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            "name": "Terms of Service",
-            "url": abs_page_url,
-            "isPartOf": _abs_url(request, "/"),
-            "mainEntity": {
-                "@type": "CreativeWork",
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "WebPage",
                 "name": "Terms of Service",
-                "text": (
-                    "Use MeshWeave for lawful analysis. "
-                    "Do not bypass paywalls or "
-                    "technical restrictions."
-                ),
-            },
-        })
+                "url": abs_page_url,
+                "isPartOf": _abs_url(request, "/"),
+                "mainEntity": {
+                    "@type": "CreativeWork",
+                    "name": "Terms of Service",
+                    "text": (
+                        "Use MeshWeave for lawful analysis. "
+                        "Do not bypass paywalls or "
+                        "technical restrictions."
+                    ),
+                },
+            }
+        )
     except Exception:
         json_ld = None
 

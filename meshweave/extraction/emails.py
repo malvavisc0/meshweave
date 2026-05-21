@@ -16,6 +16,8 @@ __all__ = [
 
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[A-Za-z]{2,}")
 
+BLOCKED_DOMAINS: frozenset[str] = frozenset({"example.com"})
+
 
 def is_valid_email(email: str) -> bool:
     """Structural validation to filter obvious false positives."""
@@ -39,6 +41,12 @@ def is_valid_email(email: str) -> bool:
     # Reject IP-address domains (e.g. resource@192.168.1.210.when)
     # A valid domain TLD must not be purely numeric.
     if parts[-1].isdigit():
+        return False
+    # Reject domains with implausibly long TLDs
+    if len(parts[-1]) > 8:
+        return False
+    # Reject blocked domains
+    if domain in BLOCKED_DOMAINS or ".".join(parts[-2:]) in BLOCKED_DOMAINS:
         return False
     return True
 

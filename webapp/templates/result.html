@@ -132,6 +132,124 @@
     {% endif %}
   </div>
 
+  <!-- AEO/GEO Score Summary -->
+  {% if score_snapshot %}
+  <section class="panel mt-2 score-summary" role="region" aria-label="AEO and GEO Scores">
+    <div class="score-gauges">
+      <div class="score-gauge">
+        <div class="score-gauge-header">AEO Score</div>
+        <div class="gauge-value {{ score_snapshot.aeo_rating_class }}">
+          {{ score_snapshot.aeo_score | round(1) }}
+        </div>
+        <div class="gauge-rating">{{ score_snapshot.aeo_rating }}</div>
+        <div class="gauge-auto-label">Auto-scored: {{ score_snapshot.aeo_auto_count }}/6</div>
+      </div>
+      <div class="score-gauge">
+        <div class="score-gauge-header">GEO Score</div>
+        <div class="gauge-value {{ score_snapshot.geo_rating_class }}">
+          {{ score_snapshot.geo_score | round(1) }}
+        </div>
+        <div class="gauge-rating">{{ score_snapshot.geo_rating }}</div>
+        <div class="gauge-auto-label">Auto-scored: {{ score_snapshot.geo_auto_count }}/6</div>
+      </div>
+    </div>
+    <div class="score-summary-actions">
+      <button class="btn" onclick="scrollToSection('score-breakdown')">View Breakdown ↓</button>
+      {% if score_snapshot.has_manual_missing %}
+      <button class="btn btn-primary" onclick="scrollToSection('manual-input')">Enter Missing Values →</button>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- AEO/GEO Score Breakdown -->
+  {% if score_snapshot and score_snapshot.score_data %}
+  <section id="score-breakdown" class="panel mt-2 score-breakdown" role="region" aria-label="Score Breakdown">
+    <h2>Score Breakdown</h2>
+    <div class="breakdown-grid">
+      <div class="breakdown-column">
+        <h3 class="breakdown-col-header">AEO Factors</h3>
+        {% for factor in score_snapshot.score_data.aeo.factors.values() %}
+        <div class="factor-row">
+          <span class="factor-label">{{ factor.display_name }}</span>
+          <div class="factor-bar">
+            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+            </div>
+          </div>
+          <span
+            class="factor-score {% if factor.score is none %}factor-score-missing{% elif factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+            {{ factor.score | round(1) if factor.score is not none else '—' }}/100
+          </span>
+          <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+          {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="breakdown-column">
+        <h3 class="breakdown-col-header">GEO Factors</h3>
+        {% for factor in score_snapshot.score_data.geo.factors.values() %}
+        <div class="factor-row">
+          <span class="factor-label">{{ factor.display_name }}</span>
+          <div class="factor-bar">
+            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+            </div>
+          </div>
+          <span
+            class="factor-score {% if factor.score is none %}factor-score-missing{% elif factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+            {{ factor.score | round(1) if factor.score is not none else '—' }}/100
+          </span>
+          <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+          {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Manual Input Form -->
+  {% if score_snapshot and score_snapshot.manual_input_fields %}
+  <section id="manual-input" class="panel mt-2 manual-input" role="region" aria-label="Manual Score Inputs">
+    <h2>Improve Your Score <span class="small">(optional)</span></h2>
+    <p class="small">These factors can't be auto-detected. Provide estimates to complete your score.</p>
+    <form id="manual-input-form" data-crawl-id="{{ score_snapshot.crawl_id }}">
+      <div class="form-grid">
+        {% for field in score_snapshot.manual_input_fields %}
+        <label>
+          <span class="field-label">{{ field.label }}</span>
+          <span class="field-weight small">({{ (field.weight * 100) | round(0) }}% weight)</span>
+          <input type="number" name="{{ field.key }}" min="0" max="100"
+            value="{{ field.current_value if field.current_value is not none else '' }}"
+            placeholder="{{ field.placeholder }}">
+        </label>
+        <span class="field-guidance small">{{ field.guidance }}</span>
+        {% endfor %}
+      </div>
+      <div class="form-actions mt-1">
+        <button type="submit" class="btn btn-primary">Recalculate Scores</button>
+        <button type="button" class="btn" onclick="resetManualInputs()">Reset</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  <!-- Recommendations -->
+  {% if score_snapshot and score_snapshot.recommendations %}
+  <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
+    <h2>Recommendations</h2>
+    {% for rec in score_snapshot.recommendations | sort(attribute='priority_numeric') %}
+    <div class="rec-item rec-priority-{{ rec.priority }}">
+      <span class="rec-priority-badge">
+        {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Medium{% else %}Info{% endif %}
+      </span>
+      <span class="rec-title">{{ rec.title }}</span>
+      <span class="rec-detail">{{ rec.detail }}</span>
+      <span class="rec-impact">{{ rec.impact }}</span>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% set rm = {} %}
   {# Prefer summary metrics only when they contain any render values; otherwise fall back to payload #}
   {% if summary and summary.metrics and summary.metrics.render and (
@@ -149,52 +267,8 @@
   {% endif %}
   <!-- Quick Stats -->
   <div class="quick-stats panel mt-3" role="region" aria-label="Quick Stats">
-    {# ---- Section: Performance ---- #}
-    <div class="quick-stats-label">Performance</div>
-    <div class="stat-card">
-      <div class="stat-k">HTTP</div>
-      <div class="stat-v" {% if rm.response_status is not none %} {% if rm.response_status>= 400 %}class="stat-err"
-        {% elif rm.response_status >= 300 %}class="stat-warn"
-        {% else %}class="stat-ok"{% endif %}
-        {% endif %}>
-        {{ rm.response_status if rm.response_status is not none else "" }}
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Load</div>
-      <div class="stat-v">
-        {% set _load_ms = (rm.load_time_ms if rm and (rm.load_time_ms is not none) else None) %}
-        {% if _load_ms is not none %}
-        {% if _load_ms >= 1000 %}
-        {{ (_load_ms / 1000.0) | round(1) }} s
-        {% else %}
-        {{ _load_ms | int }} ms
-        {% endif %}
-        {% else %}{{ "" }}{% endif %}
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Bytes</div>
-      <div class="stat-v">
-        {% set _bytes = (rm.content_length if rm and (rm.content_length is not none) else None) %}
-        {% if _bytes is not none %}
-        {% if _bytes >= 1048576 %}
-        {{ (_bytes / 1048576.0) | round(1) }} MB
-        {% elif _bytes >= 1024 %}
-        {{ (_bytes / 1024.0) | round(1) }} KB
-        {% else %}
-        {{ _bytes | int }} B
-        {% endif %}
-        {% else %}{{ "" }}{% endif %}
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Requests</div>
-      <div class="stat-v">{{ rm.network_requests if rm.network_requests is not none else "" }}</div>
-    </div>
-
-    {# ---- Section: Content Quality ---- #}
-    <div class="quick-stats-label">Content Quality</div>
+    {# ---- Section: Content Quality (primary — AEO/GEO inputs) ---- #}
+    <div class="quick-stats-label">Content Quality (AEO/GEO Inputs)</div>
     <div class="stat-card">
       <div class="stat-k">Schema</div>
       {% set _schema_pct = (payload.audit and payload.audit.schema_coverage and
@@ -272,45 +346,79 @@
       {% endif %}
     </div>
 
-    {# ---- Section: Found ---- #}
-    <div class="quick-stats-label">Found</div>
-    <div class="stat-card">
-      <div class="stat-k">Emails</div>
-      <div class="stat-v">
-        {% if payload.emails and payload.emails.counts %}{{ payload.emails.counts.total_unique or 0 }}
-        {% elif summary and summary.emails %}{{ summary.emails.unique_count or 0 }}
-        {% else %}0{% endif %}
+    {# ---- Section: Performance (collapsed) ---- #}
+    <details class="quick-stats-collapsed">
+      <summary>Performance (HTTP, Load, Bytes, Requests)</summary>
+      <div class="stat-card">
+        <div class="stat-k">HTTP</div>
+        <div class="stat-v" {% if rm.response_status is not none %} {% if rm.response_status>= 400 %}class="stat-err"
+          {% elif rm.response_status >= 300 %}class="stat-warn"
+          {% else %}class="stat-ok"{% endif %}
+          {% endif %}>
+          {{ rm.response_status if rm.response_status is not none else "" }}
+        </div>
       </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Pages</div>
-      <div class="stat-v">
-        {# Use actual pages count; fallback to visited_count; then extraction internal_count #}
-        {% if payload and payload.pages %}
-        {{ payload.pages|length }}
-        {% elif payload and payload.summary and (payload.summary.visited_count is not none) %}
-        {{ payload.summary.visited_count }}
-        {% elif summary and summary.metrics and summary.metrics.extraction and
-        (summary.metrics.extraction.internal_count is not none) %}
-        {{ summary.metrics.extraction.internal_count }}
-        {% else %}0{% endif %}
+      <div class="stat-card">
+        <div class="stat-k">Load</div>
+        <div class="stat-v">
+          {% set _load_ms = (rm.load_time_ms if rm and (rm.load_time_ms is not none) else None) %}
+          {% if _load_ms is not none %}
+          {% if _load_ms >= 1000 %}{{ (_load_ms / 1000.0) | round(1) }} s{% else %}{{ _load_ms | int }} ms{% endif %}
+          {% else %}{{ "" }}{% endif %}
+        </div>
       </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Links</div>
-      <div class="stat-v">
-        {# Prefer summary extraction external_count; fallback to payload.metrics or links count #}
-        {% if summary and summary.metrics and summary.metrics.extraction and (summary.metrics.extraction.external_count
-        is not none) %}
-        {{ summary.metrics.extraction.external_count }}
-        {% elif payload and payload.metrics and payload.metrics.extraction and
-        (payload.metrics.extraction.external_count is not none) %}
-        {{ payload.metrics.extraction.external_count }}
-        {% elif payload and payload.links and payload.links.external %}
-        {{ payload.links.external|length }}
-        {% else %}0{% endif %}
+      <div class="stat-card">
+        <div class="stat-k">Bytes</div>
+        <div class="stat-v">
+          {% set _bytes = (rm.content_length if rm and (rm.content_length is not none) else None) %}
+          {% if _bytes is not none %}
+          {% if _bytes >= 1048576 %}{{ (_bytes / 1048576.0) | round(1) }} MB
+          {% elif _bytes >= 1024 %}{{ (_bytes / 1024.0) | round(1) }} KB
+          {% else %}{{ _bytes | int }} B{% endif %}
+          {% else %}{{ "" }}{% endif %}
+        </div>
       </div>
-    </div>
+      <div class="stat-card">
+        <div class="stat-k">Requests</div>
+        <div class="stat-v">{{ rm.network_requests if rm.network_requests is not none else "" }}</div>
+      </div>
+    </details>
+
+    {# ---- Section: Found (collapsed) ---- #}
+    <details class="quick-stats-collapsed">
+      <summary>Found (Emails, Pages, Links)</summary>
+      <div class="stat-card">
+        <div class="stat-k">Emails</div>
+        <div class="stat-v">
+          {% if payload.emails and payload.emails.counts %}{{ payload.emails.counts.total_unique or 0 }}
+          {% elif summary and summary.emails %}{{ summary.emails.unique_count or 0 }}
+          {% else %}0{% endif %}
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-k">Pages</div>
+        <div class="stat-v">
+          {% if payload and payload.pages %}{{ payload.pages|length }}
+          {% elif payload and payload.summary and (payload.summary.visited_count is not none) %}{{
+          payload.summary.visited_count }}
+          {% elif summary and summary.metrics and summary.metrics.extraction and
+          (summary.metrics.extraction.internal_count is not none) %}{{ summary.metrics.extraction.internal_count }}
+          {% else %}0{% endif %}
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-k">Links</div>
+        <div class="stat-v">
+          {% if summary and summary.metrics and summary.metrics.extraction and
+          (summary.metrics.extraction.external_count
+          is not none) %}{{ summary.metrics.extraction.external_count }}
+          {% elif payload and payload.metrics and payload.metrics.extraction and
+          (payload.metrics.extraction.external_count is not none) %}{{ payload.metrics.extraction.external_count }}
+          {% elif payload and payload.links and payload.links.external %}{{ payload.links.external|length }}
+          {% else %}0{% endif %}
+        </div>
+      </div>
+    </details>
   </div>
 
   {% include "partials/metadata_panel.html" %}
@@ -425,56 +533,60 @@
   </section>
   {% endif %}
 
-  {# Show leads section for all viewers #}
-  <section class="panel mt-2" role="region" aria-label="Contact intelligence">
-    <h2>Contact intelligence</h2>
-    <div class="actions" id="emails-toolbar">
-      <input type="text" id="lead-filter-domain" placeholder="Search emails..." aria-label="Search emails">
-    </div>
-    <div class="table-wrap">
-      <table class="table mt-1" aria-label="Emails table">
-        <thead>
-          <tr>
-            <th><input type="checkbox" id="lead-select-all"></th>
-            <th>Email</th>
-            <th>Mentions</th>
-            <th>Found As</th>
-            <th>Status</th>
-            <th>Domain</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="leads-tbody">
-          <!-- Rows injected by JS -->
-        </tbody>
-      </table>
-    </div>
-    <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
-  </section>
+  {# Show leads section for all viewers — demoted to collapsible #}
+  <details class="secondary-section" id="secondary-intelligence">
+    <summary class="secondary-section-header">Lead Intelligence &amp; Links</summary>
+    <section class="panel mt-2" role="region" aria-label="Contact intelligence">
+      <h2>Contact intelligence</h2>
+      <div class="actions" id="emails-toolbar">
+        <input type="text" id="lead-filter-domain" placeholder="Search emails..." aria-label="Search emails">
+      </div>
+      <div class="table-wrap">
+        <table class="table mt-1" aria-label="Emails table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="lead-select-all"></th>
+              <th>Email</th>
+              <th>Mentions</th>
+              <th>Found As</th>
+              <th>Status</th>
+              <th>Domain</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody">
+            <!-- Rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+      <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
+    </section>
 
-  <!-- Social panel -->
-  <section class="panel mt-2" role="region" aria-label="Social Links">
-    <h2>Social Links</h2>
-    <div id="social-groups"><!-- filled by JS --></div>
-  </section>
-  <!-- Links panel -->
-  <section class="panel mt-2" role="region" aria-label="External links">
-    <h2>External links</h2>
-    {% if summary and summary.links and summary.links.top_external_domains and summary.links.top_external_domains|length
-    > 0 %}
-    <ul class="domain-list">
-      <li class="small" style="font-weight:600;">
-        <span class="small">URL</span> <span class="small">Count</span>
-      </li>
-      {% for td in summary.links.top_external_domains %}
-      <li><a href="https://{{ td.domain }}" target="_blank" rel="noopener">{{ td.domain }}</a> <span class="small">{{
-          td.count }}</span></li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <div class="small">No external domains detected.</div>
-    {% endif %}
-  </section>
+    <!-- Social panel -->
+    <section class="panel mt-2" role="region" aria-label="Social Links">
+      <h2>Social Links</h2>
+      <div id="social-groups"><!-- filled by JS --></div>
+    </section>
+    <!-- Links panel -->
+    <section class="panel mt-2" role="region" aria-label="External links">
+      <h2>External links</h2>
+      {% if summary and summary.links and summary.links.top_external_domains and
+      summary.links.top_external_domains|length
+      > 0 %}
+      <ul class="domain-list">
+        <li class="small" style="font-weight:600;">
+          <span class="small">URL</span> <span class="small">Count</span>
+        </li>
+        {% for td in summary.links.top_external_domains %}
+        <li><a href="https://{{ td.domain }}" target="_blank" rel="noopener">{{ td.domain }}</a> <span class="small">{{
+            td.count }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="small">No external domains detected.</div>
+      {% endif %}
+    </section>
+  </details>
 
 
   <!-- Sections -->
@@ -553,7 +665,8 @@
   'logged_in': request.state.current_user and True or False,
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
-  'ownerless': ownerless|default(false)
+  'ownerless': ownerless|default(false),
+  'score_snapshot': score_snapshot|default(none)
 } | tojson }}
 </script>
 <script src="/static/js/result-analysis.js"></script>

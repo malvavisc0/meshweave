@@ -252,9 +252,15 @@ async def require_ownership(request: Request, crawl_id: str) -> Crawl:
         HTTPException: 401 when unauthenticated, 404 when not found,
             403 when the row is not owned by the current user.
     """
+    from sqlalchemy.orm import joinedload
+
     user = await require_auth(request)
     with get_session() as s:
-        row: Crawl | None = s.get(Crawl, crawl_id)
+        row: Crawl | None = s.get(
+            Crawl,
+            crawl_id,
+            options=[joinedload(Crawl.score_snapshot)],
+        )
         if not row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Not found"

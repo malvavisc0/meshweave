@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import joinedload
 
 from webapp.db import get_session
 from webapp.infra import templates
@@ -13,11 +14,15 @@ from webapp.models import Crawl
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.reasons import friendly_reason
+from webapp.utils.scoring import (
+    build_score_snapshot_context as _build_score_snapshot_context,
+)
 from webapp.utils.security import _make_csrf_token
 from webapp.utils.summary import build_summary
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
 
 # Simple in-memory rate limiter for share toggle (max 5 per hour per user)
 import time
@@ -30,8 +35,8 @@ async def view_shared_analysis(request: Request, share_key: str):
     """View private analysis via shareable link."""
     with get_session() as s:
         row = (
-            s
-            .query(Crawl)
+            s.query(Crawl)
+            .options(joinedload(Crawl.score_snapshot))
             .filter(Crawl.share_key == share_key, Crawl.visibility == "private")
             .first()
         )
@@ -117,6 +122,7 @@ async def view_shared_analysis(request: Request, share_key: str):
             "retry_eta": "",
             "can_refresh": False,
             "refresh_eta": "",
+            "score_snapshot": _build_score_snapshot_context(row),
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -143,7 +149,7 @@ async def view_analysis(request: Request, ref: str):
         # If this private job was created anonymously (no owner), allow the first authenticated
         # user reaching this page to claim ownership. Otherwise, enforce ownership.
         with get_session() as s:
-            db_row = s.get(Crawl, ref)
+            db_row = s.get(Crawl, ref, options=[joinedload(Crawl.score_snapshot)])
             if not db_row:
                 raise HTTPException(status_code=404, detail="Not found")
             if not getattr(db_row, "user_id", None):
@@ -251,62 +257,66 @@ async def view_analysis(request: Request, ref: str):
                         )
                 except Exception:
                     pass
-            json_ld = json.dumps({
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": str(row.id),
-                "about": (row.domain or "").strip(),
-                "url": abs_page_url,
-                "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
-                "creativeWorkStatus": (row.status or "").title(),
-                "measurementTechnique": [
-                    "web-crawl",
-                    "markdown-extraction",
-                    "link-analysis",
-                    "email-detection",
-                ],
-                "isAccessibleForFree": True,
-                "keywords": [
-                    "markdown",
-                    "link map",
-                    "email intelligence",
-                    "ai summary",
-                ],
-                "additionalProperty": [
-                    {
-                        "@type": "PropertyValue",
-                        "name": "content_pages_count",
-                        "value": str(content_pages_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "emails_count",
-                        "value": str(emails_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "internal_links_count",
-                        "value": str(internal_links_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "external_links_count",
-                        "value": str(external_links_count),
-                    },
-                ],
-            })
+            json_ld = json.dumps(
+                {
+                    "@context": "https://schema.org",
+                    "@type": "CreativeWork",
+                    "name": "MeshWeave Analysis",
+                    "identifier": str(row.id),
+                    "about": (row.domain or "").strip(),
+                    "url": abs_page_url,
+                    "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                    "creativeWorkStatus": (row.status or "").title(),
+                    "measurementTechnique": [
+                        "web-crawl",
+                        "markdown-extraction",
+                        "link-analysis",
+                        "email-detection",
+                    ],
+                    "isAccessibleForFree": True,
+                    "keywords": [
+                        "markdown",
+                        "link map",
+                        "email intelligence",
+                        "ai summary",
+                    ],
+                    "additionalProperty": [
+                        {
+                            "@type": "PropertyValue",
+                            "name": "content_pages_count",
+                            "value": str(content_pages_count),
+                        },
+                        {
+                            "@type": "PropertyValue",
+                            "name": "emails_count",
+                            "value": str(emails_count),
+                        },
+                        {
+                            "@type": "PropertyValue",
+                            "name": "internal_links_count",
+                            "value": str(internal_links_count),
+                        },
+                        {
+                            "@type": "PropertyValue",
+                            "name": "external_links_count",
+                            "value": str(external_links_count),
+                        },
+                    ],
+                }
+            )
         except Exception:
-            json_ld = json.dumps({
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": str(row.id),
-                "about": (row.domain or "").strip(),
-                "url": abs_page_url,
-            })
+            json_ld = json.dumps(
+                {
+                    "@context": "https://schema.org",
+                    "@type": "CreativeWork",
+                    "name": "MeshWeave Analysis",
+                    "identifier": str(row.id),
+                    "about": (row.domain or "").strip(),
+                    "url": abs_page_url,
+                }
+            )
 
         summary = build_summary(row, payload)
 
@@ -324,7 +334,7 @@ async def view_analysis(request: Request, ref: str):
         is_owner = bool(
             current_user and getattr(row, "user_id", None) == current_user.id
         )
-        status_lc = str(getattr(row, "status", "") or "").lower()
+        str(getattr(row, "status", "") or "").lower()
         # Cooldown for retry
         refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
         now = datetime.now(UTC)
@@ -390,6 +400,7 @@ async def view_analysis(request: Request, ref: str):
                 ),
                 "can_refresh": can_retry,
                 "refresh_eta": retry_eta,
+                "score_snapshot": _build_score_snapshot_context(row),
             },
         )
         # Prevent indexing of private results
@@ -412,8 +423,8 @@ async def view_analysis(request: Request, ref: str):
     # Public by short key
     with get_session() as s:
         row = (
-            s
-            .query(Crawl)
+            s.query(Crawl)
+            .options(joinedload(Crawl.score_snapshot))
             .filter(Crawl.key == ref, Crawl.visibility == "public")
             .one_or_none()
         )
@@ -512,62 +523,66 @@ async def view_analysis(request: Request, ref: str):
                     content_pages_count = int(payload["summary"]["visited_count"] or 0)
             except Exception:
                 pass
-        json_ld = json.dumps({
-            "@context": "https://schema.org",
-            "@type": "CreativeWork",
-            "name": "MeshWeave Analysis",
-            "identifier": str(row.key),
-            "about": (row.domain or "").strip(),
-            "url": abs_page_url,
-            "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-            "creativeWorkStatus": (row.status or "").title(),
-            "measurementTechnique": [
-                "web-crawl",
-                "markdown-extraction",
-                "link-analysis",
-                "email-detection",
-            ],
-            "isAccessibleForFree": True,
-            "keywords": [
-                "markdown",
-                "link map",
-                "email intelligence",
-                "ai summary",
-            ],
-            "additionalProperty": [
-                {
-                    "@type": "PropertyValue",
-                    "name": "content_pages_count",
-                    "value": str(content_pages_count),
-                },
-                {
-                    "@type": "PropertyValue",
-                    "name": "emails_count",
-                    "value": str(emails_count),
-                },
-                {
-                    "@type": "PropertyValue",
-                    "name": "internal_links_count",
-                    "value": str(internal_links_count),
-                },
-                {
-                    "@type": "PropertyValue",
-                    "name": "external_links_count",
-                    "value": str(external_links_count),
-                },
-            ],
-        })
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "MeshWeave Analysis",
+                "identifier": str(row.key),
+                "about": (row.domain or "").strip(),
+                "url": abs_page_url,
+                "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "creativeWorkStatus": (row.status or "").title(),
+                "measurementTechnique": [
+                    "web-crawl",
+                    "markdown-extraction",
+                    "link-analysis",
+                    "email-detection",
+                ],
+                "isAccessibleForFree": True,
+                "keywords": [
+                    "markdown",
+                    "link map",
+                    "email intelligence",
+                    "ai summary",
+                ],
+                "additionalProperty": [
+                    {
+                        "@type": "PropertyValue",
+                        "name": "content_pages_count",
+                        "value": str(content_pages_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "emails_count",
+                        "value": str(emails_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "internal_links_count",
+                        "value": str(internal_links_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "external_links_count",
+                        "value": str(external_links_count),
+                    },
+                ],
+            }
+        )
     except Exception:
-        json_ld = json.dumps({
-            "@context": "https://schema.org",
-            "@type": "CreativeWork",
-            "name": "MeshWeave Analysis",
-            "identifier": str(row.key),
-            "about": (row.domain or "").strip(),
-            "url": abs_page_url,
-        })
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "MeshWeave Analysis",
+                "identifier": str(row.key),
+                "about": (row.domain or "").strip(),
+                "url": abs_page_url,
+            }
+        )
 
     summary = build_summary(row, payload)
 
@@ -616,8 +631,7 @@ async def view_analysis(request: Request, ref: str):
     refresh_eta = ""
     with get_session() as s:
         public_root = (
-            s
-            .query(Crawl)
+            s.query(Crawl)
             .filter(
                 Crawl.domain == row.domain,
                 Crawl.visibility == "public",
@@ -683,6 +697,7 @@ async def view_analysis(request: Request, ref: str):
             # Refresh cooldown
             "can_refresh": can_refresh,
             "refresh_eta": refresh_eta,
+            "score_snapshot": _build_score_snapshot_context(row),
         },
     )
     # Set session cookie if newly created for CSRF

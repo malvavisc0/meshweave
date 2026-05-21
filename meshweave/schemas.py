@@ -182,6 +182,7 @@ class RobotsInfo(BaseModel):
     bots: dict[str, str] = Field(default_factory=dict)
     sitemaps: list[str] = Field(default_factory=list)
     size_bytes: int = 0
+    note: str = ""
 
 
 class LLMsTxtEntry(BaseModel):
@@ -198,6 +199,7 @@ class LLMsTxt(BaseModel):
 
     llms_txt: LLMsTxtEntry = Field(default_factory=LLMsTxtEntry)
     llms_full_txt: LLMsTxtEntry = Field(default_factory=LLMsTxtEntry)
+    note: str = ""
 
 
 class FAQQuestion(BaseModel):

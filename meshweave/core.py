@@ -222,14 +222,13 @@ def _build_payload(
     }
 
     # AEO/GEO: FAQ analysis (cross-page, not per-page)
-    if page_data.get("faq_analysis"):
-        payload["faq_analysis"] = page_data["faq_analysis"]
+    # Always include scoring keys — never omit them.
+    # None/null is a valid signal meaning "not applicable / not found".
+    payload["faq_analysis"] = page_data.get("faq_analysis")
 
     # AEO/GEO: domain-level accessibility
-    if robots_info:
-        payload["robots"] = robots_info
-    if llms_info:
-        payload["llms_txt"] = llms_info
+    payload["robots"] = robots_info
+    payload["llms_txt"] = llms_info
 
     # AEO/GEO: cross-page audits
     page_meta = page_data.get("page_meta")
@@ -255,8 +254,8 @@ async def crawl(
     per_page_timeout: float = 15.0,
     disable_cache: bool = False,
     cache_dir: str | None = None,
-    on_page_crawled: (Callable[[str, dict[str, Any]], Awaitable[None]] | None) = None,
-    should_continue: (Callable[[], Awaitable[bool]] | None) = None,
+    on_page_crawled: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
+    should_continue: Callable[[], Awaitable[bool]] | None = None,
     url_filter: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Render a page/domain, convert to markdown, classify
@@ -293,8 +292,17 @@ async def crawl(
         page_data = _process_page(html, url, final_url)
 
         # 4) robots.txt and llms.txt for domain crawls
-        robots_info: dict[str, Any] = {}
-        llms_info: dict[str, Any] = {}
+        robots_info: dict[str, Any] = {
+            "exists": False,
+            "bots": {},
+            "sitemaps": [],
+            "note": "Not checked (page-scope crawl)",
+        }
+        llms_info: dict[str, Any] = {
+            "llms_txt": {"exists": False},
+            "llms_full_txt": {"exists": False},
+            "note": "Not checked (page-scope crawl)",
+        }
         if is_domain:
             base = f"https://{domain_of(origin)}"
             try:

@@ -1,10 +1,9 @@
 from types import SimpleNamespace
 
 import pytest
+import webapp.routers.ai as ai
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-import webapp.routers.ai as ai
 
 
 def create_test_app(user_id: str = "u1") -> FastAPI:

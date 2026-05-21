@@ -60,7 +60,7 @@ def _weighted_composite(
 
 def compute_scores(
     payload: dict,
-    manual_inputs: dict[str, float | None] | None = None,
+    manual_inputs: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Compute AEO and GEO scores from a crawl payload.
 

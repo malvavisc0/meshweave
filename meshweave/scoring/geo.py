@@ -181,12 +181,20 @@ def score_eeat(payload: dict) -> dict:
 def score_crawl_access(payload: dict) -> dict:
     """G4. LLM Crawl Accessibility (15% weight, auto when data available).
 
-    If robots/llms not in payload, returns null with a note.
+    If robots/llms data is only a placeholder (page-scope crawl),
+    returns null with a note.
     """
     robots = payload.get("robots") or {}
     llms = payload.get("llms_txt") or {}
 
-    if not robots and not llms:
+    # Check if data is meaningful (not just the default placeholder)
+    note = robots.get("note") or llms.get("note") or ""
+    llms_txt_exists = (llms.get("llms_txt") or {}).get("exists")
+    if (
+        "not checked" in note.lower()
+        and not robots.get("exists")
+        and not llms_txt_exists
+    ):
         return {
             "score": None,
             "weight": 0.15,
@@ -313,7 +321,7 @@ def score_content_depth(payload: dict) -> dict:
     tables_bonus = 10 if pages_with_tables > 0 else 0
 
     # Unique content pages scaled
-    unique_content = (
+    (
         min((content_pages_gt200 / total_pages) * 100, 100) if total_pages > 0 else 0
     )
 

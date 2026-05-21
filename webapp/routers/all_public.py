@@ -224,23 +224,27 @@ async def view_all(
                             md = ""
                         summary_snippet = _first_sentence(md, 160)
 
-                items.append({
-                    "key": row.key,
-                    "domain": row.domain,
-                    "path": row.path,
-                    "query": row.query,
-                    "canonical_url": row.canonical_url,
-                    "title": title,
-                    "status": row.status,
-                    "scope": "site" if row.crawl_params else "page",
-                    "updated_at": updated_iso,
-                    "updated_iso": updated_iso,
-                    "updated_relative": updated_relative,
-                    "is_new": bool(is_new),
-                    "email_count": int(email_count or 0),
-                    "page_count": int(page_count or 0),
-                    "summary_snippet": (summary_snippet if scope_val == "site" else ""),
-                })
+                items.append(
+                    {
+                        "key": row.key,
+                        "domain": row.domain,
+                        "path": row.path,
+                        "query": row.query,
+                        "canonical_url": row.canonical_url,
+                        "title": title,
+                        "status": row.status,
+                        "scope": "site" if row.crawl_params else "page",
+                        "updated_at": updated_iso,
+                        "updated_iso": updated_iso,
+                        "updated_relative": updated_relative,
+                        "is_new": bool(is_new),
+                        "email_count": int(email_count or 0),
+                        "page_count": int(page_count or 0),
+                        "summary_snippet": (
+                            summary_snippet if scope_val == "site" else ""
+                        ),
+                    }
+                )
             # For this branch, we omit keyset prev/next (could add page-based later)
             has_prev = False
             has_next = False
@@ -403,23 +407,27 @@ async def view_all(
                             md = ""
                         summary_snippet = _first_sentence(md, 160)
 
-                items.append({
-                    "key": r.key,
-                    "domain": r.domain,
-                    "path": r.path,
-                    "query": r.query,
-                    "canonical_url": r.canonical_url,
-                    "title": title,
-                    "status": r.status,
-                    "scope": "site" if r.crawl_params else "page",
-                    "updated_at": updated_iso,
-                    "updated_iso": updated_iso,
-                    "updated_relative": updated_relative,
-                    "is_new": bool(is_new),
-                    "email_count": email_counts_map.get(r.id, 0),
-                    "page_count": page_counts_map.get(r.id, 0),
-                    "summary_snippet": (summary_snippet if scope_val == "site" else ""),
-                })
+                items.append(
+                    {
+                        "key": r.key,
+                        "domain": r.domain,
+                        "path": r.path,
+                        "query": r.query,
+                        "canonical_url": r.canonical_url,
+                        "title": title,
+                        "status": r.status,
+                        "scope": "site" if r.crawl_params else "page",
+                        "updated_at": updated_iso,
+                        "updated_iso": updated_iso,
+                        "updated_relative": updated_relative,
+                        "is_new": bool(is_new),
+                        "email_count": email_counts_map.get(r.id, 0),
+                        "page_count": page_counts_map.get(r.id, 0),
+                        "summary_snippet": (
+                            summary_snippet if scope_val == "site" else ""
+                        ),
+                    }
+                )
 
             # Build prev/next URLs using first/last item cursors
             def _cursor_of(row: Crawl) -> str:
@@ -551,15 +559,17 @@ async def view_all(
         elements = []
         for it in items:
             try:
-                elements.append({
-                    "@type": "CreativeWork",
-                    "name": f"Analysis for {it.get('domain') or 'site'}",
-                    "identifier": it.get("key", ""),
-                    "about": (it.get("domain") or "").strip(),
-                    "url": _abs_url(request, f"/analysis/{it.get('key', '')}"),
-                    "dateModified": str(it.get("updated_at", ""))[:19],  # ISO-like
-                    "keywords": ["AEO", "GEO", "AI search", "optimization"],
-                })
+                elements.append(
+                    {
+                        "@type": "CreativeWork",
+                        "name": f"Analysis for {it.get('domain') or 'site'}",
+                        "identifier": it.get("key", ""),
+                        "about": (it.get("domain") or "").strip(),
+                        "url": _abs_url(request, f"/analysis/{it.get('key', '')}"),
+                        "dateModified": str(it.get("updated_at", ""))[:19],  # ISO-like
+                        "keywords": ["AEO", "GEO", "AI search", "optimization"],
+                    }
+                )
             except Exception:
                 continue
         json_ld_dict = {
