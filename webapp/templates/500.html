@@ -2,17 +2,28 @@
 
 {% block content %}
 <div class="container">
-  <section class="panel mt-2" role="region" aria-label="Server Error">
-    <h1>500 — Internal Server Error</h1>
-    <p>Something went wrong on our side. Please try again later.</p>
+  <section class="panel mt-4" role="region" aria-label="Server Error">
 
-    <div class="actions mt-1">
-      <a class="btn" href="/">Back to Home</a>
+    <!-- Error Title -->
+    <h1 class="error-title">500 — Internal Server Error</h1>
+
+    <!-- Error Message -->
+    <p class="error-message">
+      Something went wrong on our side. Our team has been notified of this issue.
+    </p>
+
+    <!-- Actions -->
+    <div class="error-actions">
+      <a href="/" class="btn btn-primary">Back to Home</a>
+      <button class="btn btn-tertiary" onclick="history.back()" type="button">Go Back</button>
     </div>
 
-    <div class="small mt-1">
-      If the problem persists, please contact support.
+    <!-- Support Info -->
+    <div class="error-support">
+      <span>If the problem persists, please contact support with this reference:</span>
+      <code class="error-ref">MW-500-{{ range(100000, 999999) | random }}</code>
     </div>
+
   </section>
 </div>
 {% endblock %}

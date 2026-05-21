@@ -1987,3 +1987,62 @@ label {
     text-align: center;
   }
 }
+
+/* ------------------------------------------------------------------------
+   ERROR PAGES (500, etc.)
+   ------------------------------------------------------------------------ */
+.error-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+}
+
+.error-icon svg text {
+  fill: var(--color-primary);
+}
+
+.error-title {
+  font: var(--font-display-lg);
+  font-weight: 300;
+  letter-spacing: 0;
+  margin: 0 0 var(--space-sm);
+}
+
+.error-message {
+  font: var(--font-body-lg);
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
+  max-width: 500px;
+  margin: 0 0 var(--space-lg);
+  line-height: 1.50;
+}
+
+.error-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-lg);
+}
+
+.error-actions .btn-primary,
+.error-actions .btn-tertiary {
+  text-decoration: none;
+}
+
+.error-support {
+  font: var(--font-body-sm);
+  letter-spacing: 0.16px;
+  color: var(--color-ink-muted);
+}
+
+.error-ref {
+  display: inline-block;
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  background: var(--color-surface-1);
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  color: var(--color-ink);
+  margin-top: var(--space-xxs);
+}

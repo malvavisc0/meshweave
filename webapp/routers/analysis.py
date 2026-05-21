@@ -78,55 +78,20 @@ async def view_shared_analysis(request: Request, share_key: str):
 
     summary = build_summary(row, payload)
 
-    # Scrub emails for shared view (always scrub regardless of auth)
-    payload_display = payload
-    try:
-        # Always scrub for shared view
-        payload_copy = json.loads(json.dumps(payload or {}))
-
-        def _scrub(obj):
-            try:
-                if isinstance(obj, dict):
-                    for kk in list(obj.keys()):
-                        lk = str(kk).lower()
-                        if lk in ("emails", "emails_unique", "emails_by_url", "email"):
-                            obj.pop(kk, None)
-                            continue
-                        _scrub(obj.get(kk))
-                elif isinstance(obj, list):
-                    for it in obj:
-                        _scrub(it)
-            except Exception:
-                return
-
-        _scrub(payload_copy)
-        em = (payload or {}).get("emails") or {}
-        payload_copy["emails"] = {
-            "counts": em.get("counts") or {},
-            "unique_count": len(em.get("unique") or []),
-        }
-        payload_display = payload_copy
-    except Exception:
-        try:
-            payload_display = json.loads(json.dumps(payload or {}))
-            payload_display.pop("emails", None)
-        except Exception:
-            payload_display = payload or {}
-
-    template_name = "result_public.html"
     resp = templates.TemplateResponse(
         request,
-        template_name,
+        "result.html",
         {
             "domain": row.domain,
             "path": row.path,
             "query": row.query,
             "canonical_url": row.canonical_url,
             "visibility": "unlisted",  # Special badge
+            "listed": False,
             "key": None,  # No key for shared
             "status": row.status,
             "error": row.error,
-            "payload": payload_display,
+            "payload": payload,
             "api_url": f"/api/analysis/private/{row.id}",
             "abs_api_url": _abs_url(request, f"/api/analysis/private/{row.id}"),
             "summary": summary,
@@ -148,9 +113,10 @@ async def view_shared_analysis(request: Request, share_key: str):
             "created_at": "",
             "claim_min_hours": 24,
             "ownerless": False,
-            "can_view_leads": False,
-            "email_preview": [],
-            "email_count": 0,
+            "can_retry": False,
+            "retry_eta": "",
+            "can_refresh": False,
+            "refresh_eta": "",
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -611,21 +577,6 @@ async def view_analysis(request: Request, ref: str):
         else ""
     )
 
-    # Email preview/count for anonymous gating (public view)
-    email_preview = []
-    email_count = 0
-    try:
-        # Extract emails from payload_json (CrawlEmail table removed)
-        import json as _json
-
-        emails_data = _json.loads(row.payload_json or "{}")
-        all_emails_list = (emails_data.get("emails") or {}).get("unique") or []
-        email_count = len(all_emails_list)
-        email_preview = all_emails_list[:3]
-    except Exception:
-        email_preview = []
-        email_count = 0
-
     # CSV/summary endpoints
     api_summary_url = f"/api/analysis/public/{row.key}/summary"
     emails_csv_url = f"/api/analysis/public/{row.key}/emails.csv"
@@ -688,57 +639,10 @@ async def view_analysis(request: Request, ref: str):
     # Ownership/permissions (public view)
     current_user = getattr(request.state, "current_user", None)
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
-    status_lc = str(getattr(row, "status", "") or "").lower()
-    # Sanitize payload for anonymous viewers to avoid leaking emails (top-level and per-page)
-    payload_display = payload
-    try:
-        if not current_user:
-            # Work on a safe deep copy of the JSON payload (falls back to {} when missing/bad)
-            payload_copy = json.loads(json.dumps(payload or {}))
 
-            # Recursive scrubber for any key that may contain emails
-            def _scrub(obj):
-                try:
-                    if isinstance(obj, dict):
-                        for kk in list(obj.keys()):
-                            lk = str(kk).lower()
-                            if lk in (
-                                "emails",
-                                "emails_unique",
-                                "emails_by_url",
-                                "email",
-                            ):
-                                obj.pop(kk, None)
-                                continue
-                            _scrub(obj.get(kk))
-                    elif isinstance(obj, list):
-                        for it in obj:
-                            _scrub(it)
-                except Exception:
-                    return
-
-            _scrub(payload_copy)
-
-            # Re-introduce non-sensitive aggregates at the top-level (counts + unique_count)
-            em = (payload or {}).get("emails") or {}
-            payload_copy["emails"] = {
-                "counts": em.get("counts") or {},
-                "unique_count": len(em.get("unique") or []),
-            }
-
-            payload_display = payload_copy
-    except Exception:
-        # In worst case, drop emails entirely but keep the rest of the payload intact
-        try:
-            payload_display = json.loads(json.dumps(payload or {}))
-            payload_display.pop("emails", None)
-        except Exception:
-            payload_display = payload or {}
-
-    template_name = "result_public.html" if not current_user else "result.html"
     resp = templates.TemplateResponse(
         request,
-        template_name,
+        "result.html",
         {
             "domain": row.domain,
             "path": row.path,
@@ -749,7 +653,7 @@ async def view_analysis(request: Request, ref: str):
             "key": row.key,
             "status": row.status,
             "error": row.error,
-            "payload": payload_display,
+            "payload": payload,
             "api_url": api_url,
             "abs_api_url": abs_api_url,
             # Enriched
@@ -776,13 +680,9 @@ async def view_analysis(request: Request, ref: str):
             "created_at": created_at_iso,
             "claim_min_hours": claim_min_hours,
             "ownerless": ownerless,
-            "can_view_leads": True if current_user else False,
             # Refresh cooldown
             "can_refresh": can_refresh,
             "refresh_eta": refresh_eta,
-            # Gating helpers for anonymous public
-            "email_preview": email_preview,
-            "email_count": email_count,
         },
     )
     # Set session cookie if newly created for CSRF

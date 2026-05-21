@@ -21,9 +21,6 @@
   </div>
   {% endif %}
 
-  {# Auth/leads gating helpers #}
-  {% set show_leads = not (visibility == 'public' and not request.state.current_user) %}
-
   {% if visibility == "public" and abs_page_url %}
   <p class="small">
     <strong>Share:</strong>
@@ -177,6 +174,21 @@
       </div>
     </div>
     <div class="stat-card">
+      <div class="stat-k">Bytes</div>
+      <div class="stat-v">
+        {% set _bytes = (rm.content_length if rm and (rm.content_length is not none) else None) %}
+        {% if _bytes is not none %}
+        {% if _bytes >= 1048576 %}
+        {{ (_bytes / 1048576.0) | round(1) }} MB
+        {% elif _bytes >= 1024 %}
+        {{ (_bytes / 1024.0) | round(1) }} KB
+        {% else %}
+        {{ _bytes | int }} B
+        {% endif %}
+        {% else %}{{ "" }}{% endif %}
+      </div>
+    </div>
+    <div class="stat-card">
       <div class="stat-k">Requests</div>
       <div class="stat-v">{{ rm.network_requests if rm.network_requests is not none else "" }}</div>
     </div>
@@ -207,7 +219,7 @@
       {% endif %}
       {% endfor %}
       {% endif %}
-      <div class="stat-v">{{ (_headings | sum / _headings.length | float) | round(0) if _headings else 0 }}</div>
+      <div class="stat-v">{{ ((_headings | sum) / (_headings | length)) | round(0) if _headings else 0 }}</div>
     </div>
     <div class="stat-card">
       <div class="stat-k">Words</div>
@@ -377,7 +389,6 @@
   {% endif %}
 
 
-
   <!-- Pages panel for desktop -->
   {% if payload and payload.pages %}
   <section class="panel mt-2" role="region" aria-label="Content pages">
@@ -414,21 +425,11 @@
   </section>
   {% endif %}
 
-
-  {% if show_leads %}
-  <section class="mobile-section panel mt-2" role="region" aria-label="Contact intelligence">
+  {# Show leads section for all viewers #}
+  <section class="panel mt-2" role="region" aria-label="Contact intelligence">
     <h2>Contact intelligence</h2>
     <div class="actions" id="emails-toolbar">
-      <input type="text" id="lead-filter-domain" placeholder="Filter by domain (e.g. example.com)"
-        aria-label="Filter by domain">
-      <label class="small"><input type="checkbox" class="lead-type" value="mailto"> mailto</label>
-      <label class="small"><input type="checkbox" class="lead-type" value="text"> text</label>
-      <label class="small"><input type="checkbox" class="lead-type" value="obfuscated"> obf</label>
-      <button class="btn" onclick="clearLeadFilters()">Clear</button>
-      <span class="spacer"></span>
-      <button class="btn" onclick="exportEmailsCsv()" data-track="export_emails_click"
-        aria-label="Download all emails as CSV">Download CSV</button>
-      <button class="btn" onclick="openAddLead()">Add Email</button>
+      <input type="text" id="lead-filter-domain" placeholder="Search emails..." aria-label="Search emails">
     </div>
     <div class="table-wrap">
       <table class="table mt-1" aria-label="Emails table">
@@ -449,43 +450,8 @@
       </table>
     </div>
     <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
-    <!-- Add Lead inline form (hidden by default) -->
-    <div id="add-lead-form" class="hidden mt-1">
-      <div class="subtitle">Add contact (saves to your Prospect)</div>
-      <div class="form-grid">
-        <label>Email<br><input type="text" id="add-email" placeholder="name@example.com"></label>
-        <label>Source URL (optional)<br><input type="text" id="add-source" placeholder="https://..."></label>
-        <label>Social URL (optional)<br><input type="text" id="add-social"
-            placeholder="https://linkedin.com/in/..."></label>
-        <label>Role/Title (optional)<br><input type="text" id="add-role" placeholder="Founder, CEO"></label>
-        <label>Tags (comma-separated)<br><input type="text" id="add-tags" placeholder="vip, partner"></label>
-      </div>
-      <div class="leads-actions">
-        <button class="btn" onclick="saveAddedLead()">Save</button>
-        <button class="btn" onclick="closeAddLead()">Cancel</button>
-      </div>
-    </div>
   </section>
-  {% endif %}
-  {% if visibility == 'public' and not request.state.current_user and (email_count or 0) > 0 %}
-  <section class="panel gate-locked mt-2" role="region" aria-label="Email Contacts (Preview)">
-    <h2>Email Contacts ({{ email_count or 0 }} found) ⚡ </h2>
-    {% if email_preview and email_preview|length > 0 %}
-    <div class="gate-preview small">
-      Preview ({{ email_preview|length }} of {{ email_count or 0 }}):
-      <ul class="domain-list">
-        {% for e in email_preview %}
-        <li><span><code>{{ e }}</code></span> <span class="small"></span></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-    <div class="actions cta-row">
-      <a class="btn btn-google" href="/login?provider=google&next={{ abs_page_url or request.url.path }}"
-        onclick="try{trackEvent('email_gate_cta_click');}catch(_){}">Unlock Full Email List – Free Signup</a>
-    </div>
-  </section>
-  {% endif %}
+
   <!-- Social panel -->
   <section class="panel mt-2" role="region" aria-label="Social Links">
     <h2>Social Links</h2>
@@ -510,16 +476,6 @@
     {% endif %}
   </section>
 
-
-
-  <!-- Mobile Tabs (hidden on desktop by base.css) -->
-  <div class="mobile-tabs" role="tablist" aria-label="Sections">
-    {% if show_leads %}<button type="button" class="mobile-tab" role="tab" aria-selected="true"
-      data-target="#m-leads">Leads</button>{% endif %}
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-summary">Summary</button>
-    <button type="button" class="mobile-tab" role="tab" aria-selected="false" data-target="#m-stats">External
-      links</button>
-  </div>
 
   <!-- Sections -->
 

@@ -902,25 +902,6 @@
             navigator.clipboard.writeText(all).then(function () { showToast('All emails copied'); });
         } catch (_) { }
     }
-    function exportEmailsCsv() {
-        try {
-            var rows = [['email', 'first_url', 'found_as', 'domain']];
-            var srcMap = buildEmailSourceMap();
-            (EMAILS_UNIQUE || []).forEach(function (e) {
-                var dom = (e.split('@')[1] || '').toLowerCase();
-                var src = srcMap[e] || { foundAs: [], firstUrl: '' };
-                rows.push([e, src.firstUrl || '', (src.foundAs || []).join(','), dom]);
-            });
-            var csv = rows.map(function (r) { return r.map(csvCell).join(','); }).join('\n');
-            downloadBlob(csv, 'emails.csv', 'text/csv;charset=utf-8');
-        } catch (_) { alert('Unable to export'); }
-    }
-    function csvCell(s) { var t = String(s == null ? '' : s); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }
-    function downloadBlob(text, filename, mime) {
-        var blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
-        var u = URL.createObjectURL(blob); var a = document.createElement('a'); a.href = u; a.download = filename || 'download.txt';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
-    }
 
     /* ----- Pages enhancements ----- */
     function filterPages(term) {
@@ -1058,16 +1039,13 @@
         return window.location.href;
     }
     function applyLeadFilters(row) {
-        var domainFilter = (document.getElementById('lead-filter-domain').value || '').toLowerCase().trim();
-        var types = Array.from(document.querySelectorAll('.lead-type:checked')).map(function (cb) { return cb.value; });
+        var filter = (document.getElementById('lead-filter-domain').value || '').toLowerCase().trim();
+        if (!filter) return true;
         var rowDom = (row.getAttribute('data-domain') || '').toLowerCase();
-        var rowFound = (row.getAttribute('data-foundas') || '').split(',').filter(Boolean);
-        if (domainFilter && rowDom.indexOf(domainFilter) === -1) return false;
-        if (types.length > 0) {
-            var any = rowFound.some(function (t) { return types.indexOf(t) !== -1; });
-            if (!any) return false;
-        }
-        return true;
+        var rowEmail = (row.getAttribute('data-email') || '').toLowerCase();
+        if (rowDom.indexOf(filter) !== -1) return true;
+        if (rowEmail.indexOf(filter) !== -1) return true;
+        return false;
     }
     function renderLeads() {
         var tbody = document.getElementById('leads-tbody');
@@ -1112,42 +1090,6 @@
             var empty = document.getElementById('leads-empty');
             if (empty) empty.classList.toggle('hidden', tbody.children.length > 0);
         } catch (_) { }
-    }
-    function clearLeadFilters() {
-        var df = document.getElementById('lead-filter-domain'); if (df) df.value = '';
-        document.querySelectorAll('.lead-type:checked').forEach(function (cb) { cb.checked = false; });
-        renderLeads();
-    }
-    // Add Lead (client-only)
-    function openAddLead() { document.getElementById('add-lead-form').style.display = 'block'; }
-    function closeAddLead() { document.getElementById('add-lead-form').style.display = 'none'; }
-    function saveAddedLead() {
-        var e = (document.getElementById('add-email').value || '').trim().toLowerCase();
-        var s = (document.getElementById('add-source').value || '').trim();
-        var u = (document.getElementById('add-social').value || '').trim();
-        var r = (document.getElementById('add-role').value || '').trim();
-        var t = (document.getElementById('add-tags').value || '').trim();
-        if (!e) { alert('Email is required'); return; }
-        prospectEnsure().then(function (pid) {
-            return apiJson('/api/prospects/' + encodeURIComponent(pid) + '/contacts', 'POST', {
-                email: e,
-                source_url: s || '',
-                social_url: u || '',
-                role_title: r || '',
-                tags: t || ''
-            });
-        }).then(function () {
-            if (EMAILS_UNIQUE.indexOf(e) === -1) EMAILS_UNIQUE.push(e);
-            EMAILS_SOURCES_RAW.push({ email: e, url: s || window.location.href, found_as: [] });
-            closeAddLead();
-            renderLeads();
-            try { trackEvent('add_lead_success'); } catch (_) { }
-            alert('Contact added');
-        }).catch(function (err) {
-            if (err && err.status === 409) alert('Contact already exists');
-            else if (err && err.status === 401) alert('Sign in to add');
-            else alert('Unable to add contact');
-        });
     }
 
 
@@ -1332,7 +1274,6 @@
         renderLeads();
         var _lfd = document.getElementById('lead-filter-domain');
         if (_lfd) { _lfd.addEventListener('input', renderLeads); }
-        document.querySelectorAll('.lead-type').forEach(function (cb) { cb.addEventListener('change', renderLeads); });
         renderPages();
         // Pages filters listeners
         renderSocial();
