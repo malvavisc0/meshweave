@@ -12,7 +12,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 
 class Base(DeclarativeBase):
@@ -258,6 +263,13 @@ class Crawl(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    score_snapshot: Mapped["ScoreSnapshot | None"] = relationship(
+        "ScoreSnapshot",
+        back_populates="crawl",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Submission(Base):
@@ -309,6 +321,78 @@ class Submission(Base):
 
     # Relationship back to crawl
     crawl: Mapped[Crawl] = relationship("Crawl", back_populates="submissions")
+
+
+class ScoreSnapshot(Base):
+    """AEO/GEO score snapshot linked to a single crawl.
+
+    Computed deterministically from the crawl payload. Stores composite
+    scores, full factor breakdown (``score_json``), and optional
+    AI analysis results (``ai_analysis_json``).
+    """
+
+    __tablename__ = "score_snapshots"
+    __table_args__ = (
+        Index("ix_score_snapshots_domain", "domain"),
+        Index("ix_score_snapshots_user_id", "user_id"),
+        Index("ix_score_snapshots_created_at", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+    )
+    crawl_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("crawls.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+
+    # Composite scores (0-100 or NULL)
+    aeo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aeo_rating: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # "Poor"..."Excellent"
+    geo_rating: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # "Invisible"..."Dominant"
+
+    # Full score breakdown — JSONB on PostgreSQL
+    score_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # AI analysis results — JSONB on PostgreSQL
+    ai_analysis_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Scoring metadata
+    scoring_version: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="1.0"
+    )
+    has_manual_input: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    # Relationships
+    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="score_snapshot")
 
 
 class Product(Base):

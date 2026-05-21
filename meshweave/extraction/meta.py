@@ -21,15 +21,6 @@ def _meta(soup: BeautifulSoup, attr: str, value: str) -> str:
     return ""
 
 
-def _meta_all(soup: BeautifulSoup, attr: str, value: str) -> list[str]:
-    """Return *content* values of **all** ``<meta>`` tags matching."""
-    return [
-        str(t.get("content", ""))
-        for t in soup.find_all("meta", attrs={attr: value})
-        if isinstance(t, Tag) and t.has_attr("content")
-    ]
-
-
 def _extract_jsonld(soup: BeautifulSoup) -> list[dict[str, Any]]:
     """Extract JSON-LD structured data from ``<script>`` tags."""
     results: list[dict[str, Any]] = []

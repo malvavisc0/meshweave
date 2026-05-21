@@ -923,6 +923,426 @@ label {
   border-bottom: none;
 }
 
+/* Domain list — used by external links, crawl summary, etc. */
+.domain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.domain-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-sm);
+  padding: var(--space-xxs) 0;
+  border-bottom: 1px solid var(--color-hairline);
+  align-items: baseline;
+}
+
+.domain-list li:last-child {
+  border-bottom: none;
+}
+
+/* Header row — surface-1 background, emphasis weight */
+.domain-list li.domain-list-header {
+  background: var(--color-surface-1);
+  font: var(--font-body-emphasis);
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--color-hairline);
+  margin-bottom: var(--space-xxs);
+}
+
+.domain-list li.domain-list-header span {
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+}
+
+/* Count column — right-aligned, monospace for data values */
+.domain-list li span.domain-list-count {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  text-align: right;
+  color: var(--color-ink-muted);
+  min-width: 40px;
+}
+
+/* Domain link styling */
+.domain-list li a {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.domain-list li a:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* Domain list variant for metadata — allows text truncation */
+.domain-list.domain-list-metadata li {
+  grid-template-columns: 140px 1fr;
+}
+
+.domain-list.domain-list-metadata li span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ------------------------------------------------------------------------
+   PAGES STATS TABLE — per-page AEO/GEO readiness metrics
+   ------------------------------------------------------------------------ */
+.pages-list {
+  margin: 0;
+  padding: 0;
+}
+
+.pages-list li {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 70px 60px 44px 80px 56px;
+  gap: var(--space-xs);
+  padding: var(--space-xxs) var(--space-sm);
+  border-bottom: 1px solid var(--color-hairline);
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.pages-list li:hover {
+  background: var(--color-surface-1);
+}
+
+.pages-list li.active {
+  background: var(--color-surface-1);
+  border-left: 3px solid var(--color-primary);
+}
+
+.pages-list li.pages-header-row {
+  cursor: default;
+  font: var(--font-body-emphasis);
+  background: var(--color-surface-1);
+  border-bottom: 1px solid var(--color-hairline-strong);
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.pages-list li.pages-header-row:hover {
+  background: var(--color-surface-1);
+}
+
+/* Page column: path (mono), title (muted), domain (subtle) */
+.ps-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ps-path {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-title {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-dom {
+  font-size: 11px;
+  color: var(--color-ink-subtle);
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+}
+
+/* Column spans for header row */
+.ph-page,
+.ph-words,
+.ph-headings,
+.ph-scss,
+.ph-schema,
+.ph-rich {
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+}
+
+/* Word count column — right-aligned, monospace */
+.ps-words {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  text-align: right;
+  color: var(--color-ink-muted);
+}
+
+/* Headings column */
+.ps-headings {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--color-ink-subtle);
+}
+
+/* Structure score column — bold number with health color */
+.ps-scss {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Schema column */
+.ps-schema {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--color-ink-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Richness icons column */
+.ps-rich {
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Pager styles */
+#pages-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+/* ------------------------------------------------------------------------
+   MARKDOWN RENDERING
+   ------------------------------------------------------------------------ */
+.page-content {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-ink);
+  max-height: 500px;
+  overflow-y: auto;
+  padding: var(--space-md);
+  background: var(--color-surface-1);
+}
+
+.page-content h1,
+.page-content h2,
+.page-content h3,
+.page-content h4,
+.page-content h5,
+.page-content h6 {
+  font-weight: 400;
+  margin: var(--space-sm) 0 var(--space-xs);
+  letter-spacing: 0;
+}
+
+.page-content h1 {
+  font-size: 20px;
+}
+
+.page-content h2 {
+  font-size: 18px;
+}
+
+.page-content h3 {
+  font-size: 16px;
+}
+
+.page-content p {
+  margin: var(--space-xs) 0;
+}
+
+.page-content pre {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  padding: var(--space-xs);
+  overflow-x: auto;
+  font-family: IBM Plex Mono, monospace;
+  font-size: 13px;
+}
+
+.page-content code {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  background: var(--color-surface-1);
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+}
+
+.page-content pre code {
+  background: none;
+  padding: 0;
+}
+
+.page-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: var(--space-xs) 0;
+}
+
+.page-content th,
+.page-content td {
+  border: 1px solid var(--color-hairline);
+  padding: var(--space-xxs) var(--space-xs);
+  text-align: left;
+}
+
+.page-content th {
+  background: var(--color-surface-1);
+  font-weight: 600;
+}
+
+.page-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.page-content ul,
+.page-content ol {
+  padding-left: var(--space-md);
+  margin: var(--space-xs) 0;
+}
+
+.page-content blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: var(--space-sm);
+  margin: var(--space-xs) 0;
+  color: var(--color-ink-muted);
+}
+
+.page-content hr {
+  border: none;
+  border-top: 1px solid var(--color-hairline);
+  margin: var(--space-sm) 0;
+}
+
+.page-content a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.page-content a:hover {
+  text-decoration: underline;
+}
+
+/* Raw markdown (hidden by default) */
+.pages-markdown {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--color-ink-muted);
+  margin: 0;
+  max-height: 500px;
+  overflow-y: auto;
+  padding: var(--space-md);
+  background: var(--color-surface-1);
+}
+
+/* Social links domain list — 3-column grid for URL + actions */
+.domain-list.domain-list-social li {
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.domain-list.domain-list-social li span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.domain-list.domain-list-social li span:first-child a {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-decoration: none;
+}
+
+.domain-list.domain-list-social li span:first-child a:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* Action buttons in social links — keep on one line */
+.domain-list.domain-list-social li .social-actions {
+  display: flex;
+  gap: var(--space-xxs);
+  white-space: nowrap;
+}
+
+.domain-list.domain-list-social li .social-actions .btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  min-height: 24px;
+}
+
+/* Badge variants for status */
+.badge-warning {
+  background: var(--color-semantic-warning);
+  color: var(--color-ink);
+  border-color: var(--color-semantic-warning);
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-danger {
+  background: var(--color-semantic-error);
+  color: var(--color-on-primary);
+  border-color: var(--color-semantic-error);
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Section sub-header within panels */
+.section-subheader {
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+  background: var(--color-surface-1);
+  padding: var(--space-xs) var(--space-sm);
+  margin: var(--space-sm) 0 var(--space-xs);
+  border-radius: var(--radius-none);
+  letter-spacing: 0.16px;
+}
+
+/* Missing item callout */
+.missing-callout {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface-1);
+  border-left: 3px solid var(--color-semantic-warning);
+  margin-top: var(--space-xs);
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+.missing-callout::before {
+  content: "⚠";
+  font-size: 14px;
+}
+
 /* Prose panel — centered readable width for legal text */
 .prose-panel {
   max-width: 720px;
@@ -1389,8 +1809,72 @@ label {
 }
 
 /* ------------------------------------------------------------------------
-   RESPONSIVE
-   ------------------------------------------------------------------------ */
+    QUICK STATS — horizontal grid of stat card tiles
+    ------------------------------------------------------------------------ */
+.quick-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: var(--color-canvas);
+  border: var(--elevation-hairline);
+  border-radius: var(--radius-none);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-1);
+  border-radius: var(--radius-none);
+  border: 1px solid transparent;
+}
+
+.stat-k {
+  font: var(--font-caption);
+  color: var(--color-ink-subtle);
+  text-transform: none;
+  /* sentence case per design guidelines */
+  letter-spacing: 0.32px;
+}
+
+.stat-v {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--color-ink);
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+}
+
+/* Health indicator colors for stat values */
+.stat-v.stat-ok {
+  color: var(--color-semantic-success);
+}
+
+.stat-v.stat-warn {
+  color: var(--color-semantic-warning);
+}
+
+.stat-v.stat-err {
+  color: var(--color-semantic-error);
+}
+
+/* Quick Stats section label */
+.quick-stats-label {
+  grid-column: 1 / -1;
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+  padding-bottom: var(--space-xxs);
+  margin-bottom: var(--space-xxs);
+  border-bottom: 1px solid var(--color-hairline);
+  letter-spacing: 0.16px;
+}
+
+/* ------------------------------------------------------------------------
+    RESPONSIVE
+    ------------------------------------------------------------------------ */
 @media (max-width: 768px) {
 
   .grid-2,

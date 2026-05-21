@@ -268,6 +268,31 @@ class Audit(BaseModel):
     schema_coverage: AuditSchemaCoverage = Field(default_factory=AuditSchemaCoverage)
 
 
+class CrawlSummary(BaseModel):
+    """Top-level crawl summary metadata."""
+
+    visited_count: int = 0
+    reason_stopped: str = ""
+
+
+class PageEntry(BaseModel):
+    """A single crawled page with full inline content and per-page metrics.
+
+    Used in the top-level ``pages`` array of the crawl output JSON.
+    Richer than :class:`RawMarkdownEntry` which lacks per-page
+    metrics, emails, and links.
+    """
+
+    url: str = ""
+    page: PageMeta = Field(default_factory=PageMeta)
+    markdown: str = ""
+    headings: Headings | None = None
+    content_metrics: ContentMetrics | None = None
+    metrics: CrawlMetrics | None = None
+    emails: Emails | None = None
+    links: Links | None = None
+
+
 class CrawlOutput(BaseModel):
     """Full crawl output as produced by the CLI (``-o output.json``).
 
@@ -285,6 +310,12 @@ class CrawlOutput(BaseModel):
     llms_txt: LLMsTxt | None = None
     faq_analysis: FAQAnalysis | None = None
     audit: Audit = Field(default_factory=Audit)
+    # Top-level fields present in the real crawl JSON
+    pages: list[PageEntry] = Field(default_factory=list)
+    scope: str = ""
+    domain: str = ""
+    canonical_url: str = ""
+    summary: CrawlSummary | None = None
     markdown_dir: str = ""
 
 
@@ -305,3 +336,9 @@ class CrawlAPIOutput(BaseModel):
     llms_txt: LLMsTxt | None = None
     faq_analysis: FAQAnalysis | None = None
     audit: Audit = Field(default_factory=Audit)
+    # Top-level fields present in the real crawl JSON
+    pages: list[PageEntry] = Field(default_factory=list)
+    scope: str = ""
+    domain: str = ""
+    canonical_url: str = ""
+    summary: CrawlSummary | None = None

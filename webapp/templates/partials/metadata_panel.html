@@ -1,6 +1,7 @@
 {# SEO metadata panel partial #}
 {% set _payload = payload if payload else {} %}
-{% set _pg = (_payload.page if _payload and _payload.page else ( (_payload.pages[0].page) if (_payload.pages and _payload.pages|length > 0 and _payload.pages[0] and _payload.pages[0].page) else {} )) %}
+{% set _pg = (_payload.page if _payload and _payload.page else ( (_payload.pages[0].page) if (_payload.pages and
+_payload.pages|length > 0 and _payload.pages[0] and _payload.pages[0].page) else {} )) %}
 {% set pg = _pg or {} %}
 {% set og = (pg.og if pg and pg.og else {}) %}
 {% set deltas = (summary.seo_deltas if summary and summary.seo_deltas else {}) %}
@@ -12,19 +13,19 @@
 <section class="panel mt-2" role="region" aria-label="SEO metadata">
   <h2>SEO metadata</h2>
 
-  <ul class="domain-list">
+  <ul class="domain-list domain-list-metadata">
     <li>
       <span class="small">Title</span>
       <span>
         {{ pg.title or '' }}
-        {% if title_mm %}<span class="badge">Mismatch</span>{% endif %}
+        {% if title_mm %}<span class="badge badge-warning">Mismatch</span>{% endif %}
       </span>
     </li>
     <li>
       <span class="small">Meta Description</span>
       <span>
         {{ pg.description or '' }}
-        {% if description_mm %}<span class="badge">Mismatch</span>{% endif %}
+        {% if description_mm %}<span class="badge badge-warning">Mismatch</span>{% endif %}
       </span>
     </li>
     <li>
@@ -32,13 +33,13 @@
       <span>
         {% set can = pg.canonical or '' %}
         {% if can %}<a href="{{ can }}" target="_blank" rel="noopener">{{ can }}</a>{% else %}-{% endif %}
-        {% if canonical_mm %}<span class="badge">Mismatch</span>{% endif %}
+        {% if canonical_mm %}<span class="badge badge-warning">Mismatch</span>{% endif %}
       </span>
     </li>
   </ul>
 
-  <div class="small mt-1" aria-hidden="true" style="font-weight:600;">Open Graph</div>
-  <ul class="domain-list">
+  <div class="section-subheader">Open Graph</div>
+  <ul class="domain-list domain-list-metadata">
     <li>
       <span class="small">OG Title</span>
       <span>{{ og.title or '' }}</span>
@@ -64,6 +65,6 @@
   </ul>
 
   {% if og_missing and og_missing|length > 0 %}
-    <div class="small mt-1">Missing OG: {{ og_missing|join(', ') }}</div>
+  <div class="missing-callout">Missing OG: {{ og_missing|join(', ') }}</div>
   {% endif %}
 </section>

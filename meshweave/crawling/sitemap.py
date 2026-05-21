@@ -134,25 +134,21 @@ async def discover_sitemap_urls(
     # Candidates: common endpoints
     candidates: list[str] = []
     if d:
-        candidates.extend(
-            [
-                f"https://{d}/sitemap.xml",
-                f"https://{d}/sitemap_index.xml",
-                f"http://{d}/sitemap.xml",
-                f"http://{d}/sitemap_index.xml",
-            ]
-        )
+        candidates.extend([
+            f"https://{d}/sitemap.xml",
+            f"https://{d}/sitemap_index.xml",
+            f"http://{d}/sitemap.xml",
+            f"http://{d}/sitemap_index.xml",
+        ])
 
         if robots_sitemaps is not None:
             # Use pre-fetched sitemap URLs (avoid redundant fetch)
             candidates.extend(robots_sitemaps)
-            sources.append(
-                {
-                    "type": "robots",
-                    "found": len(robots_sitemaps),
-                    "status": "ok",
-                }
-            )
+            sources.append({
+                "type": "robots",
+                "found": len(robots_sitemaps),
+                "status": "ok",
+            })
         else:
             # robots.txt discovery
             for scheme in ("https", "http"):
@@ -176,14 +172,12 @@ async def discover_sitemap_urls(
                         status = "ok"
                     except Exception:
                         status = "error"
-                sources.append(
-                    {
-                        "type": "robots",
-                        "url": robots_url,
-                        "found": found,
-                        "status": status,
-                    }
-                )
+                sources.append({
+                    "type": "robots",
+                    "url": robots_url,
+                    "found": found,
+                    "status": status,
+                })
 
     # De-duplicate candidates preserving order
     seen_c: set[str] = set()

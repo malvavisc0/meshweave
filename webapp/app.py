@@ -386,33 +386,26 @@ def create_app() -> FastAPI:
     app.include_router(products.router)
     # Scoring methodology page
     app.include_router(scoring.router)
-    # AI chat router (temporarily disabled — ChatThread/ChatMessage removed;
-    # will be reimplemented using Crawl.ai_analysis_json)
-    # app.include_router(ai.router)
     # API router remains last
     app.include_router(api.router)
 
     # Expose footer links and version as Jinja globals
     try:
-        templates.env.globals.update(
-            {
-                "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
-                "FOOTER_REPO_URL": os.getenv(
-                    "FOOTER_REPO_URL", "https://github.com/malvavisc0/meshweave"
-                ).strip(),
-                "FOOTER_CONTACT_EMAIL": os.getenv(
-                    "FOOTER_CONTACT_EMAIL", "hello@meshweave.com"
-                ).strip(),
-                "FOOTER_PRIVACY_URL": os.getenv(
-                    "FOOTER_PRIVACY_URL", "/privacy"
-                ).strip(),
-                "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
-                # Branding defaults for templates (used as fallbacks)
-                "SITE_NAME_DEFAULT": os.getenv("SITE_NAME", "MeshWeave").strip(),
-                # Convenience for footer ©
-                "CURRENT_YEAR": datetime.now(UTC).year,
-            }
-        )
+        templates.env.globals.update({
+            "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
+            "FOOTER_REPO_URL": os.getenv(
+                "FOOTER_REPO_URL", "https://github.com/malvavisc0/meshweave"
+            ).strip(),
+            "FOOTER_CONTACT_EMAIL": os.getenv(
+                "FOOTER_CONTACT_EMAIL", "hello@meshweave.com"
+            ).strip(),
+            "FOOTER_PRIVACY_URL": os.getenv("FOOTER_PRIVACY_URL", "/privacy").strip(),
+            "FOOTER_TERMS_URL": os.getenv("FOOTER_TERMS_URL", "/terms").strip(),
+            # Branding defaults for templates (used as fallbacks)
+            "SITE_NAME_DEFAULT": os.getenv("SITE_NAME", "MeshWeave").strip(),
+            # Convenience for footer ©
+            "CURRENT_YEAR": datetime.now(UTC).year,
+        })
     except Exception:
         # If templates are not initialized for some reason, do not crash app startup
         pass

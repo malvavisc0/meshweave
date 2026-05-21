@@ -23,7 +23,6 @@ dependencies = [
   "beautifulsoup4",
   "cloakbrowser",
   "html-to-markdown[lxml]",
-  "langchain",
   "lxml",
   "psycopg2-binary",
   "pydantic",

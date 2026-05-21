@@ -166,7 +166,7 @@ async def bfs_crawl(
                 progressive_scroll=False,
                 return_metrics=True,
                 timeout=max(1.0, per_page_timeout),
-                wait_until="domcontentloaded",
+                wait_until="networkidle",
                 cache_dir=cache_dir,
             )
         except Exception:

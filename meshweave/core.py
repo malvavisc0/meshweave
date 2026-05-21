@@ -157,9 +157,14 @@ def _build_payload(
     }
 
     # Build pages[] array from markdowns dict
+    # Origin page at index 0, rest sorted alphabetically by URL
     pages: list[dict[str, Any]] = []
+    origin_url = origin
+    origin_entry = None
+    sorted_entries: list[tuple[str, dict[str, Any]]] = []
+
     for url, entry in markdowns.items():
-        pages.append({
+        page_entry = {
             "url": url,
             "page": entry.get("page", {}),
             "markdown": entry.get("markdown", ""),
@@ -171,7 +176,20 @@ def _build_payload(
             },
             "emails": {"unique": entry.get("emails_unique", [])},
             "links": entry.get("links", {}),
-        })
+        }
+        if url == origin_url:
+            origin_entry = page_entry
+        else:
+            sorted_entries.append((url, page_entry))
+
+    # Sort remaining pages alphabetically by URL
+    sorted_entries.sort(key=lambda x: x[0])
+
+    # Origin first, then sorted pages
+    if origin_entry:
+        pages.append(origin_entry)
+    pages.extend(entry for _, entry in sorted_entries)
+
     payload["pages"] = pages
 
     # Webapp convenience fields
@@ -258,31 +276,15 @@ async def crawl(
     }
 
     async with BrowserSession() as session:
-        # 2) Render start page (http fallback for bare domains)
-        try:
-            html, metrics = await get_rendered_html(
-                url=start_url,
-                session=session,
-                progressive_scroll=True,
-                return_metrics=True,
-                timeout=30.0,
-                wait_until="domcontentloaded",
-                cache_dir=local_cache,
-            )
-        except Exception as exc:
-            logger.debug("HTTPS render failed for %s: %s", start_url, exc)
-            if is_domain and start_url.startswith("https://"):
-                html, metrics = await get_rendered_html(
-                    url=start_url.replace("https://", "http://", 1),
-                    session=session,
-                    progressive_scroll=True,
-                    return_metrics=True,
-                    timeout=30.0,
-                    wait_until="domcontentloaded",
-                    cache_dir=local_cache,
-                )
-            else:
-                raise
+        html, metrics = await get_rendered_html(
+            url=start_url,
+            session=session,
+            progressive_scroll=True,
+            return_metrics=True,
+            timeout=30.0,
+            wait_until="networkidle",
+            cache_dir=local_cache,
+        )
 
         final_url = str(getattr(metrics, "final_url", ""))
         origin = final_url or start_url

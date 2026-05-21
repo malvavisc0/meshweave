@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, Product
+from webapp.models import Crawl
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.reasons import friendly_reason
@@ -30,7 +30,8 @@ async def view_shared_analysis(request: Request, share_key: str):
     """View private analysis via shareable link."""
     with get_session() as s:
         row = (
-            s.query(Crawl)
+            s
+            .query(Crawl)
             .filter(Crawl.share_key == share_key, Crawl.visibility == "private")
             .first()
         )
@@ -136,10 +137,6 @@ async def view_shared_analysis(request: Request, share_key: str):
             ),
             "csrf_token": "",
             "is_owner": False,  # Shared viewers are not owners
-            "can_chat": False,
-            "can_select_pages": False,
-            "user_products": [],
-            "has_products": False,
             "user_id": "",
             "id": row.id,
             "page_title": page_title,
@@ -154,9 +151,6 @@ async def view_shared_analysis(request: Request, share_key: str):
             "can_view_leads": False,
             "email_preview": [],
             "email_count": 0,
-            "ai_chat_max_pages": 5,
-            "ai_chat_max_chars_per_page": 3000,
-            "ai_chat_max_total_chars": 15000,
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -291,66 +285,62 @@ async def view_analysis(request: Request, ref: str):
                         )
                 except Exception:
                     pass
-            json_ld = json.dumps(
-                {
-                    "@context": "https://schema.org",
-                    "@type": "CreativeWork",
-                    "name": "MeshWeave Analysis",
-                    "identifier": str(row.id),
-                    "about": (row.domain or "").strip(),
-                    "url": abs_page_url,
-                    "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
-                        "%Y-%m-%dT%H:%M:%SZ"
-                    ),
-                    "creativeWorkStatus": (row.status or "").title(),
-                    "measurementTechnique": [
-                        "web-crawl",
-                        "markdown-extraction",
-                        "link-analysis",
-                        "email-detection",
-                    ],
-                    "isAccessibleForFree": True,
-                    "keywords": [
-                        "markdown",
-                        "link map",
-                        "email intelligence",
-                        "ai summary",
-                    ],
-                    "additionalProperty": [
-                        {
-                            "@type": "PropertyValue",
-                            "name": "content_pages_count",
-                            "value": str(content_pages_count),
-                        },
-                        {
-                            "@type": "PropertyValue",
-                            "name": "emails_count",
-                            "value": str(emails_count),
-                        },
-                        {
-                            "@type": "PropertyValue",
-                            "name": "internal_links_count",
-                            "value": str(internal_links_count),
-                        },
-                        {
-                            "@type": "PropertyValue",
-                            "name": "external_links_count",
-                            "value": str(external_links_count),
-                        },
-                    ],
-                }
-            )
+            json_ld = json.dumps({
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "MeshWeave Analysis",
+                "identifier": str(row.id),
+                "about": (row.domain or "").strip(),
+                "url": abs_page_url,
+                "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "creativeWorkStatus": (row.status or "").title(),
+                "measurementTechnique": [
+                    "web-crawl",
+                    "markdown-extraction",
+                    "link-analysis",
+                    "email-detection",
+                ],
+                "isAccessibleForFree": True,
+                "keywords": [
+                    "markdown",
+                    "link map",
+                    "email intelligence",
+                    "ai summary",
+                ],
+                "additionalProperty": [
+                    {
+                        "@type": "PropertyValue",
+                        "name": "content_pages_count",
+                        "value": str(content_pages_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "emails_count",
+                        "value": str(emails_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "internal_links_count",
+                        "value": str(internal_links_count),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "external_links_count",
+                        "value": str(external_links_count),
+                    },
+                ],
+            })
         except Exception:
-            json_ld = json.dumps(
-                {
-                    "@context": "https://schema.org",
-                    "@type": "CreativeWork",
-                    "name": "MeshWeave Analysis",
-                    "identifier": str(row.id),
-                    "about": (row.domain or "").strip(),
-                    "url": abs_page_url,
-                }
-            )
+            json_ld = json.dumps({
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "MeshWeave Analysis",
+                "identifier": str(row.id),
+                "about": (row.domain or "").strip(),
+                "url": abs_page_url,
+            })
 
         summary = build_summary(row, payload)
 
@@ -369,11 +359,6 @@ async def view_analysis(request: Request, ref: str):
             current_user and getattr(row, "user_id", None) == current_user.id
         )
         status_lc = str(getattr(row, "status", "") or "").lower()
-        # Chat: owners-only on succeeded analyses
-        can_chat = (status_lc == "succeeded") and is_owner
-        # Page selection and Shortcuts: owner-only on succeeded analyses
-        can_select_pages = (status_lc == "succeeded") and is_owner
-
         # Cooldown for retry
         refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
         now = datetime.now(UTC)
@@ -387,29 +372,6 @@ async def view_analysis(request: Request, ref: str):
             if not can_retry_cooldown
             else ""
         )
-
-        # Query user products for compose section
-        user_products = []
-        if current_user:
-            with get_session() as s:
-                products = (
-                    s.query(Product)
-                    .filter(Product.user_id == current_user.id)
-                    .order_by(Product.updated_at.desc())
-                    .all()
-                )
-                user_products = [
-                    {
-                        "id": p.id,
-                        "name": p.name or "",
-                        "description": p.description or "",
-                        "website": p.website or None,
-                        "contact_info": p.contact_info or None,
-                        "created_at": (p.created_at or datetime.now(UTC)).isoformat(),
-                        "updated_at": (p.updated_at or datetime.now(UTC)).isoformat(),
-                    }
-                    for p in products
-                ]
 
         # CSRF token for retry form (generate new session if missing and CSRF is enabled)
         cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
@@ -446,10 +408,6 @@ async def view_analysis(request: Request, ref: str):
                 "csrf_token": csrf_token,
                 # Ownership / gating
                 "is_owner": is_owner,
-                "can_chat": can_chat,
-                "can_select_pages": can_select_pages,
-                "user_products": user_products,
-                "has_products": bool(user_products),
                 "user_id": (current_user.id if current_user else ""),
                 "can_view_leads": is_owner,
                 # SEO/Sharing
@@ -459,14 +417,6 @@ async def view_analysis(request: Request, ref: str):
                 "og_image_url": og_image_url,
                 "site_name": site_name,
                 "json_ld": json_ld,
-                # AI chat limits (mirror backend defaults; configurable via env)
-                "ai_chat_max_pages": int(os.getenv("AI_CHAT_MAX_PAGES", "5")),
-                "ai_chat_max_chars_per_page": int(
-                    os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")
-                ),
-                "ai_chat_max_total_chars": int(
-                    os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")
-                ),
                 # Owner toggles
                 "listed": row.listed,
                 "share_url": (
@@ -496,7 +446,8 @@ async def view_analysis(request: Request, ref: str):
     # Public by short key
     with get_session() as s:
         row = (
-            s.query(Crawl)
+            s
+            .query(Crawl)
             .filter(Crawl.key == ref, Crawl.visibility == "public")
             .one_or_none()
         )
@@ -595,66 +546,62 @@ async def view_analysis(request: Request, ref: str):
                     content_pages_count = int(payload["summary"]["visited_count"] or 0)
             except Exception:
                 pass
-        json_ld = json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": str(row.key),
-                "about": (row.domain or "").strip(),
-                "url": abs_page_url,
-                "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
-                "creativeWorkStatus": (row.status or "").title(),
-                "measurementTechnique": [
-                    "web-crawl",
-                    "markdown-extraction",
-                    "link-analysis",
-                    "email-detection",
-                ],
-                "isAccessibleForFree": True,
-                "keywords": [
-                    "markdown",
-                    "link map",
-                    "email intelligence",
-                    "ai summary",
-                ],
-                "additionalProperty": [
-                    {
-                        "@type": "PropertyValue",
-                        "name": "content_pages_count",
-                        "value": str(content_pages_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "emails_count",
-                        "value": str(emails_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "internal_links_count",
-                        "value": str(internal_links_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "external_links_count",
-                        "value": str(external_links_count),
-                    },
-                ],
-            }
-        )
+        json_ld = json.dumps({
+            "@context": "https://schema.org",
+            "@type": "CreativeWork",
+            "name": "MeshWeave Analysis",
+            "identifier": str(row.key),
+            "about": (row.domain or "").strip(),
+            "url": abs_page_url,
+            "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "creativeWorkStatus": (row.status or "").title(),
+            "measurementTechnique": [
+                "web-crawl",
+                "markdown-extraction",
+                "link-analysis",
+                "email-detection",
+            ],
+            "isAccessibleForFree": True,
+            "keywords": [
+                "markdown",
+                "link map",
+                "email intelligence",
+                "ai summary",
+            ],
+            "additionalProperty": [
+                {
+                    "@type": "PropertyValue",
+                    "name": "content_pages_count",
+                    "value": str(content_pages_count),
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "emails_count",
+                    "value": str(emails_count),
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "internal_links_count",
+                    "value": str(internal_links_count),
+                },
+                {
+                    "@type": "PropertyValue",
+                    "name": "external_links_count",
+                    "value": str(external_links_count),
+                },
+            ],
+        })
     except Exception:
-        json_ld = json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": str(row.key),
-                "about": (row.domain or "").strip(),
-                "url": abs_page_url,
-            }
-        )
+        json_ld = json.dumps({
+            "@context": "https://schema.org",
+            "@type": "CreativeWork",
+            "name": "MeshWeave Analysis",
+            "identifier": str(row.key),
+            "about": (row.domain or "").strip(),
+            "url": abs_page_url,
+        })
 
     summary = build_summary(row, payload)
 
@@ -718,7 +665,8 @@ async def view_analysis(request: Request, ref: str):
     refresh_eta = ""
     with get_session() as s:
         public_root = (
-            s.query(Crawl)
+            s
+            .query(Crawl)
             .filter(
                 Crawl.domain == row.domain,
                 Crawl.visibility == "public",
@@ -741,34 +689,6 @@ async def view_analysis(request: Request, ref: str):
     current_user = getattr(request.state, "current_user", None)
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
     status_lc = str(getattr(row, "status", "") or "").lower()
-    # Chat: owners-only on succeeded analyses
-    can_chat = (status_lc == "succeeded") and is_owner
-    # Page selection and Shortcuts: owner-only on succeeded analyses
-    can_select_pages = (status_lc == "succeeded") and is_owner
-
-    # Query user products for compose section
-    user_products = []
-    if current_user:
-        with get_session() as s:
-            products = (
-                s.query(Product)
-                .filter(Product.user_id == current_user.id)
-                .order_by(Product.updated_at.desc())
-                .all()
-            )
-            user_products = [
-                {
-                    "id": p.id,
-                    "name": p.name or "",
-                    "description": p.description or "",
-                    "website": p.website or None,
-                    "contact_info": p.contact_info or None,
-                    "created_at": (p.created_at or datetime.now(UTC)).isoformat(),
-                    "updated_at": (p.updated_at or datetime.now(UTC)).isoformat(),
-                }
-                for p in products
-            ]
-
     # Sanitize payload for anonymous viewers to avoid leaking emails (top-level and per-page)
     payload_display = payload
     try:
@@ -842,10 +762,6 @@ async def view_analysis(request: Request, ref: str):
             "csrf_token": csrf_token,
             # Ownership / gating
             "is_owner": is_owner,
-            "can_chat": can_chat,
-            "can_select_pages": can_select_pages,
-            "user_products": user_products,
-            "has_products": bool(user_products),
             "user_id": (current_user.id if current_user else ""),
             # Provide private id to owners for chat scoping
             "id": row.id,
@@ -867,14 +783,6 @@ async def view_analysis(request: Request, ref: str):
             # Gating helpers for anonymous public
             "email_preview": email_preview,
             "email_count": email_count,
-            # AI chat limits (mirror backend defaults; configurable via env)
-            "ai_chat_max_pages": int(os.getenv("AI_CHAT_MAX_PAGES", "5")),
-            "ai_chat_max_chars_per_page": int(
-                os.getenv("AI_CHAT_MAX_CHARS_PER_PAGE", "3000")
-            ),
-            "ai_chat_max_total_chars": int(
-                os.getenv("AI_CHAT_MAX_TOTAL_CHARS", "15000")
-            ),
         },
     )
     # Set session cookie if newly created for CSRF
