@@ -31,6 +31,9 @@ def classify_links(
 ) -> tuple[list[str], list[str], dict[str, Any]]:
     """Extract, normalize, and classify links as internal/external.
 
+    A link is *internal* if it shares the same domain as *base_url*.
+    Everything else is *external*.
+
     Returns (internal_links, external_links, extraction_metrics).
     """
     start = time.perf_counter()

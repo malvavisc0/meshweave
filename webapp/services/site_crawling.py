@@ -25,19 +25,35 @@ def _int_env(name: str, default: int) -> int:
 
 def _limits_from_row(row: Crawl) -> dict[str, int]:
     """Resolve crawl limits from row.crawl_params and env defaults/caps."""
-    defaults = {
-        "max_pages": _int_env("AUTH_SITE_MAX_PAGES_DEFAULT", 200),
-        "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_DEFAULT", 3),
-        "time_budget_ms": _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
-    }
-    caps = {
-        "max_pages": _int_env("AUTH_SITE_MAX_PAGES_CAP", 500),
-        "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_CAP", 5),
-        "time_budget_ms": max(
-            60_000,
-            _int_env("AUTH_SITE_TIME_BUDGET_MS_CAP", 3_600_000),
-        ),
-    }
+    is_authenticated = bool(getattr(row, "user_id", None))
+    if is_authenticated:
+        defaults = {
+            "max_pages": _int_env("AUTH_SITE_MAX_PAGES_DEFAULT", 50),
+            "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_DEFAULT", 2),
+            "time_budget_ms": _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
+        }
+        caps = {
+            "max_pages": _int_env("AUTH_SITE_MAX_PAGES_CAP", 500),
+            "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_CAP", 5),
+            "time_budget_ms": max(
+                60_000,
+                _int_env("AUTH_SITE_TIME_BUDGET_MS_CAP", 3_600_000),
+            ),
+        }
+    else:
+        defaults = {
+            "max_pages": _int_env("ANON_SITE_MAX_PAGES_DEFAULT", 20),
+            "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_DEFAULT", 2),
+            "time_budget_ms": _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
+        }
+        caps = {
+            "max_pages": _int_env("ANON_SITE_MAX_PAGES_CAP", 30),
+            "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_CAP", 5),
+            "time_budget_ms": max(
+                60_000,
+                _int_env("AUTH_SITE_TIME_BUDGET_MS_CAP", 3_600_000),
+            ),
+        }
     req = row.crawl_params or {}
     lim = {
         "max_pages": int(
@@ -174,10 +190,8 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
     try:
         payload = await core_crawl(
             url=start_url or "",
-            crawl_internal=True,
             crawl_max_pages=limits["max_pages"],
             max_depth=max_depth,
-            same_domain_only=True,
             include_emails=True,
             deobfuscate_emails=True,
             per_page_timeout=30.0,
@@ -256,6 +270,20 @@ def _finish_task(
             from webapp.services.scoring import score_crawl
 
             score_crawl(crawl_id, payload=payload)
+        except Exception:
+            pass
+
+        # Run AAX analysis (async, best-effort)
+        try:
+            import asyncio
+
+            from webapp.services.scoring import run_aax_for_crawl
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
+        except RuntimeError:
+            # No running event loop — skip AAX (will be triggered on next access)
+            pass
         except Exception:
             pass
 

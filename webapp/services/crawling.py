@@ -59,8 +59,6 @@ async def run_crawl_task(
             pass
         payload = await crawler_run(
             url=url,
-            crawl_internal=False,
-            same_domain_only=True,
             include_emails=True,
             deobfuscate_emails=True,
             disable_cache=force_refresh,
@@ -110,6 +108,14 @@ async def run_crawl_task(
             from webapp.services.scoring import score_crawl
 
             score_crawl(crawl_id, payload=payload)
+        except Exception:
+            pass
+
+        # Run AAX analysis (async, non-blocking)
+        try:
+            from webapp.services.scoring import run_aax_for_crawl
+
+            await run_aax_for_crawl(crawl_id, payload=payload)
         except Exception:
             pass
 

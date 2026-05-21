@@ -89,11 +89,14 @@ services:
       # Authenticated user quotas and site crawl defaults/caps
       AUTH_USER_DAILY_SITE_CRAWLS: 10
       AUTH_USER_CONCURRENT_JOBS: 3
-      AUTH_SITE_MAX_PAGES_DEFAULT: 100
+      AUTH_SITE_MAX_PAGES_DEFAULT: 50
       AUTH_SITE_MAX_DEPTH_DEFAULT: 2
       AUTH_SITE_TIME_BUDGET_MS_DEFAULT: 900000
       AUTH_SITE_MAX_PAGES_CAP: 500
       AUTH_SITE_MAX_DEPTH_CAP: 5
+      # Anonymous user quotas (stricter)
+      ANON_SITE_MAX_PAGES_DEFAULT: 20
+      ANON_SITE_MAX_PAGES_CAP: 30
       # OAuth (Google)
       OAUTH_PROVIDER: google
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
@@ -110,9 +113,9 @@ services:
       # Claim public analyses minimum age (hours)
       CLAIM_PUBLIC_MIN_AGE_HOURS: 24
       # AI integration (llamacpp via OpenAI-compatible endpoint)
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8081/v1}
-      LLM_API_KEY: ${LLM_API_KEY:-not-needed}
-      LLM_MODEL: ${LLM_MODEL:-default}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DEBUG: yes
       # Database pool tuning (Postgres)

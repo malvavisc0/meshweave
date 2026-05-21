@@ -319,6 +319,9 @@ class CrawlOutput(BaseModel):
     canonical_url: str = ""
     summary: CrawlSummary | None = None
     markdown_dir: str = ""
+    # Scoring and AI analysis (null when not computed)
+    scores: dict[str, Any] | None = None
+    aax: dict[str, Any] | None = None
 
 
 class CrawlAPIOutput(BaseModel):
@@ -344,3 +347,6 @@ class CrawlAPIOutput(BaseModel):
     domain: str = ""
     canonical_url: str = ""
     summary: CrawlSummary | None = None
+    # Scoring and AI analysis (null when not computed)
+    scores: dict[str, Any] | None = None
+    aax: dict[str, Any] | None = None

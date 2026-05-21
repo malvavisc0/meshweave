@@ -6,6 +6,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def _positive_int(val: str) -> int:
     """Parse a string into a strictly positive integer (> 0)."""
@@ -104,14 +108,11 @@ def _write_markdown_files(payload: dict[str, Any], output_dir: str) -> None:
     payload["markdowns"] = written
 
 
-def _write_output(payload: dict[str, Any], output: str | None) -> None:
-    """Write JSON *payload* to a file or stdout."""
+def _write_output(payload: dict[str, Any], output: str) -> None:
+    """Write JSON *payload* to *output* file."""
     text = json.dumps(payload, ensure_ascii=False, indent=2)
-    if output:
-        with open(output, "w", encoding="utf-8") as f:
-            f.write(text)
-    else:
-        print(text)
+    with open(output, "w", encoding="utf-8") as f:
+        f.write(text)
 
 
 def _add_crawl_args(sub: argparse.ArgumentParser) -> None:
@@ -120,23 +121,10 @@ def _add_crawl_args(sub: argparse.ArgumentParser) -> None:
         "url",
         help=(
             "Target URL or bare domain (e.g. example.com). "
-            "Bare domains are expanded to https:// and sitemap discovery "
-            "is attempted to seed internal crawling."
+            "Bare domains are expanded to https://. The URL path "
+            "defines the crawl scope — only pages under that prefix "
+            "are treated as internal."
         ),
-    )
-
-    sub.add_argument(
-        "--crawl-internal",
-        action="store_true",
-        default=False,
-        dest="crawl_internal",
-        help="Enable internal BFS crawl (default: off)",
-    )
-    sub.add_argument(
-        "--no-crawl-internal",
-        action="store_false",
-        dest="crawl_internal",
-        help="Disable internal BFS crawl",
     )
 
     sub.add_argument(
@@ -148,17 +136,17 @@ def _add_crawl_args(sub: argparse.ArgumentParser) -> None:
     )
 
     sub.add_argument(
-        "--same-domain",
+        "--ai-analysis",
         action="store_true",
-        default=True,
-        dest="same_domain",
-        help="Restrict crawl to same domain (default: on)",
+        default=False,
+        dest="ai_analysis",
+        help="Run LLM-powered AAX (AI Agent Experience) analysis after crawl",
     )
     sub.add_argument(
-        "--no-same-domain",
+        "--no-ai-analysis",
         action="store_false",
-        dest="same_domain",
-        help="Allow following links to other domains",
+        dest="ai_analysis",
+        help="Skip AAX analysis (default)",
     )
 
     sub.add_argument(
@@ -223,9 +211,9 @@ def _add_crawl_args(sub: argparse.ArgumentParser) -> None:
     sub.add_argument(
         "--output",
         "-o",
-        default=None,
+        required=True,
         metavar="FILE",
-        help="Write JSON output to FILE (default: stdout)",
+        help="Write JSON output to FILE (required)",
     )
 
     sub.add_argument(
@@ -253,19 +241,26 @@ def _add_crawl_args(sub: argparse.ArgumentParser) -> None:
     )
 
 
+def _log(msg: str) -> None:
+    """Print a status message to stderr."""
+    print(msg, file=sys.stderr)
+
+
 def _run_crawl(args: argparse.Namespace) -> None:
     """Execute the crawl subcommand."""
 
     from .core import crawl  # lazy import
 
     async def _run():
+        _log(f"► Crawling {args.url} …")
+
         # --refresh implies --disable-cache
         disable_cache = args.disable_cache or args.refresh
+
+        _log("► Rendering page with CloakBrowser …")
         payload = await crawl(
             url=args.url,
-            crawl_internal=args.crawl_internal,
             crawl_max_pages=int(args.max_pages),
-            same_domain_only=args.same_domain,
             include_emails=args.include_emails,
             deobfuscate_emails=args.deobfuscate,
             throttle_ms=int(args.throttle_ms),
@@ -273,6 +268,14 @@ def _run_crawl(args: argparse.Namespace) -> None:
             disable_cache=disable_cache,
             cache_dir=args.cache_dir,
         )
+
+        # Summarise render result
+        render = payload.get("metrics", {}).get("render", {})
+        status = render.get("response_status", "?")
+        final_url = render.get("final_url", args.url)
+        load_ms = render.get("load_time_ms", 0)
+        _log(f"  ✓ Page rendered — {status} {final_url} ({load_ms}ms)")
+
         output_dir = args.output_dir
         if not output_dir:
             output_dir = os.getenv("MESHWEAVE_OUTPUT_DIR", "data/output")
@@ -290,19 +293,62 @@ def _run_crawl(args: argparse.Namespace) -> None:
                 domain_dir = Path(output_dir) / domain
                 if domain_dir.exists():
                     shutil.rmtree(domain_dir)
+                    _log(f"  ✓ Refreshed cache: cleared {domain_dir}")
+
+        # Always compute AEO/GEO scores (pure heuristic, no LLM)
+        _log("► Computing AEO/GEO scores …")
+        try:
+            from meshweave.scoring.engine import compute_scores
+
+            payload["scores"] = compute_scores(payload)
+            _log("  ✓ Scores computed")
+        except Exception as e:
+            print(f"  ✗ Scoring failed: {e}", file=sys.stderr)
+            payload["scores"] = None
+
+        # AAX analysis (LLM-powered, only with --ai-analysis flag)
+        if args.ai_analysis:
+            _log("► Running AAX analysis (LLM) …")
+            try:
+                # Override AAX_ENABLED since CLI flag is the explicit opt-in
+                os.environ["AAX_ENABLED"] = "true"
+                from meshweave.ai.analyses import run_aax_analysis
+
+                aax_result = await run_aax_analysis(payload)
+                payload["aax"] = aax_result
+
+                # Compute AAX composite and merge into scores
+                if aax_result and aax_result.get("status") == "completed":
+                    from meshweave.scoring.engine import compute_aax_score
+
+                    aax_score = compute_aax_score(aax_result)
+                    if aax_score and payload.get("scores"):
+                        payload["scores"]["aax"] = aax_score
+                _log("  ✓ AAX analysis complete")
+            except Exception as e:
+                print(f"  ✗ AAX analysis failed: {e}", file=sys.stderr)
+                payload["aax"] = {"status": "failed", "error": str(e)}
+        else:
+            payload["aax"] = None
+
+        _log(f"► Writing markdown files to {output_dir} …")
         _write_markdown_files(payload, output_dir)
+        n_pages = len(payload.get("crawl", {}).get("visited", []))
+        _log(f"  ✓ {n_pages} page(s) written")
+
+        _log(f"► Writing JSON to {args.output} …")
         _write_output(payload, args.output)
+
+        _log(f"✓ Done — {n_pages} page(s) visited, output written to {args.output}")
 
     asyncio.run(_run())
 
 
 _EPILOG = """\
 examples:
-  meshweave crawl https://example.com
-  meshweave crawl https://example.com \\
-    --crawl-internal --max-pages 50 -o out.json
-  meshweave crawl example.com --crawl-internal \\
-    --throttle-ms 200
+  meshweave crawl https://example.com -o result.json
+  meshweave crawl https://example.com --max-pages 50 -o out.json
+  meshweave crawl example.com --throttle-ms 200 -o result.json
 """
 
 
@@ -341,8 +387,8 @@ def main() -> None:
         help="Render, extract, and optionally crawl a site",
         description=(
             "Fetch a URL (or bare domain) with CloakBrowser, extract "
-            "markdown, links, and emails.  Use --crawl-internal to follow "
-            "internal links."
+            "markdown, links, and emails.  Always crawls internal links "
+            "within the URL's path scope."
         ),
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,

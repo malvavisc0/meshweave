@@ -27,6 +27,8 @@ dependencies = [
   "psycopg2-binary",
   "pydantic",
   "sqlalchemy",
+  "pydantic-ai",
+  "python-dotenv",
 ]
 
 [dependency-groups]

@@ -16,7 +16,7 @@ from ..extraction import (
     soup_from_html,
     to_markdown,
 )
-from ..urls import normalize_abs_url, should_follow
+from ..urls import normalize_abs_url, origin_prefix, should_follow
 from .fetcher import BrowserSession, get_rendered_html
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,6 @@ async def bfs_crawl(
     session: BrowserSession,
     crawl_max_pages: int = 25,
     max_depth: int = 0,
-    same_domain_only: bool = True,
     include_emails: bool = True,
     deobfuscate_emails: bool = True,
     throttle_ms: int = 0,
@@ -74,8 +73,6 @@ async def bfs_crawl(
         Maximum pages to visit (including the origin).
     max_depth:
         Maximum link depth from origin.  0 means unlimited.
-    same_domain_only:
-        Restrict BFS to the origin's registrable domain.
     include_emails:
         Extract email addresses from pages.
     deobfuscate_emails:
@@ -109,6 +106,7 @@ async def bfs_crawl(
     markdowns: dict[str, dict[str, Any]] = {}
     stop_reason = "queue_empty"
 
+    origin_pfx = origin_prefix(origin)
     norm_start = normalize_abs_url(origin, origin)
     if norm_start:
         visited_norm.add(norm_start)
@@ -124,7 +122,7 @@ async def bfs_crawl(
         absu = normalize_abs_url(href, base)
         if (
             absu
-            and should_follow(absu, origin, same_domain_only)
+            and should_follow(absu, origin_pfx)
             and absu not in visited_norm
             and len(visited_norm) < crawl_max_pages
         ):
@@ -187,7 +185,7 @@ async def bfs_crawl(
                 continue
             visited_norm.add(norm_final)
 
-        if not should_follow(final_u, origin, same_domain_only):
+        if not should_follow(final_u, origin_pfx):
             if throttle_ms > 0:
                 await asyncio.sleep(throttle_ms / 1000)
             continue

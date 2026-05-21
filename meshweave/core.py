@@ -33,6 +33,7 @@ from .urls import (
     looks_like_domain,
     normalize_abs_url,
     normalize_domain,
+    origin_prefix,
     should_follow,
 )
 
@@ -112,7 +113,6 @@ def _build_payload(
     all_emails: set[str],
     emails_by_url: dict[str, list[str]],
     deduped_sources: list[dict[str, Any]],
-    crawl_internal: bool,
     crawl_max_pages: int,
     origin: str,
     crawl_result: dict[str, Any],
@@ -193,7 +193,7 @@ def _build_payload(
     payload["pages"] = pages
 
     # Webapp convenience fields
-    payload["scope"] = "site" if crawl_internal else "page"
+    payload["scope"] = "site"
     payload["domain"] = domain_of(origin)
     payload["canonical_url"] = origin
     payload["summary"] = {
@@ -213,7 +213,7 @@ def _build_payload(
         }
 
     payload["crawl"] = {
-        "enabled": crawl_internal,
+        "enabled": True,
         "start_url": origin,
         "visited": crawl_result["visited"],
         "limits": {"max_pages": crawl_max_pages},
@@ -244,10 +244,8 @@ def _build_payload(
 async def crawl(
     url: str,
     *,
-    crawl_internal: bool = False,
     crawl_max_pages: int = 25,
     max_depth: int = 0,
-    same_domain_only: bool = True,
     include_emails: bool = True,
     deobfuscate_emails: bool = True,
     throttle_ms: int = 0,
@@ -258,14 +256,17 @@ async def crawl(
     should_continue: Callable[[], Awaitable[bool]] | None = None,
     url_filter: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
-    """Render a page/domain, convert to markdown, classify
-    links, optionally BFS-crawl internal pages, extract emails.
+    """Render a URL, convert to markdown, classify links, BFS-crawl
+    internal pages within the URL's path scope, extract emails.
     """
     local_cache = _resolve_cache_config(disable_cache, cache_dir)
 
     # 1) Determine start URL
     is_domain = looks_like_domain(url)
     start_url = f"https://{normalize_domain(url)}/" if is_domain else url
+
+    # Origin prefix defines the crawl scope
+    origin_pfx: str = ""  # set after rendering
 
     sitemap_meta: dict[str, Any] = {
         "used": False,
@@ -287,66 +288,54 @@ async def crawl(
 
         final_url = str(getattr(metrics, "final_url", ""))
         origin = final_url or start_url
+        origin_pfx = origin_prefix(origin)
 
         # 3) Process page (parse, meta, clean, markdown, links)
         page_data = _process_page(html, url, final_url)
 
-        # 4) robots.txt and llms.txt for domain crawls
-        robots_info: dict[str, Any] = {
-            "exists": False,
-            "bots": {},
-            "sitemaps": [],
-            "note": "Not checked (page-scope crawl)",
-        }
-        llms_info: dict[str, Any] = {
-            "llms_txt": {"exists": False},
-            "llms_full_txt": {"exists": False},
-            "note": "Not checked (page-scope crawl)",
-        }
-        if is_domain:
-            base = f"https://{domain_of(origin)}"
-            try:
-                robots_info = await fetch_robots_info(base, session=session)
-            except Exception:
-                logger.debug(
-                    "robots.txt fetch failed for %s",
-                    base,
-                    exc_info=True,
-                )
-            try:
-                llms_info = await check_llms_txt(base, session=session)
-            except Exception:
-                logger.debug(
-                    "llms.txt check failed for %s",
-                    base,
-                    exc_info=True,
-                )
+        # 4) robots.txt and llms.txt (always check)
+        base = f"https://{domain_of(origin)}"
+        robots_info: dict[str, Any] = {}
+        llms_info: dict[str, Any] = {}
+        try:
+            robots_info = await fetch_robots_info(base, session=session)
+        except Exception:
+            logger.debug(
+                "robots.txt fetch failed for %s",
+                base,
+                exc_info=True,
+            )
+        try:
+            llms_info = await check_llms_txt(base, session=session)
+        except Exception:
+            logger.debug(
+                "llms.txt check failed for %s",
+                base,
+                exc_info=True,
+            )
 
-        # 5) Sitemap discovery for bare domains
-        # Reuse sitemaps already extracted by fetch_robots_info
-        # to avoid a redundant robots.txt fetch.
+        # 5) Sitemap discovery (always attempt)
         sitemap_seeds: list[str] = []
-        if is_domain:
-            try:
-                discovered, sm_meta = await discover_sitemap_urls(
-                    domain_of(origin),
-                    session=session,
-                    max_urls=max(1, crawl_max_pages * 5),
-                    robots_sitemaps=robots_info.get("sitemaps", []),
-                )
-                sitemap_meta["used"] = bool(discovered)
-                sitemap_meta["discovered"] = len(discovered)
-                sitemap_meta["sources"] = sm_meta.get("sources", [])
-                for u in discovered:
-                    normu = normalize_abs_url(u, origin)
-                    if normu and should_follow(normu, origin, same_domain_only):
-                        sitemap_seeds.append(normu)
-            except Exception:
-                logger.debug(
-                    "Sitemap discovery failed for %s",
-                    origin,
-                    exc_info=True,
-                )
+        try:
+            discovered, sm_meta = await discover_sitemap_urls(
+                domain_of(origin),
+                session=session,
+                max_urls=max(1, crawl_max_pages * 5),
+                robots_sitemaps=robots_info.get("sitemaps", []),
+            )
+            sitemap_meta["used"] = bool(discovered)
+            sitemap_meta["discovered"] = len(discovered)
+            sitemap_meta["sources"] = sm_meta.get("sources", [])
+            for u in discovered:
+                normu = normalize_abs_url(u, origin)
+                if normu and should_follow(normu, origin_pfx):
+                    sitemap_seeds.append(normu)
+        except Exception:
+            logger.debug(
+                "Sitemap discovery failed for %s",
+                origin,
+                exc_info=True,
+            )
 
         render_metrics = _build_render_metrics(metrics)
 
@@ -365,7 +354,7 @@ async def crawl(
             email_sources=email_sources,
         )
 
-        # 6) BFS crawl
+        # 6) BFS crawl (always crawl internal links)
         crawl_result: dict[str, Any] = {
             "visited": [origin] if origin else [],
             "stop_reason": "queue_empty",
@@ -375,14 +364,13 @@ async def crawl(
             "email_sources": [],
         }
 
-        if crawl_internal and crawl_max_pages > 1:
+        if crawl_max_pages > 1:
             crawl_result = await bfs_crawl(
                 origin,
                 page_data["internal_links"],
                 session=session,
                 crawl_max_pages=crawl_max_pages,
                 max_depth=max_depth,
-                same_domain_only=same_domain_only,
                 include_emails=include_emails,
                 deobfuscate_emails=deobfuscate_emails,
                 throttle_ms=throttle_ms,
@@ -408,7 +396,6 @@ async def crawl(
             all_emails=all_emails,
             emails_by_url=emails_by_url,
             deduped_sources=deduped,
-            crawl_internal=crawl_internal,
             crawl_max_pages=crawl_max_pages,
             origin=origin,
             crawl_result=crawl_result,

@@ -1,4 +1,4 @@
-"""Centralized AEO/GEO scoring service.
+"""Centralized AEO/GEO/AAX scoring service.
 
 Wraps the scoring engine and ScoreSnapshot persistence into reusable
 functions, eliminating duplication across crawling.py, site_crawling.py,
@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any
 
-from meshweave.scoring.engine import compute_scores
+from meshweave.scoring.engine import compute_aax_score, compute_scores
 from meshweave.scoring.ratings import aeo_rating, geo_rating
 from webapp.db import get_session
 from webapp.models import Crawl, ScoreSnapshot
@@ -100,6 +100,70 @@ def score_crawl(
             s.add(snap)
 
     return score_json
+
+
+async def run_aax_for_crawl(
+    crawl_id: str,
+    *,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Run AAX analysis for a crawl and persist results.
+
+    Called after score_crawl() completes. Runs LLM-powered tests
+    asynchronously and stores results in ai_analysis_json on the
+    ScoreSnapshot.
+
+    Args:
+        crawl_id: The Crawl row ID.
+        payload: Pre-loaded crawl payload. If None, loads from DB.
+
+    Returns:
+        The AAX score dict, or None if AAX is disabled/ineligible.
+    """
+    from meshweave.ai.analyses import run_aax_analysis
+
+    # Load payload if not provided
+    if payload is None:
+        with get_session() as s:
+            row = s.get(Crawl, crawl_id)
+            if not row:
+                return None
+            raw = row.payload_json or {}
+            if isinstance(raw, str):
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    payload = {}
+            else:
+                payload = raw
+
+    # Run AAX analysis
+    try:
+        aax_result = await run_aax_analysis(payload)
+    except Exception as e:
+        logger.warning("AAX analysis failed for crawl %s: %s", crawl_id, e)
+        aax_result = {"status": "failed", "error": str(e)}
+
+    if not aax_result or aax_result.get("status") in ("disabled", "failed"):
+        return aax_result
+
+    # Compute AAX composite score
+    aax_score_json = compute_aax_score(aax_result)
+
+    # Persist to DB
+    with get_session() as s:
+        snap = s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id == crawl_id).first()
+        if snap:
+            # Merge AAX into existing ai_analysis_json
+            existing = snap.ai_analysis_json or {}
+            existing["aax"] = aax_result
+            snap.ai_analysis_json = existing
+
+            # Store AAX composite in score_json
+            if aax_score_json and snap.score_json:
+                snap.score_json["aax"] = aax_score_json
+
+    return aax_score_json
 
 
 def update_manual_inputs(crawl_id: str, inputs: dict[str, float]) -> dict[str, Any]:

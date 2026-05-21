@@ -9,7 +9,9 @@ __all__ = [
     "looks_like_domain",
     "normalize_abs_url",
     "normalize_domain",
+    "origin_prefix",
     "same_domain",
+    "same_origin_prefix",
     "should_follow",
     "should_ignore_path",
 ]
@@ -77,6 +79,40 @@ def same_domain(u1: str, u2: str) -> bool:
     return domain_of(u1) == domain_of(u2)
 
 
+def origin_prefix(url: str) -> str:
+    """Return the normalised origin prefix for *url*.
+
+    The prefix is ``scheme://netloc/path`` with a trailing slash stripped,
+    so ``https://example.com/Free-Way/`` becomes
+    ``https://example.com/Free-Way`` and ``https://example.com/`` becomes
+    ``https://example.com``.
+    """
+    try:
+        parts = urlsplit(url or "")
+        scheme = parts.scheme.lower()
+        netloc = (parts.netloc or "").lower()
+        path = (parts.path or "/").rstrip("/") or ""
+        return urlunsplit((scheme, netloc, path, "", ""))
+    except Exception:
+        return url or ""
+
+
+def same_origin_prefix(url: str, origin: str) -> bool:
+    """True if *url* falls under the same origin prefix as *origin*.
+
+    For ``origin = https://example.com/Free-Way`` this matches any URL
+    whose normalised form starts with that prefix followed by ``/`` or
+    end-of-string (so ``/Free-Way-other`` does NOT match).
+    """
+    norm = normalize_abs_url(url, origin)
+    if not norm.startswith(origin):
+        return False
+    # Ensure the match is a path boundary (exact or followed by /)
+    if len(norm) == len(origin):
+        return True
+    return norm[len(origin) :] == "/" or norm[len(origin) :].startswith("/")
+
+
 def is_ignored_domain(value: str, ignored: set[str] | None = None) -> bool:
     """Suffix-based domain ignore check."""
     if not ignored:
@@ -107,13 +143,16 @@ def should_ignore_path(path: str) -> bool:
 def should_follow(
     url: str,
     origin: str,
-    same_domain_only: bool,
     ignored_domains: set[str] | None = None,
 ) -> bool:
-    """Check if a URL should be followed during BFS."""
+    """Check if a URL should be followed during BFS.
+
+    *origin* is the origin prefix returned by :func:`origin_prefix`.
+    Only URLs that fall under the same origin prefix are followed.
+    """
     if not url:
         return False
-    if same_domain_only and not same_domain(url, origin):
+    if not same_origin_prefix(url, origin):
         return False
     path = urlsplit(url).path or ""
     if should_ignore_path(path):

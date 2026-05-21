@@ -1,5 +1,13 @@
 """Score-to-rating label mapping per spec §4.3."""
 
+AAX_RATINGS: list[tuple[int, int, str]] = [
+    (0, 20, "Opaque"),
+    (21, 40, "Unclear"),
+    (41, 60, "Readable"),
+    (61, 80, "Clear"),
+    (81, 100, "Fluent"),
+]
+
 AEO_RATINGS: list[tuple[int, int, str]] = [
     (0, 20, "Poor"),
     (21, 40, "Below Average"),
@@ -37,3 +45,14 @@ def geo_rating(score: float | None) -> str | None:
         if lo <= s <= hi:
             return label
     return "Dominant"
+
+
+def aax_rating(score: float | None) -> str | None:
+    """Map AAX score (0-100) to a rating label."""
+    if score is None:
+        return None
+    s = max(0, min(100, int(round(score))))
+    for lo, hi, label in AAX_RATINGS:
+        if lo <= s <= hi:
+            return label
+    return "Fluent"
