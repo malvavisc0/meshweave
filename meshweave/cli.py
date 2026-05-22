@@ -136,6 +136,14 @@ def _add_crawl_args(sub: argparse.ArgumentParser) -> None:
     )
 
     sub.add_argument(
+        "--max-depth",
+        type=_nonneg_int,
+        default=1,
+        metavar="N",
+        help="Max link depth from start page (default: 1, 0=unlimited)",
+    )
+
+    sub.add_argument(
         "--ai-analysis",
         action="store_true",
         default=False,
@@ -261,6 +269,7 @@ def _run_crawl(args: argparse.Namespace) -> None:
         payload = await crawl(
             url=args.url,
             crawl_max_pages=int(args.max_pages),
+            max_depth=int(args.max_depth),
             include_emails=args.include_emails,
             deobfuscate_emails=args.deobfuscate,
             throttle_ms=int(args.throttle_ms),

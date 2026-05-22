@@ -5,6 +5,7 @@ import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlparse
 
 from ..extraction import (
     classify_links,
@@ -42,13 +43,26 @@ def _render_metrics_to_dict(metrics: Any) -> dict[str, Any]:
     }
 
 
+def _url_depth(url: str, origin: str) -> int:
+    """Infer BFS depth from URL path segments relative to *origin*.
+
+    Examples (origin ``https://example.com/``):
+    * ``/news``          → 1
+    * ``/news/article``  → 2
+    * ``/a/b/c``         → 3
+    """
+    origin_segs = len([s for s in urlparse(origin).path.strip("/").split("/") if s])
+    url_segs = len([s for s in urlparse(url).path.strip("/").split("/") if s])
+    return max(1, url_segs - origin_segs)
+
+
 async def bfs_crawl(
     origin: str,
     internal_links: list[str],
     *,
     session: BrowserSession,
     crawl_max_pages: int = 25,
-    max_depth: int = 0,
+    max_depth: int = 1,
     include_emails: bool = True,
     deobfuscate_emails: bool = True,
     throttle_ms: int = 0,
@@ -72,7 +86,7 @@ async def bfs_crawl(
     crawl_max_pages:
         Maximum pages to visit (including the origin).
     max_depth:
-        Maximum link depth from origin.  0 means unlimited.
+        Maximum link depth from origin.  0 means unlimited.  Default is 1 (only pages linked from origin).
     include_emails:
         Extract email addresses from pages.
     deobfuscate_emails:
@@ -133,14 +147,14 @@ async def bfs_crawl(
             return True
         return False
 
-    # Seed from start page links (depth 1)
-    for href in internal_links:
-        _enqueue(href, origin, 1)
+    # Seed from start page links (shortest URLs first, then alpha)
+    for href in sorted(internal_links, key=lambda u: (len(u), u)):
+        _enqueue(href, origin, _url_depth(href, origin))
 
-    # Seed from sitemap (depth 1)
+    # Seed from sitemap (shortest URLs first, then alpha)
     seeded = 0
-    for su in sitemap_seeds or []:
-        if _enqueue(su, origin, 1):
+    for su in sorted(sitemap_seeds or [], key=lambda u: (len(u), u)):
+        if _enqueue(su, origin, _url_depth(su, origin)):
             seeded += 1
 
     # BFS loop
@@ -236,9 +250,10 @@ async def bfs_crawl(
         page_data["render_metrics"] = render_metrics
         page_data["emails_unique"] = emails_by_url.get(final_u, [])
 
-        # Expand BFS frontier
-        for href2 in new_int:
-            _enqueue(href2, final_u, depth + 1)
+        # Expand BFS frontier (only if within depth limit)
+        if max_depth == 0 or depth < max_depth:
+            for href2 in new_int:
+                _enqueue(href2, final_u, depth + 1)
 
         # Heartbeat callback
         if on_page_crawled:

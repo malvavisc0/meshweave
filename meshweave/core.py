@@ -245,7 +245,7 @@ async def crawl(
     url: str,
     *,
     crawl_max_pages: int = 25,
-    max_depth: int = 0,
+    max_depth: int = 1,
     include_emails: bool = True,
     deobfuscate_emails: bool = True,
     throttle_ms: int = 0,
