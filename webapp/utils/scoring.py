@@ -16,6 +16,12 @@ FACTOR_DISPLAY_NAMES = {
     "crawl_access": "LLM Crawl Accessibility",
     "content_depth": "Content Depth",
     "entity_consistency": "Entity Consistency",
+    # AAX factors
+    "homepage_comprehension": "Homepage Comprehension",
+    "meta_optimization": "Meta Optimization",
+    "content_delta": "Content Delta",
+    "llms_txt": "llms.txt",
+    "email_validation": "Email Validation",
 }
 
 PRIORITY_NUMERIC = {
@@ -67,6 +73,15 @@ MANUAL_INPUT_SPECS = {
 }
 
 
+AAX_RATING_CLASSES = {
+    "Opaque": "rating-low",
+    "Unclear": "rating-low",
+    "Readable": "rating-ok",
+    "Clear": "rating-good",
+    "Fluent": "rating-excellent",
+}
+
+
 def rating_class(rating: str | None) -> str:
     mapping = {
         "Poor": "rating-low",
@@ -79,6 +94,12 @@ def rating_class(rating: str | None) -> str:
         "Visible": "rating-ok",
         "Authoritative": "rating-good",
         "Dominant": "rating-excellent",
+        # AAX ratings
+        "Opaque": "rating-low",
+        "Unclear": "rating-low",
+        "Readable": "rating-ok",
+        "Clear": "rating-good",
+        "Fluent": "rating-excellent",
     }
     return mapping.get(rating, "") if rating else ""
 
@@ -112,7 +133,7 @@ def bar_color(score: float | None) -> str:
 def build_score_data_for_template(score_data: dict) -> dict:
     """Augment raw score_json with display names and bar colors for templates."""
     result: dict[str, Any] = {}
-    for section_key in ["aeo", "geo"]:
+    for section_key in ["aeo", "geo", "aax"]:
         section = score_data.get(section_key, {})
         factors = section.get("factors", {})
         enriched_factors = {}
@@ -123,6 +144,22 @@ def build_score_data_for_template(score_data: dict) -> dict:
             )
             enriched["bar_color"] = bar_color(factor.get("score"))
             enriched_factors[key] = enriched
+
+        # Add skip reasons as notes on skipped factors
+        skip_reasons = section.get("skip_reasons", {})
+        for key, reason in skip_reasons.items():
+            if key not in enriched_factors:
+                enriched_factors[key] = {
+                    "score": None,
+                    "weight": 0,
+                    "display_name": FACTOR_DISPLAY_NAMES.get(
+                        key, key.replace("_", " ").title()
+                    ),
+                    "bar_color": bar_color(None),
+                    "note": reason,
+                    "skipped": True,
+                }
+
         result[section_key] = {
             "composite": section.get("composite"),
             "auto_only_composite": section.get("auto_only_composite"),
@@ -165,6 +202,13 @@ def build_score_snapshot_context(crawl) -> dict | None:
         return None
     score_data = snapshot.score_json or {}
     score_data_enriched = build_score_data_for_template(score_data)
+
+    # AAX section
+    aax_section = score_data.get("aax", {})
+    aax_tests_completed = aax_section.get("tests_completed", 0)
+    aax_tests_skipped = aax_section.get("tests_skipped", 0)
+    aax_tests_total = aax_tests_completed + aax_tests_skipped
+
     return {
         "crawl_id": crawl.id,
         "aeo_score": snapshot.aeo_score,
@@ -179,4 +223,10 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "recommendations": score_data_enriched.get("recommendations", []),
         "manual_input_fields": build_manual_input_fields(score_data),
         "has_manual_missing": has_manual_missing(score_data),
+        # AAX fields
+        "aax_score": aax_section.get("composite"),
+        "aax_rating": aax_section.get("rating", "Unknown"),
+        "aax_rating_class": rating_class(aax_section.get("rating")),
+        "aax_tests_completed": aax_tests_completed,
+        "aax_tests_total": aax_tests_total,
     }

@@ -207,34 +207,6 @@
         } catch (_) { }
     }
     /* ----- Pages panel (per-page stats table) ----- */
-    function _pageSizeScore(cm) {
-        // AEO A2 content_structure word-count scoring
-        var w = (cm && Number(cm.words)) || 0;
-        if (w < 200) return 10;
-        if (w < 500) return 30;
-        if (w < 1000) return 50;
-        if (w < 2000) return 70;
-        return 90;
-    }
-    function _structureScore(hd) {
-        // AEO A2 content_structure heading scoring
-        var score = 0;
-        var h1c = (hd && Number(hd.h1_count)) || 0;
-        var dep = (hd && Number(hd.depth)) || 0;
-        var tot = (hd && Number(hd.total)) || 0;
-        if (h1c === 1) score += 40;
-        else if (h1c > 1) score += 10;
-        if (dep >= 2) score += 30;
-        else if (dep >= 1) score += 15;
-        if (tot >= 5) score += 30;
-        else if (tot >= 2) score += 15;
-        return Math.min(100, score);
-    }
-    function _scoreCls(s) {
-        if (s >= 70) return 'stat-ok';
-        if (s >= 40) return 'stat-warn';
-        return 'stat-err';
-    }
     function _pageShortPath(url) {
         try {
             var u = new URL(url);
@@ -253,51 +225,6 @@
     }
     function _pageTitle(p) {
         return (p && p.page && p.page.title) || '';
-    }
-    function _pageMetaDesc(p) {
-        return (p && p.page && p.page.description) || '';
-    }
-    function _collectTypes(obj, types) {
-        if (!obj || typeof obj !== 'object') return;
-        var t = obj['@type'];
-        if (t) {
-            if (Array.isArray(t)) {
-                t.forEach(function (x) { if (x) types.add(String(x)); });
-            } else {
-                types.add(String(t));
-            }
-        }
-        // Handle @graph arrays
-        if (Array.isArray(obj['@graph'])) {
-            obj['@graph'].forEach(function (item) { _collectTypes(item, types); });
-        }
-        // Recurse into nested objects (but skip arrays and primitives)
-        Object.keys(obj).forEach(function (k) {
-            if (k === '@type' || k === '@graph') return;
-            var v = obj[k];
-            if (Array.isArray(v)) {
-                v.forEach(function (item) { _collectTypes(item, types); });
-            } else if (v && typeof v === 'object') {
-                _collectTypes(v, types);
-            }
-        });
-    }
-
-    function _schemaTypes(p) {
-        var jsonld = (p && p.page && p.page.jsonld) || [];
-        var types = new Set();
-        jsonld.forEach(function (s) { _collectTypes(s, types); });
-        return Array.from(types);
-    }
-    function _richnessIcons(cm) {
-        var icons = [];
-        var lists = (cm && Number(cm.lists)) || 0;
-        var tables = (cm && Number(cm.tables)) || 0;
-        var code = (cm && Number(cm.code_blocks)) || 0;
-        if (lists > 0) icons.push('<span title="' + lists + ' list' + (lists > 1 ? 's' : '') + '">&#x1f4cb;</span>');
-        if (tables > 0) icons.push('<span title="' + tables + ' table' + (tables > 1 ? 's' : '') + '">&#x1f4ca;</span>');
-        if (code > 0) icons.push('<span title="' + code + ' code block' + (code > 1 ? 's' : '') + '">&#x1f4bb;</span>');
-        return icons.join(' ') || '—';
     }
 
     function renderPages() {
@@ -344,10 +271,8 @@
             headLi.innerHTML =
                 '<span class="ph-page">Page</span>' +
                 '<span class="ph-words">Words</span>' +
-                '<span class="ph-headings">Headings</span>' +
-                '<span class="ph-scss">Str</span>' +
-                '<span class="ph-schema">Schema</span>' +
-                '<span class="ph-rich">Rich</span>';
+                '<span class="ph-tokens">~Tokens</span>' +
+                '<span class="ph-headings">Headings</span>';
             ul.appendChild(headLi);
 
             slice.forEach(function (p) {
@@ -360,23 +285,15 @@
                 var title = _pageTitle(p) || '';
                 var cm = p.content_metrics || {};
                 var hd = p.headings || {};
-                var ws = (cm.words != null) ? Number(cm.words) : null;
-                var wsc = ws != null ? _pageSizeScore(cm) : null;
-                var scs = _structureScore(hd);
-                var schemas = _schemaTypes(p);
-                var schemaLabel = schemas.length > 0 ? schemas.slice(0, 2).join(', ') : 'none';
-                var richness = _richnessIcons(cm);
-                var totalHd = (hd && Number(hd.total)) || 0;
-                var maxDepth = (hd && Number(hd.depth)) || 0;
-                var hdLabel = totalHd ? totalHd + ' · d' + maxDepth : '—';
+                var words = (cm.words != null) ? Number(cm.words) : 0;
+                var tokens = Math.round(words * 1.33);
+                var headings = (hd && Number(hd.total)) || 0;
 
                 li.innerHTML =
                     '<span class="ps-page" title="' + escapeHtml(url) + '"><span class="ps-path">' + escapeHtml(path) + '</span><span class="ps-title">' + escapeHtml(title) + '</span><span class="ps-dom">' + escapeHtml(dom) + '</span></span>' +
-                    '<span class="ps-words ' + (wsc != null ? _scoreCls(wsc) : '') + '">' + (ws != null ? ws.toLocaleString() : '—') + '</span>' +
-                    '<span class="ps-headings">' + escapeHtml(hdLabel) + '</span>' +
-                    '<span class="ps-scss ' + _scoreCls(scs) + '">' + scs + '</span>' +
-                    '<span class="ps-schema small">' + escapeHtml(schemaLabel) + '</span>' +
-                    '<span class="ps-rich">' + richness + '</span>';
+                    '<span class="ps-words">' + (words ? words.toLocaleString() : '—') + '</span>' +
+                    '<span class="ps-tokens">~' + (tokens ? tokens.toLocaleString() : '—') + '</span>' +
+                    '<span class="ps-headings">' + (headings || '—') + '</span>';
 
                 li.addEventListener('click', function () {
                     previewPageByUrl(url);
@@ -389,10 +306,7 @@
             try { var pc = document.getElementById('pages-count'); if (pc) pc.textContent = String(filtered.length); } catch (_) { }
 
             var firstWithMd = slice.find(function (p) { return !!((p.markdown || '').trim().length); });
-            // Don't auto-preview — show summary hint instead
             if (firstWithMd) {
-                // Still render the markdown panel but keep it empty until selected
-                // (or show the first page to match old behaviour)
                 previewPageByUrl(firstWithMd.url || '');
             } else {
                 renderMarkdown('');
@@ -755,151 +669,45 @@
         } catch (_) { }
     }
 
-    /* ----- Links panel (external domains) pagination ----- */
-    var LINKS_PAGER = null;
-
-    function setupLinksPagination() {
-        try {
-            // Data and DOM targets
-            if (!Array.isArray(TOP_EXTERNAL_DOMAINS) || TOP_EXTERNAL_DOMAINS.length === 0) return; // keep SSR empty state
-            var sec = document.getElementById('m-stats'); if (!sec) return;
-            var ul = sec.querySelector('ul.domain-list'); if (!ul) return;
-            if (!ul.id) ul.id = 'ext-domains-list';
-
-            var totalPages = Math.max(1, Math.ceil(TOP_EXTERNAL_DOMAINS.length / 10));
-            LINKS_PAGER = {
-                items: TOP_EXTERNAL_DOMAINS.slice(0),
-                pageSize: 10,
-                page: 1,
-                totalPages: totalPages,
-                ul: ul,
-                pagerEl: null,
-                prevBtn: null,
-                nextBtn: null,
-                pageLabel: null
-            };
-
-            renderLinksListSlice();
-            // Always render controls; buttons are disabled as needed
-            renderLinksControls();
-        } catch (_) { }
-    }
-
-    function renderLinksListSlice() {
-        try {
-            var st = LINKS_PAGER; if (!st || !st.ul) return;
-            var ul = st.ul;
-            // Rebuild list: header row + page slice
-            ul.innerHTML = '';
-            var head = document.createElement('li');
-            head.className = 'domain-list-header';
-            head.innerHTML = '<span>URL</span><span class="domain-list-count">Count</span>';
-            ul.appendChild(head);
-
-            var start = (st.page - 1) * st.pageSize;
-            var end = Math.min(st.items.length, start + st.pageSize);
-            for (var i = start; i < end; i++) {
-                var td = st.items[i] || {};
-                var li = document.createElement('li');
-
-                var left = document.createElement('span');
-                var dom = String(td.domain || '');
-                if (dom) {
-                    var a = document.createElement('a');
-                    a.href = 'https://' + dom;
-                    a.target = '_blank';
-                    a.rel = 'nofollow noopener';
-                    a.textContent = dom;
-                    left.appendChild(a);
-                } else {
-                    left.textContent = '';
-                }
-
-                var right = document.createElement('span');
-                right.className = 'domain-list-count';
-                right.textContent = String(td.count == null ? '' : td.count);
-
-                li.appendChild(left);
-                li.appendChild(right);
-                ul.appendChild(li);
-            }
-        } catch (_) { }
-    }
-
-    function renderLinksControls() {
-        try {
-            var st = LINKS_PAGER; if (!st || !st.ul) return;
-            if (!st.pagerEl) {
-                var nav = document.createElement('div');
-                nav.id = 'ext-domains-pager';
-                nav.setAttribute('role', 'navigation');
-                nav.setAttribute('aria-label', 'Links pagination');
-                nav.className = 'small mt-1';
-                // Center the controls
-                try {
-                    nav.style.display = 'flex';
-                    nav.style.justifyContent = 'center';
-                    nav.style.alignItems = 'center';
-                    nav.style.gap = '8px';
-                } catch (_) { }
-
-                var prev = document.createElement('button');
-                prev.type = 'button'; prev.className = 'btn btn-sm'; prev.textContent = 'Prev';
-                prev.setAttribute('aria-controls', st.ul.id);
-
-                var label = document.createElement('span');
-                label.className = 'ml-1 mr-1';
-                label.setAttribute('aria-live', 'polite');
-                label.textContent = 'Page ' + st.page + ' of ' + st.totalPages;
-
-                var next = document.createElement('button');
-                next.type = 'button'; next.className = 'btn btn-sm'; next.textContent = 'Next';
-                next.setAttribute('aria-controls', st.ul.id);
-
-                prev.addEventListener('click', function () {
-                    if (LINKS_PAGER.page > 1) {
-                        LINKS_PAGER.page -= 1;
-                        renderLinksListSlice();
-                        updateLinksControls();
-                    }
-                });
-                next.addEventListener('click', function () {
-                    if (LINKS_PAGER.page < LINKS_PAGER.totalPages) {
-                        LINKS_PAGER.page += 1;
-                        renderLinksListSlice();
-                        updateLinksControls();
-                    }
-                });
-
-                nav.appendChild(prev);
-                nav.appendChild(label);
-                nav.appendChild(next);
-
-                st.ul.parentNode.appendChild(nav);
-                st.pagerEl = nav; st.prevBtn = prev; st.nextBtn = next; st.pageLabel = label;
-            }
-            updateLinksControls();
-        } catch (_) { }
-    }
-
-    function updateLinksControls() {
-        try {
-            var st = LINKS_PAGER; if (!st || !st.pagerEl) return;
-            // Always show controls; disable unavailable actions
-            if (st.prevBtn) st.prevBtn.disabled = (st.page <= 1);
-            if (st.nextBtn) st.nextBtn.disabled = (st.page >= st.totalPages);
-            if (st.pageLabel) st.pageLabel.textContent = 'Page ' + st.page + ' of ' + st.totalPages;
-        } catch (_) { }
-    }
-
     /* ----- Emails preview helpers ----- */
-    function copyEmail(email) {
-        try { navigator.clipboard.writeText(email); showToast('Email copied'); } catch (_) { }
-    }
-    function copyAllEmails() {
+    function renderLeads() {
+        var tbody = document.getElementById('leads-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (!EMAILS_UNIQUE || EMAILS_UNIQUE.length === 0) {
+            var empty = document.getElementById('leads-empty');
+            if (empty) empty.classList.remove('hidden');
+            return;
+        }
+
+        EMAILS_UNIQUE.forEach(function (email) {
+            // Find which page this email was found on
+            var foundOn = '';
+            for (var url in EMAILS_BY_URL) {
+                if (EMAILS_BY_URL[url] && EMAILS_BY_URL[url].indexOf(email) >= 0) {
+                    foundOn = url.replace(/^https?:\/\/[^/]+/, '') || '/';
+                    break;
+                }
+            }
+            // Find source type (mailto, text, obfuscated)
+            var sourceType = 'text';
+            EMAILS_SOURCES_RAW.forEach(function (s) {
+                if (s.email === email && s.found_as) sourceType = s.found_as;
+            });
+
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><code>' + escapeHtml(email) + '</code></td>' +
+                '<td class="small">' + escapeHtml(foundOn) + '</td>' +
+                '<td class="small">' + escapeHtml(sourceType) + '</td>';
+            tbody.appendChild(tr);
+        });
+
+        // Toggle empty state message
         try {
-            var all = (EMAILS_UNIQUE || []).join('\n');
-            navigator.clipboard.writeText(all).then(function () { showToast('All emails copied'); });
+            var empty = document.getElementById('leads-empty');
+            if (empty) empty.classList.toggle('hidden', tbody.children.length > 0);
         } catch (_) { }
     }
 
@@ -999,104 +807,6 @@
             }
         } catch (_) { }
     })();
-
-    // Simple email validation heuristics
-    var DISPOSABLE_DOMAINS = new Set(['mailinator.com', '10minutemail.com', 'tempmail.email', 'yopmail.com', 'guerrillamail.com']);
-    function emailStatus(email, baseDomain) {
-        var re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!re.test(email)) return { label: 'Invalid', cls: 'status-invalid' };
-        var dom = (email.split('@')[1] || '').toLowerCase();
-        if (DISPOSABLE_DOMAINS.has(dom)) return { label: 'Disposable', cls: 'status-disposable' };
-        baseDomain = (baseDomain || '').toLowerCase();
-        if (baseDomain && (dom === baseDomain || dom.endsWith('.' + baseDomain))) return { label: 'Valid', cls: 'status-valid' };
-        return { label: 'Unknown', cls: 'status-unknown' };
-    }
-
-    // Leads helpers
-    function buildEmailSourceMap() {
-        var map = {};
-        EMAILS_SOURCES_RAW.forEach(function (x) {
-            var key = x.email;
-            if (!map[key]) map[key] = { foundAs: new Set(), firstUrl: x.url || '' };
-            (x.found_as || []).forEach(function (f) { map[key].foundAs.add(f); });
-            if (!map[key].firstUrl && x.url) map[key].firstUrl = x.url;
-        });
-        Object.keys(map).forEach(function (k) { map[k].foundAs = Array.from(map[k].foundAs.values()); });
-        return map;
-    }
-    function computeMentions(email) {
-        var c = 0;
-        Object.keys(EMAILS_BY_URL).forEach(function (u) {
-            var arr = EMAILS_BY_URL[u] || [];
-            if (arr.indexOf(email) !== -1) c += 1;
-        });
-        return c;
-    }
-    function firstSourceUrlFallback(email) {
-        for (var u in EMAILS_BY_URL) {
-            if ((EMAILS_BY_URL[u] || []).indexOf(email) !== -1) return u;
-        }
-        return window.location.href;
-    }
-    function applyLeadFilters(row) {
-        var filter = (document.getElementById('lead-filter-domain').value || '').toLowerCase().trim();
-        if (!filter) return true;
-        var rowDom = (row.getAttribute('data-domain') || '').toLowerCase();
-        var rowEmail = (row.getAttribute('data-email') || '').toLowerCase();
-        if (rowDom.indexOf(filter) !== -1) return true;
-        if (rowEmail.indexOf(filter) !== -1) return true;
-        return false;
-    }
-    function renderLeads() {
-        var tbody = document.getElementById('leads-tbody');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        var srcMap = buildEmailSourceMap();
-        EMAILS_UNIQUE.forEach(function (email) {
-            var dom = (email.split('@')[1] || '').toLowerCase();
-            var mentions = computeMentions(email);
-            var foundAs = (srcMap[email] && srcMap[email].foundAs) ? srcMap[email].foundAs : [];
-            var fUrl = (srcMap[email] && srcMap[email].firstUrl) ? srcMap[email].firstUrl : firstSourceUrlFallback(email);
-            var st = emailStatus(email, BASE_DOMAIN);
-
-            var tr = document.createElement('tr');
-            tr.setAttribute('data-email', email);
-            tr.setAttribute('data-domain', dom);
-            tr.setAttribute('data-foundas', foundAs.join(','));
-            var actionsHtml = '<button class="btn btn-sm" onclick="copyLink(\'' + jsStr(email) + '\')">Copy</button>';
-            if (LOGGED_IN) {
-                actionsHtml += ' <button class="btn btn-sm" onclick="addEmailToProspect(\'' + jsStr(email) + '\', \'' + jsStr(fUrl) + '\')">Add to Prospect</button>';
-            }
-            tr.innerHTML =
-                '<td><input type="checkbox" class="lead-select"></td>' +
-                '<td><code>' + escapeHtml(email) + '</code></td>' +
-                '<td>' + mentions + '</td>' +
-                '<td title="' + escapeHtml(foundAs.length ? ('Found on: ' + fUrl + '; as: ' + foundAs.join(',')) : 'N/A') + '">' + (foundAs.join(',') || '-') + '</td>' +
-                '<td><span class="status-chip ' + st.cls + '">' + st.label + '</span></td>' +
-                '<td>' + escapeHtml(dom || '-') + '</td>' +
-                '<td>' + actionsHtml + '</td>';
-            if (applyLeadFilters(tr)) tbody.appendChild(tr);
-        });
-        // Hook select all
-        var sa = document.getElementById('lead-select-all');
-        if (sa) {
-            sa.checked = false;
-            sa.onchange = function () {
-                tbody.querySelectorAll('.lead-select').forEach(function (cb) { cb.checked = sa.checked; });
-            };
-        }
-        // Toggle empty state message
-        try {
-            var empty = document.getElementById('leads-empty');
-            if (empty) empty.classList.toggle('hidden', tbody.children.length > 0);
-        } catch (_) { }
-    }
-
-
-
-    // Utilities
-    function jsStr(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
-    function csv(s) { var t = String(s == null ? '' : s); if (/[",\n]/.test(t)) return '"' + t.replace(/"/g, '""') + '"'; return t; }
 
     function fmtMs(ms) {
         if (!ms || ms < 0) return '0s';
@@ -1269,16 +979,15 @@
         __progressTimer = setInterval(tick, 2000);
     }
 
+    // Utilities
+    function jsStr(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+    function csv(s) { var t = String(s == null ? '' : s); if (/[",\n]/.test(t)) return '"' + t.replace(/"/g, '""') + '"'; return t; }
+
     // Init
     (function init() {
         renderLeads();
-        var _lfd = document.getElementById('lead-filter-domain');
-        if (_lfd) { _lfd.addEventListener('input', renderLeads); }
         renderPages();
-        // Pages filters listeners
         renderSocial();
-        // Links (external domains) pagination - JS only
-        try { setupLinksPagination(); } catch (_) { }
 
         // Wire prospects + claim
         try { var pt = document.getElementById('prospect-toggle'); if (pt) pt.addEventListener('click', prospectToggle); } catch (_) { }
@@ -1305,7 +1014,7 @@
                     var enabled = shareToggle.checked;
                     setShare(enabled).then(function (res) {
                         if (res.share_key) {
-                            SHARE_URL = '/analysis/shared/' + res.share_key;
+                            // Update global for copy
                         }
                         showToast('Share status updated');
                     }).catch(function (e) {
@@ -1319,41 +1028,6 @@
             }
         } catch (_) { }
 
-        // Manual input form handling
-        try {
-            var miForm = document.getElementById('manual-input-form');
-            if (miForm) {
-                miForm.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    var fd = new FormData(miForm);
-                    var body = {};
-                    for (var _it = fd.keys(), _k = _it.next(); !_k.done; _k = _it.next()) {
-                        var key = _k.value;
-                        var val = fd.get(key);
-                        if (val !== '' && val !== null) {
-                            var num = parseFloat(String(val));
-                            body[key] = isNaN(num) ? null : Math.max(0, Math.min(100, num));
-                        }
-                    }
-                    var cid = miForm.getAttribute('data-crawl-id');
-                    if (!cid) { return; }
-                    var btn = miForm.querySelector('button[type="submit"]');
-                    if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
-                    apiJson('/api/scores/' + encodeURIComponent(cid) + '/inputs', 'POST', body)
-                        .then(function (res) {
-                            if (btn) { btn.disabled = false; btn.textContent = 'Recalculate Scores'; }
-                            showToast('Scores updated');
-                            // Refresh the page to show new scores (simplest approach)
-                            window.location.reload();
-                        })
-                        .catch(function (e) {
-                            if (btn) { btn.disabled = false; btn.textContent = 'Recalculate Scores'; }
-                            showToast('Failed to update scores');
-                        });
-                });
-            }
-        } catch (_) { }
-
         // Scroll helpers for score sections
         try {
             window.scrollToSection = function (id) {
@@ -1361,10 +1035,6 @@
                 if (el) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
-            };
-            window.resetManualInputs = function () {
-                var miForm = document.getElementById('manual-input-form');
-                if (miForm) { miForm.reset(); }
             };
         } catch (_) { }
 

@@ -132,9 +132,9 @@
     {% endif %}
   </div>
 
-  <!-- AEO/GEO Score Summary -->
+  <!-- Score Summary (AEO + GEO + AAX) -->
   {% if score_snapshot %}
-  <section class="panel mt-2 score-summary" role="region" aria-label="AEO and GEO Scores">
+  <section class="panel mt-2 score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
     <div class="score-gauges">
       <div class="score-gauge">
         <div class="score-gauge-header">AEO Score</div>
@@ -142,7 +142,9 @@
           {{ score_snapshot.aeo_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.aeo_rating }}</div>
-        <div class="gauge-auto-label">Auto-scored: {{ score_snapshot.aeo_auto_count }}/6</div>
+        <div class="gauge-auto-label">
+          {{ score_snapshot.aeo_auto_count }}/{{ score_snapshot.score_data.aeo.factors | length }} scored
+        </div>
       </div>
       <div class="score-gauge">
         <div class="score-gauge-header">GEO Score</div>
@@ -150,86 +152,107 @@
           {{ score_snapshot.geo_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.geo_rating }}</div>
-        <div class="gauge-auto-label">Auto-scored: {{ score_snapshot.geo_auto_count }}/6</div>
+        <div class="gauge-auto-label">
+          {{ score_snapshot.geo_auto_count }}/{{ score_snapshot.score_data.geo.factors | length }} scored
+        </div>
       </div>
-    </div>
-    <div class="score-summary-actions">
-      <button class="btn" onclick="scrollToSection('score-breakdown')">View Breakdown ↓</button>
-      {% if score_snapshot.has_manual_missing %}
-      <button class="btn btn-primary" onclick="scrollToSection('manual-input')">Enter Missing Values →</button>
-      {% endif %}
+      <div class="score-gauge">
+        <div class="score-gauge-header">AAX Score</div>
+        {% if score_snapshot.aax_score is not none %}
+        <div class="gauge-value {{ score_snapshot.aax_rating_class }}">
+          {{ score_snapshot.aax_score | round(1) }}
+        </div>
+        <div class="gauge-rating">{{ score_snapshot.aax_rating }}</div>
+        <div class="gauge-auto-label">
+          {% if score_snapshot.aax_tests_total > 0 %}
+          {{ score_snapshot.aax_tests_completed }}/{{ score_snapshot.aax_tests_total }} tests
+          {% else %}
+          AI analysis completed
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="gauge-value">—</div>
+        <div class="gauge-rating">Not available</div>
+        <div class="gauge-auto-label">AI analysis pending</div>
+        {% endif %}
+      </div>
     </div>
   </section>
   {% endif %}
 
-  <!-- AEO/GEO Score Breakdown -->
+  <!-- Score Breakdown (3 columns: AEO, GEO, AAX) -->
   {% if score_snapshot and score_snapshot.score_data %}
   <section id="score-breakdown" class="panel mt-2 score-breakdown" role="region" aria-label="Score Breakdown">
     <h2>Score Breakdown</h2>
     <div class="breakdown-grid">
+      <!-- AEO Column -->
       <div class="breakdown-column">
         <h3 class="breakdown-col-header">AEO Factors</h3>
         {% for factor in score_snapshot.score_data.aeo.factors.values() %}
+        {% if factor.score is not none %}
         <div class="factor-row">
           <span class="factor-label">{{ factor.display_name }}</span>
           <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+            <div class="factor-bar-fill" style="width: {{ factor.score }}%; background: {{ factor.bar_color }};">
             </div>
           </div>
           <span
-            class="factor-score {% if factor.score is none %}factor-score-missing{% elif factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) if factor.score is not none else '—' }}/100
+            class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+            {{ factor.score | round(1) }}/100
           </span>
           <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
           {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
         </div>
+        {% endif %}
         {% endfor %}
       </div>
+      <!-- GEO Column -->
       <div class="breakdown-column">
         <h3 class="breakdown-col-header">GEO Factors</h3>
         {% for factor in score_snapshot.score_data.geo.factors.values() %}
+        {% if factor.score is not none %}
         <div class="factor-row">
           <span class="factor-label">{{ factor.display_name }}</span>
           <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+            <div class="factor-bar-fill" style="width: {{ factor.score }}%; background: {{ factor.bar_color }};">
             </div>
           </div>
           <span
-            class="factor-score {% if factor.score is none %}factor-score-missing{% elif factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) if factor.score is not none else '—' }}/100
+            class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+            {{ factor.score | round(1) }}/100
           </span>
           <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
           {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
         </div>
+        {% endif %}
         {% endfor %}
+      </div>
+      <!-- AAX Column -->
+      <div class="breakdown-column">
+        <h3 class="breakdown-col-header">AAX Factors</h3>
+        {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
+        {% for factor in score_snapshot.score_data.aax.factors.values() %}
+        {% if factor.score is not none %}
+        <div class="factor-row">
+          <span class="factor-label">{{ factor.display_name }}</span>
+          <div class="factor-bar">
+            <div class="factor-bar-fill" style="width: {{ factor.score }}%; background: {{ factor.bar_color }};">
+            </div>
+          </div>
+          <span
+            class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+            {{ factor.score | round(1) }}/100
+          </span>
+          <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+          {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <p class="small">No AAX factors available.</p>
+        {% endif %}
       </div>
     </div>
-  </section>
-  {% endif %}
-
-  <!-- Manual Input Form -->
-  {% if score_snapshot and score_snapshot.manual_input_fields %}
-  <section id="manual-input" class="panel mt-2 manual-input" role="region" aria-label="Manual Score Inputs">
-    <h2>Improve Your Score <span class="small">(optional)</span></h2>
-    <p class="small">These factors can't be auto-detected. Provide estimates to complete your score.</p>
-    <form id="manual-input-form" data-crawl-id="{{ score_snapshot.crawl_id }}">
-      <div class="form-grid">
-        {% for field in score_snapshot.manual_input_fields %}
-        <label>
-          <span class="field-label">{{ field.label }}</span>
-          <span class="field-weight small">({{ (field.weight * 100) | round(0) }}% weight)</span>
-          <input type="number" name="{{ field.key }}" min="0" max="100"
-            value="{{ field.current_value if field.current_value is not none else '' }}"
-            placeholder="{{ field.placeholder }}">
-        </label>
-        <span class="field-guidance small">{{ field.guidance }}</span>
-        {% endfor %}
-      </div>
-      <div class="form-actions mt-1">
-        <button type="submit" class="btn btn-primary">Recalculate Scores</button>
-        <button type="button" class="btn" onclick="resetManualInputs()">Reset</button>
-      </div>
-    </form>
   </section>
   {% endif %}
 
@@ -239,265 +262,100 @@
     <h2>Recommendations</h2>
     {% for rec in score_snapshot.recommendations | sort(attribute='priority_numeric') %}
     <div class="rec-item rec-priority-{{ rec.priority }}">
-      <span class="rec-priority-badge">
-        {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Medium{% else %}Info{% endif %}
-      </span>
-      <span class="rec-title">{{ rec.title }}</span>
-      <span class="rec-detail">{{ rec.detail }}</span>
-      <span class="rec-impact">{{ rec.impact }}</span>
+      <div class="rec-header">
+        <span class="rec-priority-badge">
+          {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Medium{% else %}Info{% endif %}
+        </span>
+        <span class="rec-title">{{ rec.title }}</span>
+        <span class="rec-impact">{{ rec.impact }}</span>
+      </div>
+      <div class="rec-detail">{{ rec.detail }}</div>
     </div>
     {% endfor %}
   </section>
   {% endif %}
 
-  {% set rm = {} %}
-  {# Prefer summary metrics only when they contain any render values; otherwise fall back to payload #}
-  {% if summary and summary.metrics and summary.metrics.render and (
-  (summary.metrics.render.response_status is not none) or
-  (summary.metrics.render.load_time_ms is not none) or
-  (summary.metrics.render.content_length is not none) or
-  (summary.metrics.render.network_requests is not none)
-  ) %}
-  {% set rm = summary.metrics.render %}
-  {% elif payload and payload.pages and payload.pages[0] and payload.pages[0].metrics and
-  payload.pages[0].metrics.render %}
-  {% set rm = payload.pages[0].metrics.render %}
-  {% elif payload and payload.metrics and payload.metrics.render %}
-  {% set rm = payload.metrics.render %}
-  {% endif %}
-  <!-- Quick Stats -->
-  <div class="quick-stats panel mt-3" role="region" aria-label="Quick Stats">
-    {# ---- Section: Content Quality (primary — AEO/GEO inputs) ---- #}
-    <div class="quick-stats-label">Content Quality (AEO/GEO Inputs)</div>
-    <div class="stat-card">
-      <div class="stat-k">Schema</div>
-      {% set _schema_pct = (payload.audit and payload.audit.schema_coverage and
-      payload.audit.schema_coverage.coverage_pct) if payload else None %}
-      {% if _schema_pct is not none %}
-      <div
-        class="stat-v {% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
-        {{ _schema_pct }}%</div>
-      {% else %}
-      <div class="stat-v stat-warn">—</div>
+  <!-- Site Identity -->
+  {% set _payload = payload if payload else {} %}
+  {% set _pg = (_payload.page if _payload and _payload.page else ( (_payload.pages[0].page) if (_payload.pages and
+  _payload.pages|length > 0 and _payload.pages[0] and _payload.pages[0].page) else {} )) %}
+  {% set pg = _pg or {} %}
+  {% set og = (pg.og if pg and pg.og else {}) %}
+  {% set _audit = (_payload.audit if _payload and _payload.audit else {}) %}
+  {% set _entity = (_audit.entity if _audit and _audit.entity else {}) %}
+  {% set _schema_cov = (_audit.schema_coverage if _audit and _audit.schema_coverage else {}) %}
+  {% set _meta = (_audit.meta if _audit and _audit.meta else {}) %}
+  {% set _canonical_issues = (_meta.canonical_issues if _meta else []) %}
+  {% set _og_missing = (summary.seo_deltas.og_missing if summary and summary.seo_deltas else []) %}
+  {% set _sameas = (_entity.same_as if _entity else []) %}
+  {% set _schema_pct = (_schema_cov.coverage_pct if _schema_cov else 0) %}
+  {% set _pages_with_schema = (_schema_cov.pages_with_schema if _schema_cov else 0) %}
+  {% set _total_pages = ((_schema_cov.pages_with_schema + _schema_cov.pages_without_schema) if _schema_cov else
+  (_payload.pages|length if _payload.pages else 0)) %}
+  {% set _entity_name = (_entity.name if _entity else '') %}
+
+  <section class="panel mt-2 site-identity" role="region" aria-label="Site Identity">
+    <h2>Site Identity</h2>
+    <div class="identity-header">
+      {% if og.image %}
+      <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
       {% endif %}
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Headings</div>
-      {% set _headings = [] %}
-      {% if payload and payload.pages %}
-      {% for _p in payload.pages %}
-      {% if _p.headings %}
-      {{ _headings.append((_p.headings.total | default(0)) if _p.headings.total else (_p.headings.h1_count +
-      (_p.headings.h2 | length) + (_p.headings.h3 | length) + (_p.headings.h4 | length) + (_p.headings.h5 | length) +
-      (_p.headings.h6 | length)) if _p.headings else 0) }}
-      {% endif %}
-      {% endfor %}
-      {% endif %}
-      <div class="stat-v">{{ ((_headings | sum) / (_headings | length)) | round(0) if _headings else 0 }}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Words</div>
-      {% set _word_vals = [] %}
-      {% if payload and payload.pages %}
-      {% for _p in payload.pages %}
-      {% if _p.content_metrics %}
-      {{ _word_vals.append(_p.content_metrics.words | default(0)) }}
-      {% endif %}
-      {% endfor %}
-      {% elif payload and payload.markdowns %}
-      {% for _url, _md in payload.markdowns.items() %}
-      {% if _md.content_metrics %}
-      {{ _word_vals.append(_md.content_metrics.words | default(0)) }}
-      {% endif %}
-      {% endfor %}
-      {% endif %}
-      {% set _word_count = _word_vals | length %}
-      {% set _word_avg = (_word_vals | sum / _word_count) | round(0) if _word_count > 0 else 0 %}
-      <div
-        class="stat-v {% if _word_avg >= 500 %}stat-ok{% elif _word_avg >= 200 %}stat-warn{% else %}stat-err{% endif %}">
-        {{ _word_avg }}
+      <div class="identity-meta-primary">
+        <div class="identity-field">
+          <span class="identity-label">Title</span>
+          <span class="identity-value">{{ pg.title or '—' }}</span>
+        </div>
+        <div class="identity-field">
+          <span class="identity-label">Description</span>
+          <span class="identity-value">{{ pg.description or '—' }}</span>
+        </div>
       </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-k">Entity</div>
-      {% set _entity_name = (payload.audit and payload.audit.entity and payload.audit.entity.name) if payload else None
-      %}
-      {% set _sameas = (payload.audit and payload.audit.entity and payload.audit.entity.same_as) if payload else [] %}
-      {% if _entity_name %}
-      <div class="stat-v {% if _sameas and _sameas | length > 0 %}stat-ok{% else %}stat-warn{% endif %}">{{ _entity_name
-        }}</div>
-      {% else %}
-      <div class="stat-v stat-err">—</div>
-      {% endif %}
-    </div>
-    <div class="stat-card">
-      <div class="stat-k">Canonical</div>
-      {% set _canonical_issues = (payload.audit and payload.audit.meta and payload.audit.meta.canonical_issues) if
-      payload else [] %}
-      {% set _dup_titles = (payload.audit and payload.audit.meta and payload.audit.meta.duplicate_og_titles) if payload
-      else {} %}
-      {% if _canonical_issues and _canonical_issues | length > 0 %}
-      <div class="stat-v stat-err">{{ _canonical_issues | length }} issue{{ 's' if _canonical_issues | length != 1 }}
-      </div>
-      {% elif _dup_titles and _dup_titles | length > 0 %}
-      <div class="stat-v stat-warn">{{ _dup_titles | length }} duplicate{{ 's' if _dup_titles | length != 1 }}</div>
-      {% else %}
-      <div class="stat-v stat-ok">OK</div>
-      {% endif %}
-    </div>
-
-    {# ---- Section: Performance (collapsed) ---- #}
-    <details class="quick-stats-collapsed">
-      <summary>Performance (HTTP, Load, Bytes, Requests)</summary>
-      <div class="stat-card">
-        <div class="stat-k">HTTP</div>
-        <div class="stat-v" {% if rm.response_status is not none %} {% if rm.response_status>= 400 %}class="stat-err"
-          {% elif rm.response_status >= 300 %}class="stat-warn"
-          {% else %}class="stat-ok"{% endif %}
-          {% endif %}>
-          {{ rm.response_status if rm.response_status is not none else "" }}
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Load</div>
-        <div class="stat-v">
-          {% set _load_ms = (rm.load_time_ms if rm and (rm.load_time_ms is not none) else None) %}
-          {% if _load_ms is not none %}
-          {% if _load_ms >= 1000 %}{{ (_load_ms / 1000.0) | round(1) }} s{% else %}{{ _load_ms | int }} ms{% endif %}
-          {% else %}{{ "" }}{% endif %}
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Bytes</div>
-        <div class="stat-v">
-          {% set _bytes = (rm.content_length if rm and (rm.content_length is not none) else None) %}
-          {% if _bytes is not none %}
-          {% if _bytes >= 1048576 %}{{ (_bytes / 1048576.0) | round(1) }} MB
-          {% elif _bytes >= 1024 %}{{ (_bytes / 1024.0) | round(1) }} KB
-          {% else %}{{ _bytes | int }} B{% endif %}
-          {% else %}{{ "" }}{% endif %}
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Requests</div>
-        <div class="stat-v">{{ rm.network_requests if rm.network_requests is not none else "" }}</div>
-      </div>
-    </details>
-
-    {# ---- Section: Found (collapsed) ---- #}
-    <details class="quick-stats-collapsed">
-      <summary>Found (Emails, Pages, Links)</summary>
-      <div class="stat-card">
-        <div class="stat-k">Emails</div>
-        <div class="stat-v">
-          {% if payload.emails and payload.emails.counts %}{{ payload.emails.counts.total_unique or 0 }}
-          {% elif summary and summary.emails %}{{ summary.emails.unique_count or 0 }}
-          {% else %}0{% endif %}
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Pages</div>
-        <div class="stat-v">
-          {% if payload and payload.pages %}{{ payload.pages|length }}
-          {% elif payload and payload.summary and (payload.summary.visited_count is not none) %}{{
-          payload.summary.visited_count }}
-          {% elif summary and summary.metrics and summary.metrics.extraction and
-          (summary.metrics.extraction.internal_count is not none) %}{{ summary.metrics.extraction.internal_count }}
-          {% else %}0{% endif %}
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-k">Links</div>
-        <div class="stat-v">
-          {% if summary and summary.metrics and summary.metrics.extraction and
-          (summary.metrics.extraction.external_count
-          is not none) %}{{ summary.metrics.extraction.external_count }}
-          {% elif payload and payload.metrics and payload.metrics.extraction and
-          (payload.metrics.extraction.external_count is not none) %}{{ payload.metrics.extraction.external_count }}
-          {% elif payload and payload.links and payload.links.external %}{{ payload.links.external|length }}
-          {% else %}0{% endif %}
-        </div>
-      </div>
-    </details>
-  </div>
-
-  {% include "partials/metadata_panel.html" %}
-
-  {% if is_owner and payload and payload.summary %}
-  <section class="panel mt-3" role="region" aria-label="Crawl Summary">
-    <h2>Crawl Summary</h2>
-    <ul class="domain-list">
+    <ul class="identity-details">
       <li>
-        <span class="small">Pages Visited</span>
-        <span>{{ payload.summary.visited_count or 'N/A' }}</span>
+        <span>Canonical</span>
+        <span>
+          {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
+          {% else %}—{% endif %}
+        </span>
       </li>
       <li>
-        <span class="small">Reason Stopped</span>
-        <span>{{ reason_stopped_label or 'N/A' }}</span>
+        <span>Entity</span>
+        <span
+          class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
+          {{ _entity_name or '— (not detected)' }}
+        </span>
       </li>
-    </ul>
-  </section>
-  {% endif %}
-
-  {% if is_owner and payload and (payload.scope or payload.start_url or payload.limits) %}
-  <section class="panel mt-2" role="region" aria-label="Crawl Configuration">
-    <h2>Crawl Configuration</h2>
-    <ul class="domain-list">
-      {% if payload.scope %}
       <li>
-        <span class="small">Scope</span>
-        <span>{{ payload.scope|title }}</span>
+        <span>Schema Coverage</span>
+        <span class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
+          {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
+        </span>
+      </li>
+      <li>
+        <span>OG Title</span>
+        <span>{{ og.title or '—' }}</span>
+      </li>
+      <li>
+        <span>OG Description</span>
+        <span>{{ og.description or '—' }}</span>
+      </li>
+      {% if _canonical_issues and _canonical_issues|length > 0 %}
+      <li>
+        <span>Canonical Issues</span>
+        <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
       </li>
       {% endif %}
-      {% if payload.start_url %}
+      {% if _og_missing and _og_missing|length > 0 %}
       <li>
-        <span class="small">Start URL</span>
-        <span><a href="{{ payload.start_url }}" target="_blank" rel="noopener">{{ payload.start_url }}</a></span>
-      </li>
-      {% endif %}
-      {% if payload.limits %}
-      <li>
-        <span class="small">Max Pages</span>
-        <span>{{ payload.limits.max_pages or 'N/A' }}</span>
-      </li>
-      <li>
-        <span class="small">Max Depth</span>
-        <span>{{ payload.limits.max_depth or 'N/A' }}</span>
-      </li>
-      <li>
-        <span class="small">Time Budget</span>
-        <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A' }}s</span>
+        <span>Missing OG</span>
+        <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
       </li>
       {% endif %}
     </ul>
   </section>
-  {% endif %}
 
-  {% if request.state.current_user and visibility == 'public' and key and ownerless %}
-  <section class="panel mt-2" role="region" aria-label="Claim Analysis">
-    <h2>Claim Analysis</h2>
-    <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
-    <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
-  </section>
-  {% endif %}
-
-  {% if is_owner %}
-  <section class="panel mt-2" role="region" aria-label="Owner Controls">
-    <h2>Owner Controls</h2>
-    <div class="form-grid">
-      <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in discovery</label>
-      <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
-    </div>
-    <div class="form-grid">
-      <label><input type="checkbox" id="share-toggle" {% if share_url %}checked{% endif %}> Shareable link</label>
-      <button type="button" id="share-btn" class="btn btn-sm">Update</button>
-      {% if share_url %}<button type="button" id="copy-share-btn" class="btn btn-sm">Copy Link</button>{% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-
-  <!-- Pages panel for desktop -->
+  <!-- Pages panel -->
   {% if payload and payload.pages %}
   <section class="panel mt-2" role="region" aria-label="Content pages">
     <h2>Content pages (<span id="pages-count">0</span>)</h2>
@@ -533,116 +391,193 @@
   </section>
   {% endif %}
 
-  {# Show leads section for all viewers — demoted to collapsible #}
-  <details class="secondary-section" id="secondary-intelligence">
-    <summary class="secondary-section-header">Lead Intelligence &amp; Links</summary>
-    <section class="panel mt-2" role="region" aria-label="Contact intelligence">
-      <h2>Contact intelligence</h2>
-      <div class="actions" id="emails-toolbar">
-        <input type="text" id="lead-filter-domain" placeholder="Search emails..." aria-label="Search emails">
-      </div>
-      <div class="table-wrap">
-        <table class="table mt-1" aria-label="Emails table">
-          <thead>
-            <tr>
-              <th><input type="checkbox" id="lead-select-all"></th>
-              <th>Email</th>
-              <th>Mentions</th>
-              <th>Found As</th>
-              <th>Status</th>
-              <th>Domain</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="leads-tbody">
-            <!-- Rows injected by JS -->
-          </tbody>
-        </table>
-      </div>
-      <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
-    </section>
+  <!-- Reachability -->
+  {% if payload %}
+  <section class="panel mt-2" role="region" aria-label="Reachability">
+    <h2>Reachability</h2>
+    <p class="reachability-subtitle">Can someone — or an AI agent — contact this company?</p>
 
-    <!-- Social panel -->
-    <section class="panel mt-2" role="region" aria-label="Social Links">
-      <h2>Social Links</h2>
+    <!-- Contactability Score -->
+    {% set contactability = (payload.scores.aax.contactability if payload.scores and payload.scores.aax and
+    payload.scores.aax.contactability else none) %}
+    {% if contactability %}
+    <div class="contactability-card">
+      <div class="contactability-score">
+        <span class="contactability-value {{ rating_class(contactability.rating) if contactability.rating else '' }}">
+          {{ contactability.score | default(0) }}/100
+        </span>
+        <span class="contactability-label">Contactability</span>
+      </div>
+      <ul class="contactability-checks">
+        <li class="{% if contactability.has_email %}check-pass{% else %}check-fail{% endif %}">
+          Email found: {{ contactability.email_count | default(0) }}
+        </li>
+        <li class="{% if contactability.has_mailto %}check-pass{% else %}check-fail{% endif %}">
+          Mailto link
+        </li>
+        <li class="{% if contactability.has_contact_page %}check-pass{% else %}check-fail{% endif %}">
+          Contact page
+        </li>
+        <li class="{% if contactability.has_social_links %}check-pass{% else %}check-fail{% endif %}">
+          Social links
+        </li>
+        <li class="{% if contactability.has_contact_point_schema %}check-pass{% else %}check-fail{% endif %}">
+          ContactPoint schema
+        </li>
+      </ul>
+      {% if contactability.penalties %}
+      <div class="contactability-penalties">
+        {% for penalty in contactability.penalties %}
+        <span class="penalty-note">{{ penalty }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Contact Intelligence -->
+    <h3>Contact Intelligence</h3>
+    {% set has_email_detail = payload.emails and payload.emails.unique and payload.emails.unique|length > 0 %}
+    {% if has_email_detail %}
+    <div class="table-wrap">
+      <table class="table mt-1" aria-label="Emails table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Found On</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody id="leads-tbody">
+          <!-- Rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+    <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
+    {% else %}
+    <div class="small mt-1">
+      {% if payload.emails and payload.emails.counts %}
+      No detailed email records available for this run.
+      Email summary: {{ payload.emails.counts.total_unique | default(0) }} unique,
+      {{ payload.emails.counts.total_mentions | default(0) }} mentions.
+      {% else %}
+      No emails detected.
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Social Links -->
+    <section class="mt-2" role="region" aria-label="Social Links">
+      <h3>Social Links</h3>
       <div id="social-groups"><!-- filled by JS --></div>
     </section>
-    <!-- Links panel -->
-    <section class="panel mt-2" role="region" aria-label="External links">
-      <h2>External links</h2>
-      {% if summary and summary.links and summary.links.top_external_domains and
-      summary.links.top_external_domains|length
-      > 0 %}
-      <ul class="domain-list">
-        <li class="small" style="font-weight:600;">
-          <span class="small">URL</span> <span class="small">Count</span>
-        </li>
-        {% for td in summary.links.top_external_domains %}
-        <li><a href="https://{{ td.domain }}" target="_blank" rel="noopener">{{ td.domain }}</a> <span class="small">{{
-            td.count }}</span></li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="small">No external domains detected.</div>
-      {% endif %}
-    </section>
-  </details>
 
-
-  <!-- Sections -->
-
-
-
-  {% if false %}
-  <section id="m-pages" class="mobile-section panel" role="region" aria-label="Pages (Site Scope)">
-    <h2>Pages ({{ payload.pages|length }})</h2>
-    <input type="text" id="pages-search" placeholder="Search pages..." aria-label="Search pages"
-      style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-    <div class="pages-panel">
-      <ul class="pages-list" id="pages-list">
-        {% for p in payload.pages %}
-        <li data-url="{{ p.url|e }}">
-          <input type="checkbox" {% if loop.first %}checked{% endif %} aria-label="Selected page">
-          <span class="small">{{ p.url }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-    <section id="m-stats" class="mobile-section panel mt-2" role="region" aria-label="Links">
-      <h2>Links</h2>
+    <!-- External Links -->
+    <section class="mt-2" role="region" aria-label="External links">
+      <h3>External Links</h3>
       {% if summary and summary.links and summary.links.top_external_domains and
       summary.links.top_external_domains|length > 0 %}
-      <ul class="domain-list">
-        <li class="small" style="font-weight:600;">
-          <span class="small">URL</span> <span class="small">Count</span>
-        </li>
+      <div class="tag-cloud">
         {% for td in summary.links.top_external_domains %}
-        <li><span>{{ td.domain }}</span> <span class="small">{{ td.count }}</span></li>
+        <a href="https://{{ td.domain }}" target="_blank" rel="noopener" class="link-tag">
+          {{ td.domain }}
+          <span class="tag-count">{{ td.count }}</span>
+        </a>
         {% endfor %}
-      </ul>
+      </div>
       {% else %}
       <div class="small">No external domains detected.</div>
       {% endif %}
     </section>
-    <div class="small" style="margin-top:6px;">
-      <label><input type="checkbox" id="pages-has-emails"> Show only pages with emails</label>
-      <label style="margin-left:8px;"><input type="checkbox" id="pages-sort-depth"> Sort by path length</label>
+  </section>
+  {% endif %}
+
+  <!-- Crawl Summary (owner-only) -->
+  {% if is_owner and payload and payload.summary %}
+  <section class="panel mt-3" role="region" aria-label="Crawl Summary">
+    <h2>Crawl Summary</h2>
+    <ul class="domain-list">
+      <li>
+        <span class="small">Pages Visited</span>
+        <span>{{ payload.summary.visited_count or 'N/A' }}</span>
+      </li>
+      <li>
+        <span class="small">Reason Stopped</span>
+        <span>{{ reason_stopped_label or 'N/A' }}</span>
+      </li>
+    </ul>
+  </section>
+  {% endif %}
+
+  <!-- Crawl Configuration (owner-only) -->
+  {% if is_owner and payload and (payload.scope or payload.start_url or payload.limits) %}
+  <section class="panel mt-2" role="region" aria-label="Crawl Configuration">
+    <h2>Crawl Configuration</h2>
+    <ul class="domain-list">
+      {% if payload.scope %}
+      <li>
+        <span class="small">Scope</span>
+        <span>{{ payload.scope|title }}</span>
+      </li>
+      {% endif %}
+      {% if payload.start_url %}
+      <li>
+        <span class="small">Start URL</span>
+        <span><a href="{{ payload.start_url }}" target="_blank" rel="noopener">{{ payload.start_url }}</a></span>
+      </li>
+      {% endif %}
+      {% if payload.limits %}
+      <li>
+        <span class="small">Max Pages</span>
+        <span>{{ payload.limits.max_pages or 'N/A' }}</span>
+      </li>
+      <li>
+        <span class="small">Max Depth</span>
+        <span>{{ payload.limits.max_depth or 'N/A' }}</span>
+      </li>
+      <li>
+        <span class="small">Time Budget</span>
+        <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A' }}s</span>
+      </li>
+      {% endif %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <!-- Claim Analysis -->
+  {% if request.state.current_user and visibility == 'public' and key and ownerless %}
+  <section class="panel mt-2" role="region" aria-label="Claim Analysis">
+    <h2>Claim Analysis</h2>
+    <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
+    <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
+  </section>
+  {% endif %}
+
+  <!-- Owner Controls -->
+  {% if is_owner %}
+  <section class="panel mt-2" role="region" aria-label="Owner Controls">
+    <h2>Owner Controls</h2>
+    <div class="form-grid">
+      <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in discovery</label>
+      <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
+    </div>
+    <div class="form-grid">
+      <label><input type="checkbox" id="share-toggle" {% if share_url %}checked{% endif %}> Shareable link</label>
+      <button type="button" id="share-btn" class="btn btn-sm">Update</button>
+      {% if share_url %}<button type="button" id="copy-share-btn" class="btn btn-sm">Copy Link</button>{% endif %}
     </div>
   </section>
   {% endif %}
 
+  <!-- Mobile sections -->
   <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel"></section>
 
-
-  <!-- Hidden markdown for download only (no inline render in site scope) -->
+  <!-- Hidden markdown for download only -->
   <pre id="markdown-content"
     class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
   {% else %}
   <p>No data available.</p>
   {% endif %}
-
-
-  <!-- removed Prompt Builder drawer -->
 
 </div>
 {% endblock %}

@@ -1001,7 +1001,7 @@ label {
 
 .pages-list li {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 70px 60px 44px 80px 56px;
+  grid-template-columns: minmax(160px, 1fr) 70px 70px 60px;
   gap: var(--space-xs);
   padding: var(--space-xxs) var(--space-sm);
   border-bottom: 1px solid var(--color-hairline);
@@ -1067,10 +1067,8 @@ label {
 /* Column spans for header row */
 .ph-page,
 .ph-words,
-.ph-headings,
-.ph-scss,
-.ph-schema,
-.ph-rich {
+.ph-tokens,
+.ph-headings {
   font: var(--font-body-emphasis);
   color: var(--color-ink-muted);
 }
@@ -1083,35 +1081,19 @@ label {
   color: var(--color-ink-muted);
 }
 
+/* Token estimate column — right-aligned, monospace */
+.ps-tokens {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  text-align: right;
+  color: var(--color-ink-muted);
+}
+
 /* Headings column */
 .ps-headings {
   font-family: IBM Plex Mono, ui-monospace, monospace;
   font-size: 12px;
   color: var(--color-ink-subtle);
-}
-
-/* Structure score column — bold number with health color */
-.ps-scss {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: center;
-}
-
-/* Schema column */
-.ps-schema {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--color-ink-subtle);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Richness icons column */
-.ps-rich {
-  text-align: center;
-  font-size: 14px;
 }
 
 /* Pager styles */
@@ -1809,8 +1791,8 @@ label {
 }
 
 /* ------------------------------------------------------------------------
-    QUICK STATS — horizontal grid of stat card tiles
-    ------------------------------------------------------------------------ */
+   QUICK STATS — horizontal grid of stat card tiles
+   ------------------------------------------------------------------------ */
 .quick-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -1873,8 +1855,8 @@ label {
 }
 
 /* ------------------------------------------------------------------------
-    RESPONSIVE
-    ------------------------------------------------------------------------ */
+   RESPONSIVE
+   ------------------------------------------------------------------------ */
 @media (max-width: 768px) {
 
   .grid-2,
@@ -2054,7 +2036,7 @@ label {
 /* Score Gauges */
 .score-gauges {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: var(--space-lg);
   margin-bottom: var(--space-md);
 }
@@ -2107,8 +2089,13 @@ label {
 }
 
 .gauge-auto-label {
-  font-size: var(--font-size-xs);
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.33;
+  letter-spacing: 0.32px;
   color: var(--color-ink-muted);
+  margin-top: 4px;
 }
 
 .score-summary-actions {
@@ -2121,7 +2108,7 @@ label {
 /* Score Breakdown */
 .breakdown-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: var(--space-xl);
 }
 
@@ -2161,7 +2148,7 @@ label {
 
 .factor-score {
   font-family: IBM Plex Mono, ui-monospace, monospace;
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   font-weight: 600;
   text-align: right;
 }
@@ -2183,7 +2170,9 @@ label {
 }
 
 .factor-weight {
-  font-size: var(--font-size-xs);
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.32px;
   color: var(--color-ink-muted);
   text-align: right;
 }
@@ -2194,12 +2183,9 @@ label {
   font-style: italic;
 }
 
-/* Recommendations */
+/* Recommendations — fixed flexbox layout */
 .rec-item {
-  display: grid;
-  grid-template-columns: 60px 1fr auto;
-  gap: var(--space-xs);
-  padding: var(--space-md);
+  padding: 16px;
   margin-bottom: 6px;
   background: var(--color-surface-1);
   border-radius: var(--radius-none);
@@ -2219,19 +2205,29 @@ label {
   border-left-color: var(--color-semantic-success);
 }
 
+.rec-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .rec-priority-badge {
-  font-size: var(--font-size-xs);
+  font-size: 14px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .rec-title {
   font-weight: 600;
+  flex: 1;
 }
 
 .rec-detail {
-  grid-column: 1 / -1;
-  font-size: var(--font-size-sm);
+  margin-top: 4px;
+  font-size: 14px;
   color: var(--color-ink-muted);
+  line-height: 1.29;
+  letter-spacing: 0.16px;
 }
 
 .rec-impact {
@@ -2239,60 +2235,8 @@ label {
   font-size: 12px;
   letter-spacing: 0.32px;
   color: var(--color-primary);
-  font-weight: 400;
-}
-
-/* Manual Input Form */
-.manual-input .form-grid {
-  display: grid;
-  grid-template-columns: 200px 1fr 100px;
-  gap: var(--space-xs);
-  align-items: center;
-}
-
-.manual-input label {
-  display: contents;
-}
-
-.field-label {
-  font-weight: 600;
-  font-size: var(--font-size-sm);
-}
-
-.field-weight {
-  color: var(--color-ink-muted);
-}
-
-.field-guidance {
-  grid-column: 1 / -1;
-  color: var(--color-ink-muted);
-  margin-bottom: var(--space-xs);
-}
-
-.manual-input input[type="number"] {
-  width: 80px;
-}
-
-/* Quick Stats collapsed sections */
-.quick-stats-collapsed {
-  margin-top: var(--space-sm);
-}
-
-.quick-stats-collapsed summary {
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  color: var(--color-ink-muted);
-  padding: 4px 0;
-}
-
-.quick-stats-collapsed[open] {
-  margin-top: var(--space-sm);
-  padding-top: var(--space-xs);
-  border-top: 1px solid var(--color-hairline);
-}
-
-.quick-stats-collapsed .stat-card {
-  display: inline-block;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Secondary section */
@@ -2302,14 +2246,14 @@ label {
   padding: var(--space-xs) 0;
 }
 
-/* Responsive */
+/* Responsive — score-related */
 @media (max-width: 768px) {
   .score-gauges {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .breakdown-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .factor-row {
@@ -2320,15 +2264,211 @@ label {
     grid-column: 1 / -1;
   }
 
-  .manual-input .form-grid {
+  .rec-item {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .score-gauges {
     grid-template-columns: 1fr;
   }
 
-  .rec-item {
-    grid-template-columns: 50px 1fr;
+  .breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------------------
+   SITE IDENTITY
+   ------------------------------------------------------------------------ */
+.site-identity .identity-header {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.identity-og-image {
+  max-height: 200px;
+  max-width: 350px;
+  object-fit: cover;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-none);
+  flex-shrink: 0;
+}
+
+.identity-meta-primary {
+  flex: 1;
+}
+
+.identity-field {
+  margin-bottom: 12px;
+}
+
+.identity-label {
+  display: block;
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.32px;
+  color: var(--color-ink-muted);
+  margin-bottom: 2px;
+}
+
+.identity-value {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.29;
+  letter-spacing: 0.16px;
+  color: var(--color-ink);
+}
+
+.identity-details {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.identity-details li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-hairline);
+  font-size: 14px;
+}
+
+.identity-details li span:first-child {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.32px;
+  color: var(--color-ink-muted);
+}
+
+@media (max-width: 480px) {
+  .site-identity .identity-header {
+    flex-direction: column;
   }
 
-  .rec-impact {
-    grid-column: 1 / -1;
+  .identity-og-image {
+    max-width: 100%;
   }
+}
+
+/* ------------------------------------------------------------------------
+   EXTERNAL LINKS — TAG CLOUD
+   ------------------------------------------------------------------------ */
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.link-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+  /* badges/pills exception per design.md rounded.sm */
+  font-size: 12px;
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  letter-spacing: 0.32px;
+  color: var(--color-ink);
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+
+.link-tag:hover {
+  border-color: var(--color-hairline-strong);
+  text-decoration: none;
+}
+
+.tag-count {
+  font-size: 10px;
+  color: var(--color-ink-muted);
+}
+
+/* ------------------------------------------------------------------------
+   REACHABILITY + CONTACTABILITY
+   ------------------------------------------------------------------------ */
+.reachability-subtitle {
+  font-size: 14px;
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  line-height: 1.29;
+  color: var(--color-ink-muted);
+  letter-spacing: 0.16px;
+  margin-bottom: 16px;
+}
+
+.contactability-card {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-none);
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.contactability-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.contactability-value {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: 0;
+}
+
+.contactability-label {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.32px;
+  color: var(--color-ink-muted);
+}
+
+.contactability-checks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.contactability-checks li {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.29;
+  letter-spacing: 0.16px;
+}
+
+.check-pass {
+  color: var(--color-semantic-success);
+}
+
+.check-fail {
+  color: var(--color-ink-subtle);
+}
+
+.contactability-penalties {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.penalty-note {
+  display: block;
+  font-size: 14px;
+  line-height: 1.29;
+  letter-spacing: 0.16px;
+  color: var(--color-semantic-warning);
+  margin-bottom: 4px;
 }
