@@ -233,12 +233,12 @@
 
             if (!PAGES_PAGER) {
                 PAGES_PAGER = {
-                    term: '', page: 1, pageSize: 5, totalPages: 1, ul: ul,
+                    term: '', page: 1, pageSize: 10, totalPages: 1, ul: ul,
                     pagerEl: null, prevBtn: null, nextBtn: null, pageLabel: null, sliceUrls: []
                 };
             } else {
                 PAGES_PAGER.ul = ul;
-                if (PAGES_PAGER.pageSize == null) PAGES_PAGER.pageSize = 5;
+                if (PAGES_PAGER.pageSize == null) PAGES_PAGER.pageSize = 10;
                 if (!Array.isArray(PAGES_PAGER.sliceUrls)) PAGES_PAGER.sliceUrls = [];
             }
 
@@ -265,14 +265,12 @@
 
             // Render stats table as a <ul> styled with domain-list
             ul.innerHTML = '';
-            // Header row
+            // Header row -simplified columns (Pages, Tokens)
             var headLi = document.createElement('li');
             headLi.className = 'domain-list-header pages-header-row';
             headLi.innerHTML =
                 '<span class="ph-page">Page</span>' +
-                '<span class="ph-words">Words</span>' +
-                '<span class="ph-tokens">~Tokens</span>' +
-                '<span class="ph-headings">Headings</span>';
+                '<span class="ph-tokens" style="text-align: right; margin-right: 12px;">~Tokens</span>';
             ul.appendChild(headLi);
 
             slice.forEach(function (p) {
@@ -281,19 +279,14 @@
                 var url = p.url || '';
                 li.setAttribute('data-url', url);
                 var path = _pageShortPath(url);
-                var dom = _pageDomain(url);
                 var title = _pageTitle(p) || '';
                 var cm = p.content_metrics || {};
-                var hd = p.headings || {};
                 var words = (cm.words != null) ? Number(cm.words) : 0;
                 var tokens = Math.round(words * 1.33);
-                var headings = (hd && Number(hd.total)) || 0;
 
                 li.innerHTML =
-                    '<span class="ps-page" title="' + escapeHtml(url) + '"><span class="ps-path">' + escapeHtml(path) + '</span><span class="ps-title">' + escapeHtml(title) + '</span><span class="ps-dom">' + escapeHtml(dom) + '</span></span>' +
-                    '<span class="ps-words">' + (words ? words.toLocaleString() : '—') + '</span>' +
-                    '<span class="ps-tokens">~' + (tokens ? tokens.toLocaleString() : '—') + '</span>' +
-                    '<span class="ps-headings">' + (headings || '—') + '</span>';
+                    '<span class="ps-page" title="' + escapeHtml(url) + '"><span class="ps-path">' + escapeHtml(path) + '</span><span class="ps-title">' + escapeHtml(title) + '</span></span>' +
+                    '<span class="ps-tokens" style="text-align: right; margin-right: 12px;">' + (tokens ? tokens.toLocaleString() : '—') + '</span>';
 
                 li.addEventListener('click', function () {
                     previewPageByUrl(url);
@@ -386,16 +379,20 @@
         var preEl = document.getElementById('page-markdown');
         if (!contentEl || !preEl) return;
 
+        // Clear inline style display changes that can clash
+        preEl.style.display = '';
+        contentEl.style.display = '';
+
         if (markdownRawVisible) {
-            // Show raw markdown, hide rendered
+            // Show raw markdown, hide rendered using classList toggling (bulletproof against CSS !important rules on .hidden)
             preEl.textContent = (md || '');
-            preEl.style.display = '';
-            contentEl.style.display = 'none';
+            preEl.classList.remove('hidden');
+            contentEl.classList.add('hidden');
         } else {
-            // Show rendered HTML, hide raw
+            // Show rendered HTML, hide raw using classList toggling (bulletproof)
             preEl.textContent = (md || '');
-            preEl.style.display = 'none';
-            contentEl.style.display = '';
+            preEl.classList.add('hidden');
+            contentEl.classList.remove('hidden');
             if (typeof marked !== 'undefined') {
                 var html = marked.parse(md || '', { breaks: true, gfm: true });
                 if (typeof DOMPurify !== 'undefined') {
@@ -414,8 +411,8 @@
                 }
             } else {
                 // Fallback: show raw if libraries not loaded
-                preEl.style.display = '';
-                contentEl.style.display = 'none';
+                preEl.classList.remove('hidden');
+                contentEl.classList.add('hidden');
             }
         }
     }
@@ -639,32 +636,92 @@
                 } catch (_) { }
             });
 
-            var html = '';
+            function extractHandle(u, platform) {
+                try {
+                    var url = new URL(u);
+                    var p = url.pathname || '/';
+                    if (p.endsWith('/')) p = p.slice(0, -1);
+                    var parts = p.split('/').filter(Boolean);
+                    if (parts.length === 0) return url.hostname;
+
+                    if (platform === 'Twitter') {
+                        return '@' + parts[0];
+                    }
+                    if (platform === 'LinkedIn') {
+                        if (parts[0] === 'company' || parts[0] === 'in' || parts[0] === 'school') {
+                            return parts[1] || parts[0];
+                        }
+                        return parts[0];
+                    }
+                    if (platform === 'Facebook') {
+                        if (parts[0] === 'pages' || parts[0] === 'people' || parts[0] === 'groups') {
+                            return parts[1] || parts[0];
+                        }
+                        return parts[0];
+                    }
+                    if (platform === 'Instagram') {
+                        return '@' + parts[0];
+                    }
+                    if (platform === 'YouTube') {
+                        return parts[0];
+                    }
+                    if (platform === 'TikTok') {
+                        return parts[0];
+                    }
+                    if (platform === 'GitHub') {
+                        if (parts.length > 1) {
+                            return parts[0] + '/' + parts[1];
+                        }
+                        return '@' + parts[0];
+                    }
+                    if (platform === 'Reddit') {
+                        if (parts[0] === 'r' || parts[0] === 'u') {
+                            return parts[0] + '/' + (parts[1] || '');
+                        }
+                        return parts[0];
+                    }
+                    if (platform === 'Threads' || platform === 'Bluesky' || platform === 'Telegram' || platform === 'Mastodon') {
+                        return '@' + parts[0].replace(/^@/, '');
+                    }
+                    return parts.join('/');
+                } catch (_) {
+                    return u;
+                }
+            }
+
+            var html = '<div class="social-grid">';
             Object.keys(groups).sort().forEach(function (plat) {
                 var profiles = Array.from(groups[plat].profiles.values());
                 var others = Array.from(groups[plat].other.values());
-                var total = profiles.length + others.length;
-                html += '<div class="mb-2"><div class="section-subheader">' + plat + ' <span class="small">(' + (total) + ')</span></div><ul class="domain-list domain-list-social">';
-                // Profiles first
-                profiles.forEach(function (u) {
-                    var acts = '<span class="social-actions"><a href="' + encodeURI(u) + '" target="_blank" rel="noopener" class="btn btn-sm">↗</a><button class="btn btn-sm" onclick="copyLink(\'' + jsStr(u) + '\')">Copy</button>';
+                var allLinks = profiles.concat(others);
+
+                allLinks.forEach(function (u) {
+                    var handle = extractHandle(u, plat);
+                    var cleanUrl = u.replace(/^https?:\/\//i, '');
+                    var platClass = 'brand-' + plat.toLowerCase();
+
+                    var acts = '<div class="social-card-actions">';
+                    acts += '<a href="' + encodeURI(u) + '" target="_blank" rel="noopener" class="btn btn-sm btn-tertiary">Open ↗</a>';
+                    acts += '<button class="btn btn-sm btn-ghost" onclick="copyLink(\'' + jsStr(u) + '\')">Copy</button>';
                     if (LOGGED_IN) {
-                        acts += '<button class="btn btn-sm" onclick="attachProspectSocial(\'' + jsStr(plat.toLowerCase()) + '\', \'' + jsStr(u) + '\')">Attach to Prospect</button><button class="btn btn-sm" onclick="attachContactSocial(\'' + jsStr(u) + '\')">Attach to Contact</button>';
+                        acts += '<button class="btn btn-sm btn-ghost" onclick="attachProspectSocial(\'' + jsStr(plat.toLowerCase()) + '\', \'' + jsStr(u) + '\')">Attach to Prospect</button>';
+                        acts += '<button class="btn btn-sm btn-ghost" onclick="attachContactSocial(\'' + jsStr(u) + '\')">Attach to Contact</button>';
                     }
-                    acts += '</span>';
-                    html += '<li><span><a href="' + encodeURI(u) + '" target="_blank" rel="noopener">' + escapeHtml(u) + '</a></span>' + acts + '</li>';
+                    acts += '</div>';
+
+                    html += '<div class="social-card-v2 ' + platClass + '">';
+                    html += '  <div class="social-card-v2-header">';
+                    html += '    <span class="social-plat-badge">' + plat + '</span>';
+                    html += '    <span class="social-handle-lbl">' + escapeHtml(handle) + '</span>';
+                    html += '  </div>';
+                    html += '  <div class="social-card-v2-body">';
+                    html += '    <a href="' + encodeURI(u) + '" target="_blank" rel="noopener" class="social-url-link">' + escapeHtml(cleanUrl) + '</a>';
+                    html += '  </div>';
+                    html += '  ' + acts;
+                    html += '</div>';
                 });
-                // Other links
-                others.forEach(function (u) {
-                    var acts = '<span class="social-actions"><a href="' + encodeURI(u) + '" target="_blank" rel="noopener" class="btn btn-sm">↗</a><button class="btn btn-sm" onclick="copyLink(\'' + jsStr(u) + '\')">Copy</button>';
-                    if (LOGGED_IN) {
-                        acts += '<button class="btn btn-sm" onclick="attachProspectSocial(\'' + jsStr(plat.toLowerCase()) + '\', \'' + jsStr(u) + '\')">Attach to Prospect</button><button class="btn btn-sm" onclick="attachContactSocial(\'' + jsStr(u) + '\')">Attach to Contact</button>';
-                    }
-                    acts += '</span>';
-                    html += '<li><span><a href="' + encodeURI(u) + '" target="_blank" rel="noopener">' + escapeHtml(u) + '</a></span>' + acts + '</li>';
-                });
-                html += '</ul></div>';
             });
+            html += '</div>';
             cont.innerHTML = html || '<div class="small">No social links detected.</div>';
         } catch (_) { }
     }
@@ -699,8 +756,7 @@
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td><code>' + escapeHtml(email) + '</code></td>' +
-                '<td class="small">' + escapeHtml(foundOn) + '</td>' +
-                '<td class="small">' + escapeHtml(sourceType) + '</td>';
+                '<td class="small">' + escapeHtml(foundOn) + '</td>';
             tbody.appendChild(tr);
         });
 
@@ -718,7 +774,7 @@
                 PAGES_PAGER = {
                     term: '',
                     page: 1,
-                    pageSize: 15,
+                    pageSize: 10,
                     totalPages: 1,
                     ul: document.getElementById('pages-list'),
                     pagerEl: null, prevBtn: null, nextBtn: null, pageLabel: null,
@@ -1049,6 +1105,13 @@
                 startProgressPolling(_cid);
             }
         } catch (_) { }
+
+        // Bind broken scoping functions globally (window scope) to activate inline onclick handlers
+        window.toggleMarkdownView = toggleMarkdownView;
+        window.copyCurrentPage = copyCurrentPage;
+        window.downloadCurrentPage = downloadCurrentPage;
+        window.previewPageByUrl = previewPageByUrl;
+        window.filterPages = filterPages;
     })();
 })();
 

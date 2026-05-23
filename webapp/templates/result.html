@@ -335,47 +335,6 @@
   </section>
   {% endif %}
 
-  <!-- Recommendations (grouped by pillar) -->
-  {% if score_snapshot and score_snapshot.recommendations %}
-  {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
-  <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
-    <h2>Recommendations</h2>
-    {% for pillar_key, pillar_label, pillar_score in [
-    ('aeo', 'AEO', score_snapshot.aeo_score),
-    ('geo', 'GEO', score_snapshot.geo_score),
-    ('aax', 'AAX', score_snapshot.aax_score)
-    ] %}
-    {% if rec_groups[pillar_key] | length > 0 %}
-    <div class="rec-group">
-      <div class="rec-group-header">
-        <span>{{ pillar_label }} Recommendations ({{ rec_groups[pillar_key] | length }})</span>
-        {% if pillar_score is not none %}
-        <div class="rec-group-progress">
-          <div class="rec-group-progress-fill"
-            style="width: {{ pillar_score }}%; background: {% if pillar_score >= 70 %}var(--color-primary){% elif pillar_score >= 40 %}var(--color-semantic-warning){% else %}var(--color-semantic-error){% endif %};">
-          </div>
-        </div>
-        <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
-        {% endif %}
-      </div>
-      {% for rec in rec_groups[pillar_key] %}
-      <div class="rec-item rec-priority-{{ rec.priority }}">
-        <div class="rec-header">
-          <span class="rec-priority-badge">
-            {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
-          </span>
-          <span class="rec-title">{{ rec.title }}</span>
-          <span class="rec-impact">{{ rec.impact }}</span>
-        </div>
-        <div class="rec-detail">{{ rec.detail }}</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-    {% endfor %}
-  </section>
-  {% endif %}
-
   <!-- AAX AI Agent Diagnostics -->
   {% if score_snapshot and score_snapshot.aax_analysis %}
   {% set aax = score_snapshot.aax_analysis %}
@@ -486,24 +445,26 @@
   <!-- Pages panel -->
   {% if payload and payload.pages %}
   <section class="panel mt-2" role="region" aria-label="Content pages">
-    <h2>Content pages (<span id="pages-count">0</span>)</h2>
-    <div class="small mb-1" role="toolbar" aria-label="Pages Controls">
-      <input type="search" id="page-search" placeholder="Search pages..." oninput="filterPages(this.value)">
+    <div class="content-pages-header">
+      <h2>Content pages</h2>
+      <div id="pages-pager" role="navigation" aria-label="Pages pagination"></div>
     </div>
+    <p class="content-pages-intro small">These are the pages discovered, crawled, and synthesized into clean Markdown.
+      This view represents exactly how AI search engines, LLM crawler agents, and web scrapers ingest and comprehend
+      your company's digital footprint.</p>
     <div class="layout layout-pages">
       <!-- Left: Pages stats table -->
       <div class="pages-page">
         <div class="pages-panel">
           <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
-          <div id="pages-pager" role="navigation" aria-label="Pages pagination"></div>
         </div>
       </div>
 
       <!-- Right: Markdown preview -->
       <div class="pages-page">
-        <div class="pages-pane-header small mb-1">
+        <div class="pages-pane-header">
           <span>Content (Markdown)</span>
-          <span>
+          <span class="pages-pane-actions">
             <button class="btn btn-sm" id="toggle-raw-btn" onclick="toggleMarkdownView()">View raw</button>
             <button class="btn btn-sm" onclick="copyCurrentPage()">Copy content</button>
             <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
@@ -573,7 +534,6 @@
           <tr>
             <th>Email</th>
             <th>Found On</th>
-            <th>Type</th>
           </tr>
         </thead>
         <tbody id="leads-tbody">
@@ -617,6 +577,47 @@
       <div class="small">No external domains detected.</div>
       {% endif %}
     </section>
+  </section>
+  {% endif %}
+
+  <!-- Recommendations (grouped by pillar) -->
+  {% if score_snapshot and score_snapshot.recommendations %}
+  {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
+  <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
+    <h2>Recommendations</h2>
+    {% for pillar_key, pillar_label, pillar_score in [
+    ('aeo', 'AEO', score_snapshot.aeo_score),
+    ('geo', 'GEO', score_snapshot.geo_score),
+    ('aax', 'AAX', score_snapshot.aax_score)
+    ] %}
+    {% if rec_groups[pillar_key] | length > 0 %}
+    <div class="rec-group">
+      <div class="rec-group-header">
+        <span>{{ pillar_label }} Recommendations ({{ rec_groups[pillar_key] | length }})</span>
+        {% if pillar_score is not none %}
+        <div class="rec-group-progress">
+          <div class="rec-group-progress-fill"
+            style="width: {{ pillar_score }}%; background: {% if pillar_score >= 70 %}var(--color-primary){% elif pillar_score >= 40 %}var(--color-semantic-warning){% else %}var(--color-semantic-error){% endif %};">
+          </div>
+        </div>
+        <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
+        {% endif %}
+      </div>
+      {% for rec in rec_groups[pillar_key] %}
+      <div class="rec-item rec-priority-{{ rec.priority }}">
+        <div class="rec-header">
+          <span class="rec-priority-badge">
+            {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+          </span>
+          <span class="rec-title">{{ rec.title }}</span>
+          <span class="rec-impact">{{ rec.impact }}</span>
+        </div>
+        <div class="rec-detail">{{ rec.detail }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
   </section>
   {% endif %}
 

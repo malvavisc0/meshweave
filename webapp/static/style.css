@@ -1001,8 +1001,8 @@ label {
 
 .pages-list li {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 70px 70px 60px;
-  gap: var(--space-xs);
+  grid-template-columns: 1fr 140px;
+  gap: var(--space-md);
   padding: var(--space-xxs) var(--space-sm);
   border-bottom: 1px solid var(--color-hairline);
   align-items: center;
@@ -1096,13 +1096,35 @@ label {
   color: var(--color-ink-subtle);
 }
 
-/* Pager styles */
+/* Pager styles with baseline-independent center vertical alignment */
 #pages-pager {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: var(--space-xs);
+  gap: var(--space-sm);
   margin-top: var(--space-xs);
+  padding: 8px 0;
+}
+
+#pages-pager button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  min-height: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+
+#pages-pager span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  line-height: 28px;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+  margin: 0 !important;
 }
 
 /* ------------------------------------------------------------------------
@@ -1113,10 +1135,12 @@ label {
   font-size: 14px;
   line-height: 1.6;
   color: var(--color-ink);
-  max-height: 500px;
+  flex-grow: 1;
+  height: 480px;
   overflow-y: auto;
   padding: var(--space-md);
-  background: var(--color-surface-1);
+  background: var(--color-canvas);
+  border: none;
 }
 
 .page-content h1,
@@ -1228,10 +1252,11 @@ label {
   word-wrap: break-word;
   color: var(--color-ink-muted);
   margin: 0;
-  max-height: 500px;
+  flex-grow: 1;
+  height: 480px;
   overflow-y: auto;
   padding: var(--space-md);
-  background: var(--color-surface-1);
+  background: var(--color-canvas);
 }
 
 /* Social links domain list — 3-column grid for URL + actions */
@@ -2627,7 +2652,115 @@ label {
 /* Contactability /10 display */
 /* Pager buttons — flat */
 #pages-pager button {
+  border-radius: var(--radius-none) !important;
+}
+
+/* ------------------------------------------------------------------------
+   CONTENT PAGES VERTICALLY STACKED DASHBOARD (COMPLIANT DESIGN.MD)
+   ------------------------------------------------------------------------ */
+.content-pages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.content-pages-header h2 {
+  margin: 0;
+}
+
+.content-pages-intro {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+  letter-spacing: 0.16px;
+  margin-top: 0px;
+  margin-bottom: 16px;
+}
+
+.layout-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pages-panel {
+  border: 1px solid var(--color-hairline);
+  background: var(--color-canvas);
   border-radius: var(--radius-none);
+  height: 440px;
+  /* Fits 10 rows completely without scrollbars */
+  display: flex;
+  flex-direction: column;
+}
+
+.pages-panel .pages-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.pages-pane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  border-bottom: none;
+  padding: 8px 16px;
+  height: 44px;
+}
+
+.pages-pane-header span:first-child {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.16px;
+  color: var(--color-ink-muted);
+}
+
+.pages-pane-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pages-pane-actions .btn-sm {
+  padding: 4px 10px;
+  min-height: 28px;
+  font-size: 12px;
+  border-radius: var(--radius-none) !important;
+  border-color: var(--color-hairline);
+  background: var(--color-canvas);
+  color: var(--color-ink-muted);
+}
+
+.pages-pane-actions .btn-sm:hover {
+  background: var(--color-surface-1);
+  border-color: var(--color-hairline-strong);
+  color: var(--color-ink);
+}
+
+/* Ensure spacious bottom preview frame */
+.pages-page:last-child .pages-panel {
+  height: 500px;
+  /* Generous area for reading Markdown and rendered preview HTML */
+}
+
+.page-content,
+.pages-markdown {
+  height: 100% !important;
+  /* Expand to completely occupy the 500px previewer panel */
+}
+
+@media (max-width: 992px) {
+  .pages-panel {
+    height: 200px;
+  }
+
+  .pages-page:last-child .pages-panel {
+    height: 380px;
+  }
 }
 
 /* Link tags — flat */
@@ -2839,22 +2972,42 @@ label {
   margin: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px;
 }
 
 .contactability-checks li {
   font-family: IBM Plex Sans, system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.29;
   letter-spacing: 0.16px;
+  padding: 6px 12px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-none) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.check-pass {
+.contactability-checks li.check-pass {
+  border-color: var(--color-semantic-success);
   color: var(--color-semantic-success);
 }
 
-.check-fail {
+.contactability-checks li.check-pass::before {
+  content: "✓";
+  font-weight: 600;
+}
+
+.contactability-checks li.check-fail {
+  border-color: var(--color-surface-2);
   color: var(--color-ink-subtle);
+  opacity: 0.7;
+}
+
+.contactability-checks li.check-fail::before {
+  content: "✗";
+  font-weight: 600;
 }
 
 .contactability-penalties {
@@ -2870,4 +3023,154 @@ label {
   letter-spacing: 0.16px;
   color: var(--color-semantic-warning);
   margin-bottom: 4px;
+}
+
+/* ------------------------------------------------------------------------
+   SOCIAL LINKS CARDS GRID (0px corners, hover border-shift)
+   ------------------------------------------------------------------------ */
+.social-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.social-card-v2 {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-none) !important;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: border-color 0.15s ease;
+}
+
+.social-card-v2:hover {
+  border-color: var(--color-hairline-strong);
+}
+
+.social-card-v2-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--color-surface-1);
+  padding-bottom: 6px;
+}
+
+.social-plat-badge {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16px;
+  text-transform: uppercase;
+  background: var(--color-surface-1);
+  color: var(--color-ink-muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-none) !important;
+}
+
+.brand-github .social-plat-badge {
+  background: #24292e;
+  color: #fff;
+}
+
+.brand-linkedin .social-plat-badge {
+  background: #0077b5;
+  color: #fff;
+}
+
+.brand-youtube .social-plat-badge {
+  background: #ff0000;
+  color: #fff;
+}
+
+.brand-facebook .social-plat-badge {
+  background: #1877f2;
+  color: #fff;
+}
+
+.brand-twitter .social-plat-badge {
+  background: #1da1f2;
+  color: #fff;
+}
+
+.brand-instagram .social-plat-badge {
+  background: #e1306c;
+  color: #fff;
+}
+
+.brand-tiktok .social-plat-badge {
+  background: #010101;
+  color: #fff;
+}
+
+.brand-discord .social-plat-badge {
+  background: #5865f2;
+  color: #fff;
+}
+
+.social-handle-lbl {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.social-card-v2-body {
+  font-family: IBM Plex Sans, system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+  margin-bottom: 16px;
+  word-break: break-all;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+}
+
+.social-url-link {
+  color: var(--color-ink-subtle);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.social-url-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.social-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--color-surface-1);
+  padding-top: var(--space-xs);
+}
+
+.social-card-actions .btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  min-height: 28px;
+  border-radius: var(--radius-none) !important;
+  text-decoration: none;
+  letter-spacing: 0.16px;
+}
+
+.social-card-actions .btn-tertiary {
+  background: var(--color-canvas);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.social-card-actions .btn-ghost {
+  background: transparent;
+  color: var(--color-ink-muted);
+  border: 1px solid transparent;
+}
+
+.social-card-actions .btn-ghost:hover {
+  background: var(--color-surface-1);
+  color: var(--color-ink);
+  border-color: var(--color-hairline);
 }
