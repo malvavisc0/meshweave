@@ -268,7 +268,7 @@
             style="width: {{ pillar_score }}%; background: {% if pillar_score >= 70 %}var(--color-primary){% elif pillar_score >= 40 %}var(--color-semantic-warning){% else %}var(--color-semantic-error){% endif %};">
           </div>
         </div>
-        <span class="rec-group-score">{{ pillar_score | round(0) }}/100</span>
+        <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
         {% endif %}
       </div>
       {% for rec in rec_groups[pillar_key] %}
@@ -349,7 +349,6 @@
         {% for s in cd.strengths %}
         <div class="aax-audit-item">{{ s }}</div>
         {% endfor %}
-        <p class="small" style="margin-top: var(--space-sm);">{{ cd.strengths | length }} strengths detected</p>
         {% else %}
         <p class="small">No strengths identified</p>
         {% endif %}
@@ -378,14 +377,14 @@
       <div class="aax-crawler-row">
         <span class="aax-crawler-label">llms.txt</span>
         <span class="{% if llms_txt_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          {% if llms_txt_data.exists %}✓ Active{% else %}✗ Missing{% endif %}
+          {% if llms_txt_data.exists %}Active{% else %}Missing{% endif %}
         </span>
         <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }} bytes{% endif %}</span>
       </div>
       <div class="aax-crawler-row">
         <span class="aax-crawler-label">llms-full.txt</span>
         <span class="{% if llms_full_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          {% if llms_full_data.exists %}✓ Active{% else %}✗ Missing{% endif %}
+          {% if llms_full_data.exists %}Active{% else %}Missing{% endif %}
         </span>
         <span class="small">{% if llms_full_data.url %}URL: {{ llms_full_data.url }}{% endif %}</span>
       </div>

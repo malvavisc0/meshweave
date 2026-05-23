@@ -34,6 +34,7 @@ def generate_recommendations(
     aeo_factors: dict[str, dict],
     geo_factors: dict[str, dict],
     payload: dict[str, Any] | None = None,
+    aax_factors: dict[str, dict] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate actionable recommendations based on factor scores.
 
@@ -42,6 +43,7 @@ def generate_recommendations(
         geo_factors: GEO factor score dicts.
         payload: Optional crawl payload for audit.meta data
             (canonical_issues, duplicate_og_titles, etc.).
+        aax_factors: Optional AAX factor score dicts.
 
     Returns:
         List of recommendation dicts sorted by priority.
@@ -309,6 +311,200 @@ def generate_recommendations(
                 "impact": "",
             }
         )
+
+    # --- AAX recommendations ---
+    if aax_factors:
+        # Homepage Comprehension
+        hc = aax_factors.get("homepage_comprehension")
+        if hc:
+            hc_raw = hc.get("raw") or {}
+            missing_fields = []
+            if not hc_raw.get("brand"):
+                missing_fields.append("brand")
+            if not hc_raw.get("product"):
+                missing_fields.append("product")
+            if not hc_raw.get("target_audience"):
+                missing_fields.append("audience")
+            if not hc_raw.get("call_to_action"):
+                missing_fields.append("CTA")
+
+            if missing_fields and hc.get("score", 0) < 70:
+                recs.append(
+                    {
+                        "factor": "homepage_comprehension",
+                        "priority": "high",
+                        "title": "Improve homepage clarity for AI agents",
+                        "detail": (
+                            f"AI agents struggle to understand your site. "
+                            f"Missing: {', '.join(missing_fields)}. "
+                            "Make brand, product, audience, and CTA clear."
+                        ),
+                        "impact": "AAX +15-25 points estimated",
+                    }
+                )
+
+        # Content Delta (AI content gaps)
+        cd = aax_factors.get("content_delta")
+        if cd:
+            cd_raw = cd.get("raw") or {}
+            weaknesses = cd_raw.get("weaknesses") or []
+            strengths_count = len(cd_raw.get("strengths") or [])
+            if weaknesses and strengths_count < 3:
+                examples = ", ".join(weaknesses[:3])
+                recs.append(
+                    {
+                        "factor": "content_delta",
+                        "priority": "medium",
+                        "title": f"Address {len(weaknesses)} content gap(s)",
+                        "detail": (
+                            f"AI found gaps: {examples}. "
+                            "Add missing product info, pricing, use cases, "
+                            "or company details."
+                        ),
+                        "impact": "AAX +10-20 points estimated",
+                    }
+                )
+            # Low cohort score
+            if cd.get("score", 0) < 50:
+                recs.append(
+                    {
+                        "factor": "content_delta",
+                        "priority": "high",
+                        "title": "Enhance content richness for AI processing",
+                        "detail": (
+                            "AI finds content incomplete. Add product "
+                            "descriptions, pricing, target audience, "
+                            "features, and use cases."
+                        ),
+                        "impact": "AAX +20-30 points estimated",
+                    }
+                )
+
+        # Meta Optimization
+        mo = aax_factors.get("meta_optimization")
+        if mo:
+            mo_raw = mo.get("raw") or {}
+            completeness = mo_raw.get("completeness", "minimal")
+            clarity = mo_raw.get("clarity", "unclear")
+            llm_opt = mo_raw.get("llm_optimization", "poor")
+            would_click = mo_raw.get("would_click_through", False)
+
+            if not would_click or completeness == "minimal" or clarity == "unclear":
+                issues = []
+                if not would_click:
+                    issues.append("value proposition")
+                if completeness == "minimal":
+                    issues.append("metadata")
+                if clarity == "unclear":
+                    issues.append("messaging")
+                if llm_opt == "poor":
+                    issues.append("LLM-optimized descriptions")
+
+                if issues:
+                    recs.append(
+                        {
+                            "factor": "meta_optimization",
+                            "priority": "medium",
+                            "title": "Optimize metadata for AI crawlers",
+                            "detail": (
+                                f"Improve: {', '.join(issues)}. Use clear, "
+                                "descriptive titles and meta tags for LLM "
+                                "understanding."
+                            ),
+                            "impact": "AAX +10-15 points estimated",
+                        }
+                    )
+
+        # llms.txt
+        llms = aax_factors.get("llms_txt")
+        if llms:
+            llms_raw = llms.get("raw") or {}
+            llms_txt_data = llms_raw.get("llms_txt") or {}
+            llms_full_data = llms_raw.get("llms_full_txt") or {}
+
+            if not llms_txt_data.get("exists"):
+                recs.append(
+                    {
+                        "factor": "llms_txt",
+                        "priority": "high",
+                        "title": "Publish llms.txt for AI crawler discovery",
+                        "detail": (
+                            "Create /.well-known/llms.txt with site "
+                            "name, description, and AI crawler guidelines. "
+                            "Helps AI systems discover your site."
+                        ),
+                        "impact": "AAX +10-15 points estimated",
+                    }
+                )
+            elif not llms_full_data.get("exists"):
+                recs.append(
+                    {
+                        "factor": "llms_txt",
+                        "priority": "medium",
+                        "title": "Publish llms-full.txt for full AI access",
+                        "detail": (
+                            "Create /.well-known/llms-full.txt for full "
+                            "AI crawler access."
+                        ),
+                        "impact": "AAX +5-10 points estimated",
+                    }
+                )
+
+        # Email Validation
+        ev = aax_factors.get("email_validation")
+        if ev:
+            ev_raw = ev.get("raw") or {}
+            contacts = ev_raw.get("valid_contacts") or []
+            confidence = ev_raw.get("confidence", "low")
+            best_contact_exists = ev_raw.get("best_contact", False)
+
+            if confidence == "low" or (not contacts and not best_contact_exists):
+                recs.append(
+                    {
+                        "factor": "email_validation",
+                        "priority": "high",
+                        "title": "Add valid contact emails for AI verification",
+                        "detail": (
+                            "AI needs clear contact emails to verify your "
+                            "business. Add mailto: links with valid "
+                            "addresses on contact page."
+                        ),
+                        "impact": "AAX +10-20 points est",
+                    }
+                )
+
+    # --- Contactability recommendations (from payload) ---
+    if payload:
+        scores = payload.get("scores") or {}
+        aax_scores = scores.get("aax") or {}
+        contactability = aax_scores.get("contactability")
+        if contactability:
+            missing: list[str] = []
+            if not contactability.get("has_email"):
+                missing.append("email address")
+            if not contactability.get("has_mailto"):
+                missing.append("mailto: link")
+            if not contactability.get("has_contact_page"):
+                missing.append("contact page")
+            if not contactability.get("has_social_links"):
+                missing.append("social links")
+            if not contactability.get("has_contact_point_schema"):
+                missing.append("ContactPoint schema")
+
+            if missing:
+                recs.append(
+                    {
+                        "factor": "contactability",
+                        "priority": "high",
+                        "title": "Improve contactability for AI agents",
+                        "detail": (
+                            f"Missing: {', '.join(missing)}. "
+                            "AI agents need clear contact signals to "
+                            "verify and recommend your business."
+                        ),
+                        "impact": "AAX +10-20 points estimated",
+                    }
+                )
 
     # Add pillar to each recommendation
     for rec in recs:

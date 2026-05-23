@@ -66,6 +66,26 @@ def score_crawl(
     aeo_r = aeo_rating(aeo_composite)
     geo_r = geo_rating(geo_composite)
 
+    # Re-generate recommendations with AAX factors if AAX is in the payload
+    if payload and payload.get("aax"):
+        aax_result = payload.get("aax")
+        if aax_result and aax_result.get("status") == "completed":
+            from meshweave.scoring.engine import compute_aax_score
+
+            aax_score_dict = compute_aax_score(aax_result)
+            if aax_score_dict:
+                from meshweave.scoring.recommendations import (
+                    generate_recommendations,
+                )
+
+                aeo_factors = score_json.get("aeo", {}).get("factors", {})
+                geo_factors = score_json.get("geo", {}).get("factors", {})
+                all_recommendations = generate_recommendations(
+                    aeo_factors, geo_factors, payload=payload,
+                    aax_factors=aax_score_dict.get("factors")
+                )
+                score_json["recommendations"] = all_recommendations
+
     # Persist to DB
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
@@ -163,6 +183,30 @@ async def run_aax_for_crawl(
 
             if aax_score_json and snap.score_json:
                 snap.score_json["aax"] = aax_score_json
+
+                # Re-generate recommendations now that AAX is available
+                try:
+                    from meshweave.scoring.engine import compute_scores
+                    from meshweave.scoring.recommendations import (
+                        generate_recommendations,
+                    )
+
+                    base = compute_scores(payload or {})
+                    aeo_f = base.get("aeo", {}).get("factors", {})
+                    geo_f = base.get("geo", {}).get("factors", {})
+                    all_recs = generate_recommendations(
+                        aeo_f,
+                        geo_f,
+                        payload=payload,
+                        aax_factors=aax_score_json.get("factors"),
+                    )
+                    snap.score_json["recommendations"] = all_recs
+                except Exception:
+                    logger.debug(
+                        "Failed to re-generate AAX recommendations",
+                        exc_info=True,
+                    )
+
                 flag_modified(snap, "score_json")
 
         # Inject AAX into payload_json so the API returns it

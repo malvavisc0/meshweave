@@ -3,9 +3,28 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..crawling.fetcher import BrowserSession, get_rendered_html
+
+_HTML_RE = re.compile(
+    r"^\s*(<!doctype\s+html|<html[\s>]|<head[\s>]"
+    r"|<body[\s>]|<p[\s>])",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _is_valid_llms_content(text: str) -> bool:
+    """Return *True* if *text* looks like a real llms.txt.
+
+    Servers that don't host an llms.txt file often return a generic
+    HTML error page with HTTP 200.  This heuristic detects those
+    responses so they are not mistakenly reported as valid llms.txt
+    files.
+    """
+    return not _HTML_RE.match(text)
+
 
 __all__ = [
     "fetch_robots_info",
@@ -177,7 +196,7 @@ async def check_llms_txt(
         for path in paths:
             url = base + path
             body = await _fetch_text(url, session=session, timeout=timeout)
-            if body:
+            if body and _is_valid_llms_content(body):
                 result[key] = {
                     "exists": True,
                     "url": url,

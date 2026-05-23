@@ -60,6 +60,7 @@ def _weighted_composite(
 def compute_scores(
     payload: dict,
     manual_inputs: dict[str, float] | None = None,
+    aax_factors: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """Compute AEO and GEO scores from a crawl payload.
 
@@ -68,6 +69,8 @@ def compute_scores(
         manual_inputs: Optional dict of user-provided scores for
             non-auto-measurable factors. Keys match factor names
             (capture_rate, query_match, voice_rate, citation).
+        aax_factors: Optional AAX factor dicts for generating AAX
+            recommendations.
 
     Returns:
         Full score_json dict matching spec §6.4.
@@ -99,14 +102,18 @@ def compute_scores(
     geo_composite = _weighted_composite(geo_factors, GEO_WEIGHTS)
 
     # Auto-only composites (exclude manual-input factors)
-    aeo_auto_only = {k: v for k, v in aeo_factors.items() if v.get("auto_measurable")}
-    geo_auto_only = {k: v for k, v in geo_factors.items() if v.get("auto_measurable")}
+    aeo_auto_only = {
+        k: v for k, v in aeo_factors.items() if v.get("auto_measurable")
+    }
+    geo_auto_only = {
+        k: v for k, v in geo_factors.items() if v.get("auto_measurable")
+    }
     aeo_auto_composite = _weighted_composite(aeo_auto_only, AEO_WEIGHTS)
     geo_auto_composite = _weighted_composite(geo_auto_only, GEO_WEIGHTS)
 
     # --- Recommendations ---
     recommendations = generate_recommendations(
-        aeo_factors, geo_factors, payload=payload
+        aeo_factors, geo_factors, payload=payload, aax_factors=aax_factors
     )
 
     # --- Build score_json ---
