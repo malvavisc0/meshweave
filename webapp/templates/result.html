@@ -130,6 +130,93 @@
   </div>
   {% elif status == "succeeded" and payload %}
 
+  <!-- Site Identity -->
+  {% set _payload = payload if payload else {} %}
+  {% set _pg = (_payload.page if _payload and _payload.page else ( (_payload.pages[0].page) if (_payload.pages and
+  _payload.pages|length > 0 and _payload.pages[0] and _payload.pages[0].page) else {} )) %}
+  {% set pg = _pg or {} %}
+  {% set og = (pg.og if pg and pg.og else {}) %}
+  {% set _audit = (_payload.audit if _payload and _payload.audit else {}) %}
+  {% set _entity = (_audit.entity if _audit and _audit.entity else {}) %}
+  {% set _schema_cov = (_audit.schema_coverage if _audit and _audit.schema_coverage else {}) %}
+  {% set _meta = (_audit.meta if _audit and _audit.meta else {}) %}
+  {% set _canonical_issues = (_meta.canonical_issues if _meta else []) %}
+  {% set _og_missing = (summary.seo_deltas.og_missing if summary and summary.seo_deltas else []) %}
+  {% set _sameas = (_entity.same_as if _entity else []) %}
+  {% set _schema_pct = (_schema_cov.coverage_pct if _schema_cov else 0) %}
+  {% set _pages_with_schema = (_schema_cov.pages_with_schema if _schema_cov else 0) %}
+  {% set _total_pages = ((_schema_cov.pages_with_schema + _schema_cov.pages_without_schema) if _schema_cov else
+  (_payload.pages|length if _payload.pages else 0)) %}
+  {% set _entity_name = (_entity.name if _entity else '') %}
+
+  <section class="panel mt-2 site-identity" role="region" aria-label="Site Identity">
+    <button class="collapsible-header" onclick="toggleCollapsible(this)">
+      <span>Site Identity</span>
+      <span class="collapsible-summary">{{ pg.title or domain }} · {{ _entity_name or 'No entity' }} · {{ _schema_pct
+        }}% schema coverage</span>
+    </button>
+    <div class="collapsible-body">
+      <div class="identity-header">
+        {% if og.image %}
+        <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
+        {% endif %}
+        <div class="identity-meta-primary">
+          <div class="identity-field">
+            <span class="identity-label">Title</span>
+            <span class="identity-value">{{ pg.title or '—' }}</span>
+          </div>
+          <div class="identity-field">
+            <span class="identity-label">Description</span>
+            <span class="identity-value">{{ pg.description or '—' }}</span>
+          </div>
+        </div>
+      </div>
+      <ul class="identity-details">
+        <li>
+          <span>Canonical</span>
+          <span>
+            {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
+            {% else %}—{% endif %}
+          </span>
+        </li>
+        <li>
+          <span>Entity</span>
+          <span
+            class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
+            {{ _entity_name or '— (not detected)' }}
+          </span>
+        </li>
+        <li>
+          <span>Schema Coverage</span>
+          <span
+            class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
+            {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
+          </span>
+        </li>
+        <li>
+          <span>OG Title</span>
+          <span>{{ og.title or '—' }}</span>
+        </li>
+        <li>
+          <span>OG Description</span>
+          <span>{{ og.description or '—' }}</span>
+        </li>
+        {% if _canonical_issues and _canonical_issues|length > 0 %}
+        <li>
+          <span>Canonical Issues</span>
+          <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
+        </li>
+        {% endif %}
+        {% if _og_missing and _og_missing|length > 0 %}
+        <li>
+          <span>Missing OG</span>
+          <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
+  </section>
+
   <!-- Score Summary (AEO + GEO + AAX) -->
   {% if score_snapshot %}
   {% set _scores = [score_snapshot.aeo_score or 0, score_snapshot.geo_score or 0, score_snapshot.aax_score or 0] %}
@@ -395,93 +482,6 @@
     {% endif %}
   </section>
   {% endif %}
-
-  <!-- Site Identity -->
-  {% set _payload = payload if payload else {} %}
-  {% set _pg = (_payload.page if _payload and _payload.page else ( (_payload.pages[0].page) if (_payload.pages and
-  _payload.pages|length > 0 and _payload.pages[0] and _payload.pages[0].page) else {} )) %}
-  {% set pg = _pg or {} %}
-  {% set og = (pg.og if pg and pg.og else {}) %}
-  {% set _audit = (_payload.audit if _payload and _payload.audit else {}) %}
-  {% set _entity = (_audit.entity if _audit and _audit.entity else {}) %}
-  {% set _schema_cov = (_audit.schema_coverage if _audit and _audit.schema_coverage else {}) %}
-  {% set _meta = (_audit.meta if _audit and _audit.meta else {}) %}
-  {% set _canonical_issues = (_meta.canonical_issues if _meta else []) %}
-  {% set _og_missing = (summary.seo_deltas.og_missing if summary and summary.seo_deltas else []) %}
-  {% set _sameas = (_entity.same_as if _entity else []) %}
-  {% set _schema_pct = (_schema_cov.coverage_pct if _schema_cov else 0) %}
-  {% set _pages_with_schema = (_schema_cov.pages_with_schema if _schema_cov else 0) %}
-  {% set _total_pages = ((_schema_cov.pages_with_schema + _schema_cov.pages_without_schema) if _schema_cov else
-  (_payload.pages|length if _payload.pages else 0)) %}
-  {% set _entity_name = (_entity.name if _entity else '') %}
-
-  <div class="collapsible-panel">
-    <button class="collapsible-header" onclick="toggleCollapsible(this)">
-      <span>Site Identity</span>
-      <span class="collapsible-summary">{{ pg.title or domain }} · {{ _entity_name or 'No entity' }} · {{ _schema_pct
-        }}% schema coverage</span>
-    </button>
-    <div class="collapsible-body">
-      <div class="identity-header">
-        {% if og.image %}
-        <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
-        {% endif %}
-        <div class="identity-meta-primary">
-          <div class="identity-field">
-            <span class="identity-label">Title</span>
-            <span class="identity-value">{{ pg.title or '—' }}</span>
-          </div>
-          <div class="identity-field">
-            <span class="identity-label">Description</span>
-            <span class="identity-value">{{ pg.description or '—' }}</span>
-          </div>
-        </div>
-      </div>
-      <ul class="identity-details">
-        <li>
-          <span>Canonical</span>
-          <span>
-            {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
-            {% else %}—{% endif %}
-          </span>
-        </li>
-        <li>
-          <span>Entity</span>
-          <span
-            class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
-            {{ _entity_name or '— (not detected)' }}
-          </span>
-        </li>
-        <li>
-          <span>Schema Coverage</span>
-          <span
-            class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
-            {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
-          </span>
-        </li>
-        <li>
-          <span>OG Title</span>
-          <span>{{ og.title or '—' }}</span>
-        </li>
-        <li>
-          <span>OG Description</span>
-          <span>{{ og.description or '—' }}</span>
-        </li>
-        {% if _canonical_issues and _canonical_issues|length > 0 %}
-        <li>
-          <span>Canonical Issues</span>
-          <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
-        </li>
-        {% endif %}
-        {% if _og_missing and _og_missing|length > 0 %}
-        <li>
-          <span>Missing OG</span>
-          <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
-        </li>
-        {% endif %}
-      </ul>
-    </div>
-  </div>
 
   <!-- Pages panel -->
   {% if payload and payload.pages %}

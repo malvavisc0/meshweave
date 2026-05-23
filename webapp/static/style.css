@@ -2047,6 +2047,10 @@ label {
   background: var(--color-canvas);
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-none);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .score-gauge-header {
@@ -2559,10 +2563,8 @@ label {
 /* -----------------------------------------------------------------------
    PHASE 5: COLLAPSIBLE PANELS
    ----------------------------------------------------------------------- */
-.collapsible-panel {
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-none);
-  margin-top: var(--space-sm);
+.site-identity {
+  padding: 0;
 }
 
 .collapsible-header {
