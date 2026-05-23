@@ -195,6 +195,28 @@ def build_manual_input_fields(score_data: dict) -> list[dict]:
     return fields
 
 
+def group_recommendations_by_pillar(
+    recommendations: list[dict],
+) -> dict[str, list[dict]]:
+    """Group recommendations by their pillar (aeo, geo, aax).
+
+    Returns a dict with keys 'aeo', 'geo', 'aax', each mapping
+    to a list of recommendations sorted by priority.
+    """
+    groups: dict[str, list[dict]] = {"aeo": [], "geo": [], "aax": []}
+    for rec in recommendations:
+        pillar = rec.get("pillar", "aeo")
+        groups.setdefault(pillar, []).append(rec)
+    # Sort each group by priority
+    for key in groups:
+        groups[key].sort(
+            key=lambda r: PRIORITY_NUMERIC.get(
+                r.get("priority", "medium"), 1
+            )
+        )
+    return groups
+
+
 def build_score_snapshot_context(crawl) -> dict | None:
     """Build the score_snapshot template context dict from a Crawl row."""
     snapshot = getattr(crawl, "score_snapshot", None)
@@ -209,6 +231,10 @@ def build_score_snapshot_context(crawl) -> dict | None:
     aax_tests_skipped = aax_section.get("tests_skipped", 0)
     aax_tests_total = aax_tests_completed + aax_tests_skipped
 
+    # AAX AI analysis raw data (for diagnostic section)
+    ai_analysis = snapshot.ai_analysis_json or {}
+    aax_analysis = ai_analysis.get("aax") or {}
+
     return {
         "crawl_id": crawl.id,
         "aeo_score": snapshot.aeo_score,
@@ -217,10 +243,16 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "geo_rating": snapshot.geo_rating or "Unknown",
         "aeo_rating_class": rating_class(snapshot.aeo_rating),
         "geo_rating_class": rating_class(snapshot.geo_rating),
-        "aeo_auto_count": count_auto_factors(score_data_enriched.get("aeo", {})),
-        "geo_auto_count": count_auto_factors(score_data_enriched.get("geo", {})),
+        "aeo_auto_count": count_auto_factors(
+            score_data_enriched.get("aeo", {})
+        ),
+        "geo_auto_count": count_auto_factors(
+            score_data_enriched.get("geo", {})
+        ),
         "score_data": score_data_enriched,
-        "recommendations": score_data_enriched.get("recommendations", []),
+        "recommendations": score_data_enriched.get(
+            "recommendations", []
+        ),
         "manual_input_fields": build_manual_input_fields(score_data),
         "has_manual_missing": has_manual_missing(score_data),
         # AAX fields
@@ -229,4 +261,6 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "aax_rating_class": rating_class(aax_section.get("rating")),
         "aax_tests_completed": aax_tests_completed,
         "aax_tests_total": aax_tests_total,
+        # AAX raw analysis data for diagnostic section
+        "aax_analysis": aax_analysis,
     }

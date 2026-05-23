@@ -66,6 +66,17 @@ try:
                 return Markup("null")
 
     templates.env.filters["tojson"] = _tojson
+
+    # Register scoring helpers as template globals
+    from webapp.utils.scoring import (  # noqa: E402
+        group_recommendations_by_pillar,
+        rating_class,
+    )
+
+    templates.env.globals["group_recommendations_by_pillar"] = (
+        group_recommendations_by_pillar
+    )
+    templates.env.globals["rating_class"] = rating_class
 except Exception:
     # Never fail startup due to filter registration
     pass

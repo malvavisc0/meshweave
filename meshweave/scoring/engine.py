@@ -133,9 +133,9 @@ def compute_scores(
 AAX_WEIGHTS: dict[str, float] = {
     "homepage_comprehension": 0.30,
     "meta_optimization": 0.20,
+    "content_delta": 0.20,
+    "llms_txt": 0.15,
     "email_validation": 0.15,
-    "content_delta": 0.15,
-    "llms_txt": 0.20,
 }
 
 

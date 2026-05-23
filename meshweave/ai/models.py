@@ -147,6 +147,12 @@ class EmailValidationResult(BaseModel):
 # --- AAX Aggregate ---
 
 
+class AAXSummaryResult(BaseModel):
+    """One-line diagnostic verdict for the hero card."""
+
+    summary: str = ""
+
+
 class AAXAnalysisResult(BaseModel):
     """Aggregate result of all AAX tests."""
 
@@ -160,4 +166,5 @@ class AAXAnalysisResult(BaseModel):
     contactability: ContactabilityResult | None = None
     email_validation: EmailValidationResult | None = None
     llms_txt: dict | None = None
+    summary: str = ""
     skip_reasons: dict[str, str] = Field(default_factory=dict)

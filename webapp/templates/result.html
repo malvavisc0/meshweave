@@ -2,35 +2,60 @@
 
 {% block content %}
 <div class="container">
-  <h1>
-    Website insights
-    <span class="badges" role="group" aria-label="Job state badges">
-      {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
-      {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
-      <span class="badge">{{ (payload and (payload.scope or 'page') or (summary and (summary.metrics and
-        summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') }}</span>
-      {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
-    </span>
-  </h1>
-  <div class="py-2"></div>
-  {% if request.state.current_user %}
-  <div class="inline-block small mt-1" role="toolbar" aria-label="Prospect">
-    <button type="button" class="btn btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
-    <span id="prospect-status-chip" class="badge">Shortlisted</span>
-    <button type="button" class="btn btn-sm" onclick="openProspectManage()">Manage Prospect</button>
+  {% set _scope = (payload and (payload.scope or 'page') or (summary and (summary.metrics and
+  summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') %}
+  <div class="result-header">
+    <div class="result-header-row">
+      <h1 class="result-title">{{ domain }}{% if path and path != '/' %}<span class="result-path">{{ path }}</span>{%
+        endif %}</h1>
+      {% if status in ["succeeded"] and payload %}
+      <div class="result-actions-primary">
+        <a class="btn btn-sm" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
+        <a class="btn btn-sm" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Site</a>
+      </div>
+      {% endif %}
+    </div>
+    <div class="result-header-row">
+      <div class="result-meta">
+        <span class="badges" role="group" aria-label="Job state badges">
+          {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
+          {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
+          <span class="badge">{{ _scope }}</span>
+          {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
+        </span>
+        {% if request.state.current_user %}
+        <span class="result-prospect">
+          <button type="button" class="btn btn-sm btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
+          <span id="prospect-status-chip" class="badge">Shortlisted</span>
+          <button type="button" class="btn btn-sm" onclick="openProspectManage()">Manage</button>
+        </span>
+        {% endif %}
+      </div>
+      {% if status in ["succeeded"] and payload %}
+      <div class="result-actions-secondary">
+        <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API</a>
+        {% if visibility == "public" and abs_page_url %}
+        <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
+        {% endif %}
+        {% if visibility == "public" %}
+        <form method="post" action="/submit" class="inline-block">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+          <input type="hidden" name="url" value="{{ canonical_url }}">
+          <input type="hidden" name="public" value="on">
+          <button type="submit" class="btn btn-sm" {% if not can_refresh %}disabled
+            title="Available in {{ refresh_eta }}" {% endif %}>Refresh</button>
+        </form>
+        {% elif can_retry %}
+        <form method="post" action="/retry/{{ id }}" class="inline-block">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+          <button type="submit" class="btn btn-sm" {% if not can_retry %}disabled title="Available in {{ retry_eta }}"
+            {% endif %}>Retry</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
   </div>
-  {% endif %}
-
-  {% if visibility == "public" and abs_page_url %}
-  <p class="small">
-    <strong>Share:</strong>
-    <a href="https://twitter.com/intent/tweet?url={{ abs_page_url }}" target="_blank" rel="noopener"
-      onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Post on X</a> •
-    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ abs_page_url }}" target="_blank" rel="noopener"
-      onclick="try{trackEvent('share_click', null, 'link');}catch(e){}">Share on LinkedIn</a> •
-    <a href="#" onclick="return copyLink('{{ abs_page_url }}')">Copy share URL</a>
-  </p>
-  {% endif %}
 
 
   {% if status in ["pending", "running"] %}
@@ -104,76 +129,43 @@
     </div>
   </div>
   {% elif status == "succeeded" and payload %}
-  <!-- Actions Row -->
-  <div class="actions" role="toolbar" aria-label="Actions">
-    <a class="btn" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-    <a class="btn" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Website</a>
-    <a class="btn" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API link</a>
-    {% if visibility == "public" and abs_page_url %}
-    <a class="btn" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
-    {% endif %}
-    <span class="spacer"></span>
-    {% if visibility == "public" %}
-    <form method="post" action="/submit" class="inline-block">
-      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-      <input type="hidden" name="url" value="{{ canonical_url }}">
-      <input type="hidden" name="public" value="on">
-      <button type="submit" class="btn" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}" {% endif
-        %}>Refresh</button>
-      {% if not can_refresh %}<small class="ml-1">Available in {{ refresh_eta }}</small>{% endif %}
-    </form>
-    {% elif can_retry %}
-    <form method="post" action="/retry/{{ id }}" class="inline-block">
-      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-      <button type="submit" class="btn" {% if not can_retry %}disabled title="Available in {{ retry_eta }}" {% endif
-        %}>Retry</button>
-      {% if not can_retry %}<small class="ml-1">Available in {{ retry_eta }}</small>{% endif %}
-    </form>
-    {% endif %}
-  </div>
 
   <!-- Score Summary (AEO + GEO + AAX) -->
   {% if score_snapshot %}
+  {% set _scores = [score_snapshot.aeo_score or 0, score_snapshot.geo_score or 0, score_snapshot.aax_score or 0] %}
+  {% set _max_score = _scores | max %}
   <section class="panel mt-2 score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
     <div class="score-gauges">
       <div class="score-gauge">
         <div class="score-gauge-header">AEO Score</div>
-        <div class="gauge-value {{ score_snapshot.aeo_rating_class }}">
+        <div
+          class="gauge-value {{ score_snapshot.aeo_rating_class }}{% if score_snapshot.aeo_score == _max_score and _max_score > 0 %} score-primary{% endif %}">
           {{ score_snapshot.aeo_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.aeo_rating }}</div>
-        <div class="gauge-auto-label">
-          {{ score_snapshot.aeo_auto_count }}/{{ score_snapshot.score_data.aeo.factors | length }} scored
-        </div>
       </div>
       <div class="score-gauge">
         <div class="score-gauge-header">GEO Score</div>
-        <div class="gauge-value {{ score_snapshot.geo_rating_class }}">
+        <div
+          class="gauge-value {{ score_snapshot.geo_rating_class }}{% if score_snapshot.geo_score == _max_score and _max_score > 0 %} score-primary{% endif %}">
           {{ score_snapshot.geo_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.geo_rating }}</div>
-        <div class="gauge-auto-label">
-          {{ score_snapshot.geo_auto_count }}/{{ score_snapshot.score_data.geo.factors | length }} scored
-        </div>
       </div>
-      <div class="score-gauge">
+      <div class="score-gauge score-gauge-aax">
         <div class="score-gauge-header">AAX Score</div>
         {% if score_snapshot.aax_score is not none %}
-        <div class="gauge-value {{ score_snapshot.aax_rating_class }}">
+        <div
+          class="gauge-value {{ score_snapshot.aax_rating_class }}{% if score_snapshot.aax_score == _max_score and _max_score > 0 %} score-primary{% endif %}">
           {{ score_snapshot.aax_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.aax_rating }}</div>
-        <div class="gauge-auto-label">
-          {% if score_snapshot.aax_tests_total > 0 %}
-          {{ score_snapshot.aax_tests_completed }}/{{ score_snapshot.aax_tests_total }} tests
-          {% else %}
-          AI analysis completed
-          {% endif %}
-        </div>
+        {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
+        <div class="aax-summary-quote">{{ score_snapshot.aax_analysis.summary }}</div>
+        {% endif %}
         {% else %}
         <div class="gauge-value">—</div>
         <div class="gauge-rating">Not available</div>
-        <div class="gauge-auto-label">AI analysis pending</div>
         {% endif %}
       </div>
     </div>
@@ -256,22 +248,152 @@
   </section>
   {% endif %}
 
-  <!-- Recommendations -->
+  <!-- Recommendations (grouped by pillar) -->
   {% if score_snapshot and score_snapshot.recommendations %}
+  {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
   <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
     <h2>Recommendations</h2>
-    {% for rec in score_snapshot.recommendations | sort(attribute='priority_numeric') %}
-    <div class="rec-item rec-priority-{{ rec.priority }}">
-      <div class="rec-header">
-        <span class="rec-priority-badge">
-          {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Medium{% else %}Info{% endif %}
-        </span>
-        <span class="rec-title">{{ rec.title }}</span>
-        <span class="rec-impact">{{ rec.impact }}</span>
+    {% for pillar_key, pillar_label, pillar_score in [
+    ('aeo', 'AEO', score_snapshot.aeo_score),
+    ('geo', 'GEO', score_snapshot.geo_score),
+    ('aax', 'AAX', score_snapshot.aax_score)
+    ] %}
+    {% if rec_groups[pillar_key] | length > 0 %}
+    <div class="rec-group">
+      <div class="rec-group-header">
+        <span>{{ pillar_label }} Recommendations ({{ rec_groups[pillar_key] | length }})</span>
+        {% if pillar_score is not none %}
+        <div class="rec-group-progress">
+          <div class="rec-group-progress-fill"
+            style="width: {{ pillar_score }}%; background: {% if pillar_score >= 70 %}var(--color-primary){% elif pillar_score >= 40 %}var(--color-semantic-warning){% else %}var(--color-semantic-error){% endif %};">
+          </div>
+        </div>
+        <span class="rec-group-score">{{ pillar_score | round(0) }}/100</span>
+        {% endif %}
       </div>
-      <div class="rec-detail">{{ rec.detail }}</div>
+      {% for rec in rec_groups[pillar_key] %}
+      <div class="rec-item rec-priority-{{ rec.priority }}">
+        <div class="rec-header">
+          <span class="rec-priority-badge">
+            {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+          </span>
+          <span class="rec-title">{{ rec.title }}</span>
+          <span class="rec-impact">{{ rec.impact }}</span>
+        </div>
+        <div class="rec-detail">{{ rec.detail }}</div>
+      </div>
+      {% endfor %}
     </div>
+    {% endif %}
     {% endfor %}
+  </section>
+  {% endif %}
+
+  <!-- AAX AI Agent Diagnostics -->
+  {% if score_snapshot and score_snapshot.aax_analysis %}
+  {% set aax = score_snapshot.aax_analysis %}
+  <section class="panel mt-2" role="region" aria-label="AI Agent Diagnostic">
+    <h2>AI Agent Diagnostic</h2>
+    <p class="small">Here's what AI agents see when they look at your website</p>
+
+    <!-- Brand Comprehension -->
+    {% if aax.homepage_comprehension %}
+    {% set hc = aax.homepage_comprehension %}
+    <div class="aax-crawler-card" style="margin-top: var(--space-md);">
+      <h3 style="margin-top:0;">Brand Comprehension</h3>
+      <p class="small" style="margin-bottom: var(--space-sm);">An AI agent identifies you as:</p>
+      {% if hc.brand or hc.product or hc.target_audience %}
+      <div class="aax-ai-quote">
+        {% if hc.brand %}{{ hc.brand }}{% else %}This company{% endif %}
+        {% if hc.product %} — {{ hc.product }}{% endif %}.
+        {% if hc.target_audience %} Target audience: {{ hc.target_audience }}.{% endif %}
+      </div>
+      {% endif %}
+
+      <div class="aax-check-grid">
+        <span class="aax-check {% if hc.brand %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+          Brand clearly identified
+        </span>
+        <span class="aax-check {% if hc.target_audience %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+          Audience detected
+        </span>
+        <span class="aax-check {% if hc.call_to_action %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+          CTA found: "{{ hc.call_to_action or 'none' }}"
+        </span>
+        <span
+          class="aax-check {% if hc.information_density in ['dense', 'adequate'] %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+          Information density: {{ hc.information_density or 'unknown' }}
+        </span>
+      </div>
+
+      {% if hc.key_features and hc.key_features | length > 0 %}
+      <p class="small" style="margin-top: var(--space-sm); margin-bottom: var(--space-xxs);">Key features the AI
+        detected:</p>
+      <ul style="margin:0; padding-left: var(--space-md);">
+        {% for feature in hc.key_features %}
+        <li class="small">{{ feature }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Strengths / Weaknesses -->
+    {% if aax.content_delta %}
+    {% set cd = aax.content_delta %}
+    {% if (cd.strengths and cd.strengths | length > 0) or (cd.weaknesses and cd.weaknesses | length > 0) %}
+    <div class="aax-audit-grid">
+      <div class="aax-audit-column aax-audit-strengths">
+        <h4>What AI gets right</h4>
+        {% if cd.strengths %}
+        {% for s in cd.strengths %}
+        <div class="aax-audit-item">{{ s }}</div>
+        {% endfor %}
+        <p class="small" style="margin-top: var(--space-sm);">{{ cd.strengths | length }} strengths detected</p>
+        {% else %}
+        <p class="small">No strengths identified</p>
+        {% endif %}
+      </div>
+      <div class="aax-audit-column aax-audit-weaknesses">
+        <h4>What AI gets wrong</h4>
+        {% if cd.weaknesses %}
+        {% for w in cd.weaknesses %}
+        <div class="aax-audit-item">{{ w }}</div>
+        {% endfor %}
+        {% else %}
+        <p class="small">No gaps identified</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Crawler Access (.well-known) -->
+    {% if aax.llms_txt %}
+    {% set llms = aax.llms_txt %}
+    <div class="aax-crawler-card" style="margin-top: var(--space-md);">
+      <h3 style="margin-top:0;">Crawler Access (.well-known)</h3>
+      {% set llms_txt_data = llms.llms_txt or {} %}
+      {% set llms_full_data = llms.llms_full_txt or {} %}
+      <div class="aax-crawler-row">
+        <span class="aax-crawler-label">llms.txt</span>
+        <span class="{% if llms_txt_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+          {% if llms_txt_data.exists %}✓ Active{% else %}✗ Missing{% endif %}
+        </span>
+        <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }} bytes{% endif %}</span>
+      </div>
+      <div class="aax-crawler-row">
+        <span class="aax-crawler-label">llms-full.txt</span>
+        <span class="{% if llms_full_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+          {% if llms_full_data.exists %}✓ Active{% else %}✗ Missing{% endif %}
+        </span>
+        <span class="small">{% if llms_full_data.url %}URL: {{ llms_full_data.url }}{% endif %}</span>
+      </div>
+      {% if llms_txt_data.content %}
+      <div class="aax-crawler-preview">{{ llms_txt_data.content[:500] }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
   </section>
   {% endif %}
 
@@ -294,66 +416,73 @@
   (_payload.pages|length if _payload.pages else 0)) %}
   {% set _entity_name = (_entity.name if _entity else '') %}
 
-  <section class="panel mt-2 site-identity" role="region" aria-label="Site Identity">
-    <h2>Site Identity</h2>
-    <div class="identity-header">
-      {% if og.image %}
-      <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
-      {% endif %}
-      <div class="identity-meta-primary">
-        <div class="identity-field">
-          <span class="identity-label">Title</span>
-          <span class="identity-value">{{ pg.title or '—' }}</span>
-        </div>
-        <div class="identity-field">
-          <span class="identity-label">Description</span>
-          <span class="identity-value">{{ pg.description or '—' }}</span>
+  <div class="collapsible-panel">
+    <button class="collapsible-header" onclick="toggleCollapsible(this)">
+      <span>Site Identity</span>
+      <span class="collapsible-summary">{{ pg.title or domain }} · {{ _entity_name or 'No entity' }} · {{ _schema_pct
+        }}% schema coverage</span>
+    </button>
+    <div class="collapsible-body">
+      <div class="identity-header">
+        {% if og.image %}
+        <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
+        {% endif %}
+        <div class="identity-meta-primary">
+          <div class="identity-field">
+            <span class="identity-label">Title</span>
+            <span class="identity-value">{{ pg.title or '—' }}</span>
+          </div>
+          <div class="identity-field">
+            <span class="identity-label">Description</span>
+            <span class="identity-value">{{ pg.description or '—' }}</span>
+          </div>
         </div>
       </div>
+      <ul class="identity-details">
+        <li>
+          <span>Canonical</span>
+          <span>
+            {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
+            {% else %}—{% endif %}
+          </span>
+        </li>
+        <li>
+          <span>Entity</span>
+          <span
+            class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
+            {{ _entity_name or '— (not detected)' }}
+          </span>
+        </li>
+        <li>
+          <span>Schema Coverage</span>
+          <span
+            class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
+            {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
+          </span>
+        </li>
+        <li>
+          <span>OG Title</span>
+          <span>{{ og.title or '—' }}</span>
+        </li>
+        <li>
+          <span>OG Description</span>
+          <span>{{ og.description or '—' }}</span>
+        </li>
+        {% if _canonical_issues and _canonical_issues|length > 0 %}
+        <li>
+          <span>Canonical Issues</span>
+          <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
+        </li>
+        {% endif %}
+        {% if _og_missing and _og_missing|length > 0 %}
+        <li>
+          <span>Missing OG</span>
+          <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
+        </li>
+        {% endif %}
+      </ul>
     </div>
-    <ul class="identity-details">
-      <li>
-        <span>Canonical</span>
-        <span>
-          {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
-          {% else %}—{% endif %}
-        </span>
-      </li>
-      <li>
-        <span>Entity</span>
-        <span
-          class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
-          {{ _entity_name or '— (not detected)' }}
-        </span>
-      </li>
-      <li>
-        <span>Schema Coverage</span>
-        <span class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
-          {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
-        </span>
-      </li>
-      <li>
-        <span>OG Title</span>
-        <span>{{ og.title or '—' }}</span>
-      </li>
-      <li>
-        <span>OG Description</span>
-        <span>{{ og.description or '—' }}</span>
-      </li>
-      {% if _canonical_issues and _canonical_issues|length > 0 %}
-      <li>
-        <span>Canonical Issues</span>
-        <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
-      </li>
-      {% endif %}
-      {% if _og_missing and _og_missing|length > 0 %}
-      <li>
-        <span>Missing OG</span>
-        <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
-      </li>
-      {% endif %}
-    </ul>
-  </section>
+  </div>
 
   <!-- Pages panel -->
   {% if payload and payload.pages %}
@@ -404,7 +533,7 @@
     <div class="contactability-card">
       <div class="contactability-score">
         <span class="contactability-value {{ rating_class(contactability.rating) if contactability.rating else '' }}">
-          {{ contactability.score | default(0) }}/100
+          {{ (contactability.score / 10) | round(1) }}/10
         </span>
         <span class="contactability-label">Contactability</span>
       </div>
@@ -537,7 +666,8 @@
       </li>
       <li>
         <span class="small">Time Budget</span>
-        <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A' }}s</span>
+        <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A'
+          }}s</span>
       </li>
       {% endif %}
     </ul>
@@ -558,7 +688,8 @@
   <section class="panel mt-2" role="region" aria-label="Owner Controls">
     <h2>Owner Controls</h2>
     <div class="form-grid">
-      <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in discovery</label>
+      <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in
+        discovery</label>
       <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
     </div>
     <div class="form-grid">
@@ -570,7 +701,8 @@
   {% endif %}
 
   <!-- Mobile sections -->
-  <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel"></section>
+  <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel">
+  </section>
 
   <!-- Hidden markdown for download only -->
   <pre id="markdown-content"

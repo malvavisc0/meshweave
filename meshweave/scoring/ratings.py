@@ -1,11 +1,11 @@
 """Score-to-rating label mapping per spec §4.3."""
 
 AAX_RATINGS: list[tuple[int, int, str]] = [
-    (0, 20, "Opaque"),
-    (21, 40, "Unclear"),
-    (41, 60, "Readable"),
-    (61, 80, "Clear"),
-    (81, 100, "Fluent"),
+    (0, 29, "Opaque"),
+    (30, 49, "Unclear"),
+    (50, 69, "Readable"),
+    (70, 84, "Clear"),
+    (85, 100, "Fluent"),
 ]
 
 AEO_RATINGS: list[tuple[int, int, str]] = [

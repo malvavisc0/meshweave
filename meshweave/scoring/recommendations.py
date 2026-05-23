@@ -4,6 +4,31 @@ from __future__ import annotations
 
 from typing import Any
 
+# Map factor keys to their pillar (aeo, geo, aax)
+_FACTOR_TO_PILLAR: dict[str, str] = {
+    # AEO factors
+    "schema": "aeo",
+    "content_structure": "aeo",
+    "freshness": "aeo",
+    "capture_rate": "aeo",
+    "query_match": "aeo",
+    "voice_rate": "aeo",
+    # GEO factors
+    "topical_authority": "geo",
+    "eeat": "geo",
+    "crawl_access": "geo",
+    "content_depth": "geo",
+    "entity_consistency": "geo",
+    "citation": "geo",
+    # AAX factors
+    "homepage_comprehension": "aax",
+    "meta_optimization": "aax",
+    "content_delta": "aax",
+    "llms_txt": "aax",
+    "email_validation": "aax",
+    "contactability": "aax",
+}
+
 
 def generate_recommendations(
     aeo_factors: dict[str, dict],
@@ -283,6 +308,12 @@ def generate_recommendations(
                 "detail": f"{coverage_pct:.0f}% of pages have schema markup.",
                 "impact": "",
             }
+        )
+
+    # Add pillar to each recommendation
+    for rec in recs:
+        rec["pillar"] = _FACTOR_TO_PILLAR.get(
+            rec.get("factor", ""), "aeo"
         )
 
     # Sort by priority

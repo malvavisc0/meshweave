@@ -137,6 +137,64 @@ Respond in this JSON format:
     return user, SYSTEM_BASE
 
 
+def aax_summary_prompt(
+    domain: str,
+    homepage_comprehension: dict | None = None,
+    content_delta: dict | None = None,
+) -> tuple[str, str]:
+    """Generate a one-line diagnostic verdict for the hero card."""
+    hc = homepage_comprehension or {}
+    cd = content_delta or {}
+
+    hc_text = ""
+    if hc:
+        hc_text = (
+            f"Brand identified: {hc.get('brand', 'unknown')}. "
+            f"Product: {hc.get('product', 'unknown')}. "
+            f"Audience: {hc.get('target_audience', 'unknown')}. "
+            f"Clarity: {hc.get('clarity', 'unknown')}. "
+            f"CTA: {hc.get('call_to_action', 'none')}. "
+            f"Remembered: {hc.get('would_remember', False)}."
+        )
+    else:
+        hc_text = "No homepage comprehension data available."
+
+    cd_text = ""
+    if cd:
+        strengths = cd.get("strengths", [])
+        weaknesses = cd.get("weaknesses", [])
+        cd_text = (
+            f"Strengths: {', '.join(strengths[:3]) if strengths else 'none'}. "
+            f"Weaknesses: {', '.join(weaknesses[:3]) if weaknesses else 'none'}. "
+            f"Coherence: {cd.get('coherence', 'unknown')}."
+        )
+
+    user = f"""You are an AI diagnostics agent evaluating https://{domain}/.
+
+Homepage comprehension data:
+{hc_text}
+
+Content analysis data:
+{cd_text}
+
+Write EXACTLY ONE sentence (under 30 words) that describes how well
+AI agents can understand and recommend this website. Be specific —
+mention what the site does and who it's for. Start with a verb or
+pronoun. Do NOT use quotation marks.
+
+Example good outputs:
+- "AI agents can clearly identify Pangolin as a zero-trust access
+  platform for IT teams and would confidently recommend it."
+- "AI agents struggle to understand this site's purpose due to sparse
+  content and missing structured data."
+
+Respond in this JSON format:
+{{
+  "summary": "your one-sentence verdict here"
+}}"""
+    return user, SYSTEM_BASE
+
+
 def summarize_jsonld(jsonld: list) -> str:
     """Summarize JSON-LD objects for the meta optimization prompt."""
     if not jsonld:

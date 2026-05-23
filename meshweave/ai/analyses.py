@@ -21,6 +21,7 @@ from meshweave.ai.models import (
 )
 from meshweave.ai.preconditions import check_all
 from meshweave.ai.prompts import (
+    aax_summary_prompt,
     content_delta_prompt,
     email_validation_prompt,
     homepage_comprehension_prompt,
@@ -122,6 +123,35 @@ async def run_aax_analysis(payload: dict) -> dict[str, Any]:
     else:
         skip_reasons["email_validation"] = "No valid email addresses found to validate"
 
+    # Generate one-line summary verdict for the hero card
+    summary_text = ""
+    try:
+        hc_data = (
+            results.get("homepage_comprehension")
+        )
+        cd_data = (
+            results.get("content_delta")
+        )
+        hc_dict = (
+            hc_data.model_dump()
+            if hc_data and hasattr(hc_data, "model_dump")
+            else (hc_data if isinstance(hc_data, dict) else None)
+        )
+        cd_dict = (
+            cd_data.model_dump()
+            if cd_data and hasattr(cd_data, "model_dump")
+            else (cd_data if isinstance(cd_data, dict) else None)
+        )
+        p, s = aax_summary_prompt(domain, hc_dict, cd_dict)
+        from meshweave.ai.models import AAXSummaryResult
+
+        summary_result = await run_structured_test(
+            AAXSummaryResult, p, s
+        )
+        summary_text = summary_result.summary
+    except Exception as e:
+        logger.warning("AAX summary generation failed: %s", e)
+
     # Build aggregate result
     completed = len(results) + (1 if email_validation else 0)
     skipped = len(skip_reasons)
@@ -137,6 +167,7 @@ async def run_aax_analysis(payload: dict) -> dict[str, Any]:
         contactability=contactability,
         email_validation=email_validation,
         llms_txt=payload.get("llms_txt"),
+        summary=summary_text,
         skip_reasons=skip_reasons,
     )
 
