@@ -802,11 +802,29 @@ label {
   color: var(--color-ink);
 }
 
+.landing-hero-desc {
+  font: var(--font-subhead);
+  font-weight: 400;
+  color: var(--color-primary);
+  margin: -12px 0 var(--space-lg);
+  letter-spacing: 0.16px;
+}
+
 .landing-hero-subtitle {
   font: var(--font-body-lg);
   letter-spacing: 0;
   color: var(--color-ink-muted);
-  margin: 0 0 var(--space-sm);
+  margin: 0 0 var(--space-md);
+  max-width: 800px;
+  line-height: 1.6;
+}
+
+.landing-hero-body {
+  font: var(--font-body);
+  color: var(--color-ink-muted);
+  margin: 0 0 var(--space-xl);
+  max-width: 800px;
+  line-height: 1.6;
 }
 
 .landing-hero-audience {
@@ -874,6 +892,85 @@ label {
   font: var(--font-subhead);
   letter-spacing: 0;
   margin: 0 0 var(--space-xs);
+}
+
+/* Score framework preview cards (AEO / GEO / AAX) */
+.score-framework {
+  gap: var(--space-lg);
+}
+
+.score-card-preview {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-none);
+  padding: var(--space-xl) var(--space-lg);
+  text-align: center;
+  transition: border-color 0.15s ease;
+}
+
+.score-card-preview:hover {
+  border-color: var(--color-hairline-strong);
+}
+
+.score-card-label {
+  display: block;
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--color-primary);
+  line-height: 1.2;
+}
+
+.score-card-focus {
+  display: block;
+  font: var(--font-body-emphasis);
+  color: var(--color-ink);
+  margin-top: var(--space-xs);
+}
+
+.score-card-desc {
+  display: block;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+  margin-top: var(--space-xxs);
+}
+
+/* Outcomes grid (What does it mean to be optimized) */
+.outcomes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-lg);
+  margin-top: var(--space-xl);
+}
+
+.outcome-card {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  transition: border-color 0.15s ease;
+  border-radius: var(--radius-none);
+}
+
+.outcome-card:hover {
+  border-color: var(--color-hairline-strong);
+}
+
+.outcome-verb {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-primary);
+  letter-spacing: 0.32px;
+}
+
+.outcome-desc {
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+  margin: 0;
+  line-height: 1.45;
 }
 
 /* Card list (used by recent analyses) */
@@ -1935,6 +2032,7 @@ label {
   .cta-banner h2 {
     font-size: var(--font-card-title);
   }
+
 
   nav.topnav {
     flex-direction: column;

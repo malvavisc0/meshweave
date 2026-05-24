@@ -175,6 +175,7 @@ async def submit(
                         existing.error = None
                     existing.updated_at = now
                     crawl_id = existing.id
+                    key = getattr(existing, "key", None)
                 else:
                     # Create a new row to avoid mutating another user's private crawl
                     if visibility == "public":
@@ -248,8 +249,11 @@ async def submit(
         # Redirect:
         if user and getattr(user, "id", None):
             return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
+        elif visibility == "public" and key:
+            # Anonymous public crawl → go straight to analysis page
+            return RedirectResponse(url=f"/analysis/{key}", status_code=303)
         else:
-            # Anonymous: show submitted banner on home, mark private if applicable
+            # Anonymous private: show submitted banner on home
             suffix = "&private=1" if visibility == "private" else ""
             return RedirectResponse(
                 url=f"/?submitted={crawl_id}{suffix}", status_code=303

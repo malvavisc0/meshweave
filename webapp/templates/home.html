@@ -7,10 +7,10 @@
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "What are AEO and GEO scores?",
+      "name": "What are AEO, GEO, and AAX scores?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "AEO (Answer Engine Optimization) measures how well your site captures Google AI Overviews and featured snippets. GEO (Generative Engine Optimization) measures how well AI engines like ChatGPT, Claude, and Perplexity can find, understand, and recommend your content. Both scored 0–100."
+        "text": "AEO (Answer Engine Optimization) measures how well your site captures Google AI Overviews and featured snippets. GEO (Generative Engine Optimization) measures how well AI engines like ChatGPT, Claude, and Perplexity can find, understand, and recommend your content. AAX (AI Agent Experience) measures how well AI agents can navigate, understand, and interact with your site — including crawler access, brand comprehension, and contactability."
       }
     },
     {
@@ -18,7 +18,7 @@
       "name": "Why does AI search matter?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Traditional search engines show a list of links. AI engines give direct answers and choose which sources to cite. AEO optimizes for Google AI Overviews and featured snippets. GEO optimizes for ChatGPT, Claude, and Perplexity. If you're not optimized for both, you're missing the fastest-growing channel for discovery."
+        "text": "Traditional search engines show a list of links. AI engines give direct answers and choose which sources to cite. AEO optimizes for Google AI Overviews and featured snippets. GEO optimizes for ChatGPT, Claude, and Perplexity. AAX optimizes for AI agents that act on behalf of users. If you're not optimized for all three, you're missing the fastest-growing channel for discovery."
       }
     },
     {
@@ -54,7 +54,7 @@
   "@type": "Organization",
   "name": "MeshWeave",
   "url": "http://localhost:8080/",
-  "description": "AEO & GEO scoring platform for AI search visibility.",
+  "description": "AEO, GEO & AAX scoring platform for AI search visibility.",
   "sameAs": [
     "https://github.com/malvavisc0/meshweave"
   ]
@@ -93,23 +93,49 @@
 {% endif %}
 
 <!-- HERO -->
-<section class="landing-hero" aria-label="MeshWeave AEO and GEO scoring">
+<section class="landing-hero" aria-label="MeshWeave AEO, GEO, and AAX scoring">
   <div class="container">
     <h1 class="landing-hero-title">Is your site optimized for AI search?</h1>
-    <h2 class="landing-hero-desc">MeshWeave shows you exactly where you stand</h2>
+    <h2 class="landing-hero-desc">Find out in 60 seconds with our precision scoring engine</h2>
     <p class="landing-hero-subtitle">AI engines — ChatGPT, Claude, Perplexity, Google AI Overviews — are becoming
       the way people discover products, services, and answers. If your site isn't structured for AI to find,
       understand, and recommend it, you're invisible to a growing share of your audience.</p>
-    <p class="landing-hero-body">Submit any URL and get your <strong>AEO</strong> (Answer Engine Optimization) and
-      <strong>GEO</strong> (Generative Engine Optimization) score — a clear, measurable assessment of how well AI
-      engines can find, understand, and recommend your content, with <strong>prioritized recommendations</strong>
-      to improve.
+    <p class="landing-hero-body">Submit any URL and get your <strong>AEO</strong>, <strong>GEO</strong>, and
+      <strong>AAX</strong> scores — a clear, measurable assessment across three dimensions, with
+      <strong>prioritized recommendations</strong> to improve.
     </p>
 
     <div class="landing-hero-form mt-3">
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}
     </div>
+  </div>
+</section>
+
+<!-- SCORE FRAMEWORK -->
+<section class="landing-section band-surface" id="scoring" aria-label="Scoring framework">
+  <div class="container">
+    <h2 class="landing-section-title">Three dimensions, one score</h2>
+    <div class="score-framework grid-3">
+      <div class="score-card-preview">
+        <span class="score-card-label">AEO</span>
+        <span class="score-card-focus">Answer Engine Optimization</span>
+        <span class="score-card-desc">Google AI Overviews & featured snippets</span>
+      </div>
+      <div class="score-card-preview">
+        <span class="score-card-label">GEO</span>
+        <span class="score-card-focus">Generative Engine Optimization</span>
+        <span class="score-card-desc">ChatGPT, Claude, Perplexity visibility</span>
+      </div>
+      <div class="score-card-preview">
+        <span class="score-card-label">AAX</span>
+        <span class="score-card-focus">AI Agent Experience</span>
+        <span class="score-card-desc">Agent navigation, comprehension & action</span>
+      </div>
+    </div>
+    <p class="small mt-3" style="text-align:center; color: var(--color-ink-muted);">
+      Each score with full factor breakdown and prioritized recommendations
+    </p>
   </div>
 </section>
 
@@ -123,7 +149,7 @@
         <h3>See your AI readiness</h3>
         <p class="small m0">Enter a domain or URL. MeshWeave evaluates 12 factors that determine whether AI engines
           can find, understand, and cite your content — including schema coverage, content structure, entity
-          consistency,
+          consistency, AI agent accessibility,
           LLM crawl accessibility, and E-E-A-T signals.</p>
       </div>
       <div class="panel">
@@ -133,7 +159,7 @@
       </div>
       <div class="panel">
         <h3>Track improvement</h3>
-        <p class="small m0">Get your AEO score (0–100) and GEO score (0–100) with a full factor breakdown and a
+        <p class="small m0">Get your AEO, GEO, and AAX scores (0–100) with a full factor breakdown and a
           shareable report. Re-analyze after making changes to see your scores improve.</p>
       </div>
     </div>
@@ -144,10 +170,39 @@
 <section class="landing-section band-surface" id="what-optimized" aria-label="What optimized means">
   <div class="container">
     <h2 class="landing-section-title">What does it mean to be optimized?</h2>
-    <p class="m0">When your site is optimized for AI search, engines like ChatGPT and Claude can understand your
-      content, <strong>remember</strong> it, and <strong>recommend</strong> it to users asking questions in your space.
-      You get cited in AI answers, appear in Google AI Overviews, and capture a growing share of discovery traffic
-      that traditional SEO alone can't reach.</p>
+    <p class="landing-section-subtitle text-center mt-0 mb-4">When your site is optimized for AI search, engines like
+      ChatGPT and Claude can:</p>
+
+    <div class="outcomes-grid grid-3">
+      <div class="outcome-card">
+        <div class="outcome-verb">Understand</div>
+        <p class="outcome-desc">Your content parsed and retained by AI engines</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-verb">Remember</div>
+        <p class="outcome-desc">Referenced in future queries and conversations</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-verb">Recommend</div>
+        <p class="outcome-desc">Suggested to users asking questions in your space</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-verb">Cite</div>
+        <p class="outcome-desc">Quoted in AI-generated answers</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-verb">Appear</div>
+        <p class="outcome-desc">Featured in Google AI Overviews</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-verb">Capture</div>
+        <p class="outcome-desc">Discovery traffic traditional SEO can't reach</p>
+      </div>
+    </div>
+
+    <p class="small text-center mt-4 mb-0" style="color: var(--color-ink-muted);">
+      AI agents can also navigate your site, understand your offerings, and take action on behalf of users.
+    </p>
   </div>
 </section>
 
@@ -185,7 +240,7 @@
       <a href="/all?sort=recent">View all →</a>
     </p>
     {% else %}
-    <p class="small m0 mt-3">Analyses scored so far include score gauges for AEO and GEO, a full factor-by-factor
+    <p class="small m0 mt-3">Analyses scored so far include score gauges for AEO, GEO, and AAX, a full factor-by-factor
       breakdown, and prioritized recommendations ranked by estimated impact. Each analysis has a unique shareable URL.
     </p>
     <p class="mt-2"><a href="/all">View all public analyses →</a></p>
@@ -199,19 +254,23 @@
     <h2 class="landing-section-title">Frequently asked questions</h2>
 
     <div class="faq-item">
-      <h3>What are AEO and GEO scores?</h3>
-      <p class="small m0"><strong>AEO</strong> (Answer Engine Optimization) measures how well your site captures Google
-        AI Overviews and featured snippets. <strong>GEO</strong> (Generative Engine Optimization) measures how well AI
-        engines like ChatGPT, Claude, and Perplexity can find, understand, and recommend your content. Both scored
-        0–100.</p>
+      <h3>What are AEO, GEO, and AAX scores?</h3>
+      <p class="small m0">
+        <strong>AEO</strong> (Answer Engine Optimization) measures how well your site captures Google
+        AI Overviews and featured snippets.<br>
+        <strong>GEO</strong> (Generative Engine Optimization) measures how well AI
+        engines like ChatGPT, Claude, and Perplexity can find, understand, and recommend your content.<br>
+        <strong>AAX</strong> (AI Agent Experience) measures how well AI agents can navigate, understand, and interact
+        with your site — including crawler access, brand comprehension, and contactability.<br>
+      </p>
     </div>
 
     <div class="faq-item">
       <h3>Why does AI search matter?</h3>
       <p class="small m0">Traditional search engines show a list of links. AI engines give direct answers — and they
         choose which sources to cite. AEO optimizes for Google's AI Overviews and featured snippets. GEO optimizes for
-        ChatGPT, Claude, and Perplexity. If you're not optimized for both, you're missing the fastest-growing channel
-        for discovery.</p>
+        ChatGPT, Claude, and Perplexity. AAX optimizes for AI agents that act on behalf of users. If you're not
+        optimized for all three, you're missing the fastest-growing channel for discovery.</p>
     </div>
 
     <div class="faq-item">
