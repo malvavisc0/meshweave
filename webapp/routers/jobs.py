@@ -28,7 +28,7 @@ from webapp.utils.url import _abs_url
 router = APIRouter()
 
 
-@router.get("/my", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse)
 async def my_jobs(
     request: Request,
     page_size: int = 25,
@@ -71,7 +71,7 @@ async def my_jobs(
         )
 
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
-    page_title = f"My Dashboard — {site_name}"
+    page_title = f"Dashboard — {site_name}"
     meta_description = "Your recent crawls."
 
     # CSRF token for retry forms on this page
@@ -102,7 +102,7 @@ async def my_jobs(
             "site_name": site_name,
             "page_title": page_title,
             "meta_description": meta_description,
-            "abs_page_url": _abs_url(request, "/my"),
+            "abs_page_url": _abs_url(request, "/dashboard"),
             "csrf_token": csrf_token,
         },
     )
@@ -124,14 +124,14 @@ async def my_jobs(
 
 @router.get("/cancel")
 async def cancel_crawl_no_id(request: Request):
-    return RedirectResponse(url="/my?notice=cancel_get", status_code=303)
+    return RedirectResponse(url="/dashboard?notice=cancel_get", status_code=303)
 
 
 @router.get("/cancel/{crawl_id}")
 async def cancel_crawl_get(request: Request, crawl_id: str):
     # Do not perform cancellation on GET to avoid CSRF; just inform user and redirect
     return RedirectResponse(
-        url=f"/my?notice=cancel_get&job={crawl_id}", status_code=303
+        url=f"/dashboard?notice=cancel_get&job={crawl_id}", status_code=303
     )
 
 
@@ -149,7 +149,7 @@ async def cancel_crawl(
         max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
         if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
             return RedirectResponse(
-                url=f"/my?notice=csrf_failed&job={crawl_id}", status_code=303
+                url=f"/dashboard?notice=csrf_failed&job={crawl_id}", status_code=303
             )
 
     # Auth + owner
@@ -158,12 +158,12 @@ async def cancel_crawl(
         row = await require_ownership(request, crawl_id)
     except HTTPException:
         return RedirectResponse(
-            url=f"/my?notice=not_authorized&job={crawl_id}", status_code=303
+            url=f"/dashboard?notice=not_authorized&job={crawl_id}", status_code=303
         )
 
     if (row.status or "").lower() != "running":
         return RedirectResponse(
-            url=f"/my?notice=not_running&job={crawl_id}", status_code=303
+            url=f"/dashboard?notice=not_running&job={crawl_id}", status_code=303
         )
 
     now = datetime.now(UTC)
@@ -171,18 +171,18 @@ async def cancel_crawl(
         db_row = s.get(Crawl, crawl_id)
         if not db_row:
             return RedirectResponse(
-                url=f"/my?notice=not_found&job={crawl_id}", status_code=303
+                url=f"/dashboard?notice=not_found&job={crawl_id}", status_code=303
             )
         # Only transition running -> cancelled
         if (db_row.status or "").lower() != "running":
             return RedirectResponse(
-                url=f"/my?notice=not_running&job={crawl_id}", status_code=303
+                url=f"/dashboard?notice=not_running&job={crawl_id}", status_code=303
             )
         db_row.status = "cancelled"
         db_row.error = "cancelled_by_user"
         db_row.updated_at = now
 
-    return RedirectResponse(url=f"/my?notice=cancelled&job={crawl_id}", status_code=303)
+    return RedirectResponse(url=f"/dashboard?notice=cancelled&job={crawl_id}", status_code=303)
 
 
 @router.post("/retry/{crawl_id}")
@@ -241,48 +241,41 @@ async def retry_crawl(
     else:
         background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
 
-    return RedirectResponse(url=f"/my?notice=retried&job={crawl_id}", status_code=303)
+    return RedirectResponse(url=f"/dashboard?notice=retried&job={crawl_id}", status_code=303)
 
 
 @router.get("/api/my/quick-stats")
 async def my_quick_stats(request: Request):
     user = await require_auth(request)
-    analyses_completed = 0
-    emails_extracted = 0
-    products_count = 0
+    aeo_low_count = 0
+    geo_low_count = 0
+    aax_low_count = 0
     with get_session() as s:
-        analyses_completed = (
+        crawls = (
             s.query(Crawl)
             .filter(
                 Crawl.user_id == user.id,
                 Crawl.status == "succeeded",
             )
-            .count()
-        )
-        # Emails extracted — count unique emails from payload_json across user's crawls
-        emails_extracted = 0
-        user_crawls = (
-            s.query(Crawl.payload_json)
-            .filter(
-                Crawl.user_id == user.id,
-                Crawl.status == "succeeded",
-                Crawl.payload_json.isnot(None),
-            )
             .all()
         )
-        all_emails: set[str] = set()
-        for (payload,) in user_crawls:
-            if isinstance(payload, dict):
-                emails_data = payload.get("emails") or {}
-                for em in emails_data.get("unique") or []:
-                    if em:
-                        all_emails.add(str(em).lower())
-        emails_extracted = len(all_emails)
-        products_count = s.query(Product).filter(Product.user_id == user.id).count()
+        for c in crawls:
+            if c.aeo_score is not None and c.aeo_score < 50:
+                aeo_low_count += 1
+            if c.geo_score is not None and c.geo_score < 50:
+                geo_low_count += 1
+            if c.score_snapshot and c.score_snapshot.score_json:
+                aax_comp = c.score_snapshot.score_json.get("aax", {}).get("composite")
+                if aax_comp is not None:
+                    try:
+                        if float(aax_comp) < 50:
+                            aax_low_count += 1
+                    except (ValueError, TypeError):
+                        pass
     return {
-        "analyses_completed": int(analyses_completed or 0),
-        "emails_extracted": int(emails_extracted or 0),
-        "products_count": int(products_count or 0),
+        "aeo_low": int(aeo_low_count),
+        "geo_low": int(geo_low_count),
+        "aax_low": int(aax_low_count),
     }
 
 

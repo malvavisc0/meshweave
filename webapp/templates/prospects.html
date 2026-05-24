@@ -2,78 +2,84 @@
 
 {% block content %}
 <div class="container">
-<h1>Prospects</h1>
+  <h1>Prospects</h1>
 
-<section class="panel mt-2" role="region" aria-label="Prospects">
-  <div class="actions" role="toolbar" aria-label="Prospect Actions">
-    <a href="/my" class="btn">Back to Dashboard</a>
-  </div>
-
-  <div class="table-wrap">
-    <table class="table mt-1" aria-label="Prospects Table">
-      <thead>
-        <tr>
-          <th>Domain</th>
-          <th>Title</th>
-          <th>URL</th>
-          <th>Status</th>
-          <th>Tags</th>
-          <th>Notes</th>
-          <th>Created</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="prospects-tbody">
-        <tr><td colspan="8"><em class="small">Loading…</em></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Prospect Form -->
-  <div id="prospect-form" class="panel mt-2" aria-label="Prospect Form">
-    <h3 id="prf-title">New Prospect</h3>
-    <div id="prf-global" class="small validation-error" role="status" aria-live="polite"></div>
-    <div class="small">Domain is required. Other fields are optional.</div>
-    <div class="form-grid mt-2">
-      <label>Domain (required)<br>
-        <input type="text" id="prf-domain" placeholder="example.com" aria-describedby="prf-domain-err" aria-invalid="false" required>
-        <br><small id="prf-domain-err" class="small validation-error"></small>
-      </label>
-      <label>Title<br>
-        <input type="text" id="prf-title-input" placeholder="Company or page title" aria-describedby="prf-title-err" aria-invalid="false">
-        <br><small id="prf-title-err" class="small validation-error"></small>
-      </label>
-      <label>URL<br>
-        <input type="url" id="prf-url" placeholder="https://…" aria-describedby="prf-url-err" aria-invalid="false">
-        <br><small id="prf-url-err" class="small validation-error"></small>
-      </label>
-      <label>Status<br>
-        <select id="prf-status" aria-describedby="prf-status-err" aria-invalid="false">
-          <option value="">(default: shortlisted)</option>
-          <option value="shortlisted">Shortlisted</option>
-          <option value="contacted">Contacted</option>
-          <option value="replied">Replied</option>
-          <option value="won">Won</option>
-          <option value="lost">Lost</option>
-        </select>
-        <br><small id="prf-status-err" class="small validation-error"></small>
-      </label>
-      <label>Tags<br>
-        <input type="text" id="prf-tags" placeholder="comma,separated" aria-describedby="prf-tags-err" aria-invalid="false">
-        <br><small id="prf-tags-err" class="small validation-error"></small>
-      </label>
-      <label class="col-span-all">Notes<br>
-        <textarea id="prf-notes" rows="2" class="w-full" aria-describedby="prf-notes-err" aria-invalid="false"></textarea>
-        <br><small id="prf-notes-err" class="small validation-error"></small>
-      </label>
+  <section class="panel mt-2" role="region" aria-label="Prospects">
+    <div class="actions" role="toolbar" aria-label="Prospect Actions">
+      <a href="/dashboard" class="btn">Back to Dashboard</a>
     </div>
-    <div class="mt-1" role="toolbar" aria-label="Prospect Form Actions">
-      <button class="btn btn-primary" onclick="saveProspect()">Save</button>
-      <button class="btn" onclick="closeProspectForm()">Cancel</button>
+
+    <div class="table-wrap">
+      <table class="table mt-1" aria-label="Prospects Table">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Title</th>
+            <th>URL</th>
+            <th>Status</th>
+            <th>Tags</th>
+            <th>Notes</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="prospects-tbody">
+          <tr>
+            <td colspan="8"><em class="small">Loading…</em></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <input type="hidden" id="prf-id" value="">
-  </div>
-</section>
+
+    <!-- Prospect Form -->
+    <div id="prospect-form" class="panel mt-2" aria-label="Prospect Form">
+      <h3 id="prf-title">New Prospect</h3>
+      <div id="prf-global" class="small validation-error" role="status" aria-live="polite"></div>
+      <div class="small">Domain is required. Other fields are optional.</div>
+      <div class="form-grid mt-2">
+        <label>Domain (required)<br>
+          <input type="text" id="prf-domain" placeholder="example.com" aria-describedby="prf-domain-err"
+            aria-invalid="false" required>
+          <br><small id="prf-domain-err" class="small validation-error"></small>
+        </label>
+        <label>Title<br>
+          <input type="text" id="prf-title-input" placeholder="Company or page title" aria-describedby="prf-title-err"
+            aria-invalid="false">
+          <br><small id="prf-title-err" class="small validation-error"></small>
+        </label>
+        <label>URL<br>
+          <input type="url" id="prf-url" placeholder="https://…" aria-describedby="prf-url-err" aria-invalid="false">
+          <br><small id="prf-url-err" class="small validation-error"></small>
+        </label>
+        <label>Status<br>
+          <select id="prf-status" aria-describedby="prf-status-err" aria-invalid="false">
+            <option value="">(default: shortlisted)</option>
+            <option value="shortlisted">Shortlisted</option>
+            <option value="contacted">Contacted</option>
+            <option value="replied">Replied</option>
+            <option value="won">Won</option>
+            <option value="lost">Lost</option>
+          </select>
+          <br><small id="prf-status-err" class="small validation-error"></small>
+        </label>
+        <label>Tags<br>
+          <input type="text" id="prf-tags" placeholder="comma,separated" aria-describedby="prf-tags-err"
+            aria-invalid="false">
+          <br><small id="prf-tags-err" class="small validation-error"></small>
+        </label>
+        <label class="col-span-all">Notes<br>
+          <textarea id="prf-notes" rows="2" class="w-full" aria-describedby="prf-notes-err"
+            aria-invalid="false"></textarea>
+          <br><small id="prf-notes-err" class="small validation-error"></small>
+        </label>
+      </div>
+      <div class="mt-1" role="toolbar" aria-label="Prospect Form Actions">
+        <button class="btn btn-primary" onclick="saveProspect()">Save</button>
+        <button class="btn" onclick="closeProspectForm()">Cancel</button>
+      </div>
+      <input type="hidden" id="prf-id" value="">
+    </div>
+  </section>
 </div>
 {% endblock %}
 

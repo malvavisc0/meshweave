@@ -75,7 +75,7 @@ def _count_user_daily_site_crawls(user_id: str) -> int:
             s.query(Crawl)
             .filter(
                 Crawl.user_id == user_id,
-                Crawl.scope == "site",
+                Crawl.crawl_params.isnot(None),
                 Crawl.created_at >= start_day,
             )
             .count()

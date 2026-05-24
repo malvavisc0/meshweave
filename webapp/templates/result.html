@@ -268,42 +268,46 @@
       <div class="breakdown-column">
         <h3 class="breakdown-col-header">AEO Factors</h3>
         {% for factor in score_snapshot.score_data.aeo.factors.values() %}
-        {% if factor.score is not none %}
         <div class="factor-row">
           <span class="factor-label">{{ factor.display_name }}</span>
           <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score }}%; background: {{ factor.bar_color }};">
+            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
             </div>
           </div>
+          {% if factor.score is not none %}
           <span
             class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
             {{ factor.score | round(1) }}/100
           </span>
+          {% else %}
+          <span class="factor-score factor-score-missing">—</span>
+          {% endif %}
           <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
-          {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+          {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
         </div>
-        {% endif %}
         {% endfor %}
       </div>
       <!-- GEO Column -->
       <div class="breakdown-column">
         <h3 class="breakdown-col-header">GEO Factors</h3>
         {% for factor in score_snapshot.score_data.geo.factors.values() %}
-        {% if factor.score is not none %}
         <div class="factor-row">
           <span class="factor-label">{{ factor.display_name }}</span>
           <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score }}%; background: {{ factor.bar_color }};">
+            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
             </div>
           </div>
+          {% if factor.score is not none %}
           <span
             class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
             {{ factor.score | round(1) }}/100
           </span>
+          {% else %}
+          <span class="factor-score factor-score-missing">—</span>
+          {% endif %}
           <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
-          {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+          {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
         </div>
-        {% endif %}
         {% endfor %}
       </div>
       <!-- AAX Column -->
@@ -311,21 +315,23 @@
         <h3 class="breakdown-col-header">AAX Factors</h3>
         {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
         {% for factor in score_snapshot.score_data.aax.factors.values() %}
-        {% if factor.score is not none %}
         <div class="factor-row">
           <span class="factor-label">{{ factor.display_name }}</span>
           <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score }}%; background: {{ factor.bar_color }};">
+            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
             </div>
           </div>
+          {% if factor.score is not none %}
           <span
             class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
             {{ factor.score | round(1) }}/100
           </span>
+          {% else %}
+          <span class="factor-score factor-score-missing">—</span>
+          {% endif %}
           <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
-          {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+          {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
         </div>
-        {% endif %}
         {% endfor %}
         {% else %}
         <p class="small">No AAX factors available.</p>
@@ -618,59 +624,6 @@
     </div>
     {% endif %}
     {% endfor %}
-  </section>
-  {% endif %}
-
-  <!-- Crawl Summary (owner-only) -->
-  {% if is_owner and payload and payload.summary %}
-  <section class="panel mt-3" role="region" aria-label="Crawl Summary">
-    <h2>Crawl Summary</h2>
-    <ul class="domain-list">
-      <li>
-        <span class="small">Pages Visited</span>
-        <span>{{ payload.summary.visited_count or 'N/A' }}</span>
-      </li>
-      <li>
-        <span class="small">Reason Stopped</span>
-        <span>{{ reason_stopped_label or 'N/A' }}</span>
-      </li>
-    </ul>
-  </section>
-  {% endif %}
-
-  <!-- Crawl Configuration (owner-only) -->
-  {% if is_owner and payload and (payload.scope or payload.start_url or payload.limits) %}
-  <section class="panel mt-2" role="region" aria-label="Crawl Configuration">
-    <h2>Crawl Configuration</h2>
-    <ul class="domain-list">
-      {% if payload.scope %}
-      <li>
-        <span class="small">Scope</span>
-        <span>{{ payload.scope|title }}</span>
-      </li>
-      {% endif %}
-      {% if payload.start_url %}
-      <li>
-        <span class="small">Start URL</span>
-        <span><a href="{{ payload.start_url }}" target="_blank" rel="noopener">{{ payload.start_url }}</a></span>
-      </li>
-      {% endif %}
-      {% if payload.limits %}
-      <li>
-        <span class="small">Max Pages</span>
-        <span>{{ payload.limits.max_pages or 'N/A' }}</span>
-      </li>
-      <li>
-        <span class="small">Max Depth</span>
-        <span>{{ payload.limits.max_depth or 'N/A' }}</span>
-      </li>
-      <li>
-        <span class="small">Time Budget</span>
-        <span>{{ (payload.limits.time_budget_ms / 1000)|round(0) if payload.limits.time_budget_ms else 'N/A'
-          }}s</span>
-      </li>
-      {% endif %}
-    </ul>
   </section>
   {% endif %}
 

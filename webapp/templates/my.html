@@ -2,112 +2,114 @@
 
 {% block content %}
 <div class="container">
-<h1>My Dashboard</h1>
 
-{% if notice %}
+  <h1>Dashboard</h1>
+  <p class="mt-1" style="color: var(--color-ink-muted); font: var(--font-body-lg);">Track and improve your site's
+    visibility across AI search engines and agents.</p>
+
+  {% if notice %}
   {% set ok_notices = ['cancelled','retried'] %}
   <div role="alert" class="notice {% if notice in ok_notices %}notice-ok{% else %}notice-err{% endif %}">
     {% if notice == 'cancelled' %}
-      <strong>Cancelled.</strong> The running job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was cancelled.
+    <strong>Cancelled.</strong> The running job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was
+    cancelled.
     {% elif notice == 'retried' %}
-      <strong>Retry started.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is queued to run again.
+    <strong>Retry started.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is queued to run
+    again.
     {% elif notice == 'not_running' %}
-      <strong>Not running.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is not currently running.
+    <strong>Not running.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is not currently
+    running.
     {% elif notice == 'not_authorized' %}
-      <strong>Not authorized.</strong> You do not own job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %}.
+    <strong>Not authorized.</strong> You do not own job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %}.
     {% elif notice == 'not_found' %}
-      <strong>Not found.</strong> The requested job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was not found.
+    <strong>Not found.</strong> The requested job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was not
+    found.
     {% elif notice == 'csrf_failed' %}
-      <strong>Security check failed.</strong> Please try again and ensure your session is valid.
+    <strong>Security check failed.</strong> Please try again and ensure your session is valid.
     {% elif notice == 'cancel_get' %}
-      <strong>Action requires confirmation.</strong> Please use the Cancel button on the job page to cancel.
+    <strong>Action requires confirmation.</strong> Please use the Cancel button on the job page to cancel.
     {% else %}
-      <strong>Notice.</strong> An action was performed.
+    <strong>Notice.</strong> An action was performed.
     {% endif %}
     {% if notice_job %}
-      {% if notice in ['cancelled','not_running','retried'] %}
-        &nbsp;<a href="/analysis/{{ notice_job }}">Open job</a>
-      {% endif %}
+    {% if notice in ['cancelled','not_running','retried'] %}
+    &nbsp;<a href="/analysis/{{ notice_job }}">Open job</a>
+    {% endif %}
     {% endif %}
   </div>
-{% endif %}
+  {% endif %}
 
-<section class="panel mt-2" role="region" aria-label="Quick Stats">
-  <h2>Quick Stats</h2>
-  <div id="quick-stats" class="quick-stats quick-stats-1row">
-    <div class="card">
-      <div class="label">Analyses</div>
-      <div class="value" id="qs-analyses">–</div>
+  <section class="panel mt-2" role="region" aria-label="Active Vulnerabilities">
+    <h2>Active Vulnerabilities</h2>
+    <p class="small mt-1 mb-2" style="color: var(--color-ink-muted);">Aggregated critical vulnerabilities (score < 50)
+        requiring optimization across all completed analyses.</p>
+        <div id="quick-stats" class="quick-stats">
+          <div class="stat-card">
+            <div class="stat-k">High AEO risk</div>
+            <div class="stat-v" id="qs-aeo-low">–</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-k">High GEO risk</div>
+            <div class="stat-v" id="qs-geo-low">–</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-k">Blocked AI agents</div>
+            <div class="stat-v" id="qs-aax-low">–</div>
+          </div>
+        </div>
+  </section>
+
+  <section class="panel mt-2" role="region" aria-label="Analyze a New Site">
+    <h2>Analyze a New Site</h2>
+    <p class="mt-1 mb-2" style="color: var(--color-ink-muted);">Enter a domain or URL to evaluate its AI search
+      readiness.
+      MeshWeave analyzes critical factors across AEO, GEO, and AAX dimensions — including schema coverage, content
+      structure, entity consistency, and AI agent accessibility.</p>
+    {% include "partials/site_crawl_form.html" %}
+  </section>
+
+  <section class="panel mt-2" role="region" aria-label="Recent Analyses">
+    <h2>Recent Analyses</h2>
+    <p class="small mt-1 mb-2" style="color: var(--color-ink-muted);">Your historical reports. Re-analyze your site
+      after
+      implementing our prioritized recommendations to track your score improvements.</p>
+
+    <div class="actions toolbar" role="toolbar" aria-label="Job Filters">
+      <label class="small">Status
+        <select id="jobs-status">
+          <option value="">All</option>
+          <option value="running">Running</option>
+          <option value="succeeded">Completed</option>
+          <option value="failed">Failed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="pending">Pending</option>
+        </select>
+      </label>
+      <label class="small">Search
+        <input id="jobs-q" type="search" placeholder="domain or url" style="min-width:220px">
+      </label>
+      <button class="btn" id="jobs-apply">Apply</button>
+      <span class="small" id="jobs-status-msg" role="status" aria-live="polite"></span>
     </div>
-    <div class="card">
-      <div class="label">Emails</div>
-      <div class="value" id="qs-emails">–</div>
-    </div>
-    <div class="card">
-      <div class="label">Prospects</div>
-      <div class="value">
-        <a href="/prospects" id="qs-prospects-link"><span id="qs-prospects">–</span></a>
-      </div>
-    </div>
-    <div class="card">
-      <div class="label">Products</div>
-      <div class="value">
-        <a href="/products" id="qs-products-link"><span id="qs-products">–</span></a>
-      </div>
-    </div>
-  </div>
-</section>
 
-<section class="panel mt-2" role="region" aria-label="Start a new Site Crawl">
-  <h2>Start a new Site Crawl</h2>
-  {% include "partials/site_crawl_form.html" %}
-</section>
-
-<section class="panel mt-2" role="region" aria-label="Active Jobs">
-  <h2>Active Jobs</h2>
-  <div id="active-jobs-empty" class="small"><em>No active jobs.</em></div>
-  <div id="active-jobs-list"></div>
-</section>
-
-
-<section class="panel mt-2" role="region" aria-label="My Jobs">
-  <h2>My Jobs</h2>
-
-  <div class="actions toolbar" role="toolbar" aria-label="Job Filters">
-    <label class="small">Status
-      <select id="jobs-status">
-        <option value="">All</option>
-        <option value="running">Running</option>
-        <option value="succeeded">Completed</option>
-        <option value="failed">Failed</option>
-        <option value="cancelled">Cancelled</option>
-        <option value="pending">Pending</option>
-      </select>
-    </label>
-    <label class="small">Search
-      <input id="jobs-q" type="search" placeholder="domain or url" style="min-width:220px">
-    </label>
-    <button class="btn" id="jobs-apply">Apply</button>
-    <span class="small" id="jobs-status-msg" role="status" aria-live="polite"></span>
-  </div>
-
-  <div class="table-wrap">
-    <table class="table mt-1" aria-label="My Jobs">
-      <thead>
-        <tr>
-          <th><input type="checkbox" id="jobs-select-all" aria-label="Select All Jobs"></th>
-          <th>Scope</th>
-          <th>URL</th>
-          <th>Status</th>
-          <th>Updated</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="my-jobs-tbody">
-        {% if items and items|length > 0 %}
+    <div class="table-wrap">
+      <table class="table mt-1" aria-label="Recent Analyses">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="jobs-select-all" aria-label="Select All Jobs"></th>
+            <th>Scope</th>
+            <th>URL</th>
+            <th>Status</th>
+            <th>Updated</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="my-jobs-tbody">
+          {% if items and items|length > 0 %}
           {% for it in items %}
           <tr data-crawl-id="{{ it.id }}" data-status="{{ it.status }}">
-            <td><input type="checkbox" class="jobs-select" data-id="{{ it.id }}" aria-label="Select job {{ it.id }}"></td>
+            <td><input type="checkbox" class="jobs-select" data-id="{{ it.id }}" aria-label="Select job {{ it.id }}">
+            </td>
             <td>{{ it.scope }}</td>
             <td>
               <a href="/analysis/{{ it.id }}">
@@ -128,25 +130,25 @@
             </td>
           </tr>
           {% endfor %}
-        {% else %}
-          <tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
+          {% else %}
+          <tr>
+            <td colspan="6"><em class="small">No analyses yet. Start by analyzing a site above.</em></td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
 
-  <div class="mt-1 toolbar">
-    <button class="btn hidden" id="jobs-next" aria-disabled="true">Next</button>
-    <small id="jobs-page-msg" role="status" aria-live="polite"></small>
-  </div>
+    <div class="mt-1 toolbar">
+      <button class="btn hidden" id="jobs-next" aria-disabled="true">Next</button>
+      <small id="jobs-page-msg" role="status" aria-live="polite"></small>
+    </div>
 
-  <div id="jobs-bulk-bar" class="mt-1 hidden toolbar" role="region" aria-label="Bulk Actions">
-    <span class="small" id="jobs-bulk-count">0 selected</span>
-    <button class="btn" id="jobs-bulk-retry">Retry selected</button>
-  </div>
-</section>
-
-<!-- Prospects panel moved to dedicated /prospects page -->
+    <div id="jobs-bulk-bar" class="mt-1 hidden toolbar" role="region" aria-label="Bulk Actions">
+      <span class="small" id="jobs-bulk-count">0 selected</span>
+      <button class="btn" id="jobs-bulk-retry">Retry selected</button>
+    </div>
+  </section>
 
 </div>
 {% endblock %}

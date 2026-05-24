@@ -24,6 +24,30 @@ FACTOR_DISPLAY_NAMES = {
     "email_validation": "Email Validation",
 }
 
+# Standard weights for all factors
+FACTOR_WEIGHTS = {
+    # AEO
+    "capture_rate": 0.30,
+    "schema": 0.20,
+    "content_structure": 0.20,
+    "query_match": 0.15,
+    "voice_rate": 0.10,
+    "freshness": 0.05,
+    # GEO
+    "citation": 0.30,
+    "topical_authority": 0.20,
+    "eeat": 0.15,
+    "crawl_access": 0.15,
+    "content_depth": 0.10,
+    "entity_consistency": 0.10,
+    # AAX
+    "homepage_comprehension": 0.30,
+    "meta_optimization": 0.20,
+    "content_delta": 0.20,
+    "llms_txt": 0.15,
+    "email_validation": 0.15,
+}
+
 PRIORITY_NUMERIC = {
     "high": 0,
     "medium": 1,
@@ -151,7 +175,7 @@ def build_score_data_for_template(score_data: dict) -> dict:
             if key not in enriched_factors:
                 enriched_factors[key] = {
                     "score": None,
-                    "weight": 0,
+                    "weight": FACTOR_WEIGHTS.get(key, 0),
                     "display_name": FACTOR_DISPLAY_NAMES.get(
                         key, key.replace("_", " ").title()
                     ),

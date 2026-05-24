@@ -2,60 +2,67 @@
 
 {% block content %}
 <div class="container">
-<h1>Products</h1>
+  <h1>Products</h1>
 
-<section class="panel mt-3" role="region" aria-label="Products">
-  <div class="actions" role="toolbar" aria-label="Product Actions">
-    <a href="/my" class="btn">Back to Dashboard</a>
-  </div>
-
-  <div class="table-wrap">
-    <table class="table mt-2" aria-label="Products Table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Website</th>
-          <th>Updated</th>
-          <th>Contact Info</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="products-tbody">
-        <tr><td colspan="5"><em class="small">Loading…</em></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Product Form -->
-  <div id="product-form" class="panel mt-3" aria-label="Product Form">
-    <h3 id="pf-title">New Product</h3>
-    <div id="pf-global" class="small validation-error" role="status" aria-live="polite"></div>
-    <div class="small">All fields are required.</div>
-    <div class="form-grid mt-3">
-      <label>Name (required)<br>
-        <input type="text" id="pf-name" placeholder="Product Name" aria-describedby="pf-name-err" aria-invalid="false" required>
-        <br><small id="pf-name-err" class="small validation-error"></small>
-      </label>
-      <label>Website (required)<br>
-        <input type="text" id="pf-website" placeholder="https://example.com" aria-describedby="pf-website-err" aria-invalid="false" required>
-        <br><small id="pf-website-err" class="small validation-error"></small>
-      </label>
-      <label>Contact Info (required)<br>
-        <input type="text" id="pf-contact" class="w-full" placeholder="Jane Doe <jane@example.com>" pattern="^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$" title="Format: Name <email@example.com>" aria-describedby="pf-contact-err" aria-invalid="false" required>
-        <br><small id="pf-contact-err" class="small validation-error"></small>
-      </label>
-      <label class="col-span-all">Description (required)<br>
-        <textarea id="pf-description" rows="3" class="w-full" aria-describedby="pf-description-err" aria-invalid="false" required></textarea>
-        <br><small id="pf-description-err" class="small validation-error"></small>
-      </label>
+  <section class="panel mt-3" role="region" aria-label="Products">
+    <div class="actions" role="toolbar" aria-label="Product Actions">
+      <a href="/dashboard" class="btn">Back to Dashboard</a>
     </div>
-    <div class="mt-2" role="toolbar" aria-label="Product Form Actions">
-      <button class="btn btn-primary" onclick="saveProduct()">Save</button>
-      <button class="btn" onclick="closeProductForm()">Cancel</button>
+
+    <div class="table-wrap">
+      <table class="table mt-2" aria-label="Products Table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Website</th>
+            <th>Updated</th>
+            <th>Contact Info</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="products-tbody">
+          <tr>
+            <td colspan="5"><em class="small">Loading…</em></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <input type="hidden" id="pf-id" value="">
-  </div>
-</section>
+
+    <!-- Product Form -->
+    <div id="product-form" class="panel mt-3" aria-label="Product Form">
+      <h3 id="pf-title">New Product</h3>
+      <div id="pf-global" class="small validation-error" role="status" aria-live="polite"></div>
+      <div class="small">All fields are required.</div>
+      <div class="form-grid mt-3">
+        <label>Name (required)<br>
+          <input type="text" id="pf-name" placeholder="Product Name" aria-describedby="pf-name-err" aria-invalid="false"
+            required>
+          <br><small id="pf-name-err" class="small validation-error"></small>
+        </label>
+        <label>Website (required)<br>
+          <input type="text" id="pf-website" placeholder="https://example.com" aria-describedby="pf-website-err"
+            aria-invalid="false" required>
+          <br><small id="pf-website-err" class="small validation-error"></small>
+        </label>
+        <label>Contact Info (required)<br>
+          <input type="text" id="pf-contact" class="w-full" placeholder="Jane Doe <jane@example.com>"
+            pattern="^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$" title="Format: Name <email@example.com>"
+            aria-describedby="pf-contact-err" aria-invalid="false" required>
+          <br><small id="pf-contact-err" class="small validation-error"></small>
+        </label>
+        <label class="col-span-all">Description (required)<br>
+          <textarea id="pf-description" rows="3" class="w-full" aria-describedby="pf-description-err"
+            aria-invalid="false" required></textarea>
+          <br><small id="pf-description-err" class="small validation-error"></small>
+        </label>
+      </div>
+      <div class="mt-2" role="toolbar" aria-label="Product Form Actions">
+        <button class="btn btn-primary" onclick="saveProduct()">Save</button>
+        <button class="btn" onclick="closeProductForm()">Cancel</button>
+      </div>
+      <input type="hidden" id="pf-id" value="">
+    </div>
+  </section>
 </div>
 {% endblock %}
 

@@ -1,103 +1,36 @@
-/* My Dashboard functionality - extracted from my.html */
+/* Dashboard functionality - extracted from my.html */
 (function () {
     'use strict';
 
     var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    var _activeJobsTimer = null;
     var _jobsRefreshTimer = null;
     var _jobsState = { status: '', q: '', cursor: null, limit: 25 };
 
 
-    // Quick Stats
+    // Quick Stats / Active Vulnerabilities
     function loadQuickStats() {
         apiJson('/api/my/quick-stats', 'GET').then(function (d) {
-            var a = document.getElementById('qs-analyses');
-            var e = document.getElementById('qs-emails');
-            var p = document.getElementById('qs-prospects');
-            var pr = document.getElementById('qs-products');
-            if (a) a.textContent = (d && typeof d.analyses_completed === 'number') ? d.analyses_completed : '0';
-            if (e) e.textContent = (d && typeof d.emails_extracted === 'number') ? d.emails_extracted : '0';
-            if (p) p.textContent = (d && typeof d.prospects_added === 'number') ? d.prospects_added : '0';
-            if (pr) pr.textContent = (d && typeof d.products_count === 'number') ? d.products_count : '0';
+            var aeo = document.getElementById('qs-aeo-low');
+            var geo = document.getElementById('qs-geo-low');
+            var aax = document.getElementById('qs-aax-low');
+
+            if (aeo) {
+                var val = (d && typeof d.aeo_low === 'number') ? d.aeo_low : 0;
+                aeo.textContent = val;
+                if (val > 0) aeo.className = 'stat-v stat-err'; else aeo.className = 'stat-v';
+            }
+            if (geo) {
+                var val = (d && typeof d.geo_low === 'number') ? d.geo_low : 0;
+                geo.textContent = val;
+                if (val > 0) geo.className = 'stat-v stat-err'; else geo.className = 'stat-v';
+            }
+            if (aax) {
+                var val = (d && typeof d.aax_low === 'number') ? d.aax_low : 0;
+                aax.textContent = val;
+                if (val > 0) aax.className = 'stat-v stat-err'; else aax.className = 'stat-v';
+            }
             try { trackEvent('quick_stats_loaded'); } catch (_) { }
         }).catch(function () { /* silent */ });
-    }
-
-    // Active Jobs polling
-    function collectActiveJobs() {
-        var list = document.getElementById('active-jobs-list');
-        var empty = document.getElementById('active-jobs-empty');
-        if (!list) return [];
-        list.innerHTML = '';
-        var rows = document.querySelectorAll('tbody tr[data-crawl-id][data-status="running"]');
-        var ids = [];
-        rows.forEach(function (row) {
-            var id = row.getAttribute('data-crawl-id');
-            if (!id) return;
-            ids.push(id);
-            var item = document.createElement('div');
-            item.setAttribute('data-crawl-id', id);
-            item.innerHTML =
-                '<div class="small"><code>' + escapeHtml(id) + '</code></div>' +
-                '<div class="progress" style="background:#eee;height:10px;border-radius:4px;overflow:hidden;margin:4px 0;">' +
-                '<div id="pb-' + id + '" class="progress-bar" style="width:0%;height:10px;background:#4caf50;"></div>' +
-                '</div>' +
-                '<div class="small">Last updated: <span id="pbt-' + id + '">—</span></div>';
-            list.appendChild(item);
-        });
-        if (empty) empty.style.display = ids.length ? 'none' : '';
-        return ids;
-    }
-
-    function tickActiveJobs(ids) {
-        if (!ids || !ids.length) return;
-        ids.forEach(function (id) {
-            apiJson('/api/progress/' + encodeURIComponent(id), 'GET').then(function (d) {
-                var status = (d && (d.status || '')).toLowerCase();
-                // If job is no longer running, remove its progress card and refresh the jobs table
-                if (status && status !== 'running') {
-                    var list = document.getElementById('active-jobs-list');
-                    var empty = document.getElementById('active-jobs-empty');
-                    var card = (list ? list.querySelector('[data-crawl-id="' + id + '"]') : null);
-                    if (card && card.parentNode) { card.parentNode.removeChild(card); }
-                    if (empty) { empty.style.display = (list && list.children.length) ? 'none' : ''; }
-                    // Schedule a lightweight refresh of the jobs table so the row status/actions update
-                    refreshJobsSoon();
-                    return;
-                }
-                // Update progress UI
-                var pb = document.getElementById('pb-' + id);
-                var pbt = document.getElementById('pbt-' + id);
-                if (pb) {
-                    var visited = (d && typeof d.visited_pages === 'number') ? d.visited_pages : 0;
-                    var maxp = (d && d.limits && typeof d.limits.max_pages === 'number') ? d.limits.max_pages : null;
-                    var pct = (maxp && maxp > 0) ? Math.min(100, Math.floor((visited / maxp) * 100)) : 0;
-                    pb.style.width = pct + '%';
-                }
-                if (pbt) { pbt.textContent = (d && d.last_updated) ? d.last_updated : ''; }
-            }).catch(function () { /* ignore */ });
-        });
-    }
-
-    function setupActiveJobsPolling() {
-        if (_activeJobsTimer) { clearInterval(_activeJobsTimer); _activeJobsTimer = null; }
-        function pollOnce() {
-            var ids = collectActiveJobs();
-            if (ids.length) {
-                tickActiveJobs(ids);
-            } else {
-                // Keep "no active jobs" message accurate
-                var empty = document.getElementById('active-jobs-empty');
-                if (empty) empty.style.display = '';
-            }
-        }
-        // Initial poll
-        pollOnce();
-        // Recollect IDs and poll each tick so UI stays in sync
-        _activeJobsTimer = setInterval(function () {
-            pollOnce();
-            try { trackEvent('job_poll_tick'); } catch (_) { }
-        }, 4000);
     }
 
     // Jobs filters, keyset pagination, and bulk retry
@@ -128,7 +61,7 @@
         var tb = document.getElementById('my-jobs-tbody');
         if (!tb) return;
         if (!items || !items.length) {
-            tb.innerHTML = '<tr><td colspan="6"><em class="small">No jobs found.</em></td></tr>';
+            tb.innerHTML = '<tr><td colspan="6"><em class="small">No analyses yet. Start by analyzing a site above.</em></td></tr>';
             var selAll = document.getElementById('jobs-select-all'); if (selAll) selAll.checked = false;
             updateJobsBulkBar();
             return;
@@ -153,7 +86,6 @@
             tb.appendChild(tr);
         });
         attachJobsSelectionHandlers();
-        setupActiveJobsPolling();
     }
 
     function attachJobsSelectionHandlers() {
@@ -186,7 +118,7 @@
             fetchJobs(false);
         }, 300);
     }
- 
+
     // Show/hide and enable/disable the Next button based on presence of a next cursor
     function _setNextButtonAvailability(hasNext) {
         var nextBtn = document.getElementById('jobs-next');
@@ -204,7 +136,7 @@
         }
         if (pageMsg) pageMsg.textContent = hasNext ? 'More available' : '';
     }
- 
+
     function fetchJobs(next) {
         var msg = document.getElementById('jobs-status-msg');
         var pageMsg = document.getElementById('jobs-page-msg');
@@ -286,7 +218,6 @@
         _setNextButtonAvailability(false);
         // Initial fetch to ensure server-side table is synced with filters (if any)
         fetchJobs(false);
-        setupActiveJobsPolling();
     }
 
 

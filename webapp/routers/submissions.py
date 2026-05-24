@@ -65,7 +65,7 @@ async def submit(
             session_id = request.cookies.get(cookie_name) or ""
             max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
             if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-                return RedirectResponse(url="/my?notice=csrf_failed", status_code=303)
+                return RedirectResponse(url="/dashboard?notice=csrf_failed", status_code=303)
 
         user = getattr(request.state, "current_user", None)
         # Resolve visibility with override support

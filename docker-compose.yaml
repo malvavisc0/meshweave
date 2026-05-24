@@ -55,7 +55,7 @@ services:
       - ./data/redis:/data
     networks:
       - magics
-  app:
+  webapp:
     build:
       context: .
       dockerfile: webapp/Dockerfile
@@ -76,8 +76,8 @@ services:
       WEBAPP_PREFER_LOCAL_STATIC: "true"
       SITE_NAME: MeshWeave
       # Auth config (disabled for local dev — no OAuth credentials needed)
-      WEBAPP_AUTH_ENABLED: false
-      WEBAPP_READYZ_REQUIRE_AUTH: false
+      WEBAPP_AUTH_ENABLED: true
+      WEBAPP_READYZ_REQUIRE_AUTH: true
       # Public base URL for redirects. For local dev you can leave it unset or set to http://localhost:8080
       # In production behind HTTPS (Nginx Proxy Manager), set to your https origin, e.g. https://your.domain
       WEBAPP_AUTH_COOKIE_NAME: auth_sid
