@@ -853,6 +853,15 @@ label {
   text-align: center;
 }
 
+.landing-section-subtitle {
+  font: var(--font-body-lg);
+  color: var(--color-ink-muted);
+  letter-spacing: 0;
+  line-height: 1.55;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
 /* Stats bar */
 .stats-bar {
   display: flex;
@@ -889,9 +898,13 @@ label {
 }
 
 .faq-item h3 {
-  font: var(--font-subhead);
+  font: var(--font-card-title);
   letter-spacing: 0;
   margin: 0 0 var(--space-xs);
+}
+
+.faq-item p {
+  color: var(--color-ink-muted);
 }
 
 /* Score framework preview cards (AEO / GEO / AAX) */
@@ -923,7 +936,8 @@ label {
 
 .score-card-focus {
   display: block;
-  font: var(--font-body-emphasis);
+  font: var(--font-body);
+  font-weight: 600;
   color: var(--color-ink);
   margin-top: var(--space-xs);
 }
@@ -933,6 +947,11 @@ label {
   font: var(--font-body-sm);
   color: var(--color-ink-muted);
   margin-top: var(--space-xxs);
+}
+
+/* Landing panel body text — muted color at body size */
+.landing-section .panel p {
+  color: var(--color-ink-muted);
 }
 
 /* Outcomes grid (What does it mean to be optimized) */
@@ -959,18 +978,16 @@ label {
 }
 
 .outcome-verb {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
-  font-size: 14px;
-  font-weight: 500;
+  font: var(--font-card-title);
+  font-weight: 400;
   color: var(--color-primary);
-  letter-spacing: 0.32px;
+  letter-spacing: 0;
 }
 
 .outcome-desc {
-  font: var(--font-body-sm);
+  font: var(--font-body);
   color: var(--color-ink-muted);
   margin: 0;
-  line-height: 1.45;
 }
 
 /* Card list (used by recent analyses) */
@@ -2005,7 +2022,7 @@ label {
   }
 
   .landing-hero-subtitle {
-    font-size: var(--font-body);
+    font: var(--font-body);
   }
 
   .landing-section {
@@ -2013,7 +2030,8 @@ label {
   }
 
   .landing-section-title {
-    font-size: var(--font-headline);
+    font: var(--font-headline);
+    font-weight: 300;
   }
 
   .stats-bar {
@@ -2030,7 +2048,7 @@ label {
   }
 
   .cta-banner h2 {
-    font-size: var(--font-card-title);
+    font: var(--font-card-title);
   }
 
 
