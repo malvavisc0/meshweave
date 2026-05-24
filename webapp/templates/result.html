@@ -23,13 +23,6 @@
           <span class="badge">{{ _scope }}</span>
           {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
         </span>
-        {% if request.state.current_user %}
-        <span class="result-prospect">
-          <button type="button" class="btn btn-sm btn-icon" id="prospect-toggle" title="Save Prospect">☆</button>
-          <span id="prospect-status-chip" class="badge">Shortlisted</span>
-          <button type="button" class="btn btn-sm" onclick="openProspectManage()">Manage</button>
-        </span>
-        {% endif %}
       </div>
       {% if status in ["succeeded"] and payload %}
       <div class="result-actions-secondary">
@@ -152,8 +145,7 @@
   <section class="panel mt-2 site-identity" role="region" aria-label="Site Identity">
     <button class="collapsible-header" onclick="toggleCollapsible(this)">
       <span>Site Identity</span>
-      <span class="collapsible-summary">{{ pg.title or domain }} · {{ _entity_name or 'No entity' }} · {{ _schema_pct
-        }}% schema coverage</span>
+      <span class="collapsible-summary">{{ pg.title or domain }} · {{ _entity_name or 'No entity' }}</span>
     </button>
     <div class="collapsible-body">
       <div class="identity-header">
@@ -624,15 +616,6 @@
     </div>
     {% endif %}
     {% endfor %}
-  </section>
-  {% endif %}
-
-  <!-- Claim Analysis -->
-  {% if request.state.current_user and visibility == 'public' and key and ownerless %}
-  <section class="panel mt-2" role="region" aria-label="Claim Analysis">
-    <h2>Claim Analysis</h2>
-    <div class="small" id="claim-status">You can claim this public analysis after 24 hours.</div>
-    <button class="btn btn-primary" id="claim-btn" disabled title="Available after 24h">Claim Analysis</button>
   </section>
   {% endif %}
 
