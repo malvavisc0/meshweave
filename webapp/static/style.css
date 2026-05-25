@@ -21,7 +21,7 @@
   --color-on-primary: #FFFFFF;
 
   /* --- Text / Ink --- */
-  --color-ink: #161616;
+  --color-ink: #131313;
   --color-ink-muted: #525252;
   --color-ink-subtle: #8C8C8C;
 
@@ -32,10 +32,10 @@
 
   /* --- Borders / Hairlines --- */
   --color-hairline: #E0E0E0;
-  --color-hairline-strong: #161616;
+  --color-hairline-strong: #131313;
 
   /* --- Inverse (footer, dark sections) --- */
-  --color-inverse-canvas: #161616;
+  --color-inverse-canvas: #131313;
   --color-inverse-surface-1: #262626;
   --color-inverse-ink: #FFFFFF;
   --color-inverse-ink-muted: #C6C6C6;
@@ -624,6 +624,20 @@ button:disabled,
   color: inherit;
 }
 
+.cta-banner .btn-primary {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  display: inline-flex;
+  margin-top: var(--space-lg) !important;
+}
+
+.cta-banner .btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: var(--color-on-primary);
+}
+
 /* Remove gap between CTA banner and footer */
 main:has(>.cta-banner) {
   padding-bottom: 0;
@@ -908,6 +922,11 @@ label {
   overflow: hidden;
   border-top: 1px solid var(--color-dark-border);
   border-bottom: 1px solid var(--color-dark-border);
+}
+
+.landing-hero-compact {
+  min-height: auto;
+  padding: var(--space-section) 0 var(--space-xl);
 }
 
 /* Animated mesh grid — crosshatch network pattern */
@@ -1758,7 +1777,7 @@ label {
 }
 
 /* ------------------------------------------------------------------------
-   ANALYSIS CARDS — used by /all, /my, homepage recent
+   ANALYSIS CARDS — used by /browse, /my, homepage recent
    ------------------------------------------------------------------------ */
 
 /* Card layout within a card-list */
@@ -1916,7 +1935,7 @@ p.card-meta {
 }
 
 /* ------------------------------------------------------------------------
-   FILTER BAR — /all page filter form
+   FILTER BAR — /browse page filter form
    ------------------------------------------------------------------------ */
 .filter-bar {
   display: grid;
@@ -2235,7 +2254,7 @@ p.card-meta {
 }
 
 /* ------------------------------------------------------------------------
-   BROWSE HEADER — compact header for /all and similar browse pages
+   BROWSE HEADER — compact header for /browse and similar browse pages
    ------------------------------------------------------------------------ */
 .browse-header {
   padding: var(--space-xl) 0 var(--space-lg);
@@ -2345,6 +2364,10 @@ p.card-meta {
   }
 
   .landing-hero {
+    padding: var(--space-xxl) 0 var(--space-lg);
+  }
+
+  .landing-hero-compact {
     padding: var(--space-xxl) 0 var(--space-lg);
   }
 
@@ -2767,12 +2790,12 @@ p.card-meta {
   border: 1px solid var(--color-hairline);
   border-left: 4px solid var(--color-primary);
   color: var(--color-ink);
-  padding: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
   margin: var(--space-lg) 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 
 .result-console-main {
@@ -2790,11 +2813,22 @@ p.card-meta {
 .result-console-header .result-title {
   font-family: IBM Plex Sans, ui-monospace, monospace;
   font-weight: 600;
-  font-size: clamp(28px, 4vw, 48px);
+  font-size: clamp(18px, 2.5vw, 24px);
   color: var(--color-ink);
   margin: 0;
   line-height: 1.1;
   overflow-wrap: anywhere;
+}
+
+.result-console-header .result-title a {
+  color: var(--color-ink);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.result-console-header .result-title a:hover {
+  color: var(--color-primary);
+  text-decoration: none;
 }
 
 .result-console-header .result-path {
@@ -2857,13 +2891,13 @@ p.card-meta {
   max-width: 520px;
 }
 
-.result-console-header .btn-sm {
+.result-console-header .btn-sm:not(.btn-primary) {
   background: var(--color-canvas);
   color: var(--color-ink-muted);
   border-color: var(--color-hairline);
 }
 
-.result-console-header .btn-sm:hover {
+.result-console-header .btn-sm:not(.btn-primary):hover {
   color: var(--color-ink);
   border-color: var(--color-primary);
 }
@@ -3186,73 +3220,29 @@ p.card-meta {
   padding: 0;
 }
 
-.collapsible-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  cursor: pointer;
-  background: var(--color-canvas);
-  border: none;
-  width: 100%;
-  text-align: left;
-  font: var(--font-body);
-  font-weight: 600;
-  color: var(--color-ink);
-  letter-spacing: 0.16px;
-  transition: background-color 0.15s ease;
-}
-
-.collapsible-header:hover {
-  background: var(--color-surface-1);
-}
-
-.collapsible-header::before {
-  content: "▸";
-  font-size: 14px;
-  color: var(--color-ink-muted);
-  transition: transform 0.2s ease;
-}
-
-.collapsible-header.expanded::before {
-  transform: rotate(90deg);
-}
-
-.collapsible-summary {
-  font: var(--font-body-sm);
-  color: var(--color-ink-muted);
-  letter-spacing: 0.16px;
-  margin-left: auto;
-}
-
-.collapsible-body {
-  display: none;
+/* Site Identity inner padding (replaces removed collapsible) */
+.site-identity-inner {
   padding: var(--space-lg);
-  border-top: 1px solid var(--color-hairline);
 }
 
-.collapsible-body.expanded {
-  display: block;
+/* Error block — used for failed analysis error display */
+.error-block {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  padding: var(--space-md);
 }
 
-/* Identity details grid layout */
-.identity-details li {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: var(--space-md);
-  align-items: start;
+.error-block-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink);
 }
 
-/* Contactability /10 display */
-/* Pager buttons — flat */
-#pages-pager button {
-  border-radius: var(--radius-none) !important;
-}
-
-/* ------------------------------------------------------------------------
-   CONTENT PAGES VERTICALLY STACKED DASHBOARD (COMPLIANT DESIGN.MD)
-   ------------------------------------------------------------------------ */
-.content-pages-header {
+------------------------------------------------------------------------ */ .content-pages-header {
   display: flex;
   justify-content: space-between;
   align-items: center;

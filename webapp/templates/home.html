@@ -87,8 +87,8 @@
 <!-- HERO -->
 <section class="landing-hero" aria-label="AI visibility audit">
   <div class="container container-wide">
-    <h1 class="landing-hero-title" data-hero-headline>Your customers already use AI to find answers. But AI can't find
-      you 👀
+    <h1 class="landing-hero-title" data-hero-headline>Your customers already use AI to find answers, but AI can't find
+      you
     </h1>
     <p class="landing-hero-supporting">Find out where your site fails for AI systems — what they can't read, what they
       skip, and exactly what your team should fix to get cited.</p>
@@ -270,13 +270,13 @@
       {% endfor %}
     </ul>
     <p class="mt-2">
-      <a href="/all?sort=recent">View all →</a>
+      <a href="/browse?sort=recent">View all →</a>
     </p>
     {% else %}
     <p class="small m0 mt-3">Analyses scored so far include score gauges for AEO, GEO, and AAX, a full factor-by-factor
       breakdown, and prioritized recommendations ranked by estimated impact. Each analysis has a unique shareable URL.
     </p>
-    <p class="mt-2"><a href="/all">View all public analyses →</a></p>
+    <p class="mt-2"><a href="/browse">View all public analyses →</a></p>
     {% endif %}
   </div>
 </section>
@@ -288,7 +288,7 @@
     <h2>Ready to see what AI systems understand — and what they miss?</h2>
     <p class="m0 mt-1 cta-banner-body">Go to your dashboard to run analyses, view
       history, compare reports, and share results.</p>
-    <a href="/dashboard" class="btn btn-cta mt-3">Go to Dashboard →</a>
+    <a href="/dashboard" class="btn btn-primary mt-3">Go to Dashboard →</a>
   </div>
 </section>
 {% else %}
@@ -297,7 +297,7 @@
     <h2>Track your AI visibility over time</h2>
     <p class="m0 mt-1 cta-banner-copy">Sign in to save reports, compare runs, and track which fixes improve AI
       visibility, citations, and agent usability.</p>
-    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in to save reports</a>
+    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary mt-3">Sign in for FREE</a>
   </div>
 </section>
 {% endif %}

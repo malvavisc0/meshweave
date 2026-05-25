@@ -2,25 +2,31 @@
 
 {% block content %}
 
-<!-- HEADER -->
-<header class="browse-header" aria-label="Community analyses">
+<section class="landing-hero landing-hero-compact" aria-label="Community analyses">
   <div class="container container-wide">
     {% if filter_domain %}
-    <h1 class="browse-header-title">AI search analysis for {{ filter_domain }}</h1>
-    <p class="browse-header-subtitle">Explore AEO & GEO scores for {{ filter_domain }}. See how this site
-      performs across the factors AI engines care about.</p>
+    <h1 class="landing-hero-title">What AI sees when it looks at {{ filter_domain }}</h1>
+    <p class="landing-hero-supporting">Every analysis tells the story of how a site shows up for machines: what
+      they can reach, what they understand, what they might cite, and where the experience starts to break.</p>
     {% else %}
-    <h1 class="browse-header-title">Public AI search analyses</h1>
-    <p class="browse-header-subtitle">Explore AEO & GEO scores submitted by the community. See how sites
-      perform across the factors AI engines care about.</p>
+    <h1 class="landing-hero-title">How AI sees websites</h1>
+    <p class="landing-hero-supporting">These public analyses show what happens when AI systems try to read, understand,
+      cite, and use real websites. Some are clear. Some get lost. All of them reveal what better AI visibility looks
+      like in practice.</p>
     {% endif %}
+    <p class="landing-hero-audience mt-3"><span class="landing-hero-audience-label">Browse:</span>
+      <span>Real websites</span> · <span>What machines understand</span> · <span>Where they struggle</span> ·
+      <span>What to fix first</span>
+    </p>
   </div>
-</header>
+</section>
 
-<!-- FILTERS -->
-<section class="browse-filters" aria-label="Filters">
+<section class="landing-section band-surface" aria-label="Filters">
   <div class="container container-wide">
-    <form method="get" action="/all" class="panel filter-bar"
+    <h2 class="landing-section-title">Follow the patterns</h2>
+    <p class="landing-section-subtitle">Filter the list to focus on a single domain, compare fresh runs, or scan the
+      broader patterns showing up across the community.</p>
+    <form method="get" action="/browse" class="panel filter-bar"
       onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
 
       <div class="filter-field">
@@ -66,9 +72,11 @@
   </div>
 </section>
 
-<!-- RESULTS -->
-<section style="padding: var(--space-xl) 0;" aria-label="Results">
+<section class="landing-section" aria-label="Results">
   <div class="container container-wide">
+    <h2 class="landing-section-title">Community analyses</h2>
+    <p class="landing-section-subtitle">Each report combines AEO, GEO, and AAX with the signals behind them, so you can
+      see not just the score, but the reasons it ended up there.</p>
 
     <div class="results-header">
       <span class="results-count">
@@ -104,7 +112,7 @@
     {% else %}
     <div class="empty-state">
       <h3>No analyses found</h3>
-      <p>Try adjusting your filters or <a href="/">submit a new URL</a> for analysis.</p>
+      <p>Try adjusting your filters or <a href="/">submit a new URL</a> to start a new story.</p>
     </div>
     {% endif %}
 

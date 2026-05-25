@@ -49,11 +49,11 @@
     <div class="nav-left">
       <a href="/" class="brandmark" aria-label="MeshWeave home">
         <span class="brandmark-badge" aria-hidden="true">
-          <img src="/static/spider-robot.png" alt="Logo" class="brandmark-logo">
+          <img src="/static/spider-robot-head.png" alt="Logo" class="brandmark-logo">
         </span>
       </a>
       <a href="/" {% if __path=='/' %}aria-current="page" {% endif %}>Home</a>
-      <a href="/all" {% if __path.startswith('/all') %}aria-current="page" {% endif %}>All</a>
+      <a href="/browse" {% if __path.startswith('/browse') %}aria-current="page" {% endif %}>Browse</a>
     </div>
     <div class="nav-right">
       {% if request.state.current_user %}

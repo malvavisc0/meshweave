@@ -5,8 +5,9 @@
   <div class="result-console-header">
     <div class="result-console-main">
       <div class="result-console-title-group">
-        <h1 class="result-title">{{ domain }}{% if path and path != '/' %}<span class="result-path">{{ path }}</span>{%
-          endif %}</h1>
+        <h1 class="result-title"><a href="{{ canonical_url or ('https://' ~ domain ~ (path or '/')) }}" target="_blank"
+            rel="noopener">{{ domain }}{% if path and path != '/' %}<span class="result-path">{{ path }}</span>{% endif
+            %}</a></h1>
         <span class="result-console-meta">
           {% if visibility == "public" and not listed %}<span class="badge badge-dark">Public • Unlisted</span>
           {% elif visibility %}<span class="badge badge-dark">{{ visibility|title }}</span>{% endif %}
@@ -16,25 +17,18 @@
     </div>
     {% if status in ["succeeded"] and payload %}
     <div class="result-console-actions">
-      <a class="btn btn-sm" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-      <a class="btn btn-sm" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Site</a>
-      <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API</a>
-      {% if visibility == "public" and abs_page_url %}
-      <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
-      {% endif %}
-      {% if visibility == "public" %}
+      <a class="btn btn-sm" href="{{ api_url }}" target="_blank" rel="noopener">Export JSON</a>
+      {% if visibility == "public" and can_refresh %}
       <form method="post" action="/submit" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <input type="hidden" name="url" value="{{ canonical_url }}">
         <input type="hidden" name="public" value="on">
-        <button type="submit" class="btn btn-sm" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}"
-          {% endif %}>Refresh</button>
+        <button type="submit" class="btn btn-sm btn-primary">Re-analyze</button>
       </form>
       {% elif can_retry %}
       <form method="post" action="/retry/{{ id }}" class="inline-block">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" class="btn btn-sm" {% if not can_retry %}disabled title="Available in {{ retry_eta }}" {%
-          endif %}>Retry</button>
+        <button type="submit" class="btn btn-sm btn-primary">Re-analyze</button>
       </form>
       {% endif %}
     </div>
@@ -85,13 +79,12 @@
   {% elif status == "failed" %}
   <div class="panel mt-2" role="alert" aria-label="Analysis failed">
     <h2>Analysis failed</h2>
-    <p class="small" style="color:var(--color-ink-muted);">
+    <p class="small">
       Could not complete the analysis for
       <strong>{{ canonical_url or (domain ~ (path or '/')) }}</strong>.
     </p>
-    <div style="background:var(--color-surface-1);border:1px solid var(--color-hairline);padding:16px;margin-top:12px;">
-      <pre
-        style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:var(--font-mono);font-size:var(--font-size-sm);color:var(--color-ink);">{{ error }}</pre>
+    <div class="error-block mt-2">
+      <pre class="error-block-pre">{{ error }}</pre>
     </div>
     <div class="actions mt-2">
       {% if visibility != "public" and id %}
@@ -133,12 +126,9 @@
   (_payload.pages|length if _payload.pages else 0)) %}
   {% set _entity_name = (_entity.name if _entity else '') %}
 
-  <section class="panel mt-2 site-identity" role="region" aria-label="Site Identity">
-    <button class="collapsible-header" onclick="toggleCollapsible(this)">
-      <span>Site Identity</span>
-      <span class="collapsible-summary">{{ pg.title or domain }} · {{ _entity_name or 'No entity' }}</span>
-    </button>
-    <div class="collapsible-body">
+  <section class="panel mt-3 site-identity" role="region" aria-label="Site Identity">
+    <div class="site-identity-inner">
+      <h2>Site Identity</h2>
       <div class="identity-header">
         {% if og.image %}
         <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
@@ -334,9 +324,9 @@
     <!-- Brand Comprehension -->
     {% if aax.homepage_comprehension %}
     {% set hc = aax.homepage_comprehension %}
-    <div class="aax-crawler-card" style="margin-top: var(--space-md);">
-      <h3 style="margin-top:0;">Brand Comprehension</h3>
-      <p class="small" style="margin-bottom: var(--space-sm);">An AI agent identifies you as:</p>
+    <div class="aax-crawler-card mt-3">
+      <h3 class="m0">Brand Comprehension</h3>
+      <p class="small mb-2">An AI agent identifies you as:</p>
       {% if hc.brand or hc.product or hc.target_audience %}
       <div class="aax-ai-quote">
         {% if hc.brand %}{{ hc.brand }}{% else %}This company{% endif %}
@@ -362,9 +352,8 @@
       </div>
 
       {% if hc.key_features and hc.key_features | length > 0 %}
-      <p class="small" style="margin-top: var(--space-sm); margin-bottom: var(--space-xxs);">Key features the AI
-        detected:</p>
-      <ul style="margin:0; padding-left: var(--space-md);">
+      <p class="small mt-2 mb-1">Key features the AI detected:</p>
+      <ul class="m0" style="padding-left: var(--space-md);">
         {% for feature in hc.key_features %}
         <li class="small">{{ feature }}</li>
         {% endfor %}
@@ -405,8 +394,8 @@
     <!-- Crawler Access (.well-known) -->
     {% if aax.llms_txt %}
     {% set llms = aax.llms_txt %}
-    <div class="aax-crawler-card" style="margin-top: var(--space-md);">
-      <h3 style="margin-top:0;">Crawler Access (.well-known)</h3>
+    <div class="aax-crawler-card mt-3">
+      <h3 class="m0">Crawler Access (.well-known)</h3>
       {% set llms_txt_data = llms.llms_txt or {} %}
       {% set llms_full_data = llms.llms_full_txt or {} %}
       <div class="aax-crawler-row">

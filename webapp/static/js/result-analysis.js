@@ -1114,12 +1114,3 @@
         window.filterPages = filterPages;
     })();
 })();
-
-/* Collapsible panel toggle (Phase 5) */
-function toggleCollapsible(header) {
-    header.classList.toggle('expanded');
-    var body = header.nextElementSibling;
-    if (body) {
-        body.classList.toggle('expanded');
-    }
-}

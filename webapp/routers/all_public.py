@@ -16,8 +16,7 @@ from webapp.utils.url import _abs_url
 
 router = APIRouter()
 
-
-@router.get("/all", response_class=HTMLResponse)
+@router.get("/browse", response_class=HTMLResponse)
 async def view_all(
     request: Request,
     page: int = 1,
@@ -501,35 +500,35 @@ async def view_all(
                         next_params = dict(base_params)
                         next_params["cursor"] = _cursor_of(last)
                         next_params["dir"] = "next"
-                        next_url = "/all?" + urlencode(next_params)
+                        next_url = "/browse?" + urlencode(next_params)
                         has_next = True
                 elif direction == "next":
                     # Older than cursor; always allow navigating back to newer via Prev
                     prev_params = dict(base_params)
                     prev_params["cursor"] = _cursor_of(first)
                     prev_params["dir"] = "prev"
-                    prev_url = "/all?" + urlencode(prev_params)
+                    prev_url = "/browse?" + urlencode(prev_params)
                     has_prev = True
                     # Next only if we fetched more than a full page (more older exist)
                     if more:
                         next_params = dict(base_params)
                         next_params["cursor"] = _cursor_of(last)
                         next_params["dir"] = "next"
-                        next_url = "/all?" + urlencode(next_params)
+                        next_url = "/browse?" + urlencode(next_params)
                         has_next = True
                 else:  # direction == "prev"
                     # Newer than cursor; always allow navigating to older via Next
                     next_params = dict(base_params)
                     next_params["cursor"] = _cursor_of(last)
                     next_params["dir"] = "next"
-                    next_url = "/all?" + urlencode(next_params)
+                    next_url = "/browse?" + urlencode(next_params)
                     has_next = True
                     # Prev only if we fetched more than a full page (more newer exist)
                     if more:
                         prev_params = dict(base_params)
                         prev_params["cursor"] = _cursor_of(first)
                         prev_params["dir"] = "prev"
-                        prev_url = "/all?" + urlencode(prev_params)
+                        prev_url = "/browse?" + urlencode(prev_params)
                         has_prev = True
 
         # Trending section removed to avoid duplication on the All page.
@@ -572,7 +571,7 @@ async def view_all(
         canonical_params["domain"] = dom
     if st:
         canonical_params["status"] = st
-    canonical_path = "/all"
+    canonical_path = "/browse"
     if canonical_params:
         canonical_path = canonical_path + "?" + urlencode(canonical_params)
     abs_page_url = _abs_url(request, canonical_path)
