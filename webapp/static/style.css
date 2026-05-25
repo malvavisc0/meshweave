@@ -2,7 +2,7 @@
    MESHWEAVE DESIGN SYSTEM - Precision Scoring Console
    ========================================================================
    Design tokens and components matching docs/design.md
-   - IBM Plex Sans + IBM Plex Mono typography
+   - IBM Plex Sans typography
    - Primary accent: #00A36C (matrix green)
    - 0px border radius (flat square aesthetic)
    - Hairline borders (1px #E0E0E0), no shadows
@@ -48,17 +48,17 @@
   /* same as primary */
 
   /* --- Typography tokens --- */
-  --font-display-xl: 600 60px / 1.17 IBM Plex Mono, ui-monospace, monospace;
-  --font-display-lg: 600 42px / 1.20 IBM Plex Mono, ui-monospace, monospace;
-  --font-headline: 600 32px / 1.25 IBM Plex Mono, ui-monospace, monospace;
-  --font-card-title: 600 24px / 1.33 IBM Plex Mono, ui-monospace, monospace;
-  --font-subhead: 600 20px / 1.40 IBM Plex Mono, ui-monospace, monospace;
+  --font-display-xl: 600 60px / 1.17 IBM Plex Sans, ui-monospace, monospace;
+  --font-display-lg: 600 42px / 1.20 IBM Plex Sans, ui-monospace, monospace;
+  --font-headline: 600 32px / 1.25 IBM Plex Sans, ui-monospace, monospace;
+  --font-card-title: 600 24px / 1.33 IBM Plex Sans, ui-monospace, monospace;
+  --font-subhead: 600 20px / 1.40 IBM Plex Sans, ui-monospace, monospace;
   --font-body-lg: 400 18px / 1.50 IBM Plex Sans, system-ui, sans-serif;
   --font-body: 400 16px / 1.50 IBM Plex Sans, system-ui, sans-serif;
   --font-body-sm: 400 14px / 1.29 IBM Plex Sans, system-ui, sans-serif;
   --font-body-emphasis: 600 14px / 1.29 IBM Plex Sans, system-ui, sans-serif;
   --font-caption: 400 12px / 1.33 IBM Plex Sans, system-ui, sans-serif;
-  --font-label: 400 12px / 1.33 IBM Plex Mono, ui-monospace, monospace;
+  --font-label: 400 12px / 1.33 IBM Plex Sans, ui-monospace, monospace;
   --font-button: 400 14px / 1.29 IBM Plex Sans, system-ui, sans-serif;
   --font-eyebrow: 400 14px / 1.29 IBM Plex Sans, system-ui, sans-serif;
 
@@ -159,7 +159,7 @@ a:hover {
 }
 
 code {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 0.875em;
   background: var(--color-surface-1);
   padding: 2px 6px;
@@ -167,7 +167,7 @@ code {
   color: var(--color-ink);
 }
 
-/* Headings — IBM Plex Mono 600 (Terminal Precision) */
+/* Headings — IBM Plex Sans 600 (Terminal Precision) */
 h1 {
   margin: 12px 0 6px;
   font: var(--font-display-lg);
@@ -252,7 +252,7 @@ main {
 .mono,
 .score-value,
 .data-label {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
 }
 
 /* ------------------------------------------------------------------------
@@ -1074,7 +1074,7 @@ label {
 }
 
 .stat-number {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 48px;
   font-weight: 400;
   line-height: 1.1;
@@ -1154,7 +1154,7 @@ label {
 
 .scoring-table td strong {
   color: var(--color-primary);
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
 }
 
 .landing-example-grid {
@@ -1269,7 +1269,7 @@ label {
 .outcome-list li::before {
   content: "→ ";
   color: var(--color-primary);
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
 }
 
 .outcome-list li strong {
@@ -1359,7 +1359,7 @@ label {
 
 /* Count column — right-aligned, monospace for data values */
 .domain-list li span.domain-list-count {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   text-align: right;
   color: var(--color-ink-muted);
@@ -1368,7 +1368,7 @@ label {
 
 /* Domain link styling */
 .domain-list li a {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   color: var(--color-ink);
   text-decoration: none;
@@ -1441,7 +1441,7 @@ label {
 }
 
 .ps-path {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-ink);
@@ -1461,7 +1461,7 @@ label {
 .ps-dom {
   font-size: 11px;
   color: var(--color-ink-subtle);
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
 }
 
 /* Column spans for header row */
@@ -1475,7 +1475,7 @@ label {
 
 /* Word count column — right-aligned, monospace */
 .ps-words {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   text-align: right;
   color: var(--color-ink-muted);
@@ -1483,7 +1483,7 @@ label {
 
 /* Token estimate column — right-aligned, monospace */
 .ps-tokens {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   text-align: right;
   color: var(--color-ink-muted);
@@ -1491,7 +1491,7 @@ label {
 
 /* Headings column */
 .ps-headings {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   color: var(--color-ink-subtle);
 }
@@ -1575,12 +1575,12 @@ label {
   border: 1px solid var(--color-hairline);
   padding: var(--space-xs);
   overflow-x: auto;
-  font-family: IBM Plex Mono, monospace;
+  font-family: IBM Plex Sans, monospace;
   font-size: 13px;
 }
 
 .page-content code {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   background: var(--color-surface-1);
   padding: 1px 4px;
   border-radius: var(--radius-xs);
@@ -1645,7 +1645,7 @@ label {
 
 /* Raw markdown (hidden by default) */
 .pages-markdown {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -1670,7 +1670,7 @@ label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   color: var(--color-ink);
 }
@@ -1805,7 +1805,7 @@ p.card-subtitle {
 }
 
 .card-subtitle .domain {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
 }
 
@@ -2293,7 +2293,7 @@ p.card-meta {
 }
 
 .stat-v {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 20px;
   font-weight: 400;
   color: var(--color-ink);
@@ -2526,7 +2526,7 @@ p.card-meta {
 
 .error-ref {
   display: inline-block;
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   background: var(--color-surface-1);
   padding: 4px 8px;
@@ -2560,7 +2560,7 @@ p.card-meta {
 }
 
 .score-gauge-header {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 0.75rem;
   letter-spacing: 0.02em;
   margin-bottom: var(--space-xs);
@@ -2570,7 +2570,7 @@ p.card-meta {
 .gauge-value {
   font-size: 48px;
   font-weight: 600;
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
 }
 
 .gauge-value.rating-low {
@@ -2598,7 +2598,7 @@ p.card-meta {
 }
 
 .gauge-auto-label {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   font-weight: 400;
   line-height: 1.33;
@@ -2640,7 +2640,7 @@ p.card-meta {
 }
 
 .factor-label {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.32px;
@@ -2660,7 +2660,7 @@ p.card-meta {
 }
 
 .factor-score {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   font-weight: 600;
   text-align: right;
@@ -2683,7 +2683,7 @@ p.card-meta {
 }
 
 .factor-weight {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   letter-spacing: 0.32px;
   color: var(--color-ink-muted);
@@ -2744,7 +2744,7 @@ p.card-meta {
 }
 
 .rec-impact {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   letter-spacing: 0.32px;
   color: var(--color-primary);
@@ -2788,7 +2788,7 @@ p.card-meta {
 }
 
 .result-console-header .result-title {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-weight: 600;
   font-size: clamp(28px, 4vw, 48px);
   color: var(--color-ink);
@@ -2825,7 +2825,7 @@ p.card-meta {
   background: var(--color-canvas);
   color: var(--color-ink-muted);
   border-color: var(--color-hairline);
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.32px;
@@ -3011,7 +3011,7 @@ p.card-meta {
 }
 
 .rec-group-score {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   letter-spacing: 0.32px;
   color: var(--color-ink-muted);
@@ -3024,7 +3024,7 @@ p.card-meta {
   padding: 2px 8px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-none);
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.32px;
@@ -3161,7 +3161,7 @@ p.card-meta {
 }
 
 .aax-crawler-label {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   letter-spacing: 0.32px;
   color: var(--color-ink-muted);
@@ -3171,7 +3171,7 @@ p.card-meta {
   margin-top: var(--space-sm);
   padding: var(--space-sm);
   background: var(--color-surface-1);
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-ink-muted);
@@ -3450,7 +3450,7 @@ p.card-meta {
 
 .identity-label {
   display: block;
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.32px;
@@ -3482,7 +3482,7 @@ p.card-meta {
 }
 
 .identity-details li span:first-child {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   letter-spacing: 0.32px;
   color: var(--color-ink-muted);
@@ -3517,7 +3517,7 @@ p.card-meta {
   border-radius: 4px;
   /* badges/pills exception per design.md rounded.sm */
   font-size: 12px;
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   letter-spacing: 0.32px;
   color: var(--color-ink);
   text-decoration: none;
@@ -3562,7 +3562,7 @@ p.card-meta {
 }
 
 .contactability-value {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 24px;
   font-weight: 600;
   line-height: 1.33;
@@ -3570,7 +3570,7 @@ p.card-meta {
 }
 
 .contactability-label {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.32px;
@@ -3723,7 +3723,7 @@ p.card-meta {
 }
 
 .social-handle-lbl {
-  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-ink);
