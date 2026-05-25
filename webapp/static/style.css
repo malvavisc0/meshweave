@@ -981,6 +981,17 @@ label {
   letter-spacing: 0.04em;
 }
 
+.landing-hero-audience-label {
+  border: none !important;
+  background: none !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  color: var(--color-dark-text-muted);
+  font: var(--font-body-sm) !important;
+  letter-spacing: 0.16px !important;
+  font-weight: 400 !important;
+}
+
 .landing-hero-form {
   max-width: 100%;
 }

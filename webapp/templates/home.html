@@ -85,18 +85,19 @@
 {% endif %}
 
 <!-- HERO -->
-<section class="landing-hero" aria-label="MeshWeave AI visibility audit">
+<section class="landing-hero" aria-label="AI visibility audit">
   <div class="container container-wide">
     <h1 class="landing-hero-title">Your content might be invisible to the AI systems your customers already use
     </h1>
     <p class="landing-hero-supporting">Our engine audits how AI systems crawl, understand, cite, and use your site —
-      showing what they can read, what they miss, and what your team should fix first.</p>
+      showing what they can read, what they miss, and what your team should fix.</p>
     <div class="landing-hero-form mt-3">
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}
     </div>
-    <p class="landing-hero-audience mt-3"><span>For SEO teams</span><span>For content teams</span><span>For product
-        teams</span></p>
+    <p class="landing-hero-audience mt-3"><span class="landing-hero-audience-label">Built for:</span> <span>SEO
+        Enhancement</span> · <span>Content Improvement</span> · <span>Marketing Visibility</span> · <span>Product
+        Discovery</span> · <span>Growth Strategy</span></p>
   </div>
 </section>
 
@@ -110,8 +111,8 @@
 
         <div class="pipeline-content">
           <span class="pipeline-number">01</span>
-          <h3 class="m0">We crawl your site the way AI systems do</h3>
-          <p class="m0">We inspect crawl access, internal linking, structured data, content structure, entity
+          <h3 class="m0">Analyze your site the way AI systems do</h3>
+          <p class="m0">Our crawler inspects access, internal linking, structured data, content structure, entity
             clarity, page depth, and other signals that determine whether machines can reliably reach and interpret
             your pages.</p>
         </div>
@@ -119,7 +120,7 @@
       <div class="pipeline-step">
         <div class="pipeline-content">
           <span class="pipeline-number">02</span>
-          <h3 class="m0">We score what helps and what hurts</h3>
+          <h3 class="m0">Find what helps and what hurts</h3>
           <p class="m0">You get AEO, GEO, and AAX scores with a factor-by-factor breakdown, so you can see where your
             site is strong, where it fails, and why.</p>
         </div>
@@ -127,7 +128,7 @@
       <div class="pipeline-step">
         <div class="pipeline-content">
           <span class="pipeline-number">03</span>
-          <h3 class="m0">We prioritize what to fix first</h3>
+          <h3 class="m0">Write recommendations on what to fix</h3>
           <p class="m0">Every report includes recommendations ranked by estimated impact, helping your team focus on
             the changes most likely to improve AI visibility and agent usability.</p>
         </div>
@@ -135,9 +136,9 @@
     </div>
 
     <div class="outcome-list">
-      <span class="outcome-list-label">The result</span>
+      <span class="outcome-list-label">The results</span>
       <ul class="m0">
-        <li><strong>Be understood</strong> — AI systems interpret your company and content correctly</li>
+        <li><strong>Be understood</strong> — AI systems interpret your website and content correctly</li>
         <li><strong>Be cited</strong> — your pages are easier to use as sources in generated answers</li>
         <li><strong>Be discoverable</strong> — you are more likely to appear in AI-driven search workflows
         </li>
@@ -187,54 +188,25 @@
   </div>
 </section>
 
-<section class="landing-section" aria-label="What a good report tells you">
-  <div class="container container-wide">
-    <h2 class="landing-section-title">What a good report tells you</h2>
-    <p class="landing-section-subtitle">MeshWeave does not just produce scores. It shows the issues behind them and
-      gives your
-      team a concrete starting point.</p>
-    <div class="landing-example-grid mt-3">
-      <article class="landing-example-card">
-        <span class="landing-example-label">Discovery</span>
-        <h3>Important pages are too deep to be found reliably</h3>
-        <p class="m0">If key docs, pricing, or product pages are buried, AI systems are less likely to reach and use
-          them.</p>
-      </article>
-      <article class="landing-example-card">
-        <span class="landing-example-label">Understanding</span>
-        <h3>Your company is not described clearly enough for machines</h3>
-        <p class="m0">Weak entity signals, vague headings, or missing structure make it harder for models to identify
-          what you do.</p>
-      </article>
-      <article class="landing-example-card">
-        <span class="landing-example-label">Taskability</span>
-        <h3>Agents can reach pages, but struggle to complete actions</h3>
-        <p class="m0">Broken flows, unclear actions, and fragile page structure can stop agents from navigating or
-          converting successfully.</p>
-      </article>
-    </div>
-  </div>
-</section>
-
 <!-- FAQ -->
-<section class="landing-section band-surface faq" id="faq" role="region" aria-label="FAQ">
+<section class="landing-section faq" id="faq" role="region" aria-label="FAQ">
   <div class="container">
     <h2 class="landing-section-title">Frequently asked questions</h2>
 
     <div class="faq-item">
-      <h3>What does MeshWeave do?</h3>
-      <p class="m0">MeshWeave audits how AI systems crawl, understand, cite, and use your site. It shows what
+      <h3>What does our engine do?</h3>
+      <p class="m0">It audits how AI systems crawl, understand, cite, and use your site. It shows what
         machines can read, what they miss, and what to fix first.</p>
     </div>
 
     <div class="faq-item">
-      <h3>Is MeshWeave an SEO tool?</h3>
+      <h3>Is this an SEO tool?</h3>
       <p class="m0">Partly — but more specifically, it helps you understand whether AI systems can crawl,
         understand, cite, and use your site, then tells you what to fix first.</p>
     </div>
 
     <div class="faq-item">
-      <h3>What questions can MeshWeave answer?</h3>
+      <h3>What questions can be answered?</h3>
       <ul class="m0">
         <li>Can LLMs crawl my site reliably?</li>
         <li>Can they understand what my company does?</li>
@@ -262,8 +234,8 @@
   </div>
 </section>
 
-<!-- RECENT ANALYSES (with stats merged in) -->
-<section class="landing-section" aria-label="Recent analyses">
+<!-- RECENT ANALYSES -->
+<section class="landing-section band-surface" aria-label="Recent analyses">
   <div class="container container-wide">
     <h2 class="landing-section-title">Recent public analyses</h2>
 
