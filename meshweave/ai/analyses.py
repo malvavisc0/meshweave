@@ -126,12 +126,8 @@ async def run_aax_analysis(payload: dict) -> dict[str, Any]:
     # Generate one-line summary verdict for the hero card
     summary_text = ""
     try:
-        hc_data = (
-            results.get("homepage_comprehension")
-        )
-        cd_data = (
-            results.get("content_delta")
-        )
+        hc_data = results.get("homepage_comprehension")
+        cd_data = results.get("content_delta")
         hc_dict = (
             hc_data.model_dump()
             if hc_data and hasattr(hc_data, "model_dump")
@@ -145,9 +141,7 @@ async def run_aax_analysis(payload: dict) -> dict[str, Any]:
         p, s = aax_summary_prompt(domain, hc_dict, cd_dict)
         from meshweave.ai.models import AAXSummaryResult
 
-        summary_result = await run_structured_test(
-            AAXSummaryResult, p, s
-        )
+        summary_result = await run_structured_test(AAXSummaryResult, p, s)
         summary_text = summary_result.summary
     except Exception as e:
         logger.warning("AAX summary generation failed: %s", e)

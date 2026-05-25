@@ -9,8 +9,7 @@ from typing import Any
 from ..crawling.fetcher import BrowserSession, get_rendered_html
 
 _HTML_RE = re.compile(
-    r"^\s*(<!doctype\s+html|<html[\s>]|<head[\s>]"
-    r"|<body[\s>]|<p[\s>])",
+    r"^\s*(<!doctype\s+html|<html[\s>]|<head[\s>]" r"|<body[\s>]|<p[\s>])",
     re.IGNORECASE | re.DOTALL,
 )
 

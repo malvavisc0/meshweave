@@ -237,10 +237,12 @@ async def home(request: Request, db: Session = Depends(get_db)):
             .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .all()
         )
-        for (pj, cp) in public_crawls:
+        for pj, cp in public_crawls:
             try:
-                p = pj if isinstance(pj, dict) else (
-                    json.loads(pj) if isinstance(pj, str) else {}
+                p = (
+                    pj
+                    if isinstance(pj, dict)
+                    else (json.loads(pj) if isinstance(pj, str) else {})
                 )
                 if not isinstance(p, dict):
                     continue

@@ -94,9 +94,7 @@ async def view_all(
             if st:
                 q = q.filter(Crawl.status == st)
 
-            rows_db_raw = q.options(
-                joinedload(Crawl.score_snapshot)
-            ).limit(500).all()
+            rows_db_raw = q.options(joinedload(Crawl.score_snapshot)).limit(500).all()
 
             # Compute email/page counts from payload_json
             def _counts_from_payload(row: Crawl) -> tuple[int, int]:
@@ -301,9 +299,9 @@ async def view_all(
             else:
                 q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
 
-            rows_db = q.options(
-                joinedload(Crawl.score_snapshot)
-            ).limit(page_size + 1).all()
+            rows_db = (
+                q.options(joinedload(Crawl.score_snapshot)).limit(page_size + 1).all()
+            )
 
             # Compute counts from payload_json (CrawlLink/CrawlEmail tables removed)
             email_counts_map: dict[str, int] = {}

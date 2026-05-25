@@ -74,15 +74,15 @@ def score_crawl(
 
             aax_score_dict = compute_aax_score(aax_result)
             if aax_score_dict:
-                from meshweave.scoring.recommendations import (
-                    generate_recommendations,
-                )
+                from meshweave.scoring.recommendations import generate_recommendations
 
                 aeo_factors = score_json.get("aeo", {}).get("factors", {})
                 geo_factors = score_json.get("geo", {}).get("factors", {})
                 all_recommendations = generate_recommendations(
-                    aeo_factors, geo_factors, payload=payload,
-                    aax_factors=aax_score_dict.get("factors")
+                    aeo_factors,
+                    geo_factors,
+                    payload=payload,
+                    aax_factors=aax_score_dict.get("factors"),
                 )
                 score_json["recommendations"] = all_recommendations
 

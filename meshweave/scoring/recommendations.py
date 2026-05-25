@@ -508,9 +508,7 @@ def generate_recommendations(
 
     # Add pillar to each recommendation
     for rec in recs:
-        rec["pillar"] = _FACTOR_TO_PILLAR.get(
-            rec.get("factor", ""), "aeo"
-        )
+        rec["pillar"] = _FACTOR_TO_PILLAR.get(rec.get("factor", ""), "aeo")
 
     # Sort by priority
     priority_order = {"high": 0, "medium": 1, "low": 2}

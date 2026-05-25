@@ -102,12 +102,8 @@ def compute_scores(
     geo_composite = _weighted_composite(geo_factors, GEO_WEIGHTS)
 
     # Auto-only composites (exclude manual-input factors)
-    aeo_auto_only = {
-        k: v for k, v in aeo_factors.items() if v.get("auto_measurable")
-    }
-    geo_auto_only = {
-        k: v for k, v in geo_factors.items() if v.get("auto_measurable")
-    }
+    aeo_auto_only = {k: v for k, v in aeo_factors.items() if v.get("auto_measurable")}
+    geo_auto_only = {k: v for k, v in geo_factors.items() if v.get("auto_measurable")}
     aeo_auto_composite = _weighted_composite(aeo_auto_only, AEO_WEIGHTS)
     geo_auto_composite = _weighted_composite(geo_auto_only, GEO_WEIGHTS)
 

@@ -234,9 +234,7 @@ def group_recommendations_by_pillar(
     # Sort each group by priority
     for key in groups:
         groups[key].sort(
-            key=lambda r: PRIORITY_NUMERIC.get(
-                r.get("priority", "medium"), 1
-            )
+            key=lambda r: PRIORITY_NUMERIC.get(r.get("priority", "medium"), 1)
         )
     return groups
 
@@ -267,16 +265,10 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "geo_rating": snapshot.geo_rating or "Unknown",
         "aeo_rating_class": rating_class(snapshot.aeo_rating),
         "geo_rating_class": rating_class(snapshot.geo_rating),
-        "aeo_auto_count": count_auto_factors(
-            score_data_enriched.get("aeo", {})
-        ),
-        "geo_auto_count": count_auto_factors(
-            score_data_enriched.get("geo", {})
-        ),
+        "aeo_auto_count": count_auto_factors(score_data_enriched.get("aeo", {})),
+        "geo_auto_count": count_auto_factors(score_data_enriched.get("geo", {})),
         "score_data": score_data_enriched,
-        "recommendations": score_data_enriched.get(
-            "recommendations", []
-        ),
+        "recommendations": score_data_enriched.get("recommendations", []),
         "manual_input_fields": build_manual_input_fields(score_data),
         "has_manual_missing": has_manual_missing(score_data),
         # AAX fields

@@ -182,7 +182,9 @@ async def cancel_crawl(
         db_row.error = "cancelled_by_user"
         db_row.updated_at = now
 
-    return RedirectResponse(url=f"/dashboard?notice=cancelled&job={crawl_id}", status_code=303)
+    return RedirectResponse(
+        url=f"/dashboard?notice=cancelled&job={crawl_id}", status_code=303
+    )
 
 
 @router.post("/retry/{crawl_id}")
@@ -241,7 +243,9 @@ async def retry_crawl(
     else:
         background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
 
-    return RedirectResponse(url=f"/dashboard?notice=retried&job={crawl_id}", status_code=303)
+    return RedirectResponse(
+        url=f"/dashboard?notice=retried&job={crawl_id}", status_code=303
+    )
 
 
 @router.get("/api/my/quick-stats")
@@ -270,7 +274,7 @@ async def my_quick_stats(request: Request):
                     try:
                         if float(aax_comp) < 50:
                             aax_low_count += 1
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         pass
     return {
         "aeo_low": int(aeo_low_count),

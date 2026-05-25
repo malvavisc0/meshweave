@@ -7,42 +7,26 @@
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "What are AEO, GEO, and AAX scores?",
+      "name": "What does MeshWeave do?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "AEO measures how well your site captures Google AI Overviews and featured snippets. GEO measures visibility in ChatGPT, Claude, and Perplexity. AAX measures how well AI agents can navigate and act on your site. Each report includes detailed factors, issue explanations, and recommended next steps."
+        "text": "MeshWeave audits how AI systems crawl, understand, cite, and use your website. It shows what machines can read, what they miss, and what to fix first."
       }
     },
     {
       "@type": "Question",
-      "name": "Why does AI search matter?",
+      "name": "Is MeshWeave an SEO tool?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Traditional search shows a list of links. AI engines give direct answers — and they choose which sources to cite. If you're not optimized for all three, you're missing the fastest-growing channel for discovery."
+        "text": "Partly, but more specifically it helps you understand whether AI systems can crawl, understand, cite, and use your site, then tells you what to fix first."
       }
     },
     {
       "@type": "Question",
-      "name": "What data do you need?",
+      "name": "Are reports public, private, or shareable?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Just a URL. The engine auto-scores schema coverage, content structure, entity signals, LLM crawl accessibility, and content depth. Optionally add Search Console data or voice results for a complete score."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Are results public or private?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Signed-in users: private by default. Anonymous runs: public (can be claimed after signing in)."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can results be shared?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Each analysis has a unique URL. Shared pages show score gauges and factor breakdowns — no account needed."
+        "text": "Signed-in users get private reports by default. Anonymous runs are public. Every analysis has a unique URL, so reports can be shared directly."
       }
     },
     {
@@ -50,15 +34,7 @@
       "name": "Is the analysis accurate?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Our engine crawls and analyzes your site the same way major AI models do, checking schema, content structure, entity signals, and crawl accessibility."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What does better AI visibility lead to?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Be understood — AI engines can interpret your content and brand correctly. Be cited — your pages are more usable as sources in generated answers. Be discoverable — you are more likely to appear in AI-driven search surfaces. Convert — users can move from AI answer to site visit to action."
+        "text": "We simulate the signals that shape whether AI systems can crawl, understand, and cite your site. It's a practical model of machine-readability, not a claim about any provider's internal ranking."
       }
     }
   ]
@@ -70,7 +46,7 @@
   "@type": "Organization",
   "name": "MeshWeave",
   "url": "http://localhost:8080/",
-  "description": "AEO, GEO & AAX scoring platform for AI search visibility.",
+  "description": "MeshWeave audits how AI systems crawl, understand, cite, and use your website. We show what they can read, what they miss, and what to fix first.",
   "sameAs": [
     "https://github.com/malvavisc0/meshweave"
   ]
@@ -109,43 +85,65 @@
 {% endif %}
 
 <!-- HERO -->
-<section class="landing-hero" aria-label="MeshWeave AEO, GEO, and AAX scoring">
+<section class="landing-hero" aria-label="MeshWeave AI visibility audit">
   <div class="container container-wide">
-    <h1 class="landing-hero-title">Where Does Your Website Appear in AI-Generated Answers?</h1>
-    <h2 class="landing-hero-desc">Understand how AI engines actually see your website.</h2>
-    <p class="landing-hero-subtitle">AI engines are rewriting search. If your website isn't appearing in their answers,
-      you're losing traffic. We scan your site, identify visibility gaps, and give you a roadmap to get cited by the
-      world's largest AI models.</p>
-    <p class="landing-hero-body">Enter any URL to measure visibility across ChatGPT, Claude, Perplexity, and Google AI.
-    </p>
+    <h1 class="landing-hero-title">Your content might be invisible to the AI systems your customers already use
+    </h1>
+    <p class="landing-hero-supporting">Our engine audits how AI systems crawl, understand, cite, and use your site —
+      showing what they can read, what they miss, and what your team should fix first.</p>
     <div class="landing-hero-form mt-3">
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}
     </div>
+    <p class="landing-hero-audience mt-3"><span>For SEO teams</span><span>For content teams</span><span>For product
+        teams</span></p>
   </div>
 </section>
 
-<!-- HOW MESHWEAVE HELPS -->
-<section class="landing-section" id="how-it-works" aria-label="How MeshWeave helps">
-  <div class="container container-wide">
-    <h2 class="landing-section-title">Run a scan in three steps</h2>
+<!-- WHAT HAPPENS WHEN YOU RUN MESHWEAVE -->
+<section class="landing-section" id="how-it-works" aria-label="What happens when you run MeshWeave">
+  <div class="container">
+    <h2 class="landing-section-title">What happens when you run an analysis?</h2>
 
-    <div class="grid-3">
-      <div class="panel">
-        <h3>We scan your site</h3>
-        <p class="m0">We inspect the signals AI engines rely on: crawl access, structured data, content structure,
-          entity clarity, and more.</p>
+    <div class="pipeline">
+      <div class="pipeline-step">
+
+        <div class="pipeline-content">
+          <span class="pipeline-number">01</span>
+          <h3 class="m0">We crawl your site the way AI systems do</h3>
+          <p class="m0">We inspect crawl access, internal linking, structured data, content structure, entity
+            clarity, page depth, and other signals that determine whether machines can reliably reach and interpret
+            your pages.</p>
+        </div>
       </div>
-      <div class="panel">
-        <h3>We score what matters</h3>
-        <p class="m0">You get AEO, GEO, and AAX scores with factor-level detail, so you can see exactly what helps
-          or hurts visibility.</p>
+      <div class="pipeline-step">
+        <div class="pipeline-content">
+          <span class="pipeline-number">02</span>
+          <h3 class="m0">We score what helps and what hurts</h3>
+          <p class="m0">You get AEO, GEO, and AAX scores with a factor-by-factor breakdown, so you can see where your
+            site is strong, where it fails, and why.</p>
+        </div>
       </div>
-      <div class="panel">
-        <h3>We prioritize fixes</h3>
-        <p class="m0">Recommendations are ranked by likely impact, so your team can start with the changes most
-          likely to improve results.</p>
+      <div class="pipeline-step">
+        <div class="pipeline-content">
+          <span class="pipeline-number">03</span>
+          <h3 class="m0">We prioritize what to fix first</h3>
+          <p class="m0">Every report includes recommendations ranked by estimated impact, helping your team focus on
+            the changes most likely to improve AI visibility and agent usability.</p>
+        </div>
       </div>
+    </div>
+
+    <div class="outcome-list">
+      <span class="outcome-list-label">The result</span>
+      <ul class="m0">
+        <li><strong>Be understood</strong> — AI systems interpret your company and content correctly</li>
+        <li><strong>Be cited</strong> — your pages are easier to use as sources in generated answers</li>
+        <li><strong>Be discoverable</strong> — you are more likely to appear in AI-driven search workflows
+        </li>
+        <li><strong>Be usable</strong> — agents are less likely to fail when navigating your website
+        </li>
+      </ul>
     </div>
   </div>
 </section>
@@ -154,6 +152,8 @@
 <section class="landing-section band-surface" id="scoring" aria-label="Scoring framework">
   <div class="container container-wide">
     <h2 class="landing-section-title">What the analysis checks</h2>
+    <p class="landing-section-subtitle">AEO, GEO, and AAX help explain whether AI systems can access your content,
+      understand it and use your pages as sources.</p>
     <table class="table scoring-table">
       <thead>
         <tr>
@@ -166,23 +166,99 @@
         <tr>
           <td><strong>AEO</strong></td>
           <td>Answer Engine Optimization</td>
-          <td>Google AI Overviews and answer extraction</td>
+          <td>Whether your content is easy to extract, summarize, and cite in answer-driven search</td>
         </tr>
         <tr>
           <td><strong>GEO</strong></td>
           <td>Generative Engine Optimization</td>
-          <td>Visibility in ChatGPT, Claude, and Perplexity</td>
+          <td>How well your site is positioned for discovery in systems like ChatGPT, Claude, and Perplexity</td>
         </tr>
         <tr>
           <td><strong>AAX</strong></td>
           <td>AI Agent Experience</td>
-          <td>How well AI agents can navigate and act on your site</td>
+          <td>Whether AI agents can navigate your site, understand actions, and complete tasks reliably</td>
         </tr>
       </tbody>
     </table>
-    <p class="small mt-3" style="text-align:center; color: var(--color-ink-muted);">
-      Each report includes detailed factors, issue explanations, and recommended next steps.
+    <p class="small mt-3 text-center-muted">
+      Together, these scores show whether AI systems can access your content, understand what your company does, cite
+      your pages in generated answers, and successfully navigate your site.
     </p>
+  </div>
+</section>
+
+<section class="landing-section" aria-label="What a good report tells you">
+  <div class="container container-wide">
+    <h2 class="landing-section-title">What a good report tells you</h2>
+    <p class="landing-section-subtitle">MeshWeave does not just produce scores. It shows the issues behind them and
+      gives your
+      team a concrete starting point.</p>
+    <div class="landing-example-grid mt-3">
+      <article class="landing-example-card">
+        <span class="landing-example-label">Discovery</span>
+        <h3>Important pages are too deep to be found reliably</h3>
+        <p class="m0">If key docs, pricing, or product pages are buried, AI systems are less likely to reach and use
+          them.</p>
+      </article>
+      <article class="landing-example-card">
+        <span class="landing-example-label">Understanding</span>
+        <h3>Your company is not described clearly enough for machines</h3>
+        <p class="m0">Weak entity signals, vague headings, or missing structure make it harder for models to identify
+          what you do.</p>
+      </article>
+      <article class="landing-example-card">
+        <span class="landing-example-label">Taskability</span>
+        <h3>Agents can reach pages, but struggle to complete actions</h3>
+        <p class="m0">Broken flows, unclear actions, and fragile page structure can stop agents from navigating or
+          converting successfully.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="landing-section band-surface faq" id="faq" role="region" aria-label="FAQ">
+  <div class="container">
+    <h2 class="landing-section-title">Frequently asked questions</h2>
+
+    <div class="faq-item">
+      <h3>What does MeshWeave do?</h3>
+      <p class="m0">MeshWeave audits how AI systems crawl, understand, cite, and use your site. It shows what
+        machines can read, what they miss, and what to fix first.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Is MeshWeave an SEO tool?</h3>
+      <p class="m0">Partly — but more specifically, it helps you understand whether AI systems can crawl,
+        understand, cite, and use your site, then tells you what to fix first.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>What questions can MeshWeave answer?</h3>
+      <ul class="m0">
+        <li>Can LLMs crawl my site reliably?</li>
+        <li>Can they understand what my company does?</li>
+        <li>Can they extract useful answers from my pages?</li>
+        <li>Can agents follow links, interpret structure, and complete actions?</li>
+        <li>What should my team fix first?</li>
+      </ul>
+    </div>
+
+    <div class="faq-item">
+      <h3>Are reports public, private, or shareable?</h3>
+      <ul class="m0">
+        <li><strong>Signed-in users</strong>: Private by default</li>
+        <li><strong>Anonymous runs</strong>: Public</li>
+        <li><strong>Sharing</strong>: Every analysis has a unique URL</li>
+      </ul>
+    </div>
+
+    <div class="faq-item">
+      <h3>Is the analysis accurate?</h3>
+      <p class="m0">We simulate the signals that shape whether AI systems can crawl, understand, and cite your site.
+        It's a practical model of machine-readability — not a claim about any provider's internal ranking.</p>
+    </div>
+
   </div>
 </section>
 
@@ -208,6 +284,11 @@
     </div>
     {% endif %}
 
+    <p class="small mt-1 text-center-muted">
+      See how real websites score across AI visibility and agent usability. Every analysis includes AEO, GEO, and AAX
+      scores, a factor-by-factor breakdown, and prioritized fixes ranked by impact.
+    </p>
+
     {% if items and items|length > 0 %}
     {% from 'partials/analysis_card.html' import analysis_card with context %}
     <ul class="card-list m0 mt-3">
@@ -228,107 +309,22 @@
   </div>
 </section>
 
-<!-- FAQ -->
-<section class="landing-section band-surface faq" id="faq" role="region" aria-label="FAQ">
-  <div class="container">
-    <h2 class="landing-section-title">Frequently asked questions</h2>
-
-    <div class="faq-item">
-      <h3>What are AEO, GEO, and AAX scores?</h3>
-      <table class="table faq-table">
-        <thead>
-          <tr>
-            <th>Metric</th>
-            <th>What It Measures</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>AEO</strong></td>
-            <td>How well your site captures Google AI Overviews and featured snippets</td>
-          </tr>
-          <tr>
-            <td><strong>GEO</strong></td>
-            <td>Visibility in ChatGPT, Claude, and Perplexity</td>
-          </tr>
-          <tr>
-            <td><strong>AAX</strong></td>
-            <td>How well AI agents can navigate and act on your site</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="m0 mt-2">Each report includes detailed factors, issue explanations, and recommended next steps.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>Why does AI search matter?</h3>
-      <p class="m0">Traditional search shows a list of links. AI engines give direct answers — and they choose
-        which sources to cite.</p>
-      <p class="m0 mt-1">If you're not optimized for all three, you're missing the fastest-growing channel for
-        discovery.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>What data do you need?</h3>
-      <p class="m0">Just a URL. The engine auto-scores:</p>
-      <ul class="m0 mt-1">
-        <li>Schema coverage</li>
-        <li>Content structure</li>
-        <li>Entity signals</li>
-        <li>LLM crawl accessibility</li>
-        <li>Content depth</li>
-      </ul>
-      <p class="m0 mt-1">Optionally add Search Console data or voice results for a complete score.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>Are results public or private?</h3>
-      <ul class="m0">
-        <li><strong>Signed-in users</strong>: Private by default</li>
-        <li><strong>Anonymous runs</strong>: Public (can be claimed after signing in)</li>
-      </ul>
-    </div>
-
-    <div class="faq-item">
-      <h3>Can results be shared?</h3>
-      <p class="m0">Yes. Each analysis has a unique URL. Shared pages show score gauges and factor breakdowns — no
-        account needed.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>Is the analysis accurate?</h3>
-      <p class="m0">Our engine crawls and analyzes your site the same way major AI models do, checking schema,
-        content structure, entity signals, and crawl accessibility.</p>
-    </div>
-
-    <div class="faq-item">
-      <h3>What does better AI visibility lead to?</h3>
-      <ul class="m0">
-        <li><strong>Be understood</strong> — AI engines can interpret your content and brand correctly</li>
-        <li><strong>Be cited</strong> — Your pages are more usable as sources in generated answers</li>
-        <li><strong>Be discoverable</strong> — You are more likely to appear in AI-driven search surfaces</li>
-        <li><strong>Convert</strong> — Users can move from AI answer to site visit to action</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
 <!-- CTA BANNER — last section before footer -->
 {% if request.state.current_user %}
 <section class="cta-banner" role="complementary" aria-label="Go to dashboard">
   <div class="container">
-    <h2>Ready to see how AI sees your site?</h2>
-    <p class="m0 mt-1" style="font: var(--font-body-lg); opacity: 0.9;">Go to your dashboard to run analyses, view
-      history, and share results.</p>
+    <h2>Ready to see what AI systems understand — and what they miss?</h2>
+    <p class="m0 mt-1 cta-banner-body">Go to your dashboard to run analyses, view
+      history, compare reports, and share results.</p>
     <a href="/dashboard" class="btn btn-cta mt-3">Go to Dashboard →</a>
   </div>
 </section>
 {% else %}
 <section class="cta-banner" role="complementary" aria-label="Sign up">
   <div class="container">
-    <h2>Track Your Progress</h2>
-    <p class="m0 mt-1 cta-banner-copy">Sign in to save your reports and watch your AI visibility grow over time. Compare
-      scores between runs and spot trends as you implement fixes.</p>
+    <h2>Track your AI visibility over time</h2>
+    <p class="m0 mt-1 cta-banner-copy">Sign in to save reports, compare runs, and track which fixes improve AI
+      visibility, citations, and agent usability.</p>
     <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in to save reports</a>
   </div>
 </section>

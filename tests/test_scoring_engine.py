@@ -4,75 +4,76 @@ from __future__ import annotations
 
 from meshweave.scoring.engine import AAX_WEIGHTS, compute_aax_score
 from meshweave.scoring.ratings import aax_rating
-from webapp.utils.scoring import (
-    group_recommendations_by_pillar,
-    rating_class,
-)
+from webapp.utils.scoring import group_recommendations_by_pillar, rating_class
 
 
 class TestAAXCompositeFormula:
     """Verify AAX weighted composite produces correct results."""
 
     def test_perfect_scores(self):
-        result = compute_aax_score({
-            "status": "completed",
-            "homepage_comprehension": {
-                "brand": "Acme",
-                "product": "Widgets",
-                "target_audience": "Everyone",
-                "call_to_action": "Buy now",
-                "clarity": "clear",
-                "information_density": "dense",
-                "would_remember": True,
-                "key_features": ["A", "B", "C", "D"],
-            },
-            "meta_optimization": {
-                "brand": "Acme",
-                "product": "Widgets",
-                "target_audience": "Everyone",
-                "would_click_through": True,
-                "completeness": "complete",
-                "clarity": "clear",
-                "llm_optimization": "optimized",
-            },
-            "content_delta": {
-                "company": {"name": "Acme", "description": "Great"},
-                "product": {
-                    "name": "Widgets",
-                    "description": "Best",
-                    "features": ["A", "B"],
+        result = compute_aax_score(
+            {
+                "status": "completed",
+                "homepage_comprehension": {
+                    "brand": "Acme",
+                    "product": "Widgets",
+                    "target_audience": "Everyone",
+                    "call_to_action": "Buy now",
+                    "clarity": "clear",
+                    "information_density": "dense",
+                    "would_remember": True,
+                    "key_features": ["A", "B", "C", "D"],
                 },
-                "pricing": {"model": "subscription"},
-                "target_audience": "All",
-                "strengths": ["Fast"],
-                "coherence": "consistent",
-                "completeness": "comprehensive",
-            },
-            "llms_txt": {
-                "llms_txt": {"exists": True},
-                "llms_full_txt": {"exists": True},
-            },
-            "email_validation": {
-                "valid_contacts": [
-                    {"email": "sales@acme.com", "contact_type": "sales"},
-                ],
-                "best_contact": "sales@acme.com",
-                "confidence": "high",
-            },
-            "tests_completed": 5,
-            "tests_skipped": 0,
-        })
+                "meta_optimization": {
+                    "brand": "Acme",
+                    "product": "Widgets",
+                    "target_audience": "Everyone",
+                    "would_click_through": True,
+                    "completeness": "complete",
+                    "clarity": "clear",
+                    "llm_optimization": "optimized",
+                },
+                "content_delta": {
+                    "company": {"name": "Acme", "description": "Great"},
+                    "product": {
+                        "name": "Widgets",
+                        "description": "Best",
+                        "features": ["A", "B"],
+                    },
+                    "pricing": {"model": "subscription"},
+                    "target_audience": "All",
+                    "strengths": ["Fast"],
+                    "coherence": "consistent",
+                    "completeness": "comprehensive",
+                },
+                "llms_txt": {
+                    "llms_txt": {"exists": True},
+                    "llms_full_txt": {"exists": True},
+                },
+                "email_validation": {
+                    "valid_contacts": [
+                        {"email": "sales@acme.com", "contact_type": "sales"},
+                    ],
+                    "best_contact": "sales@acme.com",
+                    "confidence": "high",
+                },
+                "tests_completed": 5,
+                "tests_skipped": 0,
+            }
+        )
         # All factors scored → composite should be high
         assert result is not None
         assert result["composite"] is not None
         assert result["composite"] > 80
 
     def test_zero_scores(self):
-        result = compute_aax_score({
-            "status": "completed",
-            "tests_completed": 0,
-            "tests_skipped": 5,
-        })
+        result = compute_aax_score(
+            {
+                "status": "completed",
+                "tests_completed": 0,
+                "tests_skipped": 5,
+            }
+        )
         # No factors → should return None
         assert result is None
 
