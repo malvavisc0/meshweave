@@ -331,7 +331,7 @@ nav.topnav {
   color: var(--color-dark-text-muted);
   font-weight: 400;
   letter-spacing: 0.16px;
-  padding: 18px 0 16px;
+  padding: 18px 0 10px;
   border-bottom: 2px solid transparent;
 }
 
@@ -849,6 +849,26 @@ label {
   align-items: center;
   padding: var(--space-xxl) 0;
   background: var(--color-dark-bg);
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid var(--color-dark-border);
+  border-bottom: 1px solid var(--color-dark-border);
+}
+
+/* Subtle structural framing */
+.landing-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(to bottom, rgba(139, 148, 158, 0.05) 0, rgba(139, 148, 158, 0.05) 1px, transparent 1px, transparent 72px);
+  background-size: 100% 72px;
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.landing-hero::after {
+  content: none;
 }
 
 
@@ -913,6 +933,8 @@ label {
 
 .landing-hero .container {
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 /* Landing sections */
@@ -1039,6 +1061,10 @@ label {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-lg);
   margin-top: var(--space-xl);
+}
+
+.outcomes-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .outcome-card {
@@ -2094,6 +2120,10 @@ label {
     padding: var(--space-xxl) 0 var(--space-lg);
   }
 
+  .outcomes-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .landing-hero-title {
     font-size: 32px;
     letter-spacing: 0;
@@ -3135,6 +3165,10 @@ label {
   }
 
   .breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .outcomes-grid-4 {
     grid-template-columns: 1fr;
   }
 }
