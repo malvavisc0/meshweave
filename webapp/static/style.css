@@ -48,11 +48,11 @@
   /* same as primary */
 
   /* --- Typography tokens --- */
-  --font-display-xl: 300 60px / 1.17 IBM Plex Sans, system-ui, sans-serif;
-  --font-display-lg: 300 42px / 1.20 IBM Plex Sans, system-ui, sans-serif;
-  --font-headline: 400 32px / 1.25 IBM Plex Sans, system-ui, sans-serif;
-  --font-card-title: 400 24px / 1.33 IBM Plex Sans, system-ui, sans-serif;
-  --font-subhead: 400 20px / 1.40 IBM Plex Sans, system-ui, sans-serif;
+  --font-display-xl: 600 60px / 1.17 IBM Plex Mono, ui-monospace, monospace;
+  --font-display-lg: 600 42px / 1.20 IBM Plex Mono, ui-monospace, monospace;
+  --font-headline: 600 32px / 1.25 IBM Plex Mono, ui-monospace, monospace;
+  --font-card-title: 600 24px / 1.33 IBM Plex Mono, ui-monospace, monospace;
+  --font-subhead: 600 20px / 1.40 IBM Plex Mono, ui-monospace, monospace;
   --font-body-lg: 400 18px / 1.50 IBM Plex Sans, system-ui, sans-serif;
   --font-body: 400 16px / 1.50 IBM Plex Sans, system-ui, sans-serif;
   --font-body-sm: 400 14px / 1.29 IBM Plex Sans, system-ui, sans-serif;
@@ -73,9 +73,16 @@
   --space-section: 96px;
 
   /* --- Borders --- */
-  --radius-none: 0px;
-  --radius-xs: 2px;
+  --radius-none: 4px;
+  --radius-xs: 4px;
   --radius-sm: 4px;
+
+  /* --- Dark zone tokens (Terminal Precision) --- */
+  --color-dark-bg: var(--color-inverse-canvas);
+  --color-dark-surface: var(--color-inverse-surface-1);
+  --color-dark-text: var(--color-inverse-ink);
+  --color-dark-text-muted: #8B949E;
+  --color-dark-border: #30363D;
 
   /* --- Elevation (no shadows) --- */
   --elevation-hairline: 1px solid var(--color-hairline);
@@ -102,10 +109,10 @@
   --component-input-border: 1px solid var(--color-hairline);
   --component-input-focus-border: 2px solid var(--color-primary);
 
-  --component-topnav-bg: var(--color-canvas);
-  --component-topnav-text: var(--color-ink);
-  --component-topnav-height: 48px;
-  --component-topnav-border: var(--elevation-hairline);
+  --component-topnav-bg: var(--color-dark-bg);
+  --component-topnav-text: var(--color-dark-text);
+  --component-topnav-height: 56px;
+  --component-topnav-border: 1px solid var(--color-dark-border);
 
   --component-footer-bg: var(--color-inverse-canvas);
   --component-footer-text: var(--color-inverse-ink-muted);
@@ -160,13 +167,11 @@ code {
   color: var(--color-ink);
 }
 
-/* Headings - weight 300 for display, 400 for body hierarchy */
+/* Headings — IBM Plex Mono 600 (Terminal Precision) */
 h1 {
   margin: 12px 0 6px;
   font: var(--font-display-lg);
   letter-spacing: 0;
-  font-weight: 300;
-  /* Light display weight */
 }
 
 h2 {
@@ -183,7 +188,6 @@ h3 {
 
 .hero-title {
   font: var(--font-display-lg);
-  font-weight: 300;
   letter-spacing: 0;
   margin: 20px 0;
 }
@@ -262,6 +266,12 @@ main {
   padding-inline: clamp(12px, 4vw, 24px);
 }
 
+.container-wide {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-inline: clamp(12px, 4vw, 24px);
+}
+
 /* Two-column panel rows for home page */
 .panels-row {
   display: grid;
@@ -297,15 +307,15 @@ main {
    NAVIGATION - topnav
    ------------------------------------------------------------------------ */
 nav.topnav {
-  height: var(--component-topnav-height);
+  min-height: var(--component-topnav-height);
   background: var(--component-topnav-bg);
   color: var(--component-topnav-text);
   border-bottom: var(--component-topnav-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-xs);
-  padding: 0 clamp(12px, 4vw, 24px);
+  gap: var(--space-md);
+  padding: 0 clamp(16px, 4vw, 32px);
   font: var(--font-body-sm);
   letter-spacing: 0.16px;
 }
@@ -314,25 +324,69 @@ nav.topnav {
 .topnav .nav-right {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: var(--space-sm);
 }
 
 .topnav a:not(.btn) {
-  color: var(--color-ink);
+  color: var(--color-dark-text-muted);
   font-weight: 400;
   letter-spacing: 0.16px;
+  padding: 18px 0 16px;
+  border-bottom: 2px solid transparent;
 }
 
 .topnav a:hover:not(.btn) {
-  color: var(--color-primary);
-  text-decoration: underline;
+  color: #FFFFFF;
+  text-decoration: none;
 }
 
 /* Active page indicator */
 .topnav a[aria-current="page"]:not(.btn) {
-  color: var(--color-ink);
+  color: #FFFFFF;
   font-weight: 600;
-  text-decoration: underline;
+  text-decoration: none;
+  border-bottom-color: var(--color-primary);
+}
+
+.topnav .small {
+  color: var(--color-dark-text-muted);
+}
+
+.topnav .nav-account {
+  max-width: min(42vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topnav .btn {
+  min-height: 40px;
+  padding: 8px 14px;
+}
+
+.topnav .btn-nav {
+  background: transparent;
+  border-color: var(--color-dark-border);
+  color: var(--color-dark-text-muted);
+}
+
+.topnav .btn-nav:hover,
+.topnav .btn-nav[aria-current="page"] {
+  background: var(--color-dark-surface);
+  border-color: var(--color-dark-text-muted);
+  color: var(--color-dark-text);
+}
+
+.topnav .btn-danger {
+  background: transparent;
+  border-color: rgba(218, 30, 40, 0.55);
+  color: #FF8389;
+}
+
+.topnav .btn-danger:hover {
+  background: var(--color-semantic-error);
+  border-color: var(--color-semantic-error);
+  color: var(--color-on-primary);
 }
 
 /* ------------------------------------------------------------------------
@@ -759,7 +813,7 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
-  max-width: 1100px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -788,23 +842,25 @@ label {
   border: 0;
 }
 
-/* Hero section — narrow content within container */
+/* Hero section — full viewport height, centered */
 .landing-hero {
-  padding: var(--space-section) 0 var(--space-xxl);
+  min-height: calc(100vh - var(--component-topnav-height));
+  display: flex;
+  align-items: center;
+  padding: var(--space-xxl) 0;
+  background: var(--color-dark-bg);
 }
 
 
 .landing-hero-title {
   font: var(--font-display-xl);
-  font-weight: 300;
   letter-spacing: -0.4px;
   margin: 0 0 var(--space-lg);
-  color: var(--color-ink);
+  color: var(--color-dark-text);
 }
 
 .landing-hero-desc {
   font: var(--font-subhead);
-  font-weight: 400;
   color: var(--color-primary);
   margin: -12px 0 var(--space-lg);
   letter-spacing: 0.16px;
@@ -813,7 +869,7 @@ label {
 .landing-hero-subtitle {
   font: var(--font-body-lg);
   letter-spacing: 0;
-  color: var(--color-ink-muted);
+  color: var(--color-dark-text-muted);
   margin: 0 0 var(--space-md);
   max-width: 800px;
   line-height: 1.6;
@@ -821,7 +877,7 @@ label {
 
 .landing-hero-body {
   font: var(--font-body);
-  color: var(--color-ink-muted);
+  color: var(--color-dark-text-muted);
   margin: 0 0 var(--space-xl);
   max-width: 800px;
   line-height: 1.6;
@@ -833,6 +889,30 @@ label {
 
 .landing-hero-form {
   max-width: 100%;
+}
+
+.landing-hero .landing-hero-title,
+.landing-hero .landing-hero-desc,
+.landing-hero .landing-hero-subtitle,
+.landing-hero .landing-hero-body,
+.landing-hero .landing-hero-form {
+  max-width: 1100px;
+}
+
+/* Dark-zone form overrides — labels, checkboxes, helper text */
+.landing-hero label {
+  color: var(--color-dark-text-muted);
+}
+
+.landing-hero .small,
+.landing-hero .mt-2 p,
+.landing-hero #site-help p,
+.landing-hero #domain-feedback {
+  color: var(--color-dark-text-muted);
+}
+
+.landing-hero .container {
+  width: 100%;
 }
 
 /* Landing sections */
@@ -847,7 +927,6 @@ label {
 /* Section titles — centered */
 .landing-section-title {
   font: var(--font-display-lg);
-  font-weight: 300;
   letter-spacing: 0;
   margin: 0 0 var(--space-lg);
   text-align: center;
@@ -1836,7 +1915,6 @@ label {
 
 .page-header-title {
   font: var(--font-display-lg);
-  font-weight: 300;
   letter-spacing: 0;
   margin: 0 0 var(--space-sm);
   color: var(--color-ink);
@@ -2066,6 +2144,15 @@ label {
     justify-content: center;
   }
 
+  .topnav .nav-account {
+    max-width: 100%;
+    text-align: center;
+  }
+
+  .topnav a:not(.btn) {
+    padding: 6px 0 4px;
+  }
+
   button,
   .btn {
     min-height: 44px;
@@ -2127,7 +2214,6 @@ label {
 
 .error-title {
   font: var(--font-display-lg);
-  font-weight: 300;
   letter-spacing: 0;
   margin: 0 0 var(--space-sm);
 }
@@ -2196,15 +2282,14 @@ label {
 
 .score-gauge-header {
   font-family: IBM Plex Mono, ui-monospace, monospace;
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0.32px;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
   margin-bottom: var(--space-xs);
   color: var(--color-ink-muted);
 }
 
 .gauge-value {
-  font-size: 32px;
+  font-size: 48px;
   font-weight: 600;
   font-family: IBM Plex Mono, ui-monospace, monospace;
 }
@@ -2250,11 +2335,15 @@ label {
   margin-top: var(--space-md);
 }
 
-/* Score Breakdown */
+/* Score Breakdown — stacked: AEO+GEO side-by-side, AAX full-width below */
 .breakdown-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: var(--space-xl);
+}
+
+.breakdown-column:last-child {
+  grid-column: 1 / -1;
 }
 
 .breakdown-column h3 {
@@ -2265,10 +2354,10 @@ label {
 
 .factor-row {
   display: grid;
-  grid-template-columns: 140px 1fr 70px 40px;
+  grid-template-columns: 200px 1fr 80px 60px;
   align-items: center;
-  gap: var(--space-xs);
-  padding: 6px 0;
+  gap: var(--space-sm);
+  padding: 8px 0;
 }
 
 .factor-label {
@@ -2391,6 +2480,116 @@ label {
   padding: var(--space-xs) 0;
 }
 
+/* -----------------------------------------------------------------------
+   RESULT CONSOLE HEADER — Terminal Precision dark band
+   ----------------------------------------------------------------------- */
+.result-console-header {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-left: 4px solid var(--color-primary);
+  color: var(--color-ink);
+  padding: var(--space-lg);
+  margin: var(--space-lg) 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.result-console-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.result-console-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.result-console-header .result-title {
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-weight: 600;
+  font-size: clamp(28px, 4vw, 48px);
+  color: var(--color-ink);
+  margin: 0;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.result-console-header .result-path {
+  color: var(--color-ink-muted);
+  font-size: 0.7em;
+  margin-left: var(--space-xs);
+}
+
+.result-canonical {
+  display: inline-block;
+  margin-top: var(--space-xs);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+.result-console-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.badge-dark {
+  background: var(--color-canvas);
+  color: var(--color-ink-muted);
+  border-color: var(--color-hairline);
+  font-family: IBM Plex Mono, ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.32px;
+  text-transform: uppercase;
+}
+
+.badge-dark.badge-status-succeeded {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.badge-dark.badge-status-failed {
+  color: var(--color-semantic-error);
+  border-color: var(--color-semantic-error);
+}
+
+.badge-dark.badge-status-pending,
+.badge-dark.badge-status-running {
+  color: var(--color-ink-muted);
+  border-color: var(--color-hairline-strong);
+}
+
+.result-console-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  flex: 0 0 auto;
+  max-width: 520px;
+}
+
+.result-console-header .btn-sm {
+  background: var(--color-canvas);
+  color: var(--color-ink-muted);
+  border-color: var(--color-hairline);
+}
+
+.result-console-header .btn-sm:hover {
+  color: var(--color-ink);
+  border-color: var(--color-primary);
+}
+
+/* Legacy result header — kept for backward compat during transition */
 /* -----------------------------------------------------------------------
    RESULT HEADER — domain name + badges + inline buttons
    ----------------------------------------------------------------------- */
@@ -2876,6 +3075,19 @@ label {
 
   .pages-page:last-child .pages-panel {
     height: 380px;
+  }
+
+  /* Score breakdown: stack to 1-column on tablet */
+  .breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .breakdown-column:last-child {
+    grid-column: auto;
+  }
+
+  .factor-row {
+    grid-template-columns: 160px 1fr 70px 40px;
   }
 }
 

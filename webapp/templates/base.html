@@ -36,7 +36,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600&family=IBM+Plex+Mono:wght@400&display=swap"
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600&family=IBM+Plex+Mono:wght@400;600&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 
@@ -52,10 +52,11 @@
     </div>
     <div class="nav-right">
       {% if request.state.current_user %}
-      <span class="small">Signed in{% if request.state.current_user.email %} as {{ request.state.current_user.email }}{%
+      <span class="small nav-account">Signed in{% if request.state.current_user.email %} as {{
+        request.state.current_user.email }}{%
         endif %}</span>
-      <a href="/dashboard" class="small btn ml-1 mr-1" {% if __path.startswith('/dashboard') %}aria-current="page" {%
-        endif %}>Dashboard</a>
+      <a href="/dashboard" class="btn btn-nav" {% if __path.startswith('/dashboard') %}aria-current="page" {% endif
+        %}>Dashboard</a>
       <form action="/logout" method="post" class="inline">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <button type="submit" class="btn btn-danger">Sign out</button>

@@ -4,7 +4,7 @@
 
 <!-- HEADER -->
 <header class="browse-header" aria-label="Community analyses">
-  <div class="container">
+  <div class="container container-wide">
     {% if filter_domain %}
     <h1 class="browse-header-title">AI search analysis for {{ filter_domain }}</h1>
     <p class="browse-header-subtitle">Explore AEO & GEO scores for {{ filter_domain }}. See how this site
@@ -19,7 +19,7 @@
 
 <!-- FILTERS -->
 <section class="browse-filters" aria-label="Filters">
-  <div class="container">
+  <div class="container container-wide">
     <form method="get" action="/all" class="panel filter-bar"
       onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
 
@@ -68,7 +68,7 @@
 
 <!-- RESULTS -->
 <section style="padding: var(--space-xl) 0;" aria-label="Results">
-  <div class="container">
+  <div class="container container-wide">
 
     <div class="results-header">
       <span class="results-count">

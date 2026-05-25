@@ -1,53 +1,47 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-  {% set _scope = (payload and (payload.scope or 'page') or (summary and (summary.metrics and
-  summary.metrics.extraction and 'site' or 'page') ) ) and ((payload.scope or 'page')|title) or ('Page') %}
-  <div class="result-header">
-    <div class="result-header-row">
-      <h1 class="result-title">{{ domain }}{% if path and path != '/' %}<span class="result-path">{{ path }}</span>{%
-        endif %}</h1>
-      {% if status in ["succeeded"] and payload %}
-      <div class="result-actions-primary">
-        <a class="btn btn-sm" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
-        <a class="btn btn-sm" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Site</a>
-      </div>
-      {% endif %}
-    </div>
-    <div class="result-header-row">
-      <div class="result-meta">
-        <span class="badges" role="group" aria-label="Job state badges">
-          {% if visibility == "public" and not listed %}<span class="badge">Public • Unlisted</span>
-          {% elif visibility %}<span class="badge">{{ visibility|title }}</span>{% endif %}
-          <span class="badge">{{ _scope }}</span>
-          {% if status %}<span class="badge status-{{ status }}">{{ status|title }}</span>{% endif %}
+<div class="container container-wide">
+  <div class="result-console-header">
+    <div class="result-console-main">
+      <div class="result-console-title-group">
+        <h1 class="result-title">{{ domain }}{% if path and path != '/' %}<span class="result-path">{{ path }}</span>{%
+          endif %}</h1>
+        <span class="result-console-meta">
+          {% if visibility == "public" and not listed %}<span class="badge badge-dark">Public • Unlisted</span>
+          {% elif visibility %}<span class="badge badge-dark">{{ visibility|title }}</span>{% endif %}
+          {% if status %}<span class="badge badge-dark badge-status-{{ status }}">{{ status|title }}</span>{% endif %}
         </span>
       </div>
-      {% if status in ["succeeded"] and payload %}
-      <div class="result-actions-secondary">
-        <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API</a>
-        {% if visibility == "public" and abs_page_url %}
-        <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
-        {% endif %}
-        {% if visibility == "public" %}
-        <form method="post" action="/submit" class="inline-block">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <input type="hidden" name="url" value="{{ canonical_url }}">
-          <input type="hidden" name="public" value="on">
-          <button type="submit" class="btn btn-sm" {% if not can_refresh %}disabled
-            title="Available in {{ refresh_eta }}" {% endif %}>Refresh</button>
-        </form>
-        {% elif can_retry %}
-        <form method="post" action="/retry/{{ id }}" class="inline-block">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <button type="submit" class="btn btn-sm" {% if not can_retry %}disabled title="Available in {{ retry_eta }}"
-            {% endif %}>Retry</button>
-        </form>
-        {% endif %}
-      </div>
+      {% if canonical_url %}
+      <a class="result-canonical" href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a>
       {% endif %}
     </div>
+    {% if status in ["succeeded"] and payload %}
+    <div class="result-console-actions">
+      <a class="btn btn-sm" href="{{ api_url }}" target="_blank" rel="noopener">Open JSON</a>
+      <a class="btn btn-sm" href="{{ canonical_url or abs_page_url }}" target="_blank" rel="noopener">Open Site</a>
+      <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_api_url or api_url }}');">Copy API</a>
+      {% if visibility == "public" and abs_page_url %}
+      <a class="btn btn-sm" href="#" onclick="return copyLink('{{ abs_page_url }}');">Copy Share URL</a>
+      {% endif %}
+      {% if visibility == "public" %}
+      <form method="post" action="/submit" class="inline-block">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+        <input type="hidden" name="url" value="{{ canonical_url }}">
+        <input type="hidden" name="public" value="on">
+        <button type="submit" class="btn btn-sm" {% if not can_refresh %}disabled title="Available in {{ refresh_eta }}"
+          {% endif %}>Refresh</button>
+      </form>
+      {% elif can_retry %}
+      <form method="post" action="/retry/{{ id }}" class="inline-block">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+        <button type="submit" class="btn btn-sm" {% if not can_retry %}disabled title="Available in {{ retry_eta }}" {%
+          endif %}>Retry</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
 
