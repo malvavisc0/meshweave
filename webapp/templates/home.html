@@ -182,7 +182,7 @@
         <p class="outcome-desc">You are more likely to appear in AI-driven search surfaces</p>
       </div>
       <div class="outcome-card">
-        <div class="outcome-verb">Convert attention</div>
+        <div class="outcome-verb">Convert</div>
         <p class="outcome-desc">Users can move from AI answer to site visit to action</p>
       </div>
     </div>
@@ -192,7 +192,7 @@
 <!-- RECENT ANALYSES (with stats merged in) -->
 <section class="landing-section" aria-label="Recent analyses">
   <div class="container container-wide">
-    <h2 class="landing-section-title">Recent reports</h2>
+    <h2 class="landing-section-title">Recent public analyses</h2>
 
     {% if community_metrics %}
     <div class="stats-bar no-md">
@@ -201,7 +201,7 @@
         <span class="label">Analyses run</span>
       </div>
       <div class="stat-item">
-        <span class="stat-number" data-countup data-target="{{ community_metrics.emails_total }}">0</span>
+        <span class="stat-number" data-countup data-target="{{ community_metrics.domains_total }}">0</span>
         <span class="label">Domains scored</span>
       </div>
       <div class="stat-item">
@@ -215,7 +215,7 @@
     {% from 'partials/analysis_card.html' import analysis_card with context %}
     <ul class="card-list m0 mt-3">
       {% for item in items %}
-      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, emphasize_emails=true)
+      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, highlight_complete=true)
       }}
       {% endfor %}
     </ul>
@@ -290,15 +290,10 @@
 {% else %}
 <section class="cta-banner" role="complementary" aria-label="Sign up">
   <div class="container">
-    <h2>Save private reports and track improvements</h2>
-    <p class="m0 mt-1" style="font: var(--font-body-lg); opacity: 0.9;">Sign in to keep analyses private, compare scores
-      over time, and re-run reports after making changes.</p>
-    <ul class="cta-benefits">
-      <li><strong>Private analyses</strong> — not in community feed</li>
-      <li><strong>Score history</strong> — track improvements over time</li>
-      <li><strong>Re-analyze</strong> — compare before and after changes</li>
-    </ul>
-    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in with Google</a>
+    <h2>Run private analyses and track changes over time</h2>
+    <p class="m0 mt-1 cta-banner-copy">Sign in to keep reports private, compare scores between runs, and monitor how
+      visibility changes as you improve your site.</p>
+    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in to save reports</a>
   </div>
 </section>
 {% endif %}

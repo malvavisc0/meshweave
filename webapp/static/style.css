@@ -555,18 +555,31 @@ button:disabled,
   font-weight: 300;
 }
 
-/* CTA banner - full width green */
+/* CTA banner - restrained closing section */
 .cta-banner {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  border-radius: var(--radius-none);
+  background: var(--color-dark-bg);
+  color: var(--color-dark-text);
+  border-top: 1px solid var(--color-dark-border);
   padding: var(--component-cta-banner-padding);
-  font: var(--font-headline);
+  font: var(--font-body);
   text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.cta-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(to bottom, rgba(139, 148, 158, 0.05) 0, rgba(139, 148, 158, 0.05) 1px, transparent 1px, transparent 72px);
+  background-size: 100% 72px;
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .cta-banner * {
-  color: var(--color-on-primary);
+  color: inherit;
 }
 
 /* Remove gap between CTA banner and footer */
@@ -1636,6 +1649,40 @@ label {
   flex-wrap: wrap;
 }
 
+.card-meta .score-label {
+  color: var(--color-ink-subtle);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.7em;
+  letter-spacing: 0.04em;
+}
+
+.card-meta .score-value {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.card-meta .score-sep {
+  color: var(--color-ink-subtle);
+  margin: 0 0.15em;
+}
+
+.card-meta .score-good {
+  color: var(--color-green, #4caf50);
+}
+
+.card-meta .score-fair {
+  color: var(--color-amber, #ff9800);
+}
+
+.card-meta .score-poor {
+  color: var(--color-red, #f44336);
+}
+
+.card-meta .score-unknown {
+  color: var(--color-ink);
+}
+
 .card-meta time {
   color: var(--color-ink-subtle);
 }
@@ -1873,6 +1920,15 @@ label {
 /* CTA banner overrides for landing page */
 .cta-banner h2 {
   margin: 0 0 var(--space-xs);
+  font: var(--font-headline);
+  color: var(--color-dark-text);
+}
+
+.cta-banner-copy {
+  font: var(--font-body-lg);
+  color: var(--color-dark-text-muted);
+  margin: var(--space-xs) auto 0;
+  text-align: center;
 }
 
 /* CTA benefits list */
@@ -1896,12 +1952,12 @@ label {
   font-weight: 600;
 }
 
-/* CTA button — white on green background */
+/* CTA button — green accent on dark background */
 .btn-cta {
   display: inline-block;
-  background: var(--color-on-primary);
-  color: var(--color-ink);
-  border: 1px solid var(--color-on-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border: 1px solid var(--color-primary);
   font: var(--font-button);
   font-weight: 600;
   letter-spacing: 0.16px;
@@ -1913,9 +1969,9 @@ label {
 }
 
 .btn-cta:hover {
-  background: var(--color-surface-1);
-  border-color: var(--color-surface-1);
-  color: var(--color-ink);
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: var(--color-on-primary);
   text-decoration: none;
 }
 

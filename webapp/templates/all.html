@@ -82,7 +82,7 @@
     {% from 'partials/analysis_card.html' import analysis_card with context %}
     <ul class="card-list">
       {% for item in items %}
-      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=true, show_share=true, emphasize_emails=true) }}
+      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=true, show_share=true, highlight_complete=true) }}
       {% endfor %}
     </ul>
 

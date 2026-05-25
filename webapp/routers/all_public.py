@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from webapp.db import get_db
 from webapp.infra import templates
@@ -94,7 +94,9 @@ async def view_all(
             if st:
                 q = q.filter(Crawl.status == st)
 
-            rows_db_raw = q.limit(500).all()
+            rows_db_raw = q.options(
+                joinedload(Crawl.score_snapshot)
+            ).limit(500).all()
 
             # Compute email/page counts from payload_json
             def _counts_from_payload(row: Crawl) -> tuple[int, int]:
@@ -224,6 +226,15 @@ async def view_all(
                             md = ""
                         summary_snippet = _first_sentence(md, 160)
 
+                # Extract scores
+                aax_sc = None
+                try:
+                    snap = row.score_snapshot
+                    if snap and snap.score_json:
+                        aax_sc = (snap.score_json.get("aax") or {}).get("composite")
+                except Exception:
+                    pass
+
                 items.append(
                     {
                         "key": row.key,
@@ -240,6 +251,11 @@ async def view_all(
                         "is_new": bool(is_new),
                         "email_count": int(email_count or 0),
                         "page_count": int(page_count or 0),
+                        "aeo_score": row.aeo_score,
+                        "geo_score": row.geo_score,
+                        "aax_score": aax_sc,
+                        "aeo_rating": row.aeo_rating,
+                        "geo_rating": row.geo_rating,
                         "summary_snippet": (
                             summary_snippet if scope_val == "site" else ""
                         ),
@@ -285,7 +301,9 @@ async def view_all(
             else:
                 q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
 
-            rows_db = q.limit(page_size + 1).all()
+            rows_db = q.options(
+                joinedload(Crawl.score_snapshot)
+            ).limit(page_size + 1).all()
 
             # Compute counts from payload_json (CrawlLink/CrawlEmail tables removed)
             email_counts_map: dict[str, int] = {}
@@ -407,6 +425,15 @@ async def view_all(
                             md = ""
                         summary_snippet = _first_sentence(md, 160)
 
+                # Extract scores
+                aax_sc = None
+                try:
+                    snap = r.score_snapshot
+                    if snap and snap.score_json:
+                        aax_sc = (snap.score_json.get("aax") or {}).get("composite")
+                except Exception:
+                    pass
+
                 items.append(
                     {
                         "key": r.key,
@@ -423,6 +450,11 @@ async def view_all(
                         "is_new": bool(is_new),
                         "email_count": email_counts_map.get(r.id, 0),
                         "page_count": page_counts_map.get(r.id, 0),
+                        "aeo_score": r.aeo_score,
+                        "geo_score": r.geo_score,
+                        "aax_score": aax_sc,
+                        "aeo_rating": r.aeo_rating,
+                        "geo_rating": r.geo_rating,
                         "summary_snippet": (
                             summary_snippet if scope_val == "site" else ""
                         ),

@@ -71,8 +71,11 @@ async def home(request: Request, db: Session = Depends(get_db)):
             return ""
 
     # Query latest public crawls with status ranking and limit 9
+    from sqlalchemy.orm import joinedload
+
     rows: list[Crawl] = (
         db.query(Crawl)
+        .options(joinedload(Crawl.score_snapshot))
         .filter(Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed)
         .order_by(
             case(
@@ -82,7 +85,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
             ),
             Crawl.updated_at.desc(),
         )
-        .limit(9)
+        .limit(5)
         .all()
     )
 
@@ -115,7 +118,11 @@ async def home(request: Request, db: Session = Depends(get_db)):
     items = []
     now = datetime.now(UTC)
     for r in rows:
-        payload = _safe_json_load(r.payload_json or "")
+        payload = (
+            r.payload_json
+            if isinstance(r.payload_json, dict)
+            else _safe_json_load(r.payload_json or "")
+        )
         title = ""
         description = ""
         og_desc = ""
@@ -163,6 +170,20 @@ async def home(request: Request, db: Session = Depends(get_db)):
                     md = ""
                 summary_snippet = _first_sentence(md, 160)
 
+        # Extract scores
+        aeo_sc = r.aeo_score
+        geo_sc = r.geo_score
+        aeo_rt = r.aeo_rating
+        geo_rt = r.geo_rating
+        aax_sc = None
+        try:
+            snap = r.score_snapshot
+            if snap and snap.score_json:
+                aax_data = snap.score_json.get("aax") or {}
+                aax_sc = aax_data.get("composite")
+        except Exception:
+            pass
+
         items.append(
             {
                 "key": r.key,
@@ -175,6 +196,11 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 "status": r.status,
                 "page_count": page_counts_map.get(r.id, 0),
                 "email_count": email_counts_map.get(r.id, 0),
+                "aeo_score": aeo_sc,
+                "geo_score": geo_sc,
+                "aax_score": aax_sc,
+                "aeo_rating": aeo_rt,
+                "geo_rating": geo_rt,
                 "updated_iso": updated_iso,
                 "updated_relative": updated_relative,
                 "is_new": bool(is_new),
@@ -192,54 +218,45 @@ async def home(request: Request, db: Session = Depends(get_db)):
             .count()
         ) or 0
 
+        # Unique domains scored (must have actual scores)
+        domains_total = (
+            db.query(Crawl.domain)
+            .filter(
+                Crawl.visibility == "public",
+                Crawl.status == "succeeded",
+                Crawl.aeo_score.is_not(None),
+            )
+            .distinct()
+            .count()
+        ) or 0
+
         # Compute community metrics from payload_json
-        all_emails: set[str] = set()
-        links_external_total = 0
-        external_domains: set[str] = set()
         pages_total = 0
         public_crawls = (
-            db.query(Crawl.payload_json)
+            db.query(Crawl.payload_json, Crawl.crawl_params)
             .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .all()
         )
-        for (pj,) in public_crawls:
+        for (pj, cp) in public_crawls:
             try:
-                p = json.loads(pj) if pj else {}
+                p = pj if isinstance(pj, dict) else (
+                    json.loads(pj) if isinstance(pj, str) else {}
+                )
                 if not isinstance(p, dict):
                     continue
-                # Emails
-                emails_data = p.get("emails") or {}
-                for em in emails_data.get("unique") or []:
-                    if em:
-                        all_emails.add(str(em).lower())
-                # Pages count
-                pages_list = p.get("pages") or []
-                if isinstance(pages_list, list):
-                    pages_total += len(pages_list)
-                # External links and domains
-                links_data = p.get("links") or {}
-                for ext in links_data.get("external") or []:
-                    links_external_total += 1
-                    try:
-                        from urllib.parse import urlsplit
-
-                        dom = urlsplit(str(ext)).netloc.lower()
-                        if dom.startswith("www."):
-                            dom = dom[4:]
-                        if dom:
-                            external_domains.add(dom)
-                    except Exception:
-                        pass
+                # Pages count: site crawls have a "pages" array, page crawls evaluate 1 page
+                if cp:  # site crawl
+                    pages_list = p.get("pages") or []
+                    if isinstance(pages_list, list):
+                        pages_total += len(pages_list)
+                else:  # page crawl
+                    pages_total += 1
             except Exception:
                 pass
-        emails_total = len(all_emails)
-        external_domains_total = len(external_domains)
         community_metrics = {
             "analyses_total": int(analyses_total),
-            "emails_total": int(emails_total),
+            "domains_total": int(domains_total),
             "pages_total": int(pages_total),
-            "links_external_total": int(links_external_total),
-            "external_domains_total": int(external_domains_total),
         }
     except Exception:
         community_metrics = None

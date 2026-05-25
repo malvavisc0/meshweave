@@ -13,9 +13,6 @@
           {% if status %}<span class="badge badge-dark badge-status-{{ status }}">{{ status|title }}</span>{% endif %}
         </span>
       </div>
-      {% if canonical_url %}
-      <a class="result-canonical" href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a>
-      {% endif %}
     </div>
     {% if status in ["succeeded"] and payload %}
     <div class="result-console-actions">
