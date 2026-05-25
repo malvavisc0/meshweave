@@ -10,7 +10,7 @@
       "name": "What are AEO, GEO, and AAX scores?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "AEO (Answer Engine Optimization) measures how well your site captures Google AI Overviews and featured snippets. GEO (Generative Engine Optimization) measures how well AI engines like ChatGPT, Claude, and Perplexity can find, understand, and recommend your content. AAX (AI Agent Experience) measures how well AI agents can navigate, understand, and interact with your site — including crawler access, brand comprehension, and contactability."
+        "text": "AEO measures how well your site captures Google AI Overviews and featured snippets. GEO measures visibility in ChatGPT, Claude, and Perplexity. AAX measures how well AI agents can navigate and act on your site. Each report includes detailed factors, issue explanations, and recommended next steps."
       }
     },
     {
@@ -18,7 +18,7 @@
       "name": "Why does AI search matter?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Traditional search engines show a list of links. AI engines give direct answers and choose which sources to cite. AEO optimizes for Google AI Overviews and featured snippets. GEO optimizes for ChatGPT, Claude, and Perplexity. AAX optimizes for AI agents that act on behalf of users. If you're not optimized for all three, you're missing the fastest-growing channel for discovery."
+        "text": "Traditional search shows a list of links. AI engines give direct answers — and they choose which sources to cite. If you're not optimized for all three, you're missing the fastest-growing channel for discovery."
       }
     },
     {
@@ -34,7 +34,7 @@
       "name": "Are results public or private?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Signed-in users: private by default. Anonymous runs: public. Public analyses can be claimed after signing in."
+        "text": "Signed-in users: private by default. Anonymous runs: public (can be claimed after signing in)."
       }
     },
     {
@@ -43,6 +43,22 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "Yes. Each analysis has a unique URL. Shared pages show score gauges and factor breakdowns — no account needed."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is the analysis accurate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Our engine crawls and analyzes your site the same way major AI models do, checking schema, content structure, entity signals, and crawl accessibility."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does better AI visibility lead to?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Be understood — AI engines can interpret your content and brand correctly. Be cited — your pages are more usable as sources in generated answers. Be discoverable — you are more likely to appear in AI-driven search surfaces. Convert — users can move from AI answer to site visit to action."
       }
     }
   ]
@@ -95,15 +111,13 @@
 <!-- HERO -->
 <section class="landing-hero" aria-label="MeshWeave AEO, GEO, and AAX scoring">
   <div class="container container-wide">
-    <h1 class="landing-hero-title">Can AI engines find and cite your website?</h1>
-    <h2 class="landing-hero-desc">Enter any URL to measure visibility across ChatGPT, Claude, Perplexity, and Google AI.
-    </h2>
-    <p class="landing-hero-subtitle">AI answers choose sources they can crawl, understand, and trust.
-      Our intelligent engine shows
-      where your site is visible, where it breaks, and what to fix first. Measures AEO, GEO, and AAX with factor-level
-      breakdowns and prioritized fixes.
+    <h1 class="landing-hero-title">Where Does Your Website Appear in AI-Generated Answers?</h1>
+    <h2 class="landing-hero-desc">Understand how AI engines actually see your website.</h2>
+    <p class="landing-hero-subtitle">AI engines are rewriting search. If your website isn't appearing in their answers,
+      you're losing traffic. We scan your site, identify visibility gaps, and give you a roadmap to get cited by the
+      world's largest AI models.</p>
+    <p class="landing-hero-body">Enter any URL to measure visibility across ChatGPT, Claude, Perplexity, and Google AI.
     </p>
-
     <div class="landing-hero-form mt-3">
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}
@@ -140,52 +154,35 @@
 <section class="landing-section band-surface" id="scoring" aria-label="Scoring framework">
   <div class="container container-wide">
     <h2 class="landing-section-title">What the analysis checks</h2>
-    <div class="score-framework grid-3">
-      <div class="score-card-preview">
-        <span class="score-card-label">AEO</span>
-        <span class="score-card-focus">Answer Engine Optimization</span>
-        <span class="score-card-desc">Google AI Overviews and answer extraction</span>
-      </div>
-      <div class="score-card-preview">
-        <span class="score-card-label">GEO</span>
-        <span class="score-card-focus">Generative Engine Optimization</span>
-        <span class="score-card-desc">Visibility in ChatGPT, Claude, and Perplexity</span>
-      </div>
-      <div class="score-card-preview">
-        <span class="score-card-label">AAX</span>
-        <span class="score-card-focus">AI Agent Experience</span>
-        <span class="score-card-desc">How well AI agents can navigate and act on your site</span>
-      </div>
-    </div>
+    <table class="table scoring-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Full Name</th>
+          <th>What It Measures</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>AEO</strong></td>
+          <td>Answer Engine Optimization</td>
+          <td>Google AI Overviews and answer extraction</td>
+        </tr>
+        <tr>
+          <td><strong>GEO</strong></td>
+          <td>Generative Engine Optimization</td>
+          <td>Visibility in ChatGPT, Claude, and Perplexity</td>
+        </tr>
+        <tr>
+          <td><strong>AAX</strong></td>
+          <td>AI Agent Experience</td>
+          <td>How well AI agents can navigate and act on your site</td>
+        </tr>
+      </tbody>
+    </table>
     <p class="small mt-3" style="text-align:center; color: var(--color-ink-muted);">
       Each report includes detailed factors, issue explanations, and recommended next steps.
     </p>
-  </div>
-</section>
-
-<!-- WHAT OPTIMIZED MEANS -->
-<section class="landing-section band-surface" id="what-optimized" aria-label="What optimized means">
-  <div class="container container-wide">
-    <h2 class="landing-section-title">What better AI visibility leads to</h2>
-
-    <div class="outcomes-grid outcomes-grid-4">
-      <div class="outcome-card">
-        <div class="outcome-verb">Be understood</div>
-        <p class="outcome-desc">AI engines can interpret your content and brand correctly</p>
-      </div>
-      <div class="outcome-card">
-        <div class="outcome-verb">Be cited</div>
-        <p class="outcome-desc">Your pages are more usable as sources in generated answers</p>
-      </div>
-      <div class="outcome-card">
-        <div class="outcome-verb">Be discoverable</div>
-        <p class="outcome-desc">You are more likely to appear in AI-driven search surfaces</p>
-      </div>
-      <div class="outcome-card">
-        <div class="outcome-verb">Convert</div>
-        <p class="outcome-desc">Users can move from AI answer to site visit to action</p>
-      </div>
-    </div>
   </div>
 </section>
 
@@ -195,7 +192,7 @@
     <h2 class="landing-section-title">Recent public analyses</h2>
 
     {% if community_metrics %}
-    <div class="stats-bar no-md">
+    <div class="stats-bar">
       <div class="stat-item">
         <span class="stat-number" data-countup data-target="{{ community_metrics.analyses_total }}">0</span>
         <span class="label">Analyses run</span>
@@ -238,41 +235,80 @@
 
     <div class="faq-item">
       <h3>What are AEO, GEO, and AAX scores?</h3>
-      <p class="m0">
-        <strong>AEO</strong> (Answer Engine Optimization) measures how well your site captures Google
-        AI Overviews and featured snippets.<br>
-        <strong>GEO</strong> (Generative Engine Optimization) measures how well AI
-        engines like ChatGPT, Claude, and Perplexity can find, understand, and recommend your content.<br>
-        <strong>AAX</strong> (AI Agent Experience) measures how well AI agents can navigate, understand, and interact
-        with your site — including crawler access, brand comprehension, and contactability.<br>
-      </p>
+      <table class="table faq-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What It Measures</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>AEO</strong></td>
+            <td>How well your site captures Google AI Overviews and featured snippets</td>
+          </tr>
+          <tr>
+            <td><strong>GEO</strong></td>
+            <td>Visibility in ChatGPT, Claude, and Perplexity</td>
+          </tr>
+          <tr>
+            <td><strong>AAX</strong></td>
+            <td>How well AI agents can navigate and act on your site</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="m0 mt-2">Each report includes detailed factors, issue explanations, and recommended next steps.</p>
     </div>
 
     <div class="faq-item">
       <h3>Why does AI search matter?</h3>
-      <p class="m0">Traditional search engines show a list of links. AI engines give direct answers — and they
-        choose which sources to cite. AEO optimizes for Google's AI Overviews and featured snippets. GEO optimizes for
-        ChatGPT, Claude, and Perplexity. AAX optimizes for AI agents that act on behalf of users. If you're not
-        optimized for all three, you're missing the fastest-growing channel for discovery.</p>
+      <p class="m0">Traditional search shows a list of links. AI engines give direct answers — and they choose
+        which sources to cite.</p>
+      <p class="m0 mt-1">If you're not optimized for all three, you're missing the fastest-growing channel for
+        discovery.</p>
     </div>
 
     <div class="faq-item">
       <h3>What data do you need?</h3>
-      <p class="m0">Just a URL. The engine auto-scores schema coverage, content structure, entity signals, LLM
-        crawl accessibility, and content depth. Optionally add Search Console data or voice results for a complete
-        score.</p>
+      <p class="m0">Just a URL. The engine auto-scores:</p>
+      <ul class="m0 mt-1">
+        <li>Schema coverage</li>
+        <li>Content structure</li>
+        <li>Entity signals</li>
+        <li>LLM crawl accessibility</li>
+        <li>Content depth</li>
+      </ul>
+      <p class="m0 mt-1">Optionally add Search Console data or voice results for a complete score.</p>
     </div>
 
     <div class="faq-item">
       <h3>Are results public or private?</h3>
-      <p class="m0">Signed-in users: private by default. Anonymous runs: public. Public analyses can be claimed
-        after signing in.</p>
+      <ul class="m0">
+        <li><strong>Signed-in users</strong>: Private by default</li>
+        <li><strong>Anonymous runs</strong>: Public (can be claimed after signing in)</li>
+      </ul>
     </div>
 
     <div class="faq-item">
       <h3>Can results be shared?</h3>
       <p class="m0">Yes. Each analysis has a unique URL. Shared pages show score gauges and factor breakdowns — no
         account needed.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Is the analysis accurate?</h3>
+      <p class="m0">Our engine crawls and analyzes your site the same way major AI models do, checking schema,
+        content structure, entity signals, and crawl accessibility.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>What does better AI visibility lead to?</h3>
+      <ul class="m0">
+        <li><strong>Be understood</strong> — AI engines can interpret your content and brand correctly</li>
+        <li><strong>Be cited</strong> — Your pages are more usable as sources in generated answers</li>
+        <li><strong>Be discoverable</strong> — You are more likely to appear in AI-driven search surfaces</li>
+        <li><strong>Convert</strong> — Users can move from AI answer to site visit to action</li>
+      </ul>
     </div>
   </div>
 </section>
@@ -290,9 +326,9 @@
 {% else %}
 <section class="cta-banner" role="complementary" aria-label="Sign up">
   <div class="container">
-    <h2>Run private analyses and track changes over time</h2>
-    <p class="m0 mt-1 cta-banner-copy">Sign in to keep reports private, compare scores between runs, and monitor how
-      visibility changes as you improve your site.</p>
+    <h2>Track Your Progress</h2>
+    <p class="m0 mt-1 cta-banner-copy">Sign in to save your reports and watch your AI visibility grow over time. Compare
+      scores between runs and spot trends as you implement fixes.</p>
     <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-cta mt-3">Sign in to save reports</a>
   </div>
 </section>

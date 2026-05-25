@@ -1,7 +1,7 @@
 {% macro analysis_card(item, show_summary=false, dense=false, show_share=true, highlight_complete=true) -%}
 <li
   class="card {{ 'card-leads' if highlight_complete and (item.aeo_score is not none and item.geo_score is not none and item.aax_score is not none) else '' }} {{ 'card-dense' if dense else '' }}">
-  <div class="card-title">
+  <h3 class="card-title">
     <img src="https://www.google.com/s2/favicons?domain={{ item.domain }}&sz=64" alt="" width="16" height="16"
       onerror="this.style.display='none'">
     {% set display_title = item.title or item.domain or item.canonical_url %}
@@ -15,48 +15,36 @@
     {% if item.status == "failed" %}
     <span class="badge status-failed ml-1" title="Analysis failed">FAILED</span>
     {% endif %}
-  </div>
+  </h3>
 
-  <div class="card-subtitle small">
+  <p class="card-subtitle small">
     {% set display_domain = item.domain or (item.canonical_url or '') %}
     <span class="domain">{{ display_domain }}</span>
-  </div>
+  </p>
 
-  <div class="card-meta small">
+  <p class="card-meta small">
     {% if item.aeo_score is not none or item.geo_score is not none or item.aax_score is not none %}
     {% if item.aeo_score is not none %}
-    <span class="score-label">AEO</span>
-    <span class="score-value score-{{ item.aeo_rating|default('unknown')|lower }}">{{ item.aeo_score|int }}</span>
+    AEO: <strong class="score-value score-{{ item.aeo_rating|default('unknown')|lower }}">{{ item.aeo_score|int
+      }}</strong>
     {% endif %}
     {% if item.geo_score is not none %}
-    <span class="score-sep">•</span>
-    <span class="score-label">GEO</span>
-    <span class="score-value score-{{ item.geo_rating|default('unknown')|lower }}">{{ item.geo_score|int }}</span>
+    · GEO: <strong class="score-value score-{{ item.geo_rating|default('unknown')|lower }}">{{ item.geo_score|int
+      }}</strong>
     {% endif %}
     {% if item.aax_score is not none %}
-    <span class="score-sep">•</span>
-    <span class="score-label">AAX</span>
-    <span class="score-value">{{ item.aax_score|int }}</span>
+    · AAX: <strong class="score-value">{{ item.aax_score|int }}</strong>
     {% endif %}
-    <span class="score-sep">•</span>
+    ·
     {% endif %}
     Updated
     <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">
       {{ item.updated_relative or item.updated_at }}
     </time>
-  </div>
+  </p>
 
   {% if show_summary and item.summary_snippet %}
-  <div class="card-summary small">{{ item.summary_snippet }}</div>
+  <p class="card-summary small">{{ item.summary_snippet }}</p>
   {% endif %}
-
-  <div class="actions mt-1" role="toolbar" aria-label="Card actions">
-    <a class="btn btn-sm" href="/analysis/{{ item.key }}" data-track="card_view_click">View insights</a>
-    {% if show_share %}
-    {% set abs_share = request.url.scheme ~ '://' ~ request.url.netloc ~ '/analysis/' ~ item.key %}
-    <button class="btn btn-sm" onclick="return copyLink('{{ abs_share }}')" data-track="card_copy_click">Copy share
-      URL</button>
-    {% endif %}
-  </div>
 </li>
 {%- endmacro %}
