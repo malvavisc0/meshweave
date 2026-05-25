@@ -86,9 +86,31 @@
     } catch (_) { /* noop */ }
   }
 
-  if (document.readyState === 'loading') {
-    try { document.addEventListener('DOMContentLoaded', initCountups, { once: true }); } catch (_) { document.addEventListener('DOMContentLoaded', initCountups); }
-  } else {
+  /* ── Rotating hero headline ── */
+  var headlines = [
+    'Your customers already use AI to find answers. AI can\u2019t find you.',
+    'Every day your customers ask AI for answers. Every day your site is invisible.',
+    'ChatGPT, Perplexity, and Claude are ignoring half your website.',
+    'AI is already answering your customers\u2019 questions. It\u2019s citing your competitors.',
+    'Your competitors are getting cited by AI. You\u2019re getting skipped.'
+  ];
+
+  function initHeadlineRotation() {
+    try {
+      var el = document.querySelector('[data-hero-headline]');
+      if (!el || !headlines.length) return;
+      el.textContent = headlines[Math.floor(Math.random() * headlines.length)];
+    } catch (_) { /* noop */ }
+  }
+
+  function initAll() {
+    initHeadlineRotation();
     initCountups();
+  }
+
+  if (document.readyState === 'loading') {
+    try { document.addEventListener('DOMContentLoaded', initAll, { once: true }); } catch (_) { document.addEventListener('DOMContentLoaded', initAll); }
+  } else {
+    initAll();
   }
 })();
