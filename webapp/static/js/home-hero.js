@@ -88,11 +88,11 @@
 
   /* ── Rotating hero headline ── */
   var headlines = [
-    "Your customers already use AI to find answers. But AI can't find you 😩",
+    "Your customers already use AI to find answers. But AI can't find you 👀",
     "Every day your customers ask AI for answers. But your site is invisible 🫥",
-    "ChatGPT, Perplexity, and Claude are right now ignoring half your website 🫠",
-    "AI answers your customers' questions. It's citing your competitors 🤭",
-    "Your competitors are being cited by AI. Meanwhile, you are being ignored 😛"
+    "ChatGPT, Perplexity, and Claude are right now ignoring half your website 🚨",
+    "AI answers your customers' questions. It's citing your competitors 💔",
+    "Your competitors are being cited by AI. Meanwhile, you are being ignored 👻"
   ];
 
   function initHeadlineRotation() {
