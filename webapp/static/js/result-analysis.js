@@ -265,11 +265,14 @@
 
             // Render stats table as a <ul> styled with domain-list
             ul.innerHTML = '';
-            // Header row -simplified columns (Pages, Tokens)
+            // Header row - explicit metric columns
             var headLi = document.createElement('li');
             headLi.className = 'domain-list-header pages-header-row';
             headLi.innerHTML =
                 '<span class="ph-page">Page</span>' +
+                '<span class="ph-metric">Words</span>' +
+                '<span class="ph-metric">Sentences</span>' +
+                '<span class="ph-metric">Paragraphs</span>' +
                 '<span class="ph-tokens" style="text-align: right; margin-right: 12px;">~Tokens</span>';
             ul.appendChild(headLi);
 
@@ -282,10 +285,17 @@
                 var title = _pageTitle(p) || '';
                 var cm = p.content_metrics || {};
                 var words = (cm.words != null) ? Number(cm.words) : 0;
+                var paragraphs = (cm.paragraphs != null) ? Number(cm.paragraphs) : 0;
+                var md = String(p.markdown || '');
+                var sentenceMatches = md.match(/[^.!?\n]+[.!?]+(?=\s|$)/g);
+                var sentences = sentenceMatches ? sentenceMatches.length : 0;
                 var tokens = Math.round(words * 1.33);
 
                 li.innerHTML =
                     '<span class="ps-page" title="' + escapeHtml(url) + '"><span class="ps-path">' + escapeHtml(path) + '</span><span class="ps-title">' + escapeHtml(title) + '</span></span>' +
+                    '<span class="ps-metric">' + (words ? words.toLocaleString() : '—') + '</span>' +
+                    '<span class="ps-metric">' + (sentences ? sentences.toLocaleString() : '—') + '</span>' +
+                    '<span class="ps-metric">' + (paragraphs ? paragraphs.toLocaleString() : '—') + '</span>' +
                     '<span class="ps-tokens" style="text-align: right; margin-right: 12px;">' + (tokens ? tokens.toLocaleString() : '—') + '</span>';
 
                 li.addEventListener('click', function () {

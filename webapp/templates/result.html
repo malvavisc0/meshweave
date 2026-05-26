@@ -125,6 +125,9 @@
   {% set _total_pages = ((_schema_cov.pages_with_schema + _schema_cov.pages_without_schema) if _schema_cov else
   (_payload.pages|length if _payload.pages else 0)) %}
   {% set _entity_name = (_entity.name if _entity else '') %}
+  {% set _canonical_present = pg.canonical and true or false %}
+  {% set _og_title_matches = og.title and pg.title and og.title == pg.title %}
+  {% set _og_description_matches = og.description and pg.description and og.description == pg.description %}
 
   <section class="panel mt-3 site-identity" role="region" aria-label="Site Identity">
     <div class="site-identity-inner">
@@ -142,6 +145,28 @@
             <span class="identity-label">Description</span>
             <span class="identity-value">{{ pg.description or '—' }}</span>
           </div>
+        </div>
+      </div>
+      <div class="identity-signals" role="list" aria-label="Identity summary">
+        <div class="identity-signal" role="listitem">
+          <span class="identity-signal-label">Entity</span>
+          <span
+            class="identity-signal-value {% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
+            {{ _entity_name or 'Not detected' }}
+          </span>
+        </div>
+        <div class="identity-signal" role="listitem">
+          <span class="identity-signal-label">Schema</span>
+          <span
+            class="identity-signal-value {% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
+            {{ _schema_pct }}%
+          </span>
+        </div>
+        <div class="identity-signal" role="listitem">
+          <span class="identity-signal-label">Canonical</span>
+          <span class="identity-signal-value {% if _canonical_present %}stat-ok{% else %}stat-err{% endif %}">
+            {% if _canonical_present %}Present{% else %}Missing{% endif %}
+          </span>
         </div>
       </div>
       <ul class="identity-details">
@@ -168,11 +193,12 @@
         </li>
         <li>
           <span>OG Title</span>
-          <span>{{ og.title or '—' }}</span>
+          <span>{% if _og_title_matches %}Matches page title{% else %}{{ og.title or '—' }}{% endif %}</span>
         </li>
         <li>
           <span>OG Description</span>
-          <span>{{ og.description or '—' }}</span>
+          <span>{% if _og_description_matches %}Matches page description{% else %}{{ og.description or '—' }}{% endif
+            %}</span>
         </li>
         {% if _canonical_issues and _canonical_issues|length > 0 %}
         <li>
@@ -194,6 +220,11 @@
   {% if score_snapshot %}
   {% set _scores = [score_snapshot.aeo_score or 0, score_snapshot.geo_score or 0, score_snapshot.aax_score or 0] %}
   {% set _max_score = _scores | max %}
+  {% set _min_score = _scores | min %}
+  {% set _strongest = 'AAX' if score_snapshot.aax_score == _max_score and _max_score > 0 else 'GEO' if
+  score_snapshot.geo_score == _max_score and _max_score > 0 else 'AEO' %}
+  {% set _weakest = 'AEO' if score_snapshot.aeo_score == _min_score else 'GEO' if score_snapshot.geo_score == _min_score
+  else 'AAX' %}
   <section class="panel mt-2 score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
     <div class="score-gauges">
       <div class="score-gauge">
@@ -203,6 +234,7 @@
           {{ score_snapshot.aeo_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.aeo_rating }}</div>
+        <div class="gauge-context">Answer extraction and citation readiness</div>
       </div>
       <div class="score-gauge">
         <div class="score-gauge-header">GEO Score</div>
@@ -211,6 +243,7 @@
           {{ score_snapshot.geo_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.geo_rating }}</div>
+        <div class="gauge-context">Generative discovery and brand visibility</div>
       </div>
       <div class="score-gauge score-gauge-aax">
         <div class="score-gauge-header">AAX Score</div>
@@ -220,6 +253,7 @@
           {{ score_snapshot.aax_score | round(1) }}
         </div>
         <div class="gauge-rating">{{ score_snapshot.aax_rating }}</div>
+        <div class="gauge-context">Agent usability and task completion</div>
         {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
         <div class="aax-summary-quote">{{ score_snapshot.aax_analysis.summary }}</div>
         {% endif %}
@@ -229,6 +263,7 @@
         {% endif %}
       </div>
     </div>
+    <p class="score-summary-bridge">Strongest area: {{ _strongest }}. Biggest gap: {{ _weakest }}.</p>
   </section>
   {% endif %}
 
@@ -242,21 +277,25 @@
         <h3 class="breakdown-col-header">AEO Factors</h3>
         {% for factor in score_snapshot.score_data.aeo.factors.values() %}
         <div class="factor-row">
-          <span class="factor-label">{{ factor.display_name }}</span>
-          <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
-            </div>
+          <div class="factor-row-head">
+            <span class="factor-label">{{ factor.display_name }}</span>
+            {% if factor.score is not none %}
+            <span
+              class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+              {{ factor.score | round(1) }}
+            </span>
+            {% else %}
+            <span class="factor-score factor-score-missing">—</span>
+            {% endif %}
           </div>
-          {% if factor.score is not none %}
-          <span
-            class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) }}/100
-          </span>
-          {% else %}
-          <span class="factor-score factor-score-missing">—</span>
-          {% endif %}
-          <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
           {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+          <div class="factor-row-foot">
+            <div class="factor-bar">
+              <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+              </div>
+            </div>
+            <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+          </div>
         </div>
         {% endfor %}
       </div>
@@ -265,21 +304,25 @@
         <h3 class="breakdown-col-header">GEO Factors</h3>
         {% for factor in score_snapshot.score_data.geo.factors.values() %}
         <div class="factor-row">
-          <span class="factor-label">{{ factor.display_name }}</span>
-          <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
-            </div>
+          <div class="factor-row-head">
+            <span class="factor-label">{{ factor.display_name }}</span>
+            {% if factor.score is not none %}
+            <span
+              class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+              {{ factor.score | round(1) }}
+            </span>
+            {% else %}
+            <span class="factor-score factor-score-missing">—</span>
+            {% endif %}
           </div>
-          {% if factor.score is not none %}
-          <span
-            class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) }}/100
-          </span>
-          {% else %}
-          <span class="factor-score factor-score-missing">—</span>
-          {% endif %}
-          <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
           {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+          <div class="factor-row-foot">
+            <div class="factor-bar">
+              <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+              </div>
+            </div>
+            <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+          </div>
         </div>
         {% endfor %}
       </div>
@@ -289,21 +332,25 @@
         {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
         {% for factor in score_snapshot.score_data.aax.factors.values() %}
         <div class="factor-row">
-          <span class="factor-label">{{ factor.display_name }}</span>
-          <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
-            </div>
+          <div class="factor-row-head">
+            <span class="factor-label">{{ factor.display_name }}</span>
+            {% if factor.score is not none %}
+            <span
+              class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+              {{ factor.score | round(1) }}
+            </span>
+            {% else %}
+            <span class="factor-score factor-score-missing">—</span>
+            {% endif %}
           </div>
-          {% if factor.score is not none %}
-          <span
-            class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) }}/100
-          </span>
-          {% else %}
-          <span class="factor-score factor-score-missing">—</span>
-          {% endif %}
-          <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
           {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+          <div class="factor-row-foot">
+            <div class="factor-bar">
+              <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+              </div>
+            </div>
+            <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+          </div>
         </div>
         {% endfor %}
         {% else %}
@@ -343,11 +390,11 @@
           Audience detected
         </span>
         <span class="aax-check {% if hc.call_to_action %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          CTA found: "{{ hc.call_to_action or 'none' }}"
+          CTA found
         </span>
         <span
           class="aax-check {% if hc.information_density in ['dense', 'adequate'] %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          Information density: {{ hc.information_density or 'unknown' }}
+          Information Density: {{ hc.information_density or 'Unknown' }}
         </span>
       </div>
 
@@ -420,6 +467,54 @@
   </section>
   {% endif %}
 
+  <!-- Recommendations (grouped by pillar) -->
+  {% if score_snapshot and score_snapshot.recommendations %}
+  {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
+  <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
+    <div class="recommendations-header">
+      <div>
+        <h2>Recommendations</h2>
+        <p class="small recommendations-intro">Priority fixes to improve citation readiness, discoverability, and agent
+          usability.</p>
+      </div>
+    </div>
+    {% for pillar_key, pillar_label, pillar_score in [
+    ('aeo', 'AEO', score_snapshot.aeo_score),
+    ('geo', 'GEO', score_snapshot.geo_score),
+    ('aax', 'AAX', score_snapshot.aax_score)
+    ] %}
+    {% if rec_groups[pillar_key] | length > 0 %}
+    <div class="rec-group">
+      <div class="rec-group-header">
+        <div class="rec-group-heading">
+          <span class="rec-group-name">{{ pillar_label }} recommendations</span>
+          <span class="rec-group-count">{{ rec_groups[pillar_key] | length }} fix{{ 'es' if rec_groups[pillar_key] |
+            length != 1 else '' }}</span>
+        </div>
+        {% if pillar_score is not none %}
+        <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
+        {% endif %}
+      </div>
+      {% for rec in rec_groups[pillar_key] %}
+      <div class="rec-item rec-priority-{{ rec.priority }}">
+        <div class="rec-header">
+          <span class="rec-priority-badge">
+            {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+          </span>
+          <div class="rec-copy">
+            <span class="rec-title">{{ rec.title }}</span>
+            <div class="rec-detail">{{ rec.detail }}</div>
+          </div>
+          <span class="rec-impact">{{ rec.impact }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
   <!-- Pages panel -->
   {% if payload and payload.pages %}
   <section class="panel mt-2" role="region" aria-label="Content pages">
@@ -469,15 +564,17 @@
     payload.scores.aax.contactability else none) %}
     {% if contactability %}
     <div class="contactability-card">
-      <div class="contactability-score">
-        <span class="contactability-value {{ rating_class(contactability.rating) if contactability.rating else '' }}">
-          {{ (contactability.score / 10) | round(1) }}/10
-        </span>
-        <span class="contactability-label">Contactability</span>
+      <div class="contactability-head">
+        <div class="contactability-score">
+          <span class="contactability-value {{ rating_class(contactability.rating) if contactability.rating else '' }}">
+            {{ (contactability.score / 10) | round(1) }}/10
+          </span>
+          <span class="contactability-label">Contactability</span>
+        </div>
       </div>
       <ul class="contactability-checks">
         <li class="{% if contactability.has_email %}check-pass{% else %}check-fail{% endif %}">
-          Email found: {{ contactability.email_count | default(0) }}
+          Email{% if contactability.has_email %}: {{ contactability.email_count | default(0) }}{% endif %}
         </li>
         <li class="{% if contactability.has_mailto %}check-pass{% else %}check-fail{% endif %}">
           Mailto link
@@ -535,6 +632,7 @@
     <!-- Social Links -->
     <section class="mt-2" role="region" aria-label="Social Links">
       <h3>Social Links</h3>
+      <p class="small reachability-helper">External profiles and communities linked from the site.</p>
       <div id="social-groups"><!-- filled by JS --></div>
     </section>
 
@@ -555,47 +653,6 @@
       <div class="small">No external domains detected.</div>
       {% endif %}
     </section>
-  </section>
-  {% endif %}
-
-  <!-- Recommendations (grouped by pillar) -->
-  {% if score_snapshot and score_snapshot.recommendations %}
-  {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
-  <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
-    <h2>Recommendations</h2>
-    {% for pillar_key, pillar_label, pillar_score in [
-    ('aeo', 'AEO', score_snapshot.aeo_score),
-    ('geo', 'GEO', score_snapshot.geo_score),
-    ('aax', 'AAX', score_snapshot.aax_score)
-    ] %}
-    {% if rec_groups[pillar_key] | length > 0 %}
-    <div class="rec-group">
-      <div class="rec-group-header">
-        <span>{{ pillar_label }} Recommendations ({{ rec_groups[pillar_key] | length }})</span>
-        {% if pillar_score is not none %}
-        <div class="rec-group-progress">
-          <div class="rec-group-progress-fill"
-            style="width: {{ pillar_score }}%; background: {% if pillar_score >= 70 %}var(--color-primary){% elif pillar_score >= 40 %}var(--color-semantic-warning){% else %}var(--color-semantic-error){% endif %};">
-          </div>
-        </div>
-        <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
-        {% endif %}
-      </div>
-      {% for rec in rec_groups[pillar_key] %}
-      <div class="rec-item rec-priority-{{ rec.priority }}">
-        <div class="rec-header">
-          <span class="rec-priority-badge">
-            {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
-          </span>
-          <span class="rec-title">{{ rec.title }}</span>
-          <span class="rec-impact">{{ rec.impact }}</span>
-        </div>
-        <div class="rec-detail">{{ rec.detail }}</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-    {% endfor %}
   </section>
   {% endif %}
 
