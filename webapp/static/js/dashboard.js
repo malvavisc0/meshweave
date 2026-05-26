@@ -1,4 +1,4 @@
-/* Dashboard functionality - extracted from my.html */
+/* Dashboard functionality */
 (function () {
     'use strict';
 
@@ -6,63 +6,21 @@
     var _jobsRefreshTimer = null;
     var _jobsState = { status: '', q: '', cursor: null, limit: 25 };
 
-
-    // Quick Stats / Active Vulnerabilities
-    function loadQuickStats() {
-        apiJson('/api/my/quick-stats', 'GET').then(function (d) {
-            var aeo = document.getElementById('qs-aeo-low');
-            var geo = document.getElementById('qs-geo-low');
-            var aax = document.getElementById('qs-aax-low');
-
-            if (aeo) {
-                var val = (d && typeof d.aeo_low === 'number') ? d.aeo_low : 0;
-                aeo.textContent = val;
-                if (val > 0) aeo.className = 'stat-v stat-err'; else aeo.className = 'stat-v';
-            }
-            if (geo) {
-                var val = (d && typeof d.geo_low === 'number') ? d.geo_low : 0;
-                geo.textContent = val;
-                if (val > 0) geo.className = 'stat-v stat-err'; else geo.className = 'stat-v';
-            }
-            if (aax) {
-                var val = (d && typeof d.aax_low === 'number') ? d.aax_low : 0;
-                aax.textContent = val;
-                if (val > 0) aax.className = 'stat-v stat-err'; else aax.className = 'stat-v';
-            }
-            try { trackEvent('quick_stats_loaded'); } catch (_) { }
-        }).catch(function () { /* silent */ });
-    }
-
-    // Jobs filters, keyset pagination, and bulk retry
-    function _qsSet(params) {
-        try {
-            var usp = new URLSearchParams(window.location.search);
-            Object.keys(params || {}).forEach(function (k) {
-                var v = params[k];
-                if (v == null || v === '') usp.delete(k); else usp.set(k, v);
-            });
-            var url = window.location.pathname + '?' + usp.toString();
-            window.history.replaceState({}, '', url);
-        } catch (_) { }
-    }
-
-    function _readInitialJobsState() {
-        try {
-            var usp = new URLSearchParams(window.location.search);
-            _jobsState.status = usp.get('status') || '';
-            _jobsState.q = usp.get('q') || '';
-            _jobsState.cursor = usp.get('cursor') || null;
-            var sel = document.getElementById('jobs-status'); if (sel) sel.value = _jobsState.status;
-            var q = document.getElementById('jobs-q'); if (q) q.value = _jobsState.q;
-        } catch (_) { }
+    function ratingClass(score) {
+        if (score == null) return '';
+        var s = parseFloat(score);
+        if (s >= 80) return 'rating-good';
+        if (s >= 60) return 'rating-ok';
+        return 'rating-low';
     }
 
     function renderJobsList(items) {
         var tb = document.getElementById('my-jobs-tbody');
         if (!tb) return;
         if (!items || !items.length) {
-            tb.innerHTML = '<tr><td colspan="6"><em class="small">No analyses yet. Start by analyzing a site above.</em></td></tr>';
-            var selAll = document.getElementById('jobs-select-all'); if (selAll) selAll.checked = false;
+            tb.innerHTML = '<tr><td colspan="8"><em class="small">No analyses yet. Start by analyzing a site above.</em></td></tr>';
+            var selAll = document.getElementById('jobs-select-all');
+            if (selAll) selAll.checked = false;
             updateJobsBulkBar();
             return;
         }
@@ -71,18 +29,59 @@
             var tr = document.createElement('tr');
             tr.setAttribute('data-crawl-id', it.id || '');
             tr.setAttribute('data-status', it.status || '');
-            var urlText = it.canonical_url || ((it.domain || '') + (it.path || '') + ((it.query && ('?' + it.query)) || ''));
+
+            var statusMap = {
+                succeeded: 'Done',
+                failed: 'Fail',
+                running: 'Running',
+                pending: 'Pending'
+            };
+            var statusClassMap = {
+                succeeded: 'badge-status-succeeded',
+                failed: 'badge-status-failed',
+                running: 'badge-status-running',
+                pending: 'badge-status-pending'
+            };
+            var statusBadge = '<span class="badge ' +
+                (statusClassMap[it.status] || '') + '">' +
+                (statusMap[it.status] || it.status || '') + '</span>';
+
+            var aeo = it.aeo_score != null ? parseFloat(it.aeo_score).toFixed(1) : '&mdash;';
+            var geo = it.geo_score != null ? parseFloat(it.geo_score).toFixed(1) : '&mdash;';
+            var aax = it.aax_score != null ? parseFloat(it.aax_score).toFixed(1) : '&mdash;';
+            var aeoCls = it.aeo_score != null ? ratingClass(it.aeo_score) : '';
+            var geoCls = it.geo_score != null ? ratingClass(it.geo_score) : '';
+            var aaxCls = it.aax_score != null ? ratingClass(it.aax_score) : '';
+
+            var aeoCell = '<td class="' + aeoCls + '">' + aeo;
+            if (it.aeo_rating) aeoCell += '<br><small>' + escapeHtml(it.aeo_rating) + '</small>';
+            aeoCell += '</td>';
+
+            var geoCell = '<td class="' + geoCls + '">' + geo;
+            if (it.geo_rating) geoCell += '<br><small>' + escapeHtml(it.geo_rating) + '</small>';
+            geoCell += '</td>';
+
+            var aaxCell = '<td class="' + aaxCls + '">' + aax + '</td>';
+
+            var retryForm = (it.status || '') !== 'running'
+                ? '<form method="post" action="/retry/' + escapeHtml(it.id || '') + '" class="inline">' +
+                (CSRF_TOKEN ? '<input type="hidden" name="csrf_token" value="' + escapeHtml(CSRF_TOKEN) + '">' : '') +
+                '<button type="submit" class="btn btn-sm">Retry</button></form>'
+                : '';
+
             tr.innerHTML =
                 '<td><input type="checkbox" class="jobs-select" data-id="' + escapeHtml(it.id || '') + '" aria-label="Select job ' + escapeHtml(it.id || '') + '"></td>' +
-                '<td>' + escapeHtml(it.scope || '') + '</td>' +
-                '<td><a href="/analysis/' + escapeHtml(it.id || '') + '">' + escapeHtml(urlText) + '</a></td>' +
-                '<td>' + escapeHtml(it.status || '') + '</td>' +
+                '<td><a href="/analysis/' + escapeHtml(it.id || '') + '">' + escapeHtml(it.domain || '') + '</a></td>' +
+                aeoCell +
+                geoCell +
+                aaxCell +
+                '<td>' + statusBadge + '</td>' +
                 '<td><small>' + escapeHtml(it.updated_at || '') + '</small></td>' +
-                '<td>' + ((it.status || '') !== 'running'
-                    ? '<form method="post" action="/retry/' + escapeHtml(it.id || '') + '" class="inline">' +
-                    (CSRF_TOKEN ? '<input type="hidden" name="csrf_token" value="' + escapeHtml(CSRF_TOKEN) + '">' : '') +
-                    '<button type="submit" class="btn">Retry</button></form>'
-                    : '<em>Running</em>') + '</td>';
+                '<td>' +
+                '<a href="/analysis/' + escapeHtml(it.id || '') + '" class="btn btn-sm">View</a> ' +
+                '<a href="/api/analysis/' + escapeHtml(it.id || '') + '" class="btn btn-sm" target="_blank">Export</a> ' +
+                retryForm +
+                '</td>';
             tb.appendChild(tr);
         });
         attachJobsSelectionHandlers();
@@ -92,7 +91,10 @@
         var selAll = document.getElementById('jobs-select-all');
         var boxes = document.querySelectorAll('input.jobs-select');
         if (selAll) {
-            selAll.onchange = function () { boxes.forEach(function (b) { b.checked = !!selAll.checked; }); updateJobsBulkBar(); };
+            selAll.onchange = function () {
+                boxes.forEach(function (b) { b.checked = !!selAll.checked; });
+                updateJobsBulkBar();
+            };
         }
         boxes.forEach(function (b) { b.onchange = updateJobsBulkBar; });
         updateJobsBulkBar();
@@ -110,7 +112,6 @@
         }
     }
 
-    // Throttled refresh to update the jobs table when a running job finishes
     function refreshJobsSoon() {
         if (_jobsRefreshTimer) return;
         _jobsRefreshTimer = setTimeout(function () {
@@ -119,7 +120,6 @@
         }, 300);
     }
 
-    // Show/hide and enable/disable the Next button based on presence of a next cursor
     function _setNextButtonAvailability(hasNext) {
         var nextBtn = document.getElementById('jobs-next');
         var pageMsg = document.getElementById('jobs-page-msg');
@@ -140,11 +140,11 @@
     function fetchJobs(next) {
         var msg = document.getElementById('jobs-status-msg');
         var pageMsg = document.getElementById('jobs-page-msg');
-        if (msg) msg.textContent = 'Loading…';
+        if (msg) msg.textContent = 'Loading\u2026';
         var url = new URL('/api/my/jobs', window.location.origin);
         var status = _jobsState.status || '';
         var q = _jobsState.q || '';
-        var cursor = (next === true) ? (_jobsState.cursor || null) : null; // when applying filters, reset cursor
+        var cursor = (next === true) ? (_jobsState.cursor || null) : null;
         if (status) url.searchParams.set('status', status);
         if (q) url.searchParams.set('q', q);
         if (cursor) url.searchParams.set('cursor', cursor);
@@ -174,8 +174,8 @@
 
     function nextJobsPage() {
         if (!_jobsState.cursor) return;
-        // Keep current filters; fetch next page and update cursor
-        var msg = document.getElementById('jobs-status-msg'); if (msg) msg.textContent = 'Loading…';
+        var msg = document.getElementById('jobs-status-msg');
+        if (msg) msg.textContent = 'Loading\u2026';
         var url = new URL('/api/my/jobs', window.location.origin);
         if (_jobsState.status) url.searchParams.set('status', _jobsState.status);
         if (_jobsState.q) url.searchParams.set('q', _jobsState.q);
@@ -186,10 +186,12 @@
             renderJobsList(items);
             _jobsState.cursor = (res && res.next_cursor) || null;
             _setNextButtonAvailability(!!_jobsState.cursor);
-            var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = items.length + ' jobs';
+            var msgEl = document.getElementById('jobs-status-msg');
+            if (msgEl) msgEl.textContent = items.length + ' jobs';
             _qsSet({ status: _jobsState.status || null, q: _jobsState.q || null, cursor: _jobsState.cursor || null });
         }).catch(function () {
-            var msgEl = document.getElementById('jobs-status-msg'); if (msgEl) msgEl.textContent = 'Unable to load jobs.';
+            var msgEl = document.getElementById('jobs-status-msg');
+            if (msgEl) msgEl.textContent = 'Unable to load jobs.';
             _setNextButtonAvailability(false);
         });
     }
@@ -200,28 +202,64 @@
         if (!ids.length) return;
         try { trackEvent('bulk_retry_click'); } catch (_) { }
         apiJson('/api/my/jobs/bulk', 'POST', { operation: 'retry', ids: ids }).then(function (res) {
-            // Refresh list to reflect pending statuses
             fetchJobs(false);
         }).catch(function () { /* ignore */ });
     }
 
+    function _qsSet(params) {
+        try {
+            var usp = new URLSearchParams(window.location.search);
+            Object.keys(params || {}).forEach(function (k) {
+                var v = params[k];
+                if (v == null || v === '') usp.delete(k); else usp.set(k, v);
+            });
+            var url = window.location.pathname + '?' + usp.toString();
+            window.history.replaceState({}, '', url);
+        } catch (_) { }
+    }
 
-    // Initialize the dashboard
+    function _readInitialJobsState() {
+        try {
+            var usp = new URLSearchParams(window.location.search);
+            _jobsState.status = usp.get('status') || '';
+            _jobsState.q = usp.get('q') || '';
+            _jobsState.cursor = usp.get('cursor') || null;
+            var sel = document.getElementById('jobs-status');
+            if (sel) sel.value = _jobsState.status;
+            var q = document.getElementById('jobs-q');
+            if (q) q.value = _jobsState.q;
+        } catch (_) { }
+    }
+
+    // Event delegation for share link buttons
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-action="copy-share"]');
+        if (!btn) return;
+        var path = btn.getAttribute('data-url');
+        if (!path) return;
+        var url = window.location.origin + path;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function () {
+                var orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(function () { btn.textContent = orig; }, 1500);
+            });
+        }
+    });
+
     function initDashboard() {
         try { trackEvent('dashboard_view'); } catch (_) { }
-        loadQuickStats();
         _readInitialJobsState();
-        var applyBtn = document.getElementById('jobs-apply'); if (applyBtn) applyBtn.addEventListener('click', applyJobFilters);
-        var nextBtn = document.getElementById('jobs-next'); if (nextBtn) nextBtn.addEventListener('click', nextJobsPage);
-        var bulkBtn = document.getElementById('jobs-bulk-retry'); if (bulkBtn) bulkBtn.addEventListener('click', bulkRetry);
-        // Hide "Next" until we know more
+        var applyBtn = document.getElementById('jobs-apply');
+        if (applyBtn) applyBtn.addEventListener('click', applyJobFilters);
+        var nextBtn = document.getElementById('jobs-next');
+        if (nextBtn) nextBtn.addEventListener('click', nextJobsPage);
+        var bulkBtn = document.getElementById('jobs-bulk-retry');
+        if (bulkBtn) bulkBtn.addEventListener('click', bulkRetry);
         _setNextButtonAvailability(false);
-        // Initial fetch to ensure server-side table is synced with filters (if any)
         fetchJobs(false);
     }
 
-
-    // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initDashboard);
     } else {

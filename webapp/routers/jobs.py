@@ -9,7 +9,7 @@ from sqlalchemy import func
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, Product
+from webapp.models import Crawl, Product, ScoreSnapshot
 
 # Treat SQLAlchemy declarative models as Any for type checkers to avoid circular/forward-ref analysis issues
 Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
@@ -26,6 +26,24 @@ from webapp.utils.security import _make_csrf_token, _verify_csrf_token
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
+
+def _extract_aax_score(snapshot) -> float | None:
+    """Extract AAX composite score from a ScoreSnapshot."""
+    if snapshot and snapshot.score_json:
+        return snapshot.score_json.get("aax", {}).get("composite")
+    return None
+
+
+def _get_rating_label(score: float | None) -> str | None:
+    """Return a human-readable rating label for a score."""
+    if score is None:
+        return None
+    if score >= 80:
+        return "Strong"
+    if score >= 60:
+        return "Moderate"
+    return "Weak"
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -51,11 +69,21 @@ async def my_jobs(
             .limit(500)
             .all()
         )
-    # First page subset
-    rows = rows_db[:page_size]
 
+        # Fetch ScoreSnapshots for these crawls
+        crawl_ids = [r.id for r in rows_db]
+        snapshots = (
+            s.query(ScoreSnapshot)
+            .filter(ScoreSnapshot.crawl_id.in_(crawl_ids))
+            .all()
+        )
+        snapshot_map = {ss.crawl_id: ss for ss in snapshots}
+
+    # Build flat items list (for "All Analyses" table) with scores
     items = []
-    for r in rows:
+    for r in rows_db[:page_size]:
+        ss = snapshot_map.get(r.id)
+        aax_score = _extract_aax_score(ss)
         items.append(
             {
                 "id": r.id,
@@ -67,8 +95,120 @@ async def my_jobs(
                 "visibility": r.visibility,
                 "status": r.status,
                 "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
+                "aeo_score": r.aeo_score,
+                "geo_score": r.geo_score,
+                "aax_score": aax_score,
+                "aeo_rating": r.aeo_rating,
+                "geo_rating": r.geo_rating,
             }
         )
+
+    # Group by domain for "My Sites" section
+    domain_groups: dict[str, list] = {}
+    for r in rows_db:
+        if r.domain not in domain_groups:
+            domain_groups[r.domain] = []
+        domain_groups[r.domain].append(r)
+
+    sites = []
+    for domain, crawls in domain_groups.items():
+        crawls.sort(key=lambda c: c.updated_at or datetime.min, reverse=True)
+
+        latest = crawls[0]
+        latest_ss = snapshot_map.get(latest.id)
+
+        # Extract AAX from ScoreSnapshot
+        aax_score = _extract_aax_score(latest_ss)
+        aax_rating = None
+        if latest_ss and latest_ss.score_json:
+            aax_data = latest_ss.score_json.get("aax", {})
+            aax_rating = aax_data.get("rating") or _get_rating_label(aax_score)
+
+        # Compute trends (compare with previous succeeded crawl)
+        aeo_delta = None
+        geo_delta = None
+        aax_delta = None
+        succeeded_crawls = [c for c in crawls if c.status == "succeeded"]
+        if len(succeeded_crawls) >= 2:
+            prev = succeeded_crawls[1]
+            if latest.aeo_score is not None and prev.aeo_score is not None:
+                aeo_delta = round(latest.aeo_score - prev.aeo_score, 1)
+            if latest.geo_score is not None and prev.geo_score is not None:
+                geo_delta = round(latest.geo_score - prev.geo_score, 1)
+            prev_ss = snapshot_map.get(prev.id)
+            if latest_ss and latest_ss.score_json and prev_ss and prev_ss.score_json:
+                prev_aax = prev_ss.score_json.get("aax", {}).get("composite")
+                if aax_score is not None and prev_aax is not None:
+                    aax_delta = round(float(aax_score) - float(prev_aax), 1)
+
+        # Score history (all succeeded crawls, oldest first)
+        history = []
+        for c in reversed(succeeded_crawls):
+            c_aax = None
+            c_ss = snapshot_map.get(c.id)
+            if c_ss and c_ss.score_json:
+                c_aax = c_ss.score_json.get("aax", {}).get("composite")
+            history.append({
+                "aeo": c.aeo_score,
+                "geo": c.geo_score,
+                "aax": c_aax,
+                "date": (c.updated_at or datetime.now(UTC)).isoformat(),
+            })
+
+        # Top recommendations from latest analysis
+        recommendations = []
+        if latest_ss and latest_ss.score_json:
+            recs = latest_ss.score_json.get("recommendations", [])
+            priority_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
+            recs.sort(
+                key=lambda r: priority_order.get(r.get("priority", "").lower(), 99)
+            )
+            for rec in recs[:3]:
+                recommendations.append({
+                    "priority": rec.get("priority", "info"),
+                    "title": rec.get("title", ""),
+                    "impact": rec.get("impact", ""),
+                })
+
+        # Build share URL based on visibility
+        share_url = None
+        share_disabled = False
+        if latest.visibility == "public" and latest.key:
+            share_url = f"/analysis/{latest.key}"
+        elif getattr(latest, "share_key", None):
+            share_url = f"/analysis/share/{latest.share_key}"
+        else:
+            share_disabled = True
+
+        aeo_rating = latest.aeo_rating or _get_rating_label(latest.aeo_score)
+        geo_rating = latest.geo_rating or _get_rating_label(latest.geo_score)
+
+        sites.append({
+            "domain": domain,
+            "latest_id": latest.id,
+            "latest_url": latest.canonical_url,
+            "latest_status": latest.status,
+            "latest_error": latest.error,
+            "updated_at": (latest.updated_at or datetime.now(UTC)).isoformat(),
+            "analysis_count": len(crawls),
+            "aeo_score": latest.aeo_score,
+            "geo_score": latest.geo_score,
+            "aax_score": aax_score,
+            "aeo_rating": aeo_rating,
+            "geo_rating": geo_rating,
+            "aax_rating": aax_rating,
+            "aeo_delta": aeo_delta,
+            "geo_delta": geo_delta,
+            "aax_delta": aax_delta,
+            "history": history,
+            "recommendations": recommendations,
+            "share_url": share_url,
+            "share_disabled": share_disabled,
+            "visibility": latest.visibility,
+        })
+
+    # Sort sites by most recent analysis
+    sites.sort(key=lambda s: s["updated_at"], reverse=True)
 
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     page_title = f"Dashboard — {site_name}"
@@ -89,9 +229,12 @@ async def my_jobs(
 
     resp = templates.TemplateResponse(
         request,
-        "my.html",
+        "dashboard.html",
         {
+            "sites": sites,
             "items": items,
+            "total_analyses": len(rows_db),
+            "total_domains": len(domain_groups),
             "has_prev": False,
             "has_next": False,
             "prev_url": None,
@@ -274,7 +417,7 @@ async def my_quick_stats(request: Request):
                     try:
                         if float(aax_comp) < 50:
                             aax_low_count += 1
-                    except ValueError, TypeError:
+                    except (ValueError, TypeError):
                         pass
     return {
         "aeo_low": int(aeo_low_count),
@@ -354,7 +497,18 @@ async def api_my_jobs(
 
         rows = qry.limit(limit + 1).all()
 
+        # Fetch snapshots for score data
+        crawl_ids_api = [r.id for r in rows[:limit + 1]]
+        snaps_api = (
+            s.query(ScoreSnapshot)
+            .filter(ScoreSnapshot.crawl_id.in_(crawl_ids_api))
+            .all()
+        )
+        snap_api_map = {ss.crawl_id: ss for ss in snaps_api}
+
         for r in rows[:limit]:
+            ss = snap_api_map.get(r.id)
+            aax_score = _extract_aax_score(ss)
             items.append(
                 {
                     "id": r.id,
@@ -365,7 +519,14 @@ async def api_my_jobs(
                     "canonical_url": r.canonical_url,
                     "visibility": r.visibility,
                     "status": r.status,
-                    "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
+                    "updated_at": (
+                        r.updated_at or datetime.now(UTC)
+                    ).isoformat(),
+                    "aeo_score": r.aeo_score,
+                    "geo_score": r.geo_score,
+                    "aax_score": aax_score,
+                    "aeo_rating": r.aeo_rating,
+                    "geo_rating": r.geo_rating,
                 }
             )
 

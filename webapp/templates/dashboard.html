@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- HERO -->
+<section class="landing-hero landing-hero-compact" aria-label="Dashboard">
+    <div class="container container-wide">
+        <h1 class="landing-hero-title">Dashboard</h1>
+        <p class="landing-hero-supporting">Track and improve your sites' visibility across AI systems.
+        </p>
+
+        {% if notice %}
+        {% set ok_notices = ['cancelled','retried'] %}
+        <div role="alert" class="notice {% if notice in ok_notices %}notice-ok{% else %}notice-err{% endif %} mt-3">
+            {% if notice == 'cancelled' %}
+            <strong>Cancelled.</strong> The running job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was
+            cancelled.
+            {% elif notice == 'retried' %}
+            <strong>Retry started.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is
+            queued to run
+            again.
+            {% elif notice == 'not_running' %}
+            <strong>Not running.</strong> The job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} is not
+            currently
+            running.
+            {% elif notice == 'not_authorized' %}
+            <strong>Not authorized.</strong> You do not own job{% if notice_job %} <code>{{ notice_job }}</code>{% endif
+            %}.
+            {% elif notice == 'not_found' %}
+            <strong>Not found.</strong> The requested job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %}
+            was not
+            found.
+            {% elif notice == 'csrf_failed' %}
+            <strong>Security check failed.</strong> Please try again and ensure your session is valid.
+            {% elif notice == 'cancel_get' %}
+            <strong>Action requires confirmation.</strong> Please use the Cancel button on the job page to cancel.
+            {% else %}
+            <strong>Notice.</strong> An action was performed.
+            {% endif %}
+            {% if notice_job %}
+            {% if notice in ['cancelled','not_running','retried'] %}
+            &nbsp;<a href="/analysis/{{ notice_job }}">Open job</a>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- ANALYZE A NEW SITE -->
+<section class="landing-section" aria-label="Analyze a New Site">
+    <div class="container container-wide">
+        <h2 class="landing-section-title">Analyze a New Site</h2>
+        {% include "partials/site_crawl_form.html" %}
+    </div>
+</section>
+
+<!-- MY SITES -->
+<section class="landing-section band-surface" aria-label="My Sites">
+    <div class="container container-wide">
+        <h2 class="landing-section-title">My Sites</h2>
+        <p class="landing-section-subtitle">Your domains. Re-analyze to track score improvements.</p>
+
+        {% if sites %}
+        {% for site in sites %}
+        <div class="panel site-card mt-2" data-domain="{{ site.domain }}">
+            <!-- Header -->
+            <div class="site-card-header">
+                <div>
+                    <h3 class="site-card-domain">{{ site.domain }}</h3>
+                    <span class="small">
+                        {{ site.analysis_count }} analyses
+                        &middot; {{ site.updated_at|relative_time }}
+                    </span>
+                </div>
+                {% if site.latest_status == 'succeeded' or site.latest_status == 'failed' %}
+                <form method="post" action="/submit" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="url" value="{{ site.latest_url }}">
+                    <button type="submit" class="btn btn-sm">Re-analyze</button>
+                </form>
+                {% endif %}
+            </div>
+
+            {% if site.latest_status == 'succeeded' %}
+            <!-- Score Bars -->
+            <div class="score-bars mt-2">
+                {% for metric, score, rating, delta in [
+                ('AEO', site.aeo_score, site.aeo_rating, site.aeo_delta),
+                ('GEO', site.geo_score, site.geo_rating, site.geo_delta),
+                ('AAX', site.aax_score, site.aax_rating, site.aax_delta)
+                ] %}
+                {% if score is not none %}
+                <div class="score-bar-row">
+                    <span class="score-bar-label">{{ metric }}</span>
+                    <div class="score-bar">
+                        <div class="score-bar-fill {{ score|score_fill_class }}" style="width: {{ score }}%"></div>
+                    </div>
+                    <span class="score-bar-value {{ rating_class(rating) }}">
+                        {{ score|round(1) }}
+                    </span>
+                    {% if delta is not none %}
+                    <span class="score-bar-trend {{ 'trend-up' if delta > 0 else 'trend-down' }}">
+                        {% if delta > 0 %}&#9651;{% else %}&#9661;{% endif %}
+                        {% if delta > 0 %}+{% endif %}{{ delta }}
+                    </span>
+                    {% endif %}
+                    <span class="score-bar-rating">&ldquo;{{ rating or '&mdash;' }}&rdquo;</span>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+
+            <!-- Score History -->
+            {% if site.history|length > 1 %}
+            <details class="site-card-history mt-2">
+                <summary>Score History ({{ site.history|length }} analyses)</summary>
+                <div class="history-table mt-1">
+                    {% for metric_key in ['aeo', 'geo', 'aax'] %}
+                    {% set label = {'aeo':'AEO','geo':'GEO','aax':'AAX'}[metric_key] %}
+                    <div class="history-row">
+                        <span class="history-metric-label">{{ label }}</span>
+                        <span class="history-values">
+                            {% for h in site.history %}
+                            {% set val = h[metric_key] %}
+                            {% if val is not none %}
+                            <span>{{ val|round(1) }}</span>
+                            {% if not loop.last %}
+                            <span class="history-arrow">&rarr;</span>
+                            {% endif %}
+                            {% endif %}
+                            {% endfor %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                    <div class="history-dates">
+                        {% for h in site.history %}
+                        <span class="history-date">{{ h.date|relative_time }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </details>
+            {% else %}
+            <p class="small mt-2">Re-analyze to start tracking score changes.</p>
+            {% endif %}
+
+            <!-- Recommendations -->
+            {% if site.recommendations %}
+            <div class="site-card-recs mt-2">
+                <h4>Top Recommendations</h4>
+                {% for rec in site.recommendations %}
+                <div class="rec-mini rec-priority-{{ rec.priority }}">
+                    <span class="rec-priority-badge">{{ rec.priority|capitalize }}</span>
+                    <span class="rec-title">{{ rec.title }}</span>
+                    {% if rec.impact %}
+                    <span class="rec-impact">{{ rec.impact }}</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Actions -->
+            <div class="site-card-actions mt-2">
+                <a href="/analysis/{{ site.latest_id }}" class="btn btn-sm">View Report</a>
+                <a href="/api/analysis/{{ site.latest_id }}" class="btn btn-sm" target="_blank">Export JSON</a>
+                {% if site.share_url %}
+                <button class="btn btn-sm" data-action="copy-share" data-url="{{ site.share_url }}">
+                    Share Link
+                </button>
+                {% else %}
+                <button class="btn btn-sm" disabled title="Make analysis public to share">
+                    Share Link
+                </button>
+                {% endif %}
+            </div>
+
+            {% elif site.latest_status == 'failed' %}
+            <!-- Failed state -->
+            <div class="site-card-failed mt-2">
+                <p>Analysis failed. Retry to generate scores.</p>
+                {% if site.latest_error %}
+                <p class="small">Error: {{ site.latest_error }}</p>
+                {% endif %}
+                <form method="post" action="/retry/{{ site.latest_id }}" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-sm btn-primary">Retry Analysis</button>
+                </form>
+            </div>
+
+            {% elif site.latest_status in ['running', 'pending'] %}
+            <!-- Running/Pending state -->
+            <div class="site-card-running mt-2">
+                {% if site.latest_status == 'running' %}
+                <p><span class="badge badge-dark badge-status-running">Running</span> Analysis in progress&hellip;</p>
+                {% else %}
+                <p><span class="badge badge-dark badge-status-pending">Pending</span> Queued for analysis.</p>
+                {% endif %}
+                <form method="post" action="/cancel/{{ site.latest_id }}" class="inline mt-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-sm">Cancel</button>
+                </form>
+            </div>
+            {% else %}
+            <!-- Cancelled or unknown status -->
+            <div class="site-card-running mt-2">
+                <p><span class="badge badge-dark badge-status-pending">{{ site.latest_status }}</span></p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        {% else %}
+        <p class="small">No analyses yet. Start by analyzing a site above.</p>
+        {% endif %}
+    </div>
+</section>
+
+<!-- ALL ANALYSES -->
+<section class="landing-section" aria-label="All Analyses">
+    <div class="container container-wide">
+        <h2 class="landing-section-title">All Analyses</h2>
+        <p class="landing-section-subtitle">Full history of every analysis.</p>
+
+        <div class="panel filter-bar" role="toolbar" aria-label="Job Filters">
+            <div class="filter-field">
+                <label for="jobs-status">Status</label>
+                <select id="jobs-status">
+                    <option value="">All</option>
+                    <option value="running">Running</option>
+                    <option value="succeeded">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="pending">Pending</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="jobs-q">Search</label>
+                <input id="jobs-q" type="search" placeholder="domain or url">
+            </div>
+            <div class="filter-actions">
+                <button class="btn btn-primary" id="jobs-apply">Apply</button>
+            </div>
+            <span class="small" id="jobs-status-msg" role="status" aria-live="polite"></span>
+        </div>
+
+        <div class="table-wrap mt-2">
+            <table class="table" aria-label="All Analyses">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="jobs-select-all" aria-label="Select All"></th>
+                        <th>Domain</th>
+                        <th>AEO</th>
+                        <th>GEO</th>
+                        <th>AAX</th>
+                        <th>Status</th>
+                        <th>When</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="my-jobs-tbody">
+                    {% if items and items|length > 0 %}
+                    {% for it in items %}
+                    <tr data-crawl-id="{{ it.id }}" data-status="{{ it.status }}">
+                        <td><input type="checkbox" class="jobs-select" data-id="{{ it.id }}"
+                                aria-label="Select job {{ it.id }}">
+                        </td>
+                        <td><a href="/analysis/{{ it.id }}">{{ it.domain }}</a></td>
+                        <td class="{{ rating_class(it.aeo_rating) }}">
+                            {% if it.aeo_score is not none %}{{ it.aeo_score|round(1) }}{% else %}&mdash;{% endif %}
+                            {% if it.aeo_rating %}<br><small>{{ it.aeo_rating }}</small>{% endif %}
+                        </td>
+                        <td class="{{ rating_class(it.geo_rating) }}">
+                            {% if it.geo_score is not none %}{{ it.geo_score|round(1) }}{% else %}&mdash;{% endif %}
+                            {% if it.geo_rating %}<br><small>{{ it.geo_rating }}</small>{% endif %}
+                        </td>
+                        <td class="">
+                            {% if it.aax_score is not none %}{{ it.aax_score|round(1) }}{% else %}&mdash;{% endif %}
+                        </td>
+                        <td>
+                            {% if it.status == 'succeeded' %}
+                            <span class="badge badge-status-succeeded">Done</span>
+                            {% elif it.status == 'failed' %}
+                            <span class="badge badge-status-failed">Fail</span>
+                            {% elif it.status == 'running' %}
+                            <span class="badge badge-status-running">Running</span>
+                            {% elif it.status == 'pending' %}
+                            <span class="badge badge-status-pending">Pending</span>
+                            {% else %}
+                            <span class="badge">{{ it.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ it.updated_at }}</small></td>
+                        <td>
+                            <a href="/analysis/{{ it.id }}" class="btn btn-sm">View</a>
+                            {% if it.status != 'running' %}
+                            <form method="post" action="/retry/{{ it.id }}" class="inline">
+                                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{%
+                                endif %}
+                                <button type="submit" class="btn btn-sm">Retry</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="8"><em class="small">No analyses yet. Start by analyzing a site above.</em></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-1 toolbar">
+            <button class="btn hidden" id="jobs-next" aria-disabled="true">Next</button>
+            <small id="jobs-page-msg" role="status" aria-live="polite"></small>
+        </div>
+
+        <div id="jobs-bulk-bar" class="mt-1 hidden toolbar" role="region" aria-label="Bulk Actions">
+            <span class="small" id="jobs-bulk-count">0 selected</span>
+            <button class="btn" id="jobs-bulk-retry">Retry selected</button>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Pass CSRF token to external script
+    var CSRF_TOKEN = "{{ csrf_token or '' }}";
+</script>
+<script src="/static/js/site-crawl.js"></script>
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

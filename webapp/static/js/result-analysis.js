@@ -233,12 +233,12 @@
 
             if (!PAGES_PAGER) {
                 PAGES_PAGER = {
-                    term: '', page: 1, pageSize: 10, totalPages: 1, ul: ul,
+                    term: '', page: 1, pageSize: 7, totalPages: 1, ul: ul,
                     pagerEl: null, prevBtn: null, nextBtn: null, pageLabel: null, sliceUrls: []
                 };
             } else {
                 PAGES_PAGER.ul = ul;
-                if (PAGES_PAGER.pageSize == null) PAGES_PAGER.pageSize = 10;
+                if (PAGES_PAGER.pageSize == null) PAGES_PAGER.pageSize = 7;
                 if (!Array.isArray(PAGES_PAGER.sliceUrls)) PAGES_PAGER.sliceUrls = [];
             }
 
@@ -774,7 +774,7 @@
                 PAGES_PAGER = {
                     term: '',
                     page: 1,
-                    pageSize: 10,
+                    pageSize: 7,
                     totalPages: 1,
                     ul: document.getElementById('pages-list'),
                     pagerEl: null, prevBtn: null, nextBtn: null, pageLabel: null,

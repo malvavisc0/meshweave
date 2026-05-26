@@ -67,7 +67,38 @@ try:
 
     templates.env.filters["tojson"] = _tojson
 
-    # Register scoring helpers as template globals
+    def _relative_time(dt):
+        """Convert a datetime (or ISO string) to a relative time string like '12h ago'."""
+        from datetime import UTC as _UTC, datetime as _dt
+        try:
+            now = _dt.now(_UTC)
+            # Handle ISO string inputs (e.g. from .isoformat() in templates)
+            if isinstance(dt, str):
+                try:
+                    dt = _dt.fromisoformat(dt)
+                except (ValueError, TypeError):
+                    return ""
+            base = dt or now
+            if base.tzinfo is None:
+                base = base.replace(tzinfo=_UTC)
+            diff = now - base
+            secs = int(max(0, diff.total_seconds()))
+            if secs < 60:
+                return f"{secs}s ago"
+            mins = secs // 60
+            if mins < 60:
+                return f"{mins}m ago"
+            hrs = mins // 60
+            if hrs < 24:
+                return f"{hrs}h ago"
+            days = hrs // 24
+            return f"{days}d ago"
+        except Exception:
+            return ""
+
+    templates.env.filters["relative_time"] = _relative_time
+
+    # Register scoring helpers as template globals and filters
     from webapp.utils.scoring import (  # noqa: E402
         group_recommendations_by_pillar,
         rating_class,
@@ -77,6 +108,22 @@ try:
         group_recommendations_by_pillar
     )
     templates.env.globals["rating_class"] = rating_class
+    # Also register as a filter so templates can use {{ rating|rating_class }}
+    templates.env.filters["rating_class"] = rating_class
+
+    def _score_fill_class(score):
+        """Return CSS BEM modifier class for score bar fill based on numeric score."""
+        try:
+            s = float(score)
+        except (TypeError, ValueError):
+            return ""
+        if s >= 80:
+            return "score-bar-fill--good"
+        if s >= 60:
+            return "score-bar-fill--ok"
+        return "score-bar-fill--low"
+
+    templates.env.filters["score_fill_class"] = _score_fill_class
 except Exception:
     # Never fail startup due to filter registration
     pass

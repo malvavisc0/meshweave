@@ -11,7 +11,7 @@
         <span class="result-console-meta">
           {% if visibility == "public" and not listed %}<span class="badge badge-dark">Public • Unlisted</span>
           {% elif visibility %}<span class="badge badge-dark">{{ visibility|title }}</span>{% endif %}
-          {% if status %}<span class="badge badge-dark badge-status-{{ status }}">{{ status|title }}</span>{% endif %}
+          {% if status %}<span class="badge badge-status-{{ status }}">{{ status|title }}</span>{% endif %}
         </span>
       </div>
     </div>
@@ -596,23 +596,6 @@
     </div>
     {% endif %}
     {% endfor %}
-  </section>
-  {% endif %}
-
-  <!-- Owner Controls -->
-  {% if is_owner %}
-  <section class="panel mt-2" role="region" aria-label="Owner Controls">
-    <h2>Owner Controls</h2>
-    <div class="form-grid">
-      <label><input type="checkbox" id="listed-toggle" {% if listed %}checked{% endif %}> Listed in
-        discovery</label>
-      <button type="button" id="listed-btn" class="btn btn-sm">Update</button>
-    </div>
-    <div class="form-grid">
-      <label><input type="checkbox" id="share-toggle" {% if share_url %}checked{% endif %}> Shareable link</label>
-      <button type="button" id="share-btn" class="btn btn-sm">Update</button>
-      {% if share_url %}<button type="button" id="copy-share-btn" class="btn btn-sm">Copy Link</button>{% endif %}
-    </div>
   </section>
   {% endif %}
 
