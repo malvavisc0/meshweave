@@ -4,6 +4,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 from .crawling import (
     BrowserSession,
@@ -294,7 +295,8 @@ async def crawl(
         page_data = _process_page(html, url, final_url)
 
         # 4) robots.txt and llms.txt (always check)
-        base = f"https://{domain_of(origin)}"
+        _parts = urlsplit(origin)
+        base = f"{_parts.scheme}://{_parts.netloc}"
         robots_info: dict[str, Any] = {}
         llms_info: dict[str, Any] = {}
         try:
