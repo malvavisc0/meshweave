@@ -1,198 +1,192 @@
-# Product Overview — markdownify-crawler
+# Product Overview — MeshWeave
 
-An open-source stack to render and analyze websites, extract clean Markdown, classify links, detect emails, and optionally crawl internal pages—packaged as a Python library, CLI, optional API server, and a modern web app with AI-assisted analysis and lightweight lead capture.
+MeshWeave is an AI visibility audit product. It shows how well a website can be crawled, understood, cited, and acted on by answer engines, LLMs, and AI agents.
+
+The product is built around three diagnostic scores:
+
+- **AEO** — Answer Engine Optimization
+- **GEO** — Generative Engine Optimization
+- **AAX** — AI Agent Experience
+
+Together, these scores help teams find the structural weaknesses that reduce AI discoverability, citation confidence, recommendation likelihood, and agent usability.
 
 License: MIT
 
+## 1) Product Summary
 
-## 1) Summary
+- **Category:** AI visibility audit and scoring platform
+- **Core job:** Analyze how AI systems interpret a website and prioritize the highest-impact fixes
+- **Primary output:** A structured report showing where AI visibility breaks down across extraction, authority, and agent usability
+- **Primary users:**
+  - Marketing and growth teams
+  - SEO and content teams
+  - Founders and operators
+  - Agencies and consultants
+  - Product and web teams responsible for site structure
 
-- Offering: End-to-end website rendering, content extraction, analysis, and light lead discovery stack provided as a Python library, CLI, optional API, and modern web app with AI assistance.
-- Core value: Turn any website into clean Markdown, link/email intelligence, and actionable insights without building or maintaining a crawler stack.
-- Primary users:
-  - Sales/BDR/Partnerships
-  - Growth/SEO/Content strategists
-  - Founders/Analysts
-  - Developers/Researchers
+## 2) Problem MeshWeave Solves
 
+Traditional analytics and SEO tools do not answer the questions teams now care about:
 
-## 2) Problems We Solve
+- Can AI systems extract trusted answers from our pages?
+- Can LLMs understand what we do and cite us accurately?
+- Can AI agents navigate our site and complete meaningful tasks?
+- Which technical or content issues most reduce AI visibility?
+- What should we fix first to improve citation, recommendation, and discoverability?
 
-- Prospecting and outreach: Finding contacts and understanding target sites is slow; context is scattered.
-- Competitive and content research: Extracting structured text and link maps typically requires fragile custom scrapers.
-- JS-heavy sites: Headless rendering and resource management are complex to set up and stabilize.
-- Collaboration and sharing: Non-technical teammates need a simple UI and shareable links to results.
-- Developer ergonomics: Teams want a reusable library/CLI/API with deterministic caching, sensible defaults, and tests.
+MeshWeave is designed to answer those questions directly.
 
+## 3) What the Product Does
 
-## 3) Who It Helps (Personas)
+MeshWeave analyzes a website and produces three diagnostic views into AI visibility risk.
 
-- Sales/BDR:
-  - Detect and preview emails with sources; export CSV; save domains/contacts to Prospects.
-  - Generate outreach drafts with AI grounded in selected page content.
-- Growth/SEO/Content:
-  - Inventory internal/external link profiles; extract clean Markdown; review top external domains.
-  - Generate messaging drafts and clarity assessments per page.
-- Founders/Analysts:
-  - Run quick competitor or customer scans with shareable public pages; track page-level stats like HTTP status, load time, bytes, and request counts.
-- Developers/Researchers:
-  - Programmatic access via library, CLI, and optional API with deterministic caching and security defaults.
+### A) AEO — Answer Engine Optimization
 
+AEO measures how well a site is structured for answer extraction by systems such as featured snippets, AI Overviews, and voice assistants.
 
-## 4) Capabilities by Component
+It evaluates signals including:
 
-### A) Python Library
-- Rendering and extraction:
-  - Playwright-based rendering with viewport control; TLS verification on by default.
-  - Resource blocking for speed and determinism; behavior in [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:475).
-  - BeautifulSoup cleaning and Markdown conversion; page metadata extraction.
-- Link classification and BFS:
-  - Internal vs external link classification; BFS crawl with a page budget and ignore rules.
-- Email detection:
-  - Extract from mailto and visible text with deobfuscation; sources tracked per URL.
-- Deterministic caching:
-  - Cache keys include rendering parameters; details in [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:391).
-- Selected internals:
-  - Viewport selection: [_select_viewport()](markdownify_crawler/fetcher.py:165)
-  - TLS strict by default: [fetcher.get_rendered_html()](markdownify_crawler/fetcher.py:275)
+- Schema implementation
+- Content structure quality
+- Freshness
+- Capture rate
+- Query match
+- Voice response readiness
 
-### B) CLI
-- Crawl a single URL or BFS internal links up to a page budget.
-- Configure throttling, timeouts, caching, same-domain policy, email extraction, and deobfuscation.
-- Emits structured JSON with page meta, markdown, links, metrics, emails, and crawl info.
+Business meaning:
 
-### C) FastAPI Crawler API (Optional)
-- HTTP endpoint mirrors the library crawl for one-shot programmatic usage: [markdownify_crawler.server.crawl_endpoint()](markdownify_crawler/server.py:10)
-- Not required by the web app (see Operations Note).
+- Low AEO suggests AI systems may struggle to extract concise, trusted answers
+- High AEO suggests content is easier for answer engines to parse and reuse
 
-### D) Web App
-- Unified submission:
-  - Page and Site modes via a single POST handler [webapp.routers.submissions.submit()](webapp/routers/submissions.py:30).
-  - Public submissions dedupe on canonicalized root and run a site-scope crawl; private page crawls are owner-restricted.
-  - CSRF, origin/referer checks, basic rate limiting, and session rotation on submit.
-- Progress:
-  - Real-time status for pending/running jobs; cancel/retry for owners; JSON progress APIs in [webapp.routers.progress](webapp/routers/progress.py).
-- Results UI:
-  - Quick stats: HTTP status, load time, bytes, network requests, emails, internal/external counts.
-  - Pages panel: search/filter/select pages; view Markdown; copy/download content.
-  - Emails panel: filter by domain and detection type; export CSV; add/edit leads; gated preview for anonymous public views.
-  - Social and Links panels; public share links; domain index pages.
-- AI: Compose & Chat (owner-only):
-  - Structured actions like Sales Pitch, Outreach Email, Weaknesses and Opportunities grounded in selected pages and saved Products.
-  - Streaming chat with persisted history; routes under [webapp.routers.ai](webapp/routers/ai.py).
-- Prospects mini-CRM:
-  - Save domains as Prospects; manage contacts, status, tags, notes; export contacts CSV; APIs in [webapp.routers.prospects](webapp/routers/prospects.py) and page in [webapp.routers.prospects_page](webapp/routers/prospects_page.py).
-- Products:
-  - Store product defaults to drive structured AI outputs; page in [webapp.routers.products](webapp/routers/products.py).
-- Public directories and domain index:
-  - Public analyses by short key; domain index; JSON mirrors in [webapp.routers.api](webapp/routers/api.py).
+### B) GEO — Generative Engine Optimization
 
+GEO measures how well a site is positioned to be cited or recommended by LLM-driven systems such as ChatGPT, Claude, and Perplexity.
 
-## 5) How It Works (Workflow and Data Flow)
+It evaluates signals including:
 
-1) Submission
-- Single endpoint branches by mode and visibility; see [webapp.routers.submissions.submit()](webapp/routers/submissions.py:30).
-- Public: upsert on canonical root and run site-scope crawl for richer results and shareability.
-- Private: single-page owner-restricted crawls by default.
+- Citation presence
+- Topical authority
+- E-E-A-T signals
+- Crawl accessibility for LLM bots
+- Content depth
+- Entity consistency
 
-2) Crawling
-- Page mode: background [webapp.services.crawling.run_crawl_task()](webapp/services/crawling.py:15) delegates to the library crawl.
-- Site mode: BFS [webapp.services.site_crawling.run_site_crawl_task()](webapp/services/site_crawling.py:109) uses the library’s render and extract primitives; enforces max pages, depth, and time budget; persists per-URL details.
+Business meaning:
 
-3) Persistence
-- Links and emails are persisted per page with dedup/aggregation; [webapp.services.persist.persist_page()](webapp/services/persist.py:41) and cleanup via [webapp.services.persist.clear_crawl_data()](webapp/services/persist.py:28).
+- Low GEO suggests weak authority, weak machine-readable trust signals, or crawl limitations
+- High GEO suggests the site is more likely to be cited, referenced, or recommended in generative experiences
 
-4) Access and UI
-- Owners see My Jobs; can cancel/retry, chat, and manage leads and prospects.
-- Anonymous users can view public analyses with gated email previews and later claim public analyses after a minimum age.
+### C) AAX — AI Agent Experience
 
+AAX measures how well an AI agent can understand, evaluate, and act on a website.
 
-## 6) Security, Privacy, Reliability
+It evaluates signals including:
 
-- Security:
-  - CSRF enforcement via middleware and token checks; origin/referer validation; basic IP/session rate limiting; session rotation on submit.
-  - Owner-only enforcement for private results and AI chat.
-- Privacy:
-  - Private results are noindex and owner-restricted; public results are shareable by key with gated email viewing for anonymous users.
-- Reliability:
-  - Deterministic cache keys, explicit resource blocking, and error handling in render/extract pipeline.
-  - Health and readiness endpoints and Prometheus metrics in [webapp.routers.api](webapp/routers/api.py).
+- Homepage comprehension
+- Meta optimization
+- Cross-page content understanding
+- `llms.txt` availability
+- Email validation and contactability
 
+Business meaning:
 
-## 7) Differentiators (Unique Value)
+- Low AAX suggests agents may struggle to understand the offer, locate the right information, or complete tasks reliably
+- High AAX suggests the site is easier for agents to interpret and use in agentic workflows
 
-- End-to-end for devs and non‑devs:
-  - Library + CLI + optional API + polished web UI; quick time-to-value without bespoke scrapers.
-- Clean Markdown extraction:
-  - Opinionated cleaning yields readable, analysis-ready Markdown beyond raw HTML scraping.
-- Lead discovery + mini-CRM:
-  - Emails tied to their sources and integrated with Prospect/Contact management; CSV export fits existing outbound tools.
-- AI assistance grounded in real content:
-  - Structured actions and free chat over selected pages; persisted threads; streaming UX.
-- Public shareability with canonicalization:
-  - Public analyses dedupe by canonical root, reducing noise; claim flow to attach ownership when needed.
-- Developer ergonomics:
-  - Deterministic caching, security defaults, test coverage, and env-driven behavior.
+## 4) How the Scores Work
 
+All three scores use a weighted composite model.
 
-## 8) Constraints and Assumptions
+- Each factor contributes according to a defined weight
+- Missing manual inputs are excluded and weights are re-normalized across available factors
+- A calibration curve compresses inflated mid-range scores
+- Final outputs are capped at 100 and rounded
 
-- Playwright dependency: Chromium install required.
-- Site crawl BFS with max_pages, max_depth, and time budget; fragments ignored during canonicalization.
-- AI requires provider configuration and API key; strict limits applied.
-- Anonymous submissions default to public; authenticated submissions default to private in UI flows.
-- Behavior is environment-driven across security, logging, limits, and footer config.
+This makes the scoring system usable in both automated scans and richer human-assisted evaluations.
 
+## 5) What Users Get
 
-## 9) Quick Reference
+MeshWeave turns a scan into an actionable diagnostic report.
 
-- Web App:
-  - Run with uvicorn entrypoint [webapp.main.app](webapp/main.py) via factory [webapp.app.create_app()](webapp/app.py:207).
-  - Key endpoints: public/private analysis, domain index, [webapp.routers.api.readyz()](webapp/routers/api.py:641), [webapp.routers.api.metrics()](webapp/routers/api.py:670).
-- CLI:
-  - Single URL or BFS crawl with options; examples in [README.md](README.md).
-- Optional Crawler API:
-  - Programmatic endpoint [markdownify_crawler.server.crawl_endpoint()](markdownify_crawler/server.py:10).
+Users get:
 
+- AEO, GEO, and AAX scores
+- Factor-level breakdowns behind each score
+- Ratings that translate raw scores into plain-language performance bands
+- Prioritized recommendations on what to fix first
+- A clear view of where AI visibility is strongest and weakest
 
-## 10) Operations Note: Docker Compose Crawler Service (Optional)
+In practical terms, the product helps teams:
 
-- The web app does not require a separate crawler container. It calls the library directly in background tasks:
-  - Page: [webapp.services.crawling.run_crawl_task()](webapp/services/crawling.py:15).
-  - Site: [webapp.services.site_crawling.run_site_crawl_task()](webapp/services/site_crawling.py:109).
-- The service named crawler in [docker-compose.yaml](docker-compose.yaml) is optional for this project. It can be removed to simplify the stack while keeping postgres, redis, and the web app.
-- Keep it only if an external integration needs an HTTP crawl endpoint; test with [markdownify_crawler.server.crawl_endpoint()](markdownify_crawler/server.py:10).
+- Stop losing citations
+- Improve recommendation confidence
+- Increase AI discoverability
+- Reduce structural ambiguity
+- Prepare sites for AI-assisted commerce and agent interaction
 
+## 6) Product Positioning
 
-## 11) Mermaid: Request to Insight Flow
+MeshWeave is not a traditional SEO platform.
 
+It is an AI visibility audit system focused on whether machines can:
+
+- crawl the site
+- understand the brand and offering
+- extract useful answers
+- trust the entity signals
+- recommend the business in generative interfaces
+- complete actions as an AI agent
+
+This makes the product relevant for teams preparing for AI-native discovery, not only search ranking.
+
+## 7) Core Messaging
+
+The current product messaging is centered on AI visibility risk and diagnostic clarity.
+
+Core themes:
+
+- Your AI profile can become a business liability
+- AI systems may be misunderstanding or ignoring important parts of your site
+- Visibility problems can be measured
+- Structural weaknesses can be prioritized
+- The goal is to move from invisible to cited
+
+The product promise is simple: show exactly how AI systems read a site, where they fail, and what to fix first.
+
+## 8) Ideal Use Cases
+
+MeshWeave is well suited for:
+
+- Auditing a marketing site for AI discoverability
+- Diagnosing why a brand is not cited in AI-generated answers
+- Improving trust and authority signals for LLMs
+- Making a website easier for AI agents to navigate and use
+- Prioritizing technical and content work based on AI-readability impact
+- Sharing AI visibility assessments with internal teams or clients
+
+## 9) High-Level User Journey
+
+```mermaid
 flowchart TD
-  A[User submits URL on web UI] --> B[Router submissions.py saves Crawl row]
-  B --> C[Background task chooses page or site]
-  C --> D[Page run_crawl_task uses library crawl]
-  C --> E[Site run_site_crawl_task uses render and classify]
-  D --> F[persist_page stores links and emails]
+  A[Submit website] --> B[Analyze AI visibility signals]
+  B --> C[Compute AEO]
+  B --> D[Compute GEO]
+  B --> E[Compute AAX]
+  C --> F[Generate factor breakdowns]
+  D --> F
   E --> F
-  F --> G[Payload JSON stored on Crawl row]
-  G --> H[Results view renders metrics pages emails]
-  H --> I[AI Compose and Chat uses selected content]
-  H --> J[Prospects and Contacts export CSV]
+  F --> G[Prioritize recommendations]
+  G --> H[User fixes highest-impact issues]
+```
 
+## 10) Differentiators
 
-## 12) Inputs for the One-Line Pitch (for later)
+- Purpose-built for AI visibility rather than legacy SEO reporting
+- Separates answer extraction, generative authority, and agent usability into distinct lenses
+- Combines automated scoring with optional manual inputs where machine-only analysis is incomplete
+- Produces recommendations tied directly to score factors
+- Frames outputs in business terms such as citation risk, recommendation confidence, and agent readiness
 
-- Project Name: markdownify-crawler
-- Offering: End-to-end site analysis and light lead discovery across library, CLI, optional API, and web UI with AI
-- Audience: Sales/BDR, Growth/SEO/Content, Founders/Analysts, Developers/Researchers
-- Problem: Quickly turn websites into structured content, link/email intelligence, and shareable insights
-- Unique Value: Clean Markdown extraction; integrated leads; AI grounded in actual page content; shareable public analyses; open-source with programmatic interfaces
+## 11) Short Pitch
 
-
-## Audit Changelog
-
-- Clarified that the web app calls the library directly and does not require the crawler container; added an explicit Operations Note.
-- Tightened value statements and persona benefits to map precisely to implemented features and endpoints.
-- Verified and linked core code paths: [webapp.routers.submissions.submit()](webapp/routers/submissions.py:30), [webapp.services.crawling.run_crawl_task()](webapp/services/crawling.py:15), [webapp.services.site_crawling.run_site_crawl_task()](webapp/services/site_crawling.py:109), [webapp.services.persist.persist_page()](webapp/services/persist.py:41).
-- Normalized language around canonicalization, public keys, and deduplication; aligned with API routes in [webapp.routers.api](webapp/routers/api.py).
-- Added Mermaid flow to visualize lifecycle from submit to insights.
-- Kept license info and Quick Reference in line with current behavior.
+MeshWeave helps teams understand how AI systems crawl, interpret, cite, and act on their websites—then shows them what to fix first to improve AI visibility.
