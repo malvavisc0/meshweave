@@ -204,9 +204,10 @@ def score_freshness(payload: dict) -> dict:
             val = ld.get(key)
             if val:
                 try:
-                    dates.append(
-                        datetime.fromisoformat(str(val).replace("Z", "+00:00"))
-                    )
+                    d = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+                    if d.tzinfo is None:
+                        d = d.replace(tzinfo=UTC)
+                    dates.append(d)
                 except Exception:
                     pass
 
@@ -222,9 +223,10 @@ def score_freshness(payload: dict) -> dict:
                 val = ld.get(key)
                 if val:
                     try:
-                        dates.append(
-                            datetime.fromisoformat(str(val).replace("Z", "+00:00"))
-                        )
+                        d = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+                        if d.tzinfo is None:
+                            d = d.replace(tzinfo=UTC)
+                        dates.append(d)
                     except Exception:
                         pass
 
