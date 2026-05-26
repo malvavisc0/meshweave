@@ -220,21 +220,21 @@ async def home(request: Request, db: Session = Depends(get_db)):
         )
 
     # Community metrics (lifetime totals) computed inline (no caching)
+    # Base filter mirrors /browse: public, anonymous, listed, keyed, succeeded
+    _base = [
+        Crawl.visibility == "public",
+        Crawl.status == "succeeded",
+        Crawl.user_id.is_(None),
+        Crawl.listed,
+        Crawl.key.is_not(None),
+    ]
     try:
-        analyses_total = (
-            db.query(Crawl)
-            .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
-            .count()
-        ) or 0
+        analyses_total = db.query(Crawl).filter(*_base).count() or 0
 
         # Unique domains scored (must have actual scores)
         domains_total = (
             db.query(Crawl.domain)
-            .filter(
-                Crawl.visibility == "public",
-                Crawl.status == "succeeded",
-                Crawl.aeo_score.is_not(None),
-            )
+            .filter(*_base, Crawl.aeo_score.is_not(None))
             .distinct()
             .count()
         ) or 0
@@ -250,7 +250,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 Crawl.crawl_params,
                 Crawl.updated_at,
             )
-            .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
+            .filter(*_base)
             .all()
         )
         # Group by domain, keep only the latest per domain
