@@ -149,6 +149,7 @@ async def my_jobs(
             if c_ss and c_ss.score_json:
                 c_aax = c_ss.score_json.get("aax", {}).get("composite")
             history.append({
+                "id": c.id,
                 "aeo": c.aeo_score,
                 "geo": c.geo_score,
                 "aax": c_aax,
@@ -210,6 +211,50 @@ async def my_jobs(
     # Sort sites by most recent analysis
     sites.sort(key=lambda s: s["updated_at"], reverse=True)
 
+    # Compute summary counts for the summary strip
+    summary = {
+        "domains_tracked": len(sites),
+        "improved": sum(
+            1 for s in sites
+            if (s["aeo_delta"] or 0) > 0 or (s["geo_delta"] or 0) > 0
+        ),
+        "declined": sum(
+            1 for s in sites
+            if (s["aeo_delta"] or 0) < 0 or (s["geo_delta"] or 0) < 0
+        ),
+        "need_baseline": sum(
+            1 for s in sites if s["analysis_count"] < 2
+        ),
+        "running": sum(
+            1 for s in sites if s["latest_status"] == "running"
+        ),
+        "failed": sum(
+            1 for s in sites if s["latest_status"] == "failed"
+        ),
+    }
+
+    # Compute attention list (ranked: decline > failed > no baseline)
+    attention = sorted(
+        [
+            s for s in sites
+            if s["latest_status"] == "failed"
+            or s["analysis_count"] < 2
+            or (s["geo_delta"] is not None and s["geo_delta"] < -5)
+        ],
+        key=lambda s: (
+            s["latest_status"] == "failed",
+            (s["geo_delta"] or 0) < -5,
+            s["analysis_count"] < 2,
+        ),
+        reverse=True,
+    )[:5]
+
+    # Build activity feed from items
+    activity = [
+        i for i in items[:10]
+        if i["status"] in ("running", "pending", "failed", "succeeded")
+    ][:5]
+
     site_name = os.getenv("SITE_NAME", "Markdownify Web App")
     page_title = f"Dashboard — {site_name}"
     meta_description = "Your recent crawls."
@@ -232,7 +277,9 @@ async def my_jobs(
         "dashboard.html",
         {
             "sites": sites,
-            "items": items,
+            "summary": summary,
+            "attention": attention,
+            "activity": activity,
             "total_analyses": len(rows_db),
             "total_domains": len(domain_groups),
             "has_prev": False,
@@ -389,41 +436,6 @@ async def retry_crawl(
     return RedirectResponse(
         url=f"/dashboard?notice=retried&job={crawl_id}", status_code=303
     )
-
-
-@router.get("/api/my/quick-stats")
-async def my_quick_stats(request: Request):
-    user = await require_auth(request)
-    aeo_low_count = 0
-    geo_low_count = 0
-    aax_low_count = 0
-    with get_session() as s:
-        crawls = (
-            s.query(Crawl)
-            .filter(
-                Crawl.user_id == user.id,
-                Crawl.status == "succeeded",
-            )
-            .all()
-        )
-        for c in crawls:
-            if c.aeo_score is not None and c.aeo_score < 50:
-                aeo_low_count += 1
-            if c.geo_score is not None and c.geo_score < 50:
-                geo_low_count += 1
-            if c.score_snapshot and c.score_snapshot.score_json:
-                aax_comp = c.score_snapshot.score_json.get("aax", {}).get("composite")
-                if aax_comp is not None:
-                    try:
-                        if float(aax_comp) < 50:
-                            aax_low_count += 1
-                    except (ValueError, TypeError):
-                        pass
-    return {
-        "aeo_low": int(aeo_low_count),
-        "geo_low": int(geo_low_count),
-        "aax_low": int(aax_low_count),
-    }
 
 
 @router.get("/api/my/jobs")

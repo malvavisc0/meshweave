@@ -26,6 +26,24 @@ from webapp.utils.visibility import resolve_page_visibility, resolve_site_visibi
 router = APIRouter()
 
 
+def _cleanup_old_crawls(session, domain: str, visibility: str) -> None:
+    """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit."""
+    max_history = int(os.getenv("MAX_HISTORY_PER_DOMAIN", "20"))
+    old_rows = (
+        session.query(Crawl)
+        .filter(
+            Crawl.domain == domain,
+            Crawl.visibility == visibility,
+            Crawl.is_latest == False,  # noqa: E712
+        )
+        .order_by(Crawl.created_at.desc())
+        .offset(max_history)
+        .all()
+    )
+    for old in old_rows:
+        session.delete(old)
+
+
 @router.post("/submit")
 async def submit(
     request: Request,
@@ -148,36 +166,43 @@ async def submit(
                     can_update = False
 
                 if can_update:
-                    # Refresh existing crawl (convert to site scope if needed)
-                    try:
-                        stale_min = int(os.getenv("SITE_CRAWL_STALE_MINUTES", "10"))
-                    except Exception:
-                        stale_min = 10
-                    if (
-                        str(getattr(existing, "status", "")).lower() == "running"
-                        and getattr(existing, "updated_at", None)
-                        and (now - existing.updated_at) > timedelta(minutes=stale_min)
-                    ):
-                        existing.status = "pending"
-                        existing.payload_json = None
-                        existing.error = None
+                    # Retire old row and create new row for history tracking
+                    existing.is_latest = False
+                    old_key = getattr(existing, "key", None)
+                    old_share_key = getattr(existing, "share_key", None)
+                    existing.key = None
+                    existing.share_key = None
 
-                    existing.url = start_url
-                    existing.canonical_url = start_url
-                    existing.crawl_params = lim_req or {}
-                    # Attach ownership when logged in and missing
+                    # Generate new row using transferred keys
+                    row = Crawl(
+                        url=start_url,
+                        domain=dom,
+                        path="/",
+                        query="",
+                        canonical_url=start_url,
+                        key=old_key,
+                        share_key=old_share_key,
+                        visibility=visibility,
+                        status="pending",
+                        payload_json=None,
+                        error=None,
+                        user_id=existing.user_id,
+                        crawl_params=lim_req or {},
+                        is_latest=True,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    s.add(row)
+                    s.flush()
+                    crawl_id = row.id
+                    key = old_key
+
+                    # Cleanup old history rows beyond limit
                     try:
-                        if user and not getattr(existing, "user_id", None):
-                            existing.user_id = getattr(user, "id", None)
+                        _cleanup_old_crawls(s, dom, visibility)
                     except Exception:
                         pass
-                    if existing.status != "running":
-                        existing.status = "pending"
-                        existing.payload_json = None
-                        existing.error = None
-                    existing.updated_at = now
-                    crawl_id = existing.id
-                    key = getattr(existing, "key", None)
+                    s.commit()
                 else:
                     # Create a new row to avoid mutating another user's private crawl
                     if visibility == "public":
@@ -416,18 +441,41 @@ async def submit(
                 ):
                     return RedirectResponse(url="/?notice=cooldown", status_code=303)
 
-                # Convert/refresh existing public entry on domain root
-                existing.url = start_url
-                existing.canonical_url = start_url
-                # If a run is already in progress, keep it running; else reset to pending
-                if existing.status not in {"running"}:
-                    existing.status = "pending"
-                    existing.payload_json = None
-                    existing.error = None
-                existing.updated_at = now
-                crawl_id = existing.id
-                key_val = existing.key
+                # Retire old row and create new row for history tracking
+                existing.is_latest = False
+                old_key = getattr(existing, "key", None)
+                old_share_key = getattr(existing, "share_key", None)
+                existing.key = None
+                existing.share_key = None
+
+                row = Crawl(
+                    url=start_url,
+                    domain=dom,
+                    path="/",
+                    query="",
+                    canonical_url=start_url,
+                    key=old_key,
+                    share_key=old_share_key,
+                    visibility="public",
+                    status="pending",
+                    payload_json=None,
+                    error=None,
+                    created_at=now,
+                    updated_at=now,
+                    is_latest=True,
+                )
+                s.add(row)
+                s.flush()
+                crawl_id = row.id
+                key_val = old_key
                 force_refresh = True
+
+                # Cleanup old history rows beyond limit
+                try:
+                    _cleanup_old_crawls(s, dom, "public")
+                except Exception:
+                    pass
+                s.commit()
             else:
                 # Generate unique short key (retry on extremely rare collision)
                 from webapp.utils.url import generate_short_key
@@ -492,22 +540,41 @@ async def submit(
                     can_update = False
 
                 if can_update:
-                    existing.url = uval
-                    existing.canonical_url = canon_url
-                    # Attach ownership if authenticated and not already owned
+                    # Retire old row and create new row for history tracking
+                    existing.is_latest = False
+                    old_key = getattr(existing, "key", None)
+                    old_share_key = getattr(existing, "share_key", None)
+                    existing.key = None
+                    existing.share_key = None
+
+                    row = Crawl(
+                        url=uval,
+                        domain=dom,
+                        path=path,
+                        query=query,
+                        canonical_url=canon_url,
+                        key=old_key,
+                        share_key=old_share_key,
+                        visibility="private",
+                        status="pending",
+                        payload_json=None,
+                        error=None,
+                        user_id=existing.user_id,
+                        created_at=now,
+                        updated_at=now,
+                        is_latest=True,
+                    )
+                    s.add(row)
+                    s.flush()
+                    crawl_id = row.id
+                    force_refresh = True
+
+                    # Cleanup old history rows beyond limit
                     try:
-                        if user and not getattr(existing, "user_id", None):
-                            existing.user_id = getattr(user, "id", None)
+                        _cleanup_old_crawls(s, dom, "private")
                     except Exception:
                         pass
-                    if existing.status not in {"running"}:
-                        existing.status = "pending"
-                        existing.payload_json = None
-                        existing.error = None
-                    existing.updated_at = now
-                    crawl_id = existing.id
-                    # Ensure we refresh on resubmit
-                    force_refresh = True
+                    s.commit()
                 else:
                     # Create a new private row for different owner/anonymous
                     row = Crawl(

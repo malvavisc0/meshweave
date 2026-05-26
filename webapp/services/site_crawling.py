@@ -27,12 +27,12 @@ def _limits_from_row(row: Crawl) -> dict[str, int]:
     is_authenticated = bool(getattr(row, "user_id", None))
     if is_authenticated:
         defaults = {
-            "max_pages": _int_env("AUTH_SITE_MAX_PAGES_DEFAULT", 50),
+            "max_pages": _int_env("AUTH_SITE_MAX_PAGES_DEFAULT", 25),
             "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_DEFAULT", 1),
             "time_budget_ms": _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
         }
         caps = {
-            "max_pages": _int_env("AUTH_SITE_MAX_PAGES_CAP", 500),
+            "max_pages": _int_env("AUTH_SITE_MAX_PAGES_CAP", 100),
             "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_CAP", 5),
             "time_budget_ms": max(
                 60_000,
@@ -41,16 +41,16 @@ def _limits_from_row(row: Crawl) -> dict[str, int]:
         }
     else:
         defaults = {
-            "max_pages": _int_env("ANON_SITE_MAX_PAGES_DEFAULT", 20),
+            "max_pages": _int_env("ANON_SITE_MAX_PAGES_DEFAULT", 10),
             "max_depth": _int_env("ANON_SITE_MAX_DEPTH_DEFAULT", 1),
-            "time_budget_ms": _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
+            "time_budget_ms": _int_env("ANON_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
         }
         caps = {
-            "max_pages": _int_env("ANON_SITE_MAX_PAGES_CAP", 30),
-            "max_depth": _int_env("AUTH_SITE_MAX_DEPTH_CAP", 5),
+            "max_pages": _int_env("ANON_SITE_MAX_PAGES_CAP", 15),
+            "max_depth": _int_env("ANON_SITE_MAX_DEPTH_CAP", 5),
             "time_budget_ms": max(
                 60_000,
-                _int_env("AUTH_SITE_TIME_BUDGET_MS_CAP", 3_600_000),
+                _int_env("ANON_SITE_TIME_BUDGET_MS_CAP", 3_600_000),
             ),
         }
     req = row.crawl_params or {}

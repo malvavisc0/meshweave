@@ -134,6 +134,80 @@ async def api_private(request: Request, crawl_id: str):
     return resp
 
 
+@router.get("/api/domain/{domain}/history.csv", response_class=PlainTextResponse)
+async def domain_history_csv(request: Request, domain: str):
+    """Export per-domain score history as CSV.
+
+    Auth required; user must own at least one crawl for that domain.
+    Returns all succeeded crawls, oldest first, with per-run deltas.
+    """
+    user = await require_auth(request)
+    dom = (domain or "").lower().strip()
+    if not dom:
+        raise HTTPException(status_code=400, detail="invalid_domain")
+
+    with get_session() as s:
+        crawls = (
+            s.query(Crawl)
+            .filter(
+                Crawl.user_id == user.id,
+                Crawl.domain == dom,
+                Crawl.status == "succeeded",
+            )
+            .order_by(Crawl.updated_at.asc())
+            .all()
+        )
+    if not crawls:
+        raise HTTPException(status_code=404, detail="No data for this domain")
+
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["run", "date", "aeo", "aeo_delta", "geo", "geo_delta",
+                "aax", "aax_delta"])
+    prev = None
+    for i, c in enumerate(crawls, 1):
+        aax_val = None
+        if c.score_snapshot and c.score_snapshot.score_json:
+            aax_val = c.score_snapshot.score_json.get(
+                "aax", {}).get("composite")
+
+        def _fmt(v):
+            if v is None:
+                return ""
+            return str(round(float(v), 1))
+
+        def _delta(cur, prev):
+            if prev is None:
+                return ""
+            if cur is None or prev is None:
+                return ""
+            d = round(float(cur) - float(prev), 1)
+            return ("+" if d > 0 else "") + str(d)
+
+        prev_aeo = prev.aeo_score if prev else None
+        prev_geo = prev.geo_score if prev else None
+        prev_aax = None
+        if prev and prev.score_snapshot and prev.score_snapshot.score_json:
+            prev_aax = prev.score_snapshot.score_json.get(
+                "aax", {}).get("composite")
+
+        w.writerow([
+            i,
+            (c.updated_at or datetime.now(UTC)).isoformat(),
+            _fmt(c.aeo_score), _delta(c.aeo_score, prev_aeo),
+            _fmt(c.geo_score), _delta(c.geo_score, prev_geo),
+            _fmt(aax_val), _delta(aax_val, prev_aax),
+        ])
+        prev = c
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{dom}-history.csv"'
+    }
+    return Response(
+        content=buf.getvalue(), media_type="text/csv", headers=headers
+    )
+
+
 @router.get("/api/domain/{domain}")
 async def api_domain_index(domain: str):
     """List public entries for a domain with keys and status.

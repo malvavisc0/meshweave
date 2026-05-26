@@ -1,0 +1,212 @@
+<!-- Domain Card: {{ site.domain }} -->
+<div class="panel site-card" data-domain="{{ site.domain }}" data-status="{{ site.latest_status }}">
+
+    <!-- Card Header -->
+    <div class="site-card-header">
+        <div class="site-card-title-group">
+            <a href="/analysis/{{ site.latest_id }}" class="site-card-domain">
+                {{ site.domain }}
+                <span class="site-card-arrow" aria-hidden="true">&#8599;</span>
+            </a>
+        </div>
+        <div class="site-card-meta">
+            <span class="site-card-count">{{ site.analysis_count }}
+                {{ 'run' if site.analysis_count == 1 else 'runs' }}</span>
+            <span class="site-card-sep">&middot;</span>
+            <span class="site-card-time">{{ site.updated_at|relative_time }}</span>
+        </div>
+        <div class="site-card-actions">
+            {% if site.analysis_count >= 2 %}
+            <a href="/api/domain/{{ site.domain }}/history.csv" class="btn btn-sm" download>
+                Export Data
+            </a>
+            {% else %}
+            <button class="btn btn-sm" disabled title="Re-analyze to export score history">
+                Export Data
+            </button>
+            {% endif %}
+            {% if site.latest_status == 'succeeded' or site.latest_status == 'failed' %}
+            <form method="post" action="/submit" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="url" value="{{ site.latest_url }}">
+                <button type="submit" class="btn btn-sm">Re-analyze</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if site.latest_status == 'succeeded' %}
+    {% set available_scores = [] %}
+    {% if site.aeo_score is not none %}{% set _ = available_scores.append(site.aeo_score) %}{% endif %}
+    {% if site.geo_score is not none %}{% set _ = available_scores.append(site.geo_score) %}{% endif %}
+    {% if site.aax_score is not none %}{% set _ = available_scores.append(site.aax_score) %}{% endif %}
+    {% set strongest_metric = 'aax' if site.aax_score is not none and (site.aeo_score is none or site.aax_score >=
+    site.aeo_score) and (site.geo_score is none or site.aax_score >= site.geo_score) else 'geo' if site.geo_score is not
+    none and (site.aeo_score is none or site.geo_score >= site.aeo_score) else 'aeo' %}
+    {% set weakest_metric = 'aeo' if site.aeo_score is not none and (site.geo_score is none or site.aeo_score <=
+        site.geo_score) and (site.aax_score is none or site.aeo_score <=site.aax_score) else 'geo' if site.geo_score is
+        not none and (site.aax_score is none or site.geo_score <=site.aax_score) else 'aax' %} <div
+        class="site-card-snapshot mt-2">
+        <p class="site-card-kicker">AI visibility snapshot</p>
+        <p class="site-card-summary">
+            {% if site.aax_score is not none and site.aeo_score is not none and site.aax_score >= 70 and site.aeo_score
+            < 55 %} Your site is easier for AI to navigate than to cite. {% elif site.geo_score is not none and
+                site.geo_score < 50 %} Your brand visibility in generative discovery is still limited. {% elif
+                site.aeo_score is not none and site.aeo_score < 50 %} Answer engines may struggle to extract citable
+                answers from your pages. {% elif available_scores and (available_scores | min)>= 70 %}
+                Your site is readable, discoverable, and agent-friendly.
+                {% else %}
+                {{ strongest_metric|upper }} is leading, while {{ weakest_metric|upper }} still needs attention.
+                {% endif %}
+        </p>
+</div>
+
+<div class="score-lines mt-2">
+    {% for metric_key, score, rating, delta in [
+    ('aeo', site.aeo_score, site.aeo_rating, site.aeo_delta),
+    ('geo', site.geo_score, site.geo_rating, site.geo_delta),
+    ('aax', site.aax_score, site.aax_rating, site.aax_delta)
+    ] %}
+    {% if score is not none %}
+    {% set bar_class = 'metric-aeo' if metric_key == 'aeo' else 'metric-geo' if metric_key == 'geo' else 'metric-aax' %}
+    {% set score_width = score|round(1) %}
+    {% if score_width > 100 %}{% set score_width = 100 %}{% endif %}
+    <div class="score-line {{ bar_class }}">
+        <div class="score-line-top">
+            <span class="score-line-label">{{ metric_key|upper }}</span>
+            <div class="score-line-meta">
+                <span class="score-line-value">{{ score|round(1) }}</span>
+                <span class="score-line-rating {{ rating_class(rating or '') }}">{{ rating or '—' }}</span>
+                {% if delta is not none and site.analysis_count >= 2 %}
+                <span class="score-line-delta {{ 'trend-up' if delta > 0 else 'trend-down' if delta < 0 else '' }}">
+                    {% if delta > 0 %}&#9650; +{{ delta }}{% elif delta < 0 %}&#9660; {{ delta }}{% else %}&middot;
+                        0.0{% endif %} </span>
+                        {% endif %}
+            </div>
+        </div>
+        <div class="score-line-bar" aria-hidden="true">
+            <span class="score-line-bar-fill" data-score-width="{{ score_width }}"></span>
+        </div>
+        <div class="score-line-bottom">
+            <span class="score-line-note">
+                {% if metric_key == 'aeo' %}
+                Answer citation readiness
+                {% elif metric_key == 'geo' %}
+                Generative discovery visibility
+                {% else %}
+                Agent usability and task flow
+                {% endif %}
+            </span>
+            {% if site.history|length >= 3 %}
+            <span class="score-line-sparkline">
+                {% with values = site.history | map(attribute=metric_key) | select('ne', None) | list %}
+                {% if values | length >= 3 %}
+                {% set w = 58 %}{% set h = 18 %}
+                {% set pts = [] %}
+                {% for v in values %}
+                {% set x = (loop.index0 / (values|length - 1) * w + 1)|round(1) %}
+                {% set y = ((100 - v) / 100 * h + 1)|round(1) %}
+                {% set _ = pts.append(x ~ ',' ~ y) %}
+                {% endfor %}
+                {% set color = 'var(--color-semantic-success)' if values[-1] > values[0]
+                else 'var(--color-semantic-error)' if values[-1] < values[0] else 'var(--color-ink-muted)' %} <svg
+                    class="sparkline" width="60" height="20" aria-hidden="true">
+                    <polyline points="{{ pts | join(' ') }}" fill="none" stroke="{{ color }}" stroke-width="1.5" />
+                    </svg>
+                    {% endif %}
+                    {% endwith %}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% if site.analysis_count < 2 %} <p class="small mt-2 no-baseline">
+        No baseline yet &mdash; re-analyze after making changes to start tracking.
+        </p>
+        {% endif %}
+</div>
+
+<!-- Recommendations (top 2-3) -->
+{% if site.recommendations %}
+<div class="site-card-recs mt-2">
+    <h4 class="recs-title">Highest-impact fixes</h4>
+    {% for rec in site.recommendations[:3] %}
+    <div class="rec-mini rec-priority-{{ rec.priority }}">
+        <div class="rec-main">
+            <span class="rec-priority-badge">{{ rec.priority|upper }}</span>
+            <span class="rec-title">{{ rec.title }}</span>
+        </div>
+        {% if rec.impact %}
+        <span class="rec-impact">{{ rec.impact }}</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Run History (collapsible) -->
+{% if site.history|length > 1 %}
+<details class="site-card-history mt-2">
+    <summary>Run history ({{ site.history|length }} runs)</summary>
+    <div class="run-history-list mt-1">
+        {% for h in site.history | reverse | list %}
+        <div class="run-history-row">
+            <span class="run-id">Run {{ loop.revindex }}</span>
+            <span class="run-date">{{ h.date|relative_time }}</span>
+            <span class="run-scores">
+                {% if h.aeo is not none %}AEO {{ h.aeo|round(1) }}{% else %}AEO
+                &mdash;{% endif %}
+                {% if h.geo is not none %}GEO {{ h.geo|round(1) }}{% else %}GEO
+                &mdash;{% endif %}
+                {% if h.aax is not none %}AAX {{ h.aax|round(1) }}{% else %}AAX
+                &mdash;{% endif %}
+            </span>
+            <a href="/analysis/{{ h.id }}" class="btn btn-sm">View</a>
+        </div>
+        {% endfor %}
+    </div>
+</details>
+{% else %}
+<p class="small mt-2">Re-analyze to start tracking score changes.</p>
+{% endif %}
+
+{% elif site.latest_status == 'failed' %}
+<!-- Failed state -->
+<div class="site-card-failed mt-2">
+    <p>Analysis failed. Retry to generate scores.</p>
+    {% if site.latest_error %}
+    <p class="small">Error: {{ site.latest_error }}</p>
+    {% endif %}
+    <form method="post" action="/retry/{{ site.latest_id }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-sm btn-primary">Retry Analysis</button>
+    </form>
+</div>
+
+{% elif site.latest_status in ['running', 'pending'] %}
+<!-- Running/Pending state -->
+<div class="site-card-running mt-2">
+    {% if site.latest_status == 'running' %}
+    <p><span class="badge badge-dark badge-status-running">Running</span> Analysis in
+        progress&hellip;</p>
+    {% else %}
+    <p><span class="badge badge-dark badge-status-pending">Pending</span> Queued for
+        analysis.</p>
+    {% endif %}
+    {% if site.latest_status == 'running' %}
+    <form method="post" action="/cancel/{{ site.latest_id }}" class="inline mt-1">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-sm">Cancel</button>
+    </form>
+    {% endif %}
+</div>
+{% else %}
+<!-- Cancelled or unknown status -->
+<div class="site-card-running mt-2">
+    <p><span class="badge badge-dark badge-status-pending">{{ site.latest_status
+            }}</span></p>
+</div>
+{% endif %}
+</div>

@@ -173,10 +173,6 @@ class OAuthState(Base):
 class Crawl(Base):
     __tablename__ = "crawls"
     __table_args__ = (
-        # Enforce deduplication at DB-level for public entries
-        UniqueConstraint(
-            "visibility", "domain", "path", "query", name="uq_crawls_vis_dom_path_query"
-        ),
         # Short public key used for URL access (unique across table, nullable for private)
         UniqueConstraint("key", name="uq_crawls_key"),
         # Unique share_key for private unlisted sharing
@@ -185,6 +181,8 @@ class Crawl(Base):
         Index("ix_crawls_domain", "domain"),
         Index("ix_crawls_user_id", "user_id"),
         Index("ix_crawls_visibility_user_id_listed", "visibility", "user_id", "listed"),
+        # Index for history tracking: find latest crawl per domain+visibility
+        Index("ix_crawls_domain_is_latest", "domain", "is_latest"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -237,6 +235,9 @@ class Crawl(Base):
 
     listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     share_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # History tracking: when True, this is the current row for this domain+visibility
+    is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
