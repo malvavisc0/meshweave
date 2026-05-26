@@ -5,14 +5,13 @@
 <section class="landing-hero landing-hero-compact" aria-label="Community analyses">
   <div class="container container-wide">
     {% if filter_domain %}
-    <h1 class="landing-hero-title">What AI sees when it looks at {{ filter_domain }}</h1>
-    <p class="landing-hero-supporting">Every analysis tells the story of how a site shows up for machines: what
-      they can reach, what they understand, what they might cite, and where the experience starts to break.</p>
+    <h1 class="landing-hero-title">AI visibility report: {{ filter_domain }}</h1>
+    <p class="landing-hero-supporting">Public analysis showing how AI systems read, understand, and cite this website —
+      what they can reach, what they understand, and where the experience breaks down.</p>
     {% else %}
-    <h1 class="landing-hero-title">How AI sees websites</h1>
-    <p class="landing-hero-supporting">These public analyses show what happens when AI systems try to read, understand,
-      cite, and use real websites. Some are clear. Some get lost. All of them reveal what better AI visibility looks
-      like in practice.</p>
+    <h1 class="landing-hero-title">Community analyses</h1>
+    <p class="landing-hero-supporting">Public reports measuring AI readability, discoverability, and agent usability
+      across real websites.</p>
     {% endif %}
     <p class="landing-hero-audience mt-3"><span class="landing-hero-audience-label">Browse:</span>
       <span>Real websites</span> · <span>What machines understand</span> · <span>Where they struggle</span> ·
@@ -26,8 +25,7 @@
     <h2 class="landing-section-title">Follow the patterns</h2>
     <p class="landing-section-subtitle">Filter the list to focus on a single domain, compare fresh runs, or scan the
       broader patterns showing up across the community.</p>
-    <form method="get" action="/browse" class="panel filter-bar"
-      onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
+    <form method="get" action="/browse" class="filter-bar" onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
 
       <div class="filter-field">
         <label for="f-domain">Domain</label>

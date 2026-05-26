@@ -88,11 +88,11 @@
 
   /* ── Rotating hero headline ── */
   var headlines = [
-    "Your competitors are showing up in AI-generated answers. You aren't.",
-    "Every AI answer that skips you is a customer your competitor captures.",
-    "ChatGPT, Perplexity, and Google AI are reshaping discovery — without you.",
-    "Your site has an AI visibility problem you don't know about yet.",
-    "AI search is already here. Your visibility isn't."
+    "Your competitors are winning the AI race. You're still playing checkers.",
+    "AI doesn't care about SEO. It cares about whether you're worth answering.",
+    "If AI ignores you, you aren't just unseen. You're irrelevant.",
+    "Your AI profile is a liability. And the market is paying attention.",
+    "Your next customer won't click a link. They'll ask an AI."
   ];
 
   function initHeadlineRotation() {

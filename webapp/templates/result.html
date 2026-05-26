@@ -255,7 +255,7 @@
         <div class="gauge-rating">{{ score_snapshot.aax_rating }}</div>
         <div class="gauge-context">Agent usability and task completion</div>
         {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
-        <div class="aax-summary-quote">{{ score_snapshot.aax_analysis.summary }}</div>
+        <div class="aax-summary-note">{{ score_snapshot.aax_analysis.summary }}</div>
         {% endif %}
         {% else %}
         <div class="gauge-value">—</div>
@@ -364,9 +364,9 @@
   <!-- AAX AI Agent Diagnostics -->
   {% if score_snapshot and score_snapshot.aax_analysis %}
   {% set aax = score_snapshot.aax_analysis %}
-  <section class="panel mt-2" role="region" aria-label="AI Agent Diagnostic">
-    <h2>AI Agent Diagnostic</h2>
-    <p class="small">Here's what AI agents see when they look at your website</p>
+  <section class="panel mt-2" role="region" aria-label="Agent Access Review">
+    <h2>Agent Access Review</h2>
+    <p class="small">Automated site review findings</p>
 
     <!-- Brand Comprehension -->
     {% if aax.homepage_comprehension %}
@@ -400,7 +400,7 @@
 
       {% if hc.key_features and hc.key_features | length > 0 %}
       <p class="small mt-2 mb-1">Key features the AI detected:</p>
-      <ul class="m0" style="padding-left: var(--space-md);">
+      <ul class="m0 pl-md">
         {% for feature in hc.key_features %}
         <li class="small">{{ feature }}</li>
         {% endfor %}
@@ -415,7 +415,7 @@
     {% if (cd.strengths and cd.strengths | length > 0) or (cd.weaknesses and cd.weaknesses | length > 0) %}
     <div class="aax-audit-grid">
       <div class="aax-audit-column aax-audit-strengths">
-        <h4>What AI gets right</h4>
+        <h4>Confirmed signals</h4>
         {% if cd.strengths %}
         {% for s in cd.strengths %}
         <div class="aax-audit-item">{{ s }}</div>
@@ -425,7 +425,7 @@
         {% endif %}
       </div>
       <div class="aax-audit-column aax-audit-weaknesses">
-        <h4>What AI gets wrong</h4>
+        <h4>Missing or ambiguous signals</h4>
         {% if cd.weaknesses %}
         {% for w in cd.weaknesses %}
         <div class="aax-audit-item">{{ w }}</div>

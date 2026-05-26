@@ -2,8 +2,7 @@
 <li
   class="card {{ 'card-leads' if highlight_complete and (item.aeo_score is not none and item.geo_score is not none and item.aax_score is not none) else '' }} {{ 'card-dense' if dense else '' }}">
   <h3 class="card-title">
-    <img src="https://www.google.com/s2/favicons?domain={{ item.domain }}&sz=64" alt="" width="16" height="16"
-      onerror="this.style.display='none'">
+    <span class="card-domain-initial" aria-hidden="true">{{ item.domain[0]|upper if item.domain else '' }}</span>
     {% set display_title = item.title or item.domain or item.canonical_url %}
     <a href="/analysis/{{ item.key }}" class="ml-1" aria-label="Open analysis for {{ display_title }}"
       title="{{ display_title }}">
@@ -34,8 +33,6 @@
     {% endif %}
     {% if item.aax_score is not none %}
     · AAX: <strong class="score-value">{{ item.aax_score|int }}</strong>
-    {% endif %}
-    ·
     {% endif %}
     Updated
     <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">
