@@ -2351,6 +2351,63 @@ p.card-meta {
   text-decoration: none;
 }
 
+.result-risk-summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-lg);
+}
+
+.result-risk-summary-copy {
+  max-width: 760px;
+  margin: var(--space-xs) 0 0;
+  color: var(--color-ink-muted);
+  font: var(--font-body-lg);
+}
+
+.result-risk-summary-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  min-width: 260px;
+}
+
+.result-risk-issues {
+  margin-top: var(--space-lg);
+}
+
+.result-risk-issue-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-sm) 0 0;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.result-risk-issue-list li {
+  padding: var(--space-sm);
+  border: 1px solid var(--color-hairline);
+  background: var(--color-surface-1);
+  border-radius: var(--radius-none);
+}
+
+.result-risk-issue-name {
+  display: inline-block;
+  font: var(--font-body-emphasis);
+  color: var(--color-ink);
+}
+
+.result-risk-issue-score {
+  float: right;
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+}
+
+.result-bottom-cta {
+  text-align: center;
+}
+
 /* .hero-teaser removed — empty container, never used */
 /* .no-md removed — responsive hide utility, never applied */
 
@@ -2374,6 +2431,41 @@ p.card-meta {
   letter-spacing: 0.16px;
   color: var(--color-ink-muted);
   margin: 0 0 var(--space-xs);
+}
+
+
+.scoring-page-header {
+  max-width: 860px;
+}
+
+.scoring-page-kicker {
+  margin: 0 0 var(--space-xs);
+  color: var(--color-ink-muted);
+  font: var(--font-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scoring-intro-panel,
+.scoring-final-panel {
+  max-width: 860px;
+}
+
+.scoring-page-header {
+  max-width: 860px;
+}
+
+.scoring-page-kicker {
+  margin: 0 0 var(--space-xs);
+  color: var(--color-ink-muted);
+  font: var(--font-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scoring-intro-panel,
+.scoring-final-panel {
+  max-width: 860px;
 }
 
 /* ------------------------------------------------------------------------
@@ -2808,7 +2900,7 @@ p.card-meta {
 }
 
 .gauge-value.rating-excellent {
-  color: var(--color-primary);
+  color: var(--color-semantic-success);
 }
 
 .gauge-rating {

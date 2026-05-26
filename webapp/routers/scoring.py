@@ -11,16 +11,15 @@ from webapp.utils.url import _abs_url
 router = APIRouter()
 
 
-@router.get("/scoring", response_class=HTMLResponse)
-async def scoring_page(request: Request):
+@router.get("/methodology", response_class=HTMLResponse)
+async def methodology_page(request: Request):
     """Scoring methodology page — explains AEO/GEO factors, weights, and ratings."""
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-    page_title = f"Scoring Methodology — {site_name}"
+    page_title = f"Methodology — {site_name}"
     meta_description = (
-        "Learn how MeshWeave scores websites for AEO and GEO. "
-        "12 factors, weighted composites, auto-scored from crawl data."
+        "Learn how MeshWeave computes AEO, GEO, and AAX and how to interpret each score as a diagnostic signal."
     )
-    abs_page_url = _abs_url(request, "/scoring")
+    abs_page_url = _abs_url(request, "/methodology")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
     return templates.TemplateResponse(

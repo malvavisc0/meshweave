@@ -97,33 +97,26 @@ MANUAL_INPUT_SPECS = {
 }
 
 
-AAX_RATING_CLASSES = {
-    "Opaque": "rating-low",
-    "Unclear": "rating-low",
-    "Readable": "rating-ok",
-    "Clear": "rating-good",
-    "Fluent": "rating-excellent",
-}
-
-
 def rating_class(rating: str | None) -> str:
     mapping = {
+        # AEO ratings
         "Poor": "rating-low",
         "Below Average": "rating-low",
         "Average": "rating-ok",
         "Strong": "rating-good",
         "Excellent": "rating-excellent",
+        # GEO ratings
         "Invisible": "rating-low",
-        "Emerging": "rating-low",
+        "Emerging": "rating-ok",
         "Visible": "rating-ok",
         "Authoritative": "rating-good",
         "Dominant": "rating-excellent",
-        # AAX ratings
+        # AAX ratings (conservative: green only for "Fluent" 80+)
         "Opaque": "rating-low",
         "Unclear": "rating-low",
         "Readable": "rating-ok",
-        "Clear": "rating-good",
-        "Fluent": "rating-excellent",
+        "Clear": "rating-ok",
+        "Fluent": "rating-good",
     }
     return mapping.get(rating, "") if rating else ""
 

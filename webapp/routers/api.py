@@ -260,6 +260,7 @@ async def robots_txt(request: Request):
     return (
         "User-agent: *\n"
         "Allow: /\n"
+        "Allow: /.well-known/\n"
         "Disallow: /api/analysis/private/\n"
         "Disallow: /api/status/\n"
         f"Sitemap: {base}/sitemap.xml\n"
@@ -277,6 +278,17 @@ async def sitemap_xml(request: Request):
         Response: XML response with urlset entries.
     """
     base = _get_base_url(request)
+    static_urls = [
+        (f"{base}/", datetime.now(UTC)),
+        (f"{base}/browse", datetime.now(UTC)),
+        (f"{base}/products", datetime.now(UTC)),
+        (f"{base}/methodology", datetime.now(UTC)),
+        (f"{base}/privacy", datetime.now(UTC)),
+        (f"{base}/terms", datetime.now(UTC)),
+        (f"{base}/robots.txt", datetime.now(UTC)),
+        (f"{base}/.well-known/llms.txt", datetime.now(UTC)),
+        (f"{base}/.well-known/llms-full.txt", datetime.now(UTC)),
+    ]
     with get_session() as s:
         rows: list[Crawl] = (
             s.query(Crawl)
@@ -290,12 +302,22 @@ async def sitemap_xml(request: Request):
             .all()
         )
     parts = []
+    for loc, updated_at in static_urls:
+        lastmod = updated_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        parts.append(
+            f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>"
+        )
     for r in rows:
         loc = f"{base}/analysis/{r.key}"
-        lastmod = (r.updated_at or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        parts.append(f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>")
+        lastmod = (r.updated_at or datetime.now(UTC)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        parts.append(
+            f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>"
+        )
     xml = (
-        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         + "\n".join(parts)
         + "\n</urlset>"
     )

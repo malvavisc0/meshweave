@@ -54,6 +54,7 @@
       </a>
       <a href="/" {% if __path=='/' %}aria-current="page" {% endif %}>Home</a>
       <a href="/browse" {% if __path.startswith('/browse') %}aria-current="page" {% endif %}>Browse</a>
+      <a href="/methodology" {% if __path.startswith('/methodology') %}aria-current="page" {% endif %}>Methodology</a>
     </div>
     <div class="nav-right">
       {% if request.state.current_user %}

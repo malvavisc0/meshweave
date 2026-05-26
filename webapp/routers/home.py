@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,45 @@ from webapp.utils.security import _make_csrf_token
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
+
+@router.get("/.well-known/llms.txt", response_class=PlainTextResponse)
+async def llms_txt(request: Request):
+    base = _abs_url(request, "")
+    return (
+        f"Site: {base}\n"
+        "Product: MeshWeave\n"
+        "Summary: AI visibility risk analysis for citation, discovery, and agent trust.\n"
+        "Primary actions: Run an analysis, review recommendations, contact an expert.\n"
+        f"Sitemap: {base}/sitemap.xml\n"
+        f"Full: {base}/.well-known/llms-full.txt\n"
+    )
+
+
+@router.get("/.well-known/llms-full.txt", response_class=PlainTextResponse)
+async def llms_full_txt(request: Request):
+    base = _abs_url(request, "")
+    return (
+        "# MeshWeave\n\n"
+        f"Base URL: {base}\n\n"
+        "MeshWeave audits how AI systems crawl, understand, and cite websites. "
+        "It identifies technical weaknesses that limit visibility, citation confidence, "
+        "generative discovery, and AI agent trust.\n\n"
+        "## Key pages\n"
+        f"- Homepage: {base}/\n"
+        f"- Browse analyses: {base}/browse\n"
+        f"- Products: {base}/products\n"
+        f"- Methodology: {base}/methodology\n"
+        f"- Privacy: {base}/privacy\n"
+        f"- Terms: {base}/terms\n\n"
+        "## Core capabilities\n"
+        "- AI visibility risk analysis\n"
+        "- Citation-readiness diagnostics\n"
+        "- Entity consistency and crawl-access auditing\n"
+        "- Prioritized remediation roadmap\n\n"
+        "## Contact\n"
+        f"- Email: {os.getenv('FOOTER_CONTACT_EMAIL', 'hello@meshweave.com').strip()}\n"
+    )
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -301,11 +340,11 @@ async def home(request: Request, db: Session = Depends(get_db)):
 
     # SEO meta for home (LLM-first)
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-    page_title = f"{site_name} — AEO & GEO Scoring for AI Search Optimization"
+    page_title = f"{site_name} — AI Visibility Risk Analysis"
     meta_description = (
-        "AI engines are becoming the way people discover products and "
-        "services. Get your AEO & GEO score and see if your site is "
-        "optimized for AI to find, remember, and recommend."
+        "Identify the structural weaknesses limiting citation, discovery, "
+        "and AI agent trust. MeshWeave audits how AI systems crawl, "
+        "understand, and recommend your site."
     )
     abs_page_url = _abs_url(request, "/")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
@@ -320,11 +359,16 @@ async def home(request: Request, db: Session = Depends(get_db)):
             "url": abs_page_url,
             "softwareVersion": (os.getenv("APP_VERSION", "v1") or "v1"),
             "provider": {"@type": "Organization", "name": site_name},
+            "description": (
+                "MeshWeave audits how AI systems crawl, understand, and cite "
+                "websites, then identifies the technical weaknesses that "
+                "limit visibility and trust."
+            ),
             "featureList": [
-                "Markdown extraction",
-                "Link mapping",
-                "Email intelligence with sources",
-                "AI-assisted summaries",
+                "AI visibility risk analysis",
+                "Citation-readiness diagnostics",
+                "Entity consistency and crawl-access auditing",
+                "Prioritized remediation roadmap",
             ],
             "termsOfService": _abs_url(request, "/terms"),
             "privacyPolicy": _abs_url(request, "/privacy"),

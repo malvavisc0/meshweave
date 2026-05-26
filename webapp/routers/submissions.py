@@ -165,6 +165,7 @@ async def submit(
                     Crawl.domain == dom,
                     Crawl.path == "/",
                     Crawl.query == "",
+                    Crawl.is_latest == True,  # noqa: E712
                 )
                 .one_or_none()
             )
@@ -444,6 +445,7 @@ async def submit(
                     Crawl.domain == dom,
                     Crawl.path == "/",
                     Crawl.query == "",
+                    Crawl.is_latest == True,  # noqa: E712
                 )
                 .one_or_none()
             )
@@ -532,6 +534,7 @@ async def submit(
                     Crawl.domain == dom,
                     Crawl.path == path,
                     Crawl.query == query,
+                    Crawl.is_latest == True,  # noqa: E712
                 )
                 .one_or_none()
             )

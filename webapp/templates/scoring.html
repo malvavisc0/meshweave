@@ -2,63 +2,113 @@
 {% block head_extra %}{% endblock %}
 
 {% block content %}
+
+<header class="page-header" aria-label="Scoring methodology">
+    <div class="container">
+        <h1 class="page-header-title">Scoring Methodology</h1>
+        <p class="page-header-subtitle">This page explains how MeshWeave computes AEO, GEO, and AAX, how missing inputs
+            are
+            handled, and how to interpret each score as a diagnostic signal rather than a guaranteed outcome.</p>
+    </div>
+</header>
+
 <div class="container">
 
-    <h1 class="hero-title">Scoring Methodology</h1>
-    <p class="hero-subtitle">MeshWeave analyzes websites across 12 factors to produce two composite scores:
-        <strong>AEO</strong> (Answer Engine Optimization) and <strong>GEO</strong> (Generative Engine Optimization).
-        Each score is rated 0–100.
-    </p>
+    <section class="prose-section" aria-label="How to read the methodology">
+        <h2>How to read this page</h2>
+        <p class="m0">MeshWeave uses AEO, GEO, and AAX as diagnostic views into AI visibility risk. These scores do not
+            guarantee ranking, traffic, or conversion. They show where AI systems may fail to crawl, interpret, cite, or
+            act
+            on your content.</p>
+    </section>
 
-    <section class="panel mt-3">
-        <h2>AEO Score (Answer Engine Optimization)</h2>
-        <p class="small">Measures readiness for Google AI Overviews, featured snippets, and voice assistant answers.</p>
-        <div class="table-wrap">
-            <table class="table small mt-1">
+    <section class="prose-section" aria-label="Shared composite logic">
+        <h2>Shared composite logic</h2>
+        <p class="m0">All three scores use a weighted composite with re-normalization. Factors with no score are
+            excluded,
+            the remaining weights are redistributed, and the result is calibrated to compress inflated upper-range
+            scores.</p>
+        <div class="table-wrap mt-2">
+            <table class="table small">
                 <thead>
                     <tr>
-                        <th>Factor</th>
-                        <th>Weight</th>
-                        <th>Auto-scored?</th>
+                        <th>Rule</th>
+                        <th>Behavior</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>Snippet / AI Overview Capture Rate</td>
-                        <td>30%</td>
-                        <td>No — needs GSC data</td>
+                        <td>Weighted composite</td>
+                        <td><code>Σ(score × weight) / Σ(weight)</code> using only factors with non-<code>None</code>
+                            scores</td>
                     </tr>
                     <tr>
-                        <td>Schema Implementation</td>
-                        <td>20%</td>
-                        <td>✅ From crawl (JSON-LD coverage)</td>
+                        <td>Missing factors</td>
+                        <td>Weights are re-normalized across available factors</td>
                     </tr>
                     <tr>
-                        <td>Content Structure Quality</td>
-                        <td>20%</td>
-                        <td>✅ From crawl (headings, word count, images)</td>
+                        <td>Calibration curve</td>
+                        <td><code>100 × (composite / 100)^1.15</code> compresses the upper range</td>
                     </tr>
                     <tr>
-                        <td>Query Match Precision</td>
-                        <td>15%</td>
-                        <td>No — needs keyword analysis</td>
-                    </tr>
-                    <tr>
-                        <td>Voice Selection Rate</td>
-                        <td>10%</td>
-                        <td>No — needs voice testing</td>
-                    </tr>
-                    <tr>
-                        <td>Freshness / Update Frequency</td>
-                        <td>5%</td>
-                        <td>⚠️ Partial (dateModified in JSON-LD)</td>
+                        <td>Output</td>
+                        <td>Capped at 100, rounded to 1 decimal place, plus an auto-only composite</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        <h3>AEO ratings</h3>
-        <div class="table-wrap">
-            <table class="table small mt-1">
+    </section>
+
+    <section class="prose-section" aria-label="AEO methodology">
+        <h2>AEO — answer extraction risk</h2>
+        <p class="m0">AEO measures how well your content is structured for AI answer engines such as featured snippets,
+            AI
+            Overviews, and voice assistants.</p>
+        <div class="table-wrap mt-2">
+            <table class="table small">
+                <thead>
+                    <tr>
+                        <th>Factor</th>
+                        <th>Weight</th>
+                        <th>Auto?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Capture Rate</td>
+                        <td>30%</td>
+                        <td>No — manual input</td>
+                    </tr>
+                    <tr>
+                        <td>Schema Implementation</td>
+                        <td>20%</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>Content Structure</td>
+                        <td>20%</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>Query Match</td>
+                        <td>15%</td>
+                        <td>No — manual input</td>
+                    </tr>
+                    <tr>
+                        <td>Voice Rate</td>
+                        <td>10%</td>
+                        <td>No — manual input</td>
+                    </tr>
+                    <tr>
+                        <td>Freshness</td>
+                        <td>5%</td>
+                        <td>Yes</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-wrap mt-2">
+            <table class="table small">
                 <thead>
                     <tr>
                         <th>Score</th>
@@ -67,23 +117,23 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td>0–20</td>
+                        <td>0–25</td>
                         <td>Poor</td>
                     </tr>
                     <tr>
-                        <td>21–40</td>
+                        <td>26–45</td>
                         <td>Below Average</td>
                     </tr>
                     <tr>
-                        <td>41–60</td>
+                        <td>46–65</td>
                         <td>Average</td>
                     </tr>
                     <tr>
-                        <td>61–80</td>
+                        <td>66–85</td>
                         <td>Strong</td>
                     </tr>
                     <tr>
-                        <td>81–100</td>
+                        <td>86–100</td>
                         <td>Excellent</td>
                     </tr>
                 </tbody>
@@ -91,56 +141,56 @@
         </div>
     </section>
 
-    <section class="panel mt-3">
-        <h2>GEO Score (Generative Engine Optimization)</h2>
-        <p class="small">Measures how visible and citation-worthy your content is to AI engines like ChatGPT, Claude,
-            and Perplexity.</p>
-        <div class="table-wrap">
-            <table class="table small mt-1">
+    <section class="prose-section" aria-label="GEO methodology">
+        <h2>GEO — generative discovery risk</h2>
+        <p class="m0">GEO measures how well your content is positioned to be discovered, cited, and referenced by LLMs
+            such
+            as ChatGPT, Claude, and Perplexity.</p>
+        <div class="table-wrap mt-2">
+            <table class="table small">
                 <thead>
                     <tr>
                         <th>Factor</th>
                         <th>Weight</th>
-                        <th>Auto-scored?</th>
+                        <th>Auto?</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>AI Citation Frequency & Quality</td>
+                        <td>Citation</td>
                         <td>30%</td>
-                        <td>No — needs external monitoring</td>
+                        <td>No — manual input</td>
                     </tr>
                     <tr>
-                        <td>Topical Authority / Entity Coverage</td>
+                        <td>Topical Authority</td>
                         <td>20%</td>
-                        <td>✅ From schema + content breadth</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
                         <td>E-E-A-T Signals</td>
                         <td>15%</td>
-                        <td>⚠️ Partial (org, author, reviews)</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
-                        <td>LLM Crawl Accessibility</td>
+                        <td>Crawl Access</td>
                         <td>15%</td>
-                        <td>✅ robots.txt, llms.txt, sitemap</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
-                        <td>Content Depth & Originality</td>
+                        <td>Content Depth</td>
                         <td>10%</td>
-                        <td>✅ Words, lists, tables, code blocks</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
-                        <td>Cross-Platform Entity Consistency</td>
+                        <td>Entity Consistency</td>
                         <td>10%</td>
-                        <td>✅ sameAs, name/desc consistency</td>
+                        <td>Yes</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        <h3>GEO ratings</h3>
-        <div class="table-wrap">
-            <table class="table small mt-1">
+        <div class="table-wrap mt-2">
+            <table class="table small">
                 <thead>
                     <tr>
                         <th>Score</th>
@@ -149,23 +199,23 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td>0–20</td>
+                        <td>0–25</td>
                         <td>Invisible</td>
                     </tr>
                     <tr>
-                        <td>21–40</td>
+                        <td>26–45</td>
                         <td>Emerging</td>
                     </tr>
                     <tr>
-                        <td>41–60</td>
+                        <td>46–65</td>
                         <td>Visible</td>
                     </tr>
                     <tr>
-                        <td>61–80</td>
+                        <td>66–85</td>
                         <td>Authoritative</td>
                     </tr>
                     <tr>
-                        <td>81–100</td>
+                        <td>86–100</td>
                         <td>Dominant</td>
                     </tr>
                 </tbody>
@@ -173,80 +223,132 @@
         </div>
     </section>
 
-    <section class="panel mt-3">
-        <h2>How composite scores are calculated</h2>
-        <p class="small">Each score is a weighted sum of its six factor scores. When manual inputs are missing (e.g., no
-            GSC data for Capture Rate), the weights are renormalized across available auto-scored factors to produce an
-            "auto-only" score.</p>
-        <p class="small">For example, if only 4 of 6 AEO factors have values, the composite uses those 4 factors with
-            their weights scaled to sum to 100%. This means the auto-only score reflects the best assessment possible
-            from crawl data alone.</p>
-    </section>
-
-    <section class="panel mt-3">
-        <h2>What we analyze automatically</h2>
-        <p class="small">From a single URL crawl, the engine extracts and scores:</p>
-        <ul class="small mt-1">
-            <li><strong>Schema coverage</strong> — which pages have JSON-LD, which types, FAQ/HowTo presence</li>
-            <li><strong>Content structure</strong> — heading hierarchy, word counts, image alt text, lists, tables</li>
-            <li><strong>Entity signals</strong> — Organization schema, sameAs links, name/description consistency</li>
-            <li><strong>E-E-A-T indicators</strong> — author info, reviews, ratings, contact/privacy pages</li>
-            <li><strong>LLM accessibility</strong> — robots.txt bot policies, llms.txt, sitemap availability</li>
-            <li><strong>Freshness</strong> — dateModified/datePublished from structured data</li>
-            <li><strong>Content depth</strong> — average words per page, code blocks, original data signals</li>
-        </ul>
-    </section>
-
-    <section class="panel mt-3">
-        <h2>Optional manual inputs</h2>
-        <p class="small">For a complete score, you can supplement auto-scored data with:</p>
-        <div class="table-wrap">
-            <table class="table small mt-1">
+    <section class="prose-section" aria-label="AAX methodology">
+        <h2>AAX — agent usability risk</h2>
+        <p class="m0">AAX measures how well AI agents can understand your site, assess it, and complete meaningful tasks
+            across key pages.</p>
+        <div class="table-wrap mt-2">
+            <table class="table small">
                 <thead>
                     <tr>
-                        <th>Input</th>
-                        <th>Where to find it</th>
-                        <th>Affects</th>
+                        <th>Factor</th>
+                        <th>Weight</th>
+                        <th>Auto?</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>Snippet/AI Overview Capture Rate</td>
-                        <td>Google Search Console → Performance → Search Appearance</td>
-                        <td>AEO (30%)</td>
+                        <td>Homepage Comprehension</td>
+                        <td>30%</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
-                        <td>Query Match Precision</td>
-                        <td>"People Also Ask" analysis for target keywords</td>
-                        <td>AEO (15%)</td>
+                        <td>Meta Optimization</td>
+                        <td>20%</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
-                        <td>Voice Selection Rate</td>
-                        <td>Test queries on Google Assistant, Siri, Alexa</td>
-                        <td>AEO (10%)</td>
+                        <td>Content Delta</td>
+                        <td>20%</td>
+                        <td>Yes</td>
                     </tr>
                     <tr>
-                        <td>AI Citation Frequency</td>
-                        <td>Monitor ChatGPT, Claude, Perplexity citations</td>
-                        <td>GEO (30%)</td>
+                        <td>llms.txt</td>
+                        <td>15%</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>Email Validation</td>
+                        <td>15%</td>
+                        <td>Yes</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-wrap mt-2">
+            <table class="table small">
+                <thead>
+                    <tr>
+                        <th>Score</th>
+                        <th>Rating</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>0–24</td>
+                        <td>Opaque</td>
+                    </tr>
+                    <tr>
+                        <td>25–39</td>
+                        <td>Unclear</td>
+                    </tr>
+                    <tr>
+                        <td>40–59</td>
+                        <td>Readable</td>
+                    </tr>
+                    <tr>
+                        <td>60–79</td>
+                        <td>Clear</td>
+                    </tr>
+                    <tr>
+                        <td>80–100</td>
+                        <td>Fluent</td>
                     </tr>
                 </tbody>
             </table>
         </div>
     </section>
 
-    <section class="panel mt-3">
-        <h2>Recommendations</h2>
-        <p class="small">Each analysis generates prioritized recommendations based on the raw scoring data.
-            Recommendations are ranked by estimated point impact:</p>
-        <ul class="small mt-1">
-            <li><strong>High priority</strong> — fixes that could improve scores by 10–15 points (e.g., adding FAQ
-                schema, Organization JSON-LD)</li>
-            <li><strong>Medium priority</strong> — fixes with 5–10 point impact (e.g., enriching thin content, adding
-                alt text)</li>
-            <li><strong>Low priority</strong> — refinements with 3–5 point impact (e.g., adding sameAs links)</li>
-        </ul>
+    <section class="prose-section" aria-label="Automatic inputs">
+        <h2>Automatic inputs</h2>
+        <p class="m0">MeshWeave scores measurable technical signals from crawl data, structured data, content structure,
+            entity consistency, crawl accessibility, and LLM-based page analysis where AAX is enabled.</p>
     </section>
 
+    <section class="prose-section" aria-label="Manual inputs">
+        <h2>Manual inputs</h2>
+        <div class="table-wrap mt-2">
+            <table class="table small">
+                <thead>
+                    <tr>
+                        <th>Input</th>
+                        <th>Used in</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Capture Rate</td>
+                        <td>AEO</td>
+                        <td>Featured snippets and AI Overviews</td>
+                    </tr>
+                    <tr>
+                        <td>Query Match</td>
+                        <td>AEO</td>
+                        <td>Natural-language demand alignment</td>
+                    </tr>
+                    <tr>
+                        <td>Voice Rate</td>
+                        <td>AEO</td>
+                        <td>Voice assistant answer selection</td>
+                    </tr>
+                    <tr>
+                        <td>Citation</td>
+                        <td>GEO</td>
+                        <td>Observed LLM citation frequency</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="prose-contact">
+        <p>Use this methodology as the reference for how the model works, then use your analysis page to see which
+            factors
+            are limiting your site right now.</p>
+        <a href="mailto:{{ FOOTER_CONTACT_EMAIL }}" class="btn btn-primary">Talk to an Expert</a>
+    </div>
+
 </div>
+
 {% endblock %}
