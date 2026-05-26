@@ -232,7 +232,7 @@ def score_freshness(payload: dict) -> dict:
 
     if not dates:
         return {
-            "score": 50.0,  # neutral default
+            "score": None,  # excluded from composite when no date data
             "weight": 0.05,
             "auto_measurable": True,
             "raw": {

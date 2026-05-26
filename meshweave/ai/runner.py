@@ -18,17 +18,23 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 # Categorical → numeric mappings for scoring
-CLARITY_MAP = {"clear": 100, "somewhat_clear": 60, "unclear": 20}
-DENSITY_MAP = {"dense": 100, "adequate": 70, "sparse": 30, "bloated": 20}
-COMPLETENESS_MAP = {"complete": 100, "partial": 60, "minimal": 20}
-COHERENCE_MAP = {"consistent": 100, "somewhat_consistent": 60, "contradictory": 20}
+# Floor values lowered so "adequate" / "somewhat" responses don't
+# inflate scores as much — creates realistic pressure.
+CLARITY_MAP = {"clear": 100, "somewhat_clear": 50, "unclear": 15}
+DENSITY_MAP = {"dense": 100, "adequate": 60, "sparse": 25, "bloated": 15}
+COMPLETENESS_MAP = {"complete": 100, "partial": 50, "minimal": 15}
+COHERENCE_MAP = {
+    "consistent": 100,
+    "somewhat_consistent": 50,
+    "contradictory": 15,
+}
 CONTENT_COMPLETENESS_MAP = {
     "comprehensive": 100,
-    "adequate": 60,
-    "incomplete": 20,
+    "adequate": 50,
+    "incomplete": 15,
 }
-LLM_OPT_MAP = {"optimized": 100, "adequate": 60, "poor": 20}
-CONFIDENCE_MAP = {"high": 90, "medium": 60, "low": 30, "none": 5}
+LLM_OPT_MAP = {"optimized": 100, "adequate": 50, "poor": 15}
+CONFIDENCE_MAP = {"high": 90, "medium": 55, "low": 25, "none": 5}
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "")

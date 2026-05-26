@@ -145,19 +145,24 @@ def score_eeat(payload: dict) -> dict:
         has_contact = True
 
     pts = 0
-    if pages_with_org > 0 or "organization" in schema_types or "org" in schema_types:
-        pts += 20
+    lower_types = {t.lower() for t in schema_types}
+    if (
+        pages_with_org > 0
+        or "organization" in lower_types
+        or "org" in lower_types
+    ):
+        pts += 15
     if has_author:
-        pts += 20
+        pts += 15
     if has_reviews:
-        pts += 20
+        pts += 15
     same_as = entity.get("same_as") or []
     if len(same_as) > 0:
-        pts += 15
+        pts += 10
     if has_contact:
-        pts += 10
+        pts += 8
     if has_privacy or has_terms:
-        pts += 10
+        pts += 7
     if has_video:
         pts += 5
     pts = min(100, pts)
@@ -209,35 +214,35 @@ def score_crawl_access(payload: dict) -> dict:
 
     pts = 0
 
-    # robots.txt exists: +10
+    # robots.txt exists: +8
     if robots.get("exists"):
-        pts += 10
+        pts += 8
 
     # Bot access
     bots = robots.get("bots") or {}
     for bot_name, expected_pts in [
-        ("GPTBot", 20),
-        ("ClaudeBot", 15),
-        ("PerplexityBot", 15),
+        ("GPTBot", 15),
+        ("ClaudeBot", 12),
+        ("PerplexityBot", 12),
     ]:
         status = str(bots.get(bot_name) or "").lower()
-        if status == "allowed":
+        if "allow" in status:
             pts += expected_pts
 
-    # llms.txt exists: +20
+    # llms.txt exists: +15
     llms_txt_data = llms.get("llms_txt") or {}
     if llms_txt_data.get("exists"):
-        pts += 20
+        pts += 15
 
-    # llms-full.txt exists: +10
+    # llms-full.txt exists: +8
     llms_full_data = llms.get("llms_full_txt") or {}
     if llms_full_data.get("exists"):
-        pts += 10
+        pts += 8
 
-    # XML sitemap: +10
+    # XML sitemap: +7
     sitemaps = robots.get("sitemaps") or []
     if sitemaps:
-        pts += 10
+        pts += 7
 
     pts = min(100, pts)
 
@@ -266,18 +271,30 @@ def score_content_depth(payload: dict) -> dict:
     elif isinstance(md_dict, list):
         pages = [p for p in md_dict if isinstance(p, dict)]
 
-    # Also check payload["pages"]
+    # Track seen URLs for deduplication across sources
+    seen_urls: set[str] = set()
+    for pg in pages:
+        url = (pg.get("page") or pg).get("url") or ""
+        if url:
+            seen_urls.add(url)
+
+    # Also check payload["pages"], deduplicating by URL
     pages_list = payload.get("pages") or []
     if isinstance(pages_list, list):
         for item in pages_list:
             if isinstance(item, dict):
+                url = (item.get("page") or item).get("url") or ""
+                if url and url in seen_urls:
+                    continue
+                if url:
+                    seen_urls.add(url)
                 pages.append(item)
 
     if not pages:
         # Single page
         page = payload.get("page") or {}
         if page:
-            pages = [payload]
+            pages = [page]
 
     total_pages = max(len(pages), 1)
     word_counts = []
@@ -287,6 +304,10 @@ def score_content_depth(payload: dict) -> dict:
 
     for pg in pages:
         cm = pg.get("content_metrics") or {}
+        # Fallback: check nested "page" key (single-page crawl structure)
+        if not cm:
+            page_info = pg.get("page") or {}
+            cm = page_info.get("content_metrics") or {}
         words = cm.get("words") or 0
         word_counts.append(words)
         if words > 200:
@@ -298,7 +319,7 @@ def score_content_depth(payload: dict) -> dict:
 
     avg_words = sum(word_counts) / len(word_counts) if word_counts else 0
 
-    # Average word count score
+    # Average word count score (0-100)
     if avg_words < 200:
         word_score = 10
     elif avg_words < 500:
@@ -307,18 +328,20 @@ def score_content_depth(payload: dict) -> dict:
         word_score = 50
     elif avg_words < 2000:
         word_score = 70
-    else:
+    elif avg_words < 5000:
         word_score = 90
+    else:
+        word_score = 100
 
     # Pages with 1000+ words ratio
     pages_gt1000 = sum(1 for w in word_counts if w >= 1000)
     depth_ratio = (pages_gt1000 / total_pages) * 100 if total_pages > 0 else 0
 
     # Has code blocks
-    code_bonus = 10 if pages_with_code > 0 else 0
+    code_bonus = 100 if pages_with_code > 0 else 0
 
     # Has tables (original data signal)
-    tables_bonus = 10 if pages_with_tables > 0 else 0
+    tables_bonus = 100 if pages_with_tables > 0 else 0
 
     # Unique content pages scaled (> 200 words)
     content_ratio = (
@@ -361,19 +384,19 @@ def score_entity_consistency(payload: dict) -> dict:
 
     pts = 0
     if name_consistent:
-        pts += 30
-    if desc_consistent:
         pts += 20
+    if desc_consistent:
+        pts += 15
 
     same_as_count = len(same_as)
     if same_as_count == 0:
         pts += 0
     elif same_as_count <= 2:
-        pts += 30
+        pts += 20
     elif same_as_count <= 4:
-        pts += 40
+        pts += 30
     else:
-        pts += 50
+        pts += 40
 
     pts = min(100, pts)
 

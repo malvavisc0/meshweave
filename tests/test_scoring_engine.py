@@ -96,25 +96,25 @@ class TestAAXRatingThresholds:
     def test_opaque_range(self):
         assert aax_rating(0) == "Opaque"
         assert aax_rating(15) == "Opaque"
-        assert aax_rating(29) == "Opaque"
+        assert aax_rating(24) == "Opaque"
 
     def test_unclear_range(self):
-        assert aax_rating(30) == "Unclear"
-        assert aax_rating(40) == "Unclear"
-        assert aax_rating(49) == "Unclear"
+        assert aax_rating(25) == "Unclear"
+        assert aax_rating(33) == "Unclear"
+        assert aax_rating(39) == "Unclear"
 
     def test_readable_range(self):
+        assert aax_rating(40) == "Readable"
         assert aax_rating(50) == "Readable"
-        assert aax_rating(60) == "Readable"
-        assert aax_rating(69) == "Readable"
+        assert aax_rating(59) == "Readable"
 
     def test_clear_range(self):
+        assert aax_rating(60) == "Clear"
         assert aax_rating(70) == "Clear"
-        assert aax_rating(77) == "Clear"
-        assert aax_rating(84) == "Clear"
+        assert aax_rating(79) == "Clear"
 
     def test_fluent_range(self):
-        assert aax_rating(85) == "Fluent"
+        assert aax_rating(80) == "Fluent"
         assert aax_rating(92) == "Fluent"
         assert aax_rating(100) == "Fluent"
 

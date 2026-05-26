@@ -6,6 +6,7 @@ generates recommendations, and returns the full score_json.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from meshweave.scoring import aeo as aeo_mod
@@ -32,6 +33,9 @@ GEO_WEIGHTS: dict[str, float] = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
 def _weighted_composite(
     factors: dict[str, dict],
     weights: dict[str, float],
@@ -45,6 +49,12 @@ def _weighted_composite(
         score = factor.get("score")
         if score is not None and key in weights:
             scored[key] = float(score)
+        elif score is not None:
+            logger.debug(
+                "Factor %r has score %.1f but no weight — excluded",
+                key,
+                score,
+            )
 
     if not scored:
         return None
@@ -54,7 +64,12 @@ def _weighted_composite(
         return None
 
     composite = sum(scored[k] * weights[k] / total_weight for k in scored)
-    return round(min(100.0, composite), 1)
+
+    # Calibration curve: compress upper range so average sites don't
+    # score artificially high.  Power 1.15 pulls 80→73, 70→62, 60→51,
+    # 50→42, 40→33 while leaving 100 untouched.
+    calibrated = 100.0 * (composite / 100.0) ** 1.15
+    return round(min(100.0, calibrated), 1)
 
 
 def compute_scores(

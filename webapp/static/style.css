@@ -1134,6 +1134,33 @@ label {
   line-height: 1.6;
 }
 
+.btn-expert-email {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  margin-left: var(--space-sm);
+  background: #0f62fe;
+  color: var(--color-on-primary);
+  border-color: #0f62fe;
+  vertical-align: middle;
+  transform: rotate(-1.5deg);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.btn-expert-email:hover {
+  background: #0043ce;
+  border-color: #0043ce;
+  color: var(--color-on-primary);
+}
+
+.btn-expert-email:active {
+  background: #002d9c;
+  border-color: #002d9c;
+  color: var(--color-on-primary);
+}
+
 .landing-hero-audience {
   margin: 0 0 var(--space-md);
   display: flex;

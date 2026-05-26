@@ -1,11 +1,19 @@
 """Prompt templates for AAX analysis tests.
 
 Each function returns (user_prompt, system_prompt) for a specific test.
+
+Test mapping (non-LLM tests like Contactability are not included here):
+  - Test 2: Homepage Comprehension
+  - Test 3: Meta Optimization
+  - Test 5: Content Delta
+  - Test 7: Email Validation
 """
 
 from __future__ import annotations
 
 import json
+
+CHARS_PER_TOKEN = 4  # rough chars-per-token estimate for budget calculations
 
 SYSTEM_BASE = (
     "You are an AI analysis agent evaluating websites for AI readiness. "
@@ -16,16 +24,19 @@ SYSTEM_BASE = (
 
 
 def homepage_comprehension_prompt(
-    domain: str, homepage_markdown: str
+    domain: str, homepage_markdown: str, max_chars: int = 50_000
 ) -> tuple[str, str]:
     """Test 2: What can the LLM understand from the homepage alone?"""
+    if len(homepage_markdown) > max_chars:
+        homepage_markdown = homepage_markdown[:max_chars] + "\n\n[...truncated...]"
+
     user = f"""You are an AI agent that has been given the URL https://{domain}/ and asked to evaluate the website. Here is the content of the homepage:
 
 ---
 {homepage_markdown}
 ---
 
-Based ONLY on this content, answer the following:
+Based ONLY on this content, extract the following information.
 
 Respond in this JSON format:
 {{
@@ -34,8 +45,8 @@ Respond in this JSON format:
   "target_audience": "who this is for",
   "key_features": ["feature1", "feature2", ...],
   "call_to_action": "the primary CTA on the page",
-  "clarity": "clear" | "somewhat_clear" | "unclear",
-  "information_density": "dense" | "adequate" | "sparse" | "bloated",
+  "clarity": "one of: clear, somewhat_clear, unclear",
+  "information_density": "one of: dense, adequate, sparse, bloated",
   "would_remember": true or false
 }}"""
     return user, SYSTEM_BASE
@@ -57,7 +68,7 @@ OG Title: {og_title or "(empty)"}
 OG Description: {og_description or "(empty)"}
 JSON-LD: {jsonld_summary}
 
-Based ONLY on this metadata, answer:
+Based ONLY on this metadata, extract the following information.
 
 Respond in this JSON format:
 {{
@@ -65,9 +76,9 @@ Respond in this JSON format:
   "product": "what product or service they offer",
   "target_audience": "who this is for",
   "would_click_through": true or false,
-  "completeness": "complete" | "partial" | "minimal",
-  "clarity": "clear" | "somewhat_clear" | "unclear",
-  "llm_optimization": "optimized" | "adequate" | "poor",
+  "completeness": "one of: complete, partial, minimal",
+  "clarity": "one of: clear, somewhat_clear, unclear",
+  "llm_optimization": "one of: optimized, adequate, poor",
   "missing_fields": ["field1", ...],
   "improvement_suggestions": ["suggestion1", ...]
 }}"""
@@ -105,8 +116,11 @@ Respond in this JSON format:
   "valid_contacts": [
     {{"email": "support@example.com", "reason": "explicit support address", "contact_type": "support"}}
   ],
-  "best_contact": "the single best email for reaching the company",
-  "confidence": "high" | "medium" | "low"
+  "rejected_contacts": [
+    {{"email": "noreply@example.com", "reason": "no-reply address"}}
+  ],
+  "best_contact": "best email to reach the company, or null if none found",
+  "confidence": "one of: high, medium, low"
 }}"""
     return user, SYSTEM_BASE
 
@@ -121,7 +135,8 @@ Here is the content from multiple pages of their website:
 
 ---
 
-Based on ALL this content, provide a comprehensive summary:
+Based on ALL this content, provide a comprehensive summary.
+If pricing data is absent from the content, set pricing fields to null.
 
 Respond in this JSON format:
 {{
@@ -131,8 +146,8 @@ Respond in this JSON format:
   "target_audience": "...",
   "strengths": ["strength1", ...],
   "weaknesses": ["weakness1", ...],
-  "coherence": "consistent" | "somewhat_consistent" | "contradictory",
-  "completeness": "comprehensive" | "adequate" | "incomplete"
+  "coherence": "one of: consistent, somewhat_consistent, contradictory",
+  "completeness": "one of: comprehensive, adequate, incomplete"
 }}"""
     return user, SYSTEM_BASE
 
@@ -160,7 +175,9 @@ def aax_summary_prompt(
         hc_text = "No homepage comprehension data available."
 
     cd_text = ""
-    if cd:
+    if not cd:
+        cd_text = "No content analysis data available."
+    else:
         strengths = cd.get("strengths", [])
         weaknesses = cd.get("weaknesses", [])
         cd_text = (
@@ -180,13 +197,13 @@ Content analysis data:
 Write EXACTLY ONE sentence (under 30 words) that describes how well
 AI agents can understand and recommend this website. Be specific —
 mention what the site does and who it's for. Start with a verb or
-pronoun. Do NOT use quotation marks.
+pronoun. Do NOT wrap your summary in quotation marks.
 
 Example good outputs:
-- "AI agents can clearly identify Pangolin as a zero-trust access
-  platform for IT teams and would confidently recommend it."
-- "AI agents struggle to understand this site's purpose due to sparse
-  content and missing structured data."
+- AI agents can clearly identify Pangolin as a zero-trust access
+  platform for IT teams and would confidently recommend it.
+- AI agents struggle to understand this site's purpose due to sparse
+  content and missing structured data.
 
 Respond in this JSON format:
 {{
@@ -221,7 +238,7 @@ def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[
 
     pages = []
     tokens_used = 0
-    chars_per_token = 4  # rough estimate
+    chars_per_token = CHARS_PER_TOKEN
 
     # Priority URL patterns
     priority_patterns = ("/product", "/pricing", "/about", "/features")
@@ -229,9 +246,18 @@ def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[
     # Separate homepage from rest
     homepage_key = None
     for url in md_dict:
-        if url.rstrip("/") in ("", "/", "homepage"):
+        normalized = url.rstrip("/").lower()
+        # Match common homepage patterns
+        if normalized in ("", "/", "homepage"):
             homepage_key = url
             break
+        # Match full URLs with no meaningful path (e.g. "https://example.com")
+        if "://" in normalized:
+            after_scheme = normalized.split("://", 1)[-1]
+            path_segments = after_scheme.split("/")[1:]
+            if not any(path_segments):
+                homepage_key = url
+                break
 
     ordered_urls = []
     if homepage_key:
@@ -263,11 +289,19 @@ def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[
         if tokens_used + estimated_tokens > token_budget:
             remaining_budget = token_budget - tokens_used
             if remaining_budget > 500:
-                md = md[: remaining_budget * chars_per_token]
+                truncated = md[: remaining_budget * chars_per_token]
+                # Try to truncate at a sentence or paragraph boundary
+                for sep in ("\n\n", "\n", ". ", "! ", "? "):
+                    last = truncated.rfind(sep)
+                    if last > len(truncated) // 2:
+                        truncated = truncated[: last + len(sep)]
+                        break
+                md = truncated
             else:
                 continue
         page_title = (data.get("page") or {}).get("title") or url
         pages.append({"url": url, "title": page_title, "markdown": md})
-        tokens_used += estimated_tokens
+        # Use actual length (accounts for truncation)
+        tokens_used += len(md) // chars_per_token
 
     return pages

@@ -1,27 +1,27 @@
 """Score-to-rating label mapping per spec §4.3."""
 
 AAX_RATINGS: list[tuple[int, int, str]] = [
-    (0, 29, "Opaque"),
-    (30, 49, "Unclear"),
-    (50, 69, "Readable"),
-    (70, 84, "Clear"),
-    (85, 100, "Fluent"),
+    (0, 24, "Opaque"),
+    (25, 39, "Unclear"),
+    (40, 59, "Readable"),
+    (60, 79, "Clear"),
+    (80, 100, "Fluent"),
 ]
 
 AEO_RATINGS: list[tuple[int, int, str]] = [
-    (0, 20, "Poor"),
-    (21, 40, "Below Average"),
-    (41, 60, "Average"),
-    (61, 80, "Strong"),
-    (81, 100, "Excellent"),
+    (0, 25, "Poor"),
+    (26, 45, "Below Average"),
+    (46, 65, "Average"),
+    (66, 85, "Strong"),
+    (86, 100, "Excellent"),
 ]
 
 GEO_RATINGS: list[tuple[int, int, str]] = [
-    (0, 20, "Invisible"),
-    (21, 40, "Emerging"),
-    (41, 60, "Visible"),
-    (61, 80, "Authoritative"),
-    (81, 100, "Dominant"),
+    (0, 25, "Invisible"),
+    (26, 45, "Emerging"),
+    (46, 65, "Visible"),
+    (66, 85, "Authoritative"),
+    (86, 100, "Dominant"),
 ]
 
 
