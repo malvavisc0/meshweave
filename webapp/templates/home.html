@@ -97,6 +97,12 @@
     <p class="landing-hero-supporting">Run a free analysis to see exactly how AI systems read your site — what they
       understand, what they skip, and what your team should fix first.</p>
     <div class="landing-hero-form mt-3">
+      {% if notice == 'cooldown' %}
+      <div role="alert" class="hero-inline-notice hero-inline-notice--cooldown">
+        <span class="hero-inline-notice-kicker">Recent run</span>
+        <span>That site was analyzed recently. Wait a bit before starting another run.</span>
+      </div>
+      {% endif %}
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}
     </div>

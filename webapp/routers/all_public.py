@@ -87,6 +87,7 @@ async def view_all(
                 Crawl.visibility == "public",
                 Crawl.user_id.is_(None),
                 Crawl.listed,
+                Crawl.key.is_not(None),
             )
             if dom:
                 q = q.filter(Crawl.domain == dom)
@@ -267,6 +268,7 @@ async def view_all(
                 Crawl.visibility == "public",
                 Crawl.user_id.is_(None),
                 Crawl.listed,
+                Crawl.key.is_not(None),
             )
             if dom:
                 q = q.filter(Crawl.domain == dom)

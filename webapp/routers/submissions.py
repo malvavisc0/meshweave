@@ -26,6 +26,21 @@ from webapp.utils.visibility import resolve_page_visibility, resolve_site_visibi
 router = APIRouter()
 
 
+def _safe_return_target(return_to: str | None) -> str:
+    target = (return_to or "").strip()
+    if not target.startswith("/"):
+        return "/"
+    if target.startswith("//"):
+        return "/"
+    return target
+
+
+def _cooldown_redirect(return_to: str | None) -> str:
+    target = _safe_return_target(return_to)
+    sep = "&" if "?" in target else "?"
+    return f"{target}{sep}notice=cooldown"
+
+
 def _cleanup_old_crawls(session, domain: str, visibility: str) -> None:
     """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit."""
     max_history = int(os.getenv("MAX_HISTORY_PER_DOMAIN", "20"))
@@ -53,6 +68,7 @@ async def submit(
     url: str | None = Form(None),
     domain: str | None = Form(None),
     public: str | None = Form(None),  # checkbox presence => public (page mode only)
+    return_to: str | None = Form(None),
     # Site optional limits
     max_pages: str | None = Form(None),
     max_depth: str | None = Form(None),
@@ -439,7 +455,9 @@ async def submit(
                 if now - existing.updated_at < timedelta(
                     minutes=refresh_min_age_minutes
                 ):
-                    return RedirectResponse(url="/?notice=cooldown", status_code=303)
+                    return RedirectResponse(
+                        url=_cooldown_redirect(return_to), status_code=303
+                    )
 
                 # Retire old row and create new row for history tracking
                 existing.is_latest = False
@@ -525,7 +543,9 @@ async def submit(
                 if now - existing.updated_at < timedelta(
                     minutes=refresh_min_age_minutes
                 ):
-                    return RedirectResponse(url="/?notice=cooldown", status_code=303)
+                    return RedirectResponse(
+                        url=_cooldown_redirect(return_to), status_code=303
+                    )
 
                 # Guard against updating private rows owned by another user.
                 can_update = True

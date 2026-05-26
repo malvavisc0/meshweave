@@ -1,6 +1,8 @@
 <!-- Site Crawl Form Partial -->
 <form id="site-form" action="/submit" method="post" aria-labelledby="site-heading">
   {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+  <input type="hidden" name="return_to"
+    value="{{ request.url.path if request and request.url and request.url.path else '/' }}">
   <input type="hidden" name="mode" value="site">
   <input type="hidden" name="domain" id="site-domain">
   <input type="hidden" name="url" value="">

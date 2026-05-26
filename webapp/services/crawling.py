@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import UTC, datetime
 
@@ -6,6 +7,8 @@ from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
+
+logger = logging.getLogger(__name__)
 
 
 async def run_crawl_task(
@@ -99,7 +102,7 @@ async def run_crawl_task(
             score_json = score_crawl(crawl_id, payload=payload)
             payload["scores"] = score_json
         except Exception:
-            pass
+            logger.exception("score_crawl failed for crawl %s", crawl_id)
 
         with get_session() as s:
             row = s.get(Crawl, crawl_id)

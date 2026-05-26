@@ -184,6 +184,12 @@ MeshWeave uses **no shadows**. Depth is communicated through:
 - Radius: `--radius-sm` (3px)
 - Font: `--font-body-sm`, letter-spacing 0.04em
 
+### Status Badges
+- **Succeeded**: `--color-semantic-success` (#24A148) background, white text
+- **Failed**: `--color-semantic-error` (#DA1E28) background, white text
+- **Running**: `--color-surface-1` (#F4F4F4) background, `--color-ink-muted` text — neutral, NOT green
+- **Pending**: `--color-surface-2` (#E0E0E0) background, `--color-ink` text
+
 ### Score Bars
 - Track: `--color-surface-2`, height 8px, radius `--radius-xs` (3px)
 - Fill: `--color-primary`, radius inherits from track

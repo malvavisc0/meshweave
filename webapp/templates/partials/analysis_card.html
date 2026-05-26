@@ -4,12 +4,19 @@
   <h3 class="card-title">
     <span class="card-domain-initial" aria-hidden="true">{{ item.domain[0]|upper if item.domain else '' }}</span>
     {% set display_title = item.title or item.domain or item.canonical_url %}
+    {% if item.key %}
     <a href="/analysis/{{ item.key }}" class="ml-1" aria-label="Open analysis for {{ display_title }}"
       title="{{ display_title }}">
       {{ display_title }}
     </a>
+    {% else %}
+    <span class="ml-1">{{ display_title }}</span>
+    {% endif %}
     {% if item.is_new %}
     <span class="badge ml-1" title="Recently updated">NEW</span>
+    {% endif %}
+    {% if item.run_count is defined and item.run_count > 1 %}
+    <span class="badge ml-1" title="{{ item.run_count }} runs">{{ item.run_count }} Runs</span>
     {% endif %}
     {% if item.status == "failed" %}
     <span class="badge status-failed ml-1" title="Analysis failed">FAILED</span>
@@ -33,6 +40,9 @@
     {% endif %}
     {% if item.aax_score is not none %}
     · AAX: <strong class="score-value">{{ item.aax_score|int }}</strong>
+    {% endif %}
+    {% else %}
+    <span class="badge badge-status-partial">Partial</span>
     {% endif %}
     Updated
     <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">

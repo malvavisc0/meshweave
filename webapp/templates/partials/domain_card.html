@@ -28,6 +28,7 @@
             {% if site.latest_status == 'succeeded' or site.latest_status == 'failed' %}
             <form method="post" action="/submit" class="inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="return_to" value="/dashboard">
                 <input type="hidden" name="url" value="{{ site.latest_url }}">
                 <button type="submit" class="btn btn-sm">Re-analyze</button>
             </form>
@@ -138,18 +139,24 @@
             <span class="rec-priority-badge">{{ rec.priority|upper }}</span>
             <span class="rec-title">{{ rec.title }}</span>
         </div>
-        {% if rec.impact %}
-        <span class="rec-impact">{{ rec.impact }}</span>
-        {% endif %}
     </div>
     {% endfor %}
 </div>
 {% endif %}
 
-<!-- Run History (collapsible) -->
+<!-- Run History (prominent summary + details) -->
 {% if site.history|length > 1 %}
-<details class="site-card-history mt-2">
-    <summary>Run history ({{ site.history|length }} runs)</summary>
+{% set latest_run = site.history[-1] %}
+<section class="site-card-history-highlight mt-2" aria-label="Run history summary">
+    <div>
+        <p class="site-card-kicker">Progress tracking</p>
+        <p class="site-card-history-summary">{{ site.history|length }} runs recorded. Latest update {{
+            latest_run.date|relative_time }} compared with the prior run.</p>
+    </div>
+    <a href="/analysis/{{ latest_run.id }}" class="btn btn-sm">Open Latest Analysis</a>
+</section>
+<details class="site-card-history mt-2" open>
+    <summary>Run history</summary>
     <div class="run-history-list mt-1">
         {% for h in site.history | reverse | list %}
         <div class="run-history-row">
@@ -169,7 +176,12 @@
     </div>
 </details>
 {% else %}
-<p class="small mt-2">Re-analyze to start tracking score changes.</p>
+<div class="site-card-history-highlight mt-2">
+    <div>
+        <p class="site-card-kicker">Progress tracking</p>
+        <p class="site-card-history-summary">Re-analyze once more to unlock visible score history for this domain.</p>
+    </div>
+</div>
 {% endif %}
 
 {% elif site.latest_status == 'failed' %}

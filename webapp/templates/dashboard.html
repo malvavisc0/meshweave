@@ -17,7 +17,8 @@
     <!-- Notice -->
     {% if notice %}
     {% set ok_notices = ['cancelled','retried'] %}
-    <div role="alert" class="notice {% if notice in ok_notices %}notice-ok{% else %}notice-err{% endif %}">
+    <div role="alert"
+        class="{% if notice == 'cooldown' %}dash-cooldown-notice{% else %}notice {% if notice in ok_notices %}notice-ok{% else %}notice-err{% endif %}{% endif %}">
         {% if notice == 'cancelled' %}
         <strong>Cancelled.</strong> The running job{% if notice_job %} <code>{{ notice_job }}</code>{% endif %} was
         cancelled.
@@ -37,6 +38,13 @@
         <strong>Security check failed.</strong> Please try again and ensure your session is valid.
         {% elif notice == 'cancel_get' %}
         <strong>Action requires confirmation.</strong> Please use the Cancel button on the job page to cancel.
+        {% elif notice == 'cooldown' %}
+        <div class="dash-cooldown-notice-copy">
+            <p class="dash-cooldown-notice-kicker">Run cooldown</p>
+            <p class="dash-cooldown-notice-title">This domain was analyzed recently.</p>
+            <p class="dash-cooldown-notice-body">Wait a bit before starting another run so the next report reflects a
+                meaningful change.</p>
+        </div>
         {% else %}
         <strong>Notice.</strong> An action was performed.
         {% endif %}
@@ -152,11 +160,7 @@
     </div>
 
     <!-- Domain Filter Bar (§19.1) -->
-    <div class="filter-bar" role="toolbar" aria-label="Domain Filters">
-        <div class="filter-field">
-            <label for="dash-q" class="sr-only">Search domains</label>
-            <input id="dash-q" type="search" placeholder="Search domains…" aria-label="Search domains">
-        </div>
+    <div class="filter-bar filter-bar--dashboard" role="toolbar" aria-label="Domain Filters">
         <div class="filter-field">
             <label for="dash-status" class="sr-only">Filter by status</label>
             <select id="dash-status" aria-label="Filter by status">
@@ -167,13 +171,18 @@
                 <option value="pending">Pending</option>
             </select>
         </div>
-        <span class="small" id="dash-count" role="status" aria-live="polite"></span>
+        <span class="small dash-count" id="dash-count" role="status" aria-live="polite"></span>
     </div>
 
     <!-- Tracked Domains -->
-    <section aria-label="Tracked domains">
-        <h2 class="dash-section-title">Tracked domains</h2>
-        <div id="sites-list">
+    <section aria-label="Tracked domains" class="dash-domains-section">
+        <div class="dash-section-header">
+            <div>
+                <p class="dash-section-kicker">Portfolio tracking</p>
+                <h2 class="dash-section-title">Tracked domains</h2>
+            </div>
+        </div>
+        <div id="sites-list" class="sites-grid">
             {% for site in sites %}
             {% include "partials/domain_card.html" %}
             {% endfor %}

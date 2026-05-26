@@ -1,5 +1,6 @@
 """Site crawl background task — thin wrapper around meshweave.core.crawl()."""
 
+import logging
 import os
 import time
 from datetime import UTC, datetime
@@ -12,6 +13,8 @@ from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
+
+logger = logging.getLogger(__name__)
 
 
 def _int_env(name: str, default: int) -> int:
@@ -258,7 +261,7 @@ def _finish_task(
             score_json = score_crawl(crawl_id, payload=payload)
             payload["scores"] = score_json
         except Exception:
-            pass
+            logger.exception("score_crawl failed for crawl %s", crawl_id)
 
     try:
         with get_session() as s:

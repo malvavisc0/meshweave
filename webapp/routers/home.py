@@ -76,7 +76,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
     rows: list[Crawl] = (
         db.query(Crawl)
         .options(joinedload(Crawl.score_snapshot))
-        .filter(Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed)
+        .filter(Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed, Crawl.key.is_not(None))
         .order_by(
             case(
                 (Crawl.status == "succeeded", 0),
@@ -113,6 +113,14 @@ async def home(request: Request, db: Session = Depends(get_db)):
             except Exception:
                 email_counts_map[r.id] = 0
                 page_counts_map[r.id] = 0
+
+    # Count runs per domain for "X Runs" badge
+    from collections import Counter
+
+    domain_run_counts: Counter[str] = Counter()
+    for r in rows:
+        if r.domain:
+            domain_run_counts[r.domain] += 1
 
     # Build item payloads
     items = []
@@ -205,6 +213,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 "updated_relative": updated_relative,
                 "is_new": bool(is_new),
                 "summary_snippet": (summary_snippet if bool(r.crawl_params) else ""),
+                "run_count": domain_run_counts.get(r.domain, 1),
                 # Back-compat fields (legacy templates)
                 "updated_at": updated_iso,
             }
@@ -231,13 +240,27 @@ async def home(request: Request, db: Session = Depends(get_db)):
         ) or 0
 
         # Compute community metrics from payload_json
+        # Deduplicate by domain: only count pages from the latest
+        # succeeded run per domain to avoid double-counting
         pages_total = 0
         public_crawls = (
-            db.query(Crawl.payload_json, Crawl.crawl_params)
+            db.query(
+                Crawl.domain,
+                Crawl.payload_json,
+                Crawl.crawl_params,
+                Crawl.updated_at,
+            )
             .filter(Crawl.visibility == "public", Crawl.status == "succeeded")
             .all()
         )
-        for pj, cp in public_crawls:
+        # Group by domain, keep only the latest per domain
+        latest_by_domain: dict[str, tuple] = {}
+        for dom, pj, cp, ua in public_crawls:
+            if dom not in latest_by_domain or (
+                ua and ua > (latest_by_domain[dom][2] or datetime.min)
+            ):
+                latest_by_domain[dom] = (pj, cp, ua)
+        for pj, cp, _ua in latest_by_domain.values():
             try:
                 p = (
                     pj
@@ -246,7 +269,8 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 )
                 if not isinstance(p, dict):
                     continue
-                # Pages count: site crawls have a "pages" array, page crawls evaluate 1 page
+                # Pages count: site crawls have a "pages" array,
+                # page crawls evaluate 1 page
                 if cp:  # site crawl
                     pages_list = p.get("pages") or []
                     if isinstance(pages_list, list):
@@ -323,6 +347,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
             "community_metrics": community_metrics,
             "csrf_token": csrf_token,
             "login_error": True if request.query_params.get("error") else False,
+            "notice": request.query_params.get("notice") or None,
             # Submission banner
             "submitted_id": submitted_id,
             "submitted_status_url": submitted_status_url,
