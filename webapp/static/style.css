@@ -962,15 +962,159 @@ label {
   padding: var(--space-section) 0 var(--space-xl);
 }
 
-/* Hero background — subtle dot grid pattern */
+/* Hero background — floating geometric constellation (unique paths + pulse/glow) */
+@keyframes drift-1 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(50px, -40px);
+  }
+
+  66% {
+    transform: translate(-30px, 20px);
+  }
+}
+
+@keyframes drift-2 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(-35px, -45px);
+  }
+
+  66% {
+    transform: translate(25px, 30px);
+  }
+}
+
+@keyframes drift-3 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(40px, 35px);
+  }
+
+  66% {
+    transform: translate(-45px, -15px);
+  }
+}
+
+@keyframes drift-4 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(-25px, 40px);
+  }
+
+  66% {
+    transform: translate(35px, -25px);
+  }
+}
+
+@keyframes node-pulse {
+
+  0%,
+  100% {
+    opacity: 0.08;
+  }
+
+  50% {
+    opacity: 0.2;
+  }
+}
+
 .landing-hero {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
-  background-size: 32px 32px;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-inverse-canvas);
+  z-index: 0;
+}
+
+.landing-hero .container {
+  position: relative;
+  z-index: 1;
 }
 
 .landing-hero::before,
 .landing-hero::after {
   display: none;
+}
+
+/* Constellation nodes (dots) */
+.hex-float {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  z-index: 0;
+  animation: node-pulse 6s ease-in-out infinite;
+}
+
+.hex-float--1 {
+  width: 8px;
+  height: 8px;
+  top: 20%;
+  left: 15%;
+  animation: node-pulse 6s ease-in-out infinite, drift-1 22s ease-in-out infinite;
+  animation-delay: 0s, 0s;
+  box-shadow: 0 0 12px 3px rgba(0, 163, 108, 0.15);
+}
+
+.hex-float--2 {
+  width: 6px;
+  height: 6px;
+  top: 45%;
+  left: 55%;
+  animation: node-pulse 8s ease-in-out infinite, drift-2 26s ease-in-out infinite;
+  animation-delay: -2s, -5s;
+  box-shadow: 0 0 8px 2px rgba(0, 163, 108, 0.1);
+}
+
+.hex-float--3 {
+  width: 10px;
+  height: 10px;
+  top: 65%;
+  left: 70%;
+  animation: node-pulse 7s ease-in-out infinite, drift-3 24s ease-in-out infinite;
+  animation-delay: -4s, -10s;
+  box-shadow: 0 0 16px 4px rgba(0, 163, 108, 0.12);
+}
+
+.hex-float--4 {
+  width: 5px;
+  height: 5px;
+  top: 75%;
+  left: 30%;
+  animation: node-pulse 9s ease-in-out infinite, drift-4 28s ease-in-out infinite;
+  animation-delay: -6s, -15s;
+  box-shadow: 0 0 6px 2px rgba(0, 163, 108, 0.08);
+}
+
+/* Constellation connection lines */
+.landing-hero {
+  background-image:
+    linear-gradient(15deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(-15deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(35deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(-35deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 200px 200px, 200px 200px, 200px 200px, 200px 200px;
+  background-position: 0 0, 50px 100px, 100px 50px, 150px 150px;
 }
 
 
@@ -2341,6 +2485,31 @@ p.card-meta {
 
   .landing-hero {
     padding: var(--space-xxl) 0 var(--space-lg);
+  }
+
+  .hex-float {
+    opacity: 0.06 !important;
+    box-shadow: none !important;
+  }
+
+  .hex-float--1 {
+    width: 5px;
+    height: 5px;
+  }
+
+  .hex-float--2 {
+    width: 4px;
+    height: 4px;
+  }
+
+  .hex-float--3 {
+    width: 6px;
+    height: 6px;
+  }
+
+  .hex-float--4 {
+    width: 3px;
+    height: 3px;
   }
 
   .landing-hero-compact {
