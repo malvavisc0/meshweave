@@ -1039,6 +1039,21 @@ label {
   }
 }
 
+@keyframes hero-grid-drift {
+
+  0% {
+    background-position: 0 0, 50px 100px, 100px 50px, 150px 150px;
+  }
+
+  50% {
+    background-position: 24px -18px, 76px 118px, 126px 28px, 174px 170px;
+  }
+
+  100% {
+    background-position: 0 0, 50px 100px, 100px 50px, 150px 150px;
+  }
+}
+
 .landing-hero {
   position: relative;
   overflow: hidden;
@@ -1056,66 +1071,16 @@ label {
   display: none;
 }
 
-/* Constellation nodes (dots) */
-.hex-float {
+/* Canvas particle network */
+.hero-particle-canvas {
   position: absolute;
-  pointer-events: none;
-  border-radius: 50%;
-  background: var(--color-primary);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   z-index: 0;
-  animation: node-pulse 6s ease-in-out infinite;
 }
 
-.hex-float--1 {
-  width: 8px;
-  height: 8px;
-  top: 20%;
-  left: 15%;
-  animation: node-pulse 6s ease-in-out infinite, drift-1 22s ease-in-out infinite;
-  animation-delay: 0s, 0s;
-  box-shadow: 0 0 12px 3px rgba(0, 163, 108, 0.15);
-}
-
-.hex-float--2 {
-  width: 6px;
-  height: 6px;
-  top: 45%;
-  left: 55%;
-  animation: node-pulse 8s ease-in-out infinite, drift-2 26s ease-in-out infinite;
-  animation-delay: -2s, -5s;
-  box-shadow: 0 0 8px 2px rgba(0, 163, 108, 0.1);
-}
-
-.hex-float--3 {
-  width: 10px;
-  height: 10px;
-  top: 65%;
-  left: 70%;
-  animation: node-pulse 7s ease-in-out infinite, drift-3 24s ease-in-out infinite;
-  animation-delay: -4s, -10s;
-  box-shadow: 0 0 16px 4px rgba(0, 163, 108, 0.12);
-}
-
-.hex-float--4 {
-  width: 5px;
-  height: 5px;
-  top: 75%;
-  left: 30%;
-  animation: node-pulse 9s ease-in-out infinite, drift-4 28s ease-in-out infinite;
-  animation-delay: -6s, -15s;
-  box-shadow: 0 0 6px 2px rgba(0, 163, 108, 0.08);
-}
-
-/* Constellation connection lines */
-.landing-hero {
-  background-image:
-    linear-gradient(15deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(-15deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(35deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-    linear-gradient(-35deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-  background-size: 200px 200px, 200px 200px, 200px 200px, 200px 200px;
-  background-position: 0 0, 50px 100px, 100px 50px, 150px 150px;
-}
 
 
 .landing-hero-title {
@@ -1445,42 +1410,50 @@ label {
   font: var(--font-body);
 }
 
-/* Outcome list — vertical, left-aligned, terminal-style */
+/* Outcome list */
 .outcome-list {
-  max-width: 640px;
-  margin: var(--space-xl) auto 0;
+  max-width: 920px;
+  margin: var(--space-2xl) auto 0;
   border-top: 1px solid var(--color-hairline);
-  padding-top: var(--space-lg);
+  padding-top: var(--space-xl);
 }
 
-.outcome-list-label {
-  font: var(--font-label);
+.outcome-list-header {
+  max-width: 720px;
+  margin-bottom: var(--space-lg);
+}
+
+.outcome-list-header h3 {
+  font: var(--font-subhead);
+}
+
+.outcome-list-header p {
+  color: var(--color-ink-muted);
+  font: var(--font-body);
+}
+
+.outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.outcome-card {
+  padding: var(--space-lg);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-subtle);
+}
+
+.outcome-card h4 {
+  font: var(--font-subhead);
   color: var(--color-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  display: block;
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-xs);
 }
 
-.outcome-list ul {
-  list-style: none;
-  padding: 0;
-}
-
-.outcome-list li {
+.outcome-card p {
   font: var(--font-body);
   color: var(--color-ink-muted);
-  padding: var(--space-xs) 0;
-}
-
-.outcome-list li::before {
-  content: "→ ";
-  color: var(--color-primary);
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-}
-
-.outcome-list li strong {
-  color: var(--color-ink);
 }
 
 /* Card list (used by recent analyses) */
