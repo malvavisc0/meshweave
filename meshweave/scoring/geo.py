@@ -146,11 +146,7 @@ def score_eeat(payload: dict) -> dict:
 
     pts = 0
     lower_types = {t.lower() for t in schema_types}
-    if (
-        pages_with_org > 0
-        or "organization" in lower_types
-        or "org" in lower_types
-    ):
+    if pages_with_org > 0 or "organization" in lower_types or "org" in lower_types:
         pts += 15
     if has_author:
         pts += 15

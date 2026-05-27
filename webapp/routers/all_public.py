@@ -16,6 +16,7 @@ from webapp.utils.url import _abs_url
 
 router = APIRouter()
 
+
 @router.get("/browse", response_class=HTMLResponse)
 async def view_all(
     request: Request,

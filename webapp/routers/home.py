@@ -21,41 +21,39 @@ router = APIRouter()
 
 @router.get("/.well-known/llms.txt", response_class=PlainTextResponse)
 async def llms_txt(request: Request):
-    base = _abs_url(request, "")
-    return (
-        f"Site: {base}\n"
-        "Product: MeshWeave\n"
-        "Summary: AI visibility risk analysis for citation, discovery, and agent trust.\n"
-        "Primary actions: Run an analysis, review recommendations, contact an expert.\n"
-        f"Sitemap: {base}/sitemap.xml\n"
-        f"Full: {base}/.well-known/llms-full.txt\n"
+    from pathlib import Path
+
+    static_path = (
+        Path(__file__).resolve().parent.parent / "static" / ".well-known" / "llms.txt"
     )
+    try:
+        return static_path.read_text()
+    except FileNotFoundError:
+        base = _abs_url(request, "")
+        return (
+            f"Site: {base}\n"
+            "Product: MeshWeave\n"
+            "Summary: AI visibility risk analysis for citation, discovery, and agent trust.\n"
+        )
 
 
-@router.get("/.well-known/llms-full.txt", response_class=PlainTextResponse)
+@router.get(
+    "/.well-known/llms-full.txt",
+    response_class=PlainTextResponse,
+)
 async def llms_full_txt(request: Request):
-    base = _abs_url(request, "")
-    return (
-        "# MeshWeave\n\n"
-        f"Base URL: {base}\n\n"
-        "MeshWeave audits how AI systems crawl, understand, and cite websites. "
-        "It identifies technical weaknesses that limit visibility, citation confidence, "
-        "generative discovery, and AI agent trust.\n\n"
-        "## Key pages\n"
-        f"- Homepage: {base}/\n"
-        f"- Browse analyses: {base}/browse\n"
-        f"- Products: {base}/products\n"
-        f"- Methodology: {base}/methodology\n"
-        f"- Privacy: {base}/privacy\n"
-        f"- Terms: {base}/terms\n\n"
-        "## Core capabilities\n"
-        "- AI visibility risk analysis\n"
-        "- Citation-readiness diagnostics\n"
-        "- Entity consistency and crawl-access auditing\n"
-        "- Prioritized remediation roadmap\n\n"
-        "## Contact\n"
-        f"- Email: {os.getenv('FOOTER_CONTACT_EMAIL', 'hello@meshweave.com').strip()}\n"
+    from pathlib import Path
+
+    static_path = (
+        Path(__file__).resolve().parent.parent
+        / "static"
+        / ".well-known"
+        / "llms-full.txt"
     )
+    try:
+        return static_path.read_text()
+    except FileNotFoundError:
+        return "# MeshWeave\n"
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -115,7 +113,12 @@ async def home(request: Request, db: Session = Depends(get_db)):
     rows: list[Crawl] = (
         db.query(Crawl)
         .options(joinedload(Crawl.score_snapshot))
-        .filter(Crawl.visibility == "public", Crawl.user_id.is_(None), Crawl.listed, Crawl.key.is_not(None))
+        .filter(
+            Crawl.visibility == "public",
+            Crawl.user_id.is_(None),
+            Crawl.listed,
+            Crawl.key.is_not(None),
+        )
         .order_by(
             case(
                 (Crawl.status == "succeeded", 0),

@@ -261,7 +261,7 @@
   /* ── Rotating hero headline ── */
   var headlines = [
     "Your site is visible to humans and invisible to AI buyers.",
-    "If AI can't quote you, you don't own the answer.",
+    "If AI cannot cite or recommend you, will you exist for the buyer of tomorrow?",
     "Tomorrow's buyer is an AI agent. It can't use your site.",
     "Competitors aren't better — they're just easier for AI to recommend.",
     "Your content is perfectly written and ignored by AI systems.",

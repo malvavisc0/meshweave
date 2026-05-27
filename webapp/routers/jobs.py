@@ -73,9 +73,7 @@ async def my_jobs(
         # Fetch ScoreSnapshots for these crawls
         crawl_ids = [r.id for r in rows_db]
         snapshots = (
-            s.query(ScoreSnapshot)
-            .filter(ScoreSnapshot.crawl_id.in_(crawl_ids))
-            .all()
+            s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id.in_(crawl_ids)).all()
         )
         snapshot_map = {ss.crawl_id: ss for ss in snapshots}
 
@@ -148,13 +146,15 @@ async def my_jobs(
             c_ss = snapshot_map.get(c.id)
             if c_ss and c_ss.score_json:
                 c_aax = c_ss.score_json.get("aax", {}).get("composite")
-            history.append({
-                "id": c.id,
-                "aeo": c.aeo_score,
-                "geo": c.geo_score,
-                "aax": c_aax,
-                "date": (c.updated_at or datetime.now(UTC)).isoformat(),
-            })
+            history.append(
+                {
+                    "id": c.id,
+                    "aeo": c.aeo_score,
+                    "geo": c.geo_score,
+                    "aax": c_aax,
+                    "date": (c.updated_at or datetime.now(UTC)).isoformat(),
+                }
+            )
 
         # Top recommendations from latest analysis
         recommendations = []
@@ -165,11 +165,13 @@ async def my_jobs(
                 key=lambda r: priority_order.get(r.get("priority", "").lower(), 99)
             )
             for rec in recs[:3]:
-                recommendations.append({
-                    "priority": rec.get("priority", "info"),
-                    "title": rec.get("title", ""),
-                    "impact": rec.get("impact", ""),
-                })
+                recommendations.append(
+                    {
+                        "priority": rec.get("priority", "info"),
+                        "title": rec.get("title", ""),
+                        "impact": rec.get("impact", ""),
+                    }
+                )
 
         # Build share URL based on visibility
         share_url = None
@@ -184,29 +186,31 @@ async def my_jobs(
         aeo_rating = latest.aeo_rating or _get_rating_label(latest.aeo_score)
         geo_rating = latest.geo_rating or _get_rating_label(latest.geo_score)
 
-        sites.append({
-            "domain": domain,
-            "latest_id": latest.id,
-            "latest_url": latest.canonical_url,
-            "latest_status": latest.status,
-            "latest_error": latest.error,
-            "updated_at": (latest.updated_at or datetime.now(UTC)).isoformat(),
-            "analysis_count": len(crawls),
-            "aeo_score": latest.aeo_score,
-            "geo_score": latest.geo_score,
-            "aax_score": aax_score,
-            "aeo_rating": aeo_rating,
-            "geo_rating": geo_rating,
-            "aax_rating": aax_rating,
-            "aeo_delta": aeo_delta,
-            "geo_delta": geo_delta,
-            "aax_delta": aax_delta,
-            "history": history,
-            "recommendations": recommendations,
-            "share_url": share_url,
-            "share_disabled": share_disabled,
-            "visibility": latest.visibility,
-        })
+        sites.append(
+            {
+                "domain": domain,
+                "latest_id": latest.id,
+                "latest_url": latest.canonical_url,
+                "latest_status": latest.status,
+                "latest_error": latest.error,
+                "updated_at": (latest.updated_at or datetime.now(UTC)).isoformat(),
+                "analysis_count": len(crawls),
+                "aeo_score": latest.aeo_score,
+                "geo_score": latest.geo_score,
+                "aax_score": aax_score,
+                "aeo_rating": aeo_rating,
+                "geo_rating": geo_rating,
+                "aax_rating": aax_rating,
+                "aeo_delta": aeo_delta,
+                "geo_delta": geo_delta,
+                "aax_delta": aax_delta,
+                "history": history,
+                "recommendations": recommendations,
+                "share_url": share_url,
+                "share_disabled": share_disabled,
+                "visibility": latest.visibility,
+            }
+        )
 
     # Sort sites by most recent analysis
     sites.sort(key=lambda s: s["updated_at"], reverse=True)
@@ -215,28 +219,21 @@ async def my_jobs(
     summary = {
         "domains_tracked": len(sites),
         "improved": sum(
-            1 for s in sites
-            if (s["aeo_delta"] or 0) > 0 or (s["geo_delta"] or 0) > 0
+            1 for s in sites if (s["aeo_delta"] or 0) > 0 or (s["geo_delta"] or 0) > 0
         ),
         "declined": sum(
-            1 for s in sites
-            if (s["aeo_delta"] or 0) < 0 or (s["geo_delta"] or 0) < 0
+            1 for s in sites if (s["aeo_delta"] or 0) < 0 or (s["geo_delta"] or 0) < 0
         ),
-        "need_baseline": sum(
-            1 for s in sites if s["analysis_count"] < 2
-        ),
-        "running": sum(
-            1 for s in sites if s["latest_status"] == "running"
-        ),
-        "failed": sum(
-            1 for s in sites if s["latest_status"] == "failed"
-        ),
+        "need_baseline": sum(1 for s in sites if s["analysis_count"] < 2),
+        "running": sum(1 for s in sites if s["latest_status"] == "running"),
+        "failed": sum(1 for s in sites if s["latest_status"] == "failed"),
     }
 
     # Compute attention list (ranked: decline > failed > no baseline)
     attention = sorted(
         [
-            s for s in sites
+            s
+            for s in sites
             if s["latest_status"] == "failed"
             or s["analysis_count"] < 2
             or (s["geo_delta"] is not None and s["geo_delta"] < -5)
@@ -251,7 +248,8 @@ async def my_jobs(
 
     # Build activity feed from items
     activity = [
-        i for i in items[:10]
+        i
+        for i in items[:10]
         if i["status"] in ("running", "pending", "failed", "succeeded")
     ][:5]
 
@@ -510,7 +508,7 @@ async def api_my_jobs(
         rows = qry.limit(limit + 1).all()
 
         # Fetch snapshots for score data
-        crawl_ids_api = [r.id for r in rows[:limit + 1]]
+        crawl_ids_api = [r.id for r in rows[: limit + 1]]
         snaps_api = (
             s.query(ScoreSnapshot)
             .filter(ScoreSnapshot.crawl_id.in_(crawl_ids_api))
@@ -531,9 +529,7 @@ async def api_my_jobs(
                     "canonical_url": r.canonical_url,
                     "visibility": r.visibility,
                     "status": r.status,
-                    "updated_at": (
-                        r.updated_at or datetime.now(UTC)
-                    ).isoformat(),
+                    "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
                     "aeo_score": r.aeo_score,
                     "geo_score": r.geo_score,
                     "aax_score": aax_score,

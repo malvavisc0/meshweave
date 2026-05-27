@@ -1,0 +1,37 @@
+# MeshWeave
+
+> AI visibility risk analysis for citation, discovery, and agent trust.
+
+MeshWeave audits how AI systems crawl, understand, and cite websites. It identifies structural weaknesses that limit visibility, citation confidence, generative discovery, and AI agent trust — then delivers a prioritized remediation roadmap.
+
+## Core Capabilities
+
+- AI visibility risk analysis across three lenses: AEO, GEO, AAX
+- Citation-readiness diagnostics (can AI quote your content?)
+- Generative discovery optimization (does AI recommend you?)
+- AI agent experience auditing (can agents navigate and act on your site?)
+- Entity consistency and crawl-access auditing
+- Prioritized, concrete remediation roadmap
+
+## Three Risk Lenses
+
+- **AEO (Answer Engine Optimization)**: Whether AI can extract clear, trustworthy answers from your content. Failure means your brand is not quoted when buyers ask questions.
+- **GEO (Generative Engine Optimization)**: Whether AI systems see sufficient authority, trust, and entity signals. Failure means your brand is overlooked in recommendations.
+- **AAX (AI Agent Experience)**: Whether AI agents can understand, navigate, and act on your site. Failure means agent-mediated buyers abandon before conversion.
+
+## Key Pages
+
+- Homepage: https://meshweave.com/
+- Browse analyses: https://meshweave.com/browse
+- Products: https://meshweave.com/products
+- Methodology: https://meshweave.com/methodology
+- Privacy: https://meshweave.com/privacy
+- Terms: https://meshweave.com/terms
+
+## Built For
+
+SEO & Content Teams · Product & Web Teams · Marketing & Growth Teams · Founders & Operators · Agencies & Consultants
+
+## Contact
+
+- Email: hello@meshweave.com

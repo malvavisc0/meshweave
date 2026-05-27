@@ -69,7 +69,9 @@ try:
 
     def _relative_time(dt):
         """Convert a datetime (or ISO string) to a relative time string like '12h ago'."""
-        from datetime import UTC as _UTC, datetime as _dt
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
+
         try:
             now = _dt.now(_UTC)
             # Handle ISO string inputs (e.g. from .isoformat() in templates)
