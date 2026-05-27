@@ -1,23 +1,21 @@
 # Product Overview — MeshWeave
 
-MeshWeave is an AI visibility audit product. It shows how well a website can be crawled, understood, cited, and acted on by answer engines, LLMs, and AI agents.
+MeshWeave is an AI visibility audit service. We show companies how well their website can be crawled, understood, cited, and acted on by answer engines, LLMs, and AI agents — then we tell them exactly what to fix first.
 
-The product is built around three diagnostic scores:
+Every audit is built around three diagnostic lenses:
 
 - **AEO** — Answer Engine Optimization
 - **GEO** — Generative Engine Optimization
 - **AAX** — AI Agent Experience
 
-Together, these scores help teams find the structural weaknesses that reduce AI discoverability, citation confidence, recommendation likelihood, and agent usability.
+Together, these lenses help teams find the structural weaknesses that reduce AI discoverability, citation confidence, recommendation likelihood, and agent usability.
 
-License: MIT
+## 1) Service Summary
 
-## 1) Product Summary
-
-- **Category:** AI visibility audit and scoring platform
-- **Core job:** Analyze how AI systems interpret a website and prioritize the highest-impact fixes
-- **Primary output:** A structured report showing where AI visibility breaks down across extraction, authority, and agent usability
-- **Primary users:**
+- **Category:** AI visibility audit service
+- **Core job:** Diagnose how AI systems interpret a website and deliver prioritized, expert-guided recommendations
+- **Primary deliverable:** A structured audit report showing where AI visibility breaks down across extraction, authority, and agent usability — with clear guidance on what to fix first
+- **Who we serve:**
   - Marketing and growth teams
   - SEO and content teams
   - Founders and operators
@@ -34,17 +32,17 @@ Traditional analytics and SEO tools do not answer the questions teams now care a
 - Which technical or content issues most reduce AI visibility?
 - What should we fix first to improve citation, recommendation, and discoverability?
 
-MeshWeave is designed to answer those questions directly.
+Most teams don't have the expertise or tooling to answer these questions on their own. MeshWeave provides the analysis, the framework, and the expert interpretation to answer them directly.
 
-## 3) What the Product Does
+## 3) How We Evaluate
 
-MeshWeave analyzes a website and produces three diagnostic views into AI visibility risk.
+MeshWeave analyzes a website across three diagnostic lenses, each measuring a different dimension of AI visibility risk.
 
 ### A) AEO — Answer Engine Optimization
 
 AEO measures how well a site is structured for answer extraction by systems such as featured snippets, AI Overviews, and voice assistants.
 
-It evaluates signals including:
+We evaluate signals including:
 
 - Schema implementation
 - Content structure quality
@@ -53,7 +51,7 @@ It evaluates signals including:
 - Query match
 - Voice response readiness
 
-Business meaning:
+What it means for the business:
 
 - Low AEO suggests AI systems may struggle to extract concise, trusted answers
 - High AEO suggests content is easier for answer engines to parse and reuse
@@ -62,7 +60,7 @@ Business meaning:
 
 GEO measures how well a site is positioned to be cited or recommended by LLM-driven systems such as ChatGPT, Claude, and Perplexity.
 
-It evaluates signals including:
+We evaluate signals including:
 
 - Citation presence
 - Topical authority
@@ -71,7 +69,7 @@ It evaluates signals including:
 - Content depth
 - Entity consistency
 
-Business meaning:
+What it means for the business:
 
 - Low GEO suggests weak authority, weak machine-readable trust signals, or crawl limitations
 - High GEO suggests the site is more likely to be cited, referenced, or recommended in generative experiences
@@ -80,7 +78,7 @@ Business meaning:
 
 AAX measures how well an AI agent can understand, evaluate, and act on a website.
 
-It evaluates signals including:
+We evaluate signals including:
 
 - Homepage comprehension
 - Meta optimization
@@ -88,7 +86,7 @@ It evaluates signals including:
 - `llms.txt` availability
 - Email validation and contactability
 
-Business meaning:
+What it means for the business:
 
 - Low AAX suggests agents may struggle to understand the offer, locate the right information, or complete tasks reliably
 - High AAX suggests the site is easier for agents to interpret and use in agentic workflows
@@ -102,33 +100,47 @@ All three scores use a weighted composite model.
 - A calibration curve compresses inflated mid-range scores
 - Final outputs are capped at 100 and rounded
 
-This makes the scoring system usable in both automated scans and richer human-assisted evaluations.
+This allows our team to combine automated scanning with deeper manual evaluation where machine-only analysis is incomplete.
 
-## 5) What Users Get
+## 5) What Clients Get
 
-MeshWeave turns a scan into an actionable diagnostic report.
+Every MeshWeave audit delivers:
 
-Users get:
-
-- AEO, GEO, and AAX scores
-- Factor-level breakdowns behind each score
-- Ratings that translate raw scores into plain-language performance bands
+- AEO, GEO, and AAX scores with factor-level breakdowns
+- Plain-language ratings that translate raw scores into clear performance bands
 - Prioritized recommendations on what to fix first
 - A clear view of where AI visibility is strongest and weakest
+- Expert interpretation explaining what the findings mean for the business
 
-In practical terms, the product helps teams:
+In practical terms, our audits help teams:
 
-- Stop losing citations
-- Improve recommendation confidence
+- Stop losing citations to competitors
+- Improve recommendation confidence in generative interfaces
 - Increase AI discoverability
-- Reduce structural ambiguity
+- Reduce structural ambiguity that confuses AI systems
 - Prepare sites for AI-assisted commerce and agent interaction
 
-## 6) Product Positioning
+## 6) How the Engagement Works
 
-MeshWeave is not a traditional SEO platform.
+```mermaid
+flowchart TD
+  A[Free analysis request] --> B[MeshWeave analyzes AI visibility signals]
+  B --> C[Compute AEO]
+  B --> D[Compute GEO]
+  B --> E[Compute AAX]
+  C --> F[Generate factor breakdowns]
+  D --> F
+  E --> F
+  F --> G[Expert review and prioritized recommendations]
+  G --> H[Deliver audit report]
+  H --> I[Guided consultation on highest-impact fixes]
+```
 
-It is an AI visibility audit system focused on whether machines can:
+## 7) Positioning
+
+MeshWeave is not a traditional SEO tool or a self-service dashboard.
+
+It is an expert-led AI visibility audit service focused on whether machines can:
 
 - crawl the site
 - understand the brand and offering
@@ -137,56 +149,42 @@ It is an AI visibility audit system focused on whether machines can:
 - recommend the business in generative interfaces
 - complete actions as an AI agent
 
-This makes the product relevant for teams preparing for AI-native discovery, not only search ranking.
+We do the analysis. We interpret the results. We tell you what to fix and why it matters.
 
-## 7) Core Messaging
+## 8) Core Messaging
 
-The current product messaging is centered on AI visibility risk and diagnostic clarity.
+The service messaging is centered on AI visibility risk and expert-guided clarity.
 
 Core themes:
 
 - Your AI profile can become a business liability
 - AI systems may be misunderstanding or ignoring important parts of your site
-- Visibility problems can be measured
-- Structural weaknesses can be prioritized
+- Visibility problems can be measured — but interpreting them requires expertise
+- Structural weaknesses can be prioritized based on business impact
 - The goal is to move from invisible to cited
 
-The product promise is simple: show exactly how AI systems read a site, where they fail, and what to fix first.
+The service promise: we show exactly how AI systems read your site, where they fail, and what to fix first — so you don't have to figure it out alone.
 
-## 8) Ideal Use Cases
+## 9) Ideal Use Cases
 
 MeshWeave is well suited for:
 
-- Auditing a marketing site for AI discoverability
-- Diagnosing why a brand is not cited in AI-generated answers
-- Improving trust and authority signals for LLMs
+- Auditing a marketing site for AI discoverability before a launch or rebrand
+- Diagnosing why a brand is not being cited in AI-generated answers
+- Improving trust and authority signals for LLMs with expert guidance
 - Making a website easier for AI agents to navigate and use
-- Prioritizing technical and content work based on AI-readability impact
-- Sharing AI visibility assessments with internal teams or clients
-
-## 9) High-Level User Journey
-
-```mermaid
-flowchart TD
-  A[Submit website] --> B[Analyze AI visibility signals]
-  B --> C[Compute AEO]
-  B --> D[Compute GEO]
-  B --> E[Compute AAX]
-  C --> F[Generate factor breakdowns]
-  D --> F
-  E --> F
-  F --> G[Prioritize recommendations]
-  G --> H[User fixes highest-impact issues]
-```
+- Getting a prioritized action plan based on AI-readability impact
+- Providing clients or leadership with a clear AI visibility assessment and next steps
 
 ## 10) Differentiators
 
+- Expert-led service, not a self-service tool — we do the work and explain the results
 - Purpose-built for AI visibility rather than legacy SEO reporting
-- Separates answer extraction, generative authority, and agent usability into distinct lenses
-- Combines automated scoring with optional manual inputs where machine-only analysis is incomplete
-- Produces recommendations tied directly to score factors
-- Frames outputs in business terms such as citation risk, recommendation confidence, and agent readiness
+- Separates answer extraction, generative authority, and agent usability into distinct diagnostic lenses
+- Combines automated scoring with manual expert evaluation where machine-only analysis falls short
+- Delivers recommendations tied directly to score factors and business impact
+- Frames everything in business terms: citation risk, recommendation confidence, and agent readiness
 
 ## 11) Short Pitch
 
-MeshWeave helps teams understand how AI systems crawl, interpret, cite, and act on their websites—then shows them what to fix first to improve AI visibility.
+MeshWeave helps teams understand how AI systems crawl, interpret, cite, and act on their websites. We do the analysis, prioritize the fixes, and guide you through what matters most — so your site stops being invisible to the machines that are shaping how buyers discover and choose vendors.
