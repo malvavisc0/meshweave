@@ -320,6 +320,7 @@ nav.topnav {
   gap: var(--space-md);
   padding: 0 clamp(16px, 4vw, 32px);
   font: var(--font-body-sm);
+  font-size: 15px;
   letter-spacing: 0.16px;
 }
 
