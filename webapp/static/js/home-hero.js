@@ -260,11 +260,11 @@
 
   /* ── Rotating hero headline ── */
   var headlines = [
-    "Your competitors are optimizing for the future. You're optimizing for the past.",
-    "The gatekeeper isn't Google. It's the LLM. Are you built to be parsed?",
-    "SEO is legacy. AI doesn't care about your keywords; it cares about content.",
-    "Is your content machine-readable? Find out before the algorithm decides.",
-    "Visibility isn't measured by clicks. It's measured by machine comprehension."
+    "AI is already deciding who gets recommended. It's not picking you.",
+    "AI can't cite what it can't understand. How's your site looking?",
+    "Your brand exists in AI answers — or it doesn't. There's no page two.",
+    "The next query about your market won't hit Google. Will it find you?",
+    "AI agents are shopping for your buyers. They can't read your site."
   ];
 
   function initHeadlineRotation() {
