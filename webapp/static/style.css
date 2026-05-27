@@ -1305,7 +1305,8 @@ label {
 
 /* Scoring table (replaces score-framework cards) */
 .scoring-table {
-  max-width: 800px;
+  max-width: 1080px;
+  font-size: 1.05rem;
   margin-inline: auto;
 }
 
