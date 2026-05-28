@@ -133,94 +133,7 @@
   {% set _og_title_matches = og.title and pg.title and og.title == pg.title %}
   {% set _og_description_matches = og.description and pg.description and og.description == pg.description %}
 
-  <section class="panel mt-3 site-identity" role="region" aria-label="Site Identity">
-    <div class="site-identity-inner">
-      <h2>Site Identity</h2>
-      <div class="identity-header">
-        {% if og.image %}
-        <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
-        {% endif %}
-        <div class="identity-meta-primary">
-          <div class="identity-field">
-            <span class="identity-label">Title</span>
-            <span class="identity-value">{{ pg.title or '—' }}</span>
-          </div>
-          <div class="identity-field">
-            <span class="identity-label">Description</span>
-            <span class="identity-value">{{ pg.description or '—' }}</span>
-          </div>
-        </div>
-      </div>
-      <div class="identity-signals" role="list" aria-label="Identity summary">
-        <div class="identity-signal" role="listitem">
-          <span class="identity-signal-label">Entity</span>
-          <span
-            class="identity-signal-value {% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
-            {{ _entity_name or 'Not detected' }}
-          </span>
-        </div>
-        <div class="identity-signal" role="listitem">
-          <span class="identity-signal-label">Schema</span>
-          <span
-            class="identity-signal-value {% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
-            {{ _schema_pct }}%
-          </span>
-        </div>
-        <div class="identity-signal" role="listitem">
-          <span class="identity-signal-label">Canonical</span>
-          <span class="identity-signal-value {% if _canonical_present %}stat-ok{% else %}stat-err{% endif %}">
-            {% if _canonical_present %}Present{% else %}Missing{% endif %}
-          </span>
-        </div>
-      </div>
-      <ul class="identity-details">
-        <li>
-          <span>Canonical</span>
-          <span>
-            {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
-            {% else %}—{% endif %}
-          </span>
-        </li>
-        <li>
-          <span>Entity</span>
-          <span
-            class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
-            {{ _entity_name or '— (not detected)' }}
-          </span>
-        </li>
-        <li>
-          <span>Schema Coverage</span>
-          <span
-            class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
-            {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
-          </span>
-        </li>
-        <li>
-          <span>OG Title</span>
-          <span>{% if _og_title_matches %}Matches page title{% else %}{{ og.title or '—' }}{% endif %}</span>
-        </li>
-        <li>
-          <span>OG Description</span>
-          <span>{% if _og_description_matches %}Matches page description{% else %}{{ og.description or '—' }}{% endif
-            %}</span>
-        </li>
-        {% if _canonical_issues and _canonical_issues|length > 0 %}
-        <li>
-          <span>Canonical Issues</span>
-          <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
-        </li>
-        {% endif %}
-        {% if _og_missing and _og_missing|length > 0 %}
-        <li>
-          <span>Missing OG</span>
-          <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
-        </li>
-        {% endif %}
-      </ul>
-    </div>
-  </section>
-
-  <!-- Score Summary (AEO + GEO + AAX) -->
+  <!-- AI Visibility Risk Summary + Score Summary (AEO + GEO + AAX) -->
   {% if score_snapshot %}
   {% set _scores = [score_snapshot.aeo_score or 0, score_snapshot.geo_score or 0, score_snapshot.aax_score or 0] %}
   {% set _max_score = _scores | max %}
@@ -229,446 +142,612 @@
   score_snapshot.geo_score == _max_score and _max_score > 0 else 'AEO' %}
   {% set _weakest = 'AEO' if score_snapshot.aeo_score == _min_score else 'GEO' if score_snapshot.geo_score == _min_score
   else 'AAX' %}
-  <section class="panel mt-2 score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
-    <div class="score-gauges">
-      <div class="score-gauge">
-        <div class="score-gauge-header">AEO Score</div>
-        <div
-          class="gauge-value {{ score_snapshot.aeo_rating_class }}{% if score_snapshot.aeo_score == _max_score and _max_score > 0 %} score-primary{% endif %}">
-          {{ score_snapshot.aeo_score | round(1) }}
-        </div>
-        <div class="gauge-rating">{{ score_snapshot.aeo_rating }}</div>
-        <div class="gauge-context">Answer extraction and citation readiness</div>
+  {% set _risk_status = 'High risk' if _min_score < 40 else 'Moderate risk' if _min_score < 70 else 'Lower risk' %} {%
+    set _risk_headline='Digital invisibility is already showing up in recommendation signals.' if _weakest=='GEO'
+    else "The brand's best answers are not reaching AI-generated responses." if _weakest=='AEO'
+    else 'Agent-mediated buyers face friction before reaching a useful next step.' %} {% set
+    _risk_diagnosis='GEO is the exposure point. The brand does not yet send enough authority, entity, and trust signals to become an obvious recommended. Competitors with clearer machine-readable proof are easier to surface.'
+    if _weakest=='GEO'
+    else "AEO is the exposure point. The site's best answers are not structured clearly enough to be quoted with confidence, so expertise can disappear into generic summaries while competitors get cited by name."
+    if _weakest=='AEO'
+    else 'AAX is the exposure point. Agents face friction understanding the offer, finding the next step, or completing the task — which creates abandonment before a buyer reaches conversion.'
+    %} {% set _primary_exposure='Recommendation share' if _weakest=='GEO' else 'Citation share' if _weakest=='AEO'
+    else 'Agent completion' %} {% set _fix_priority='Entity + trust signals' if _weakest=='GEO'
+    else 'Structured answers' if _weakest=='AEO' else 'Navigation + action paths' %} <section
+    class="panel mt-3 risk-summary" role="region" aria-label="AI Visibility Risk Summary">
+    <div class="risk-summary-grid">
+      <div class="risk-summary-main">
+        <p class="risk-eyebrow">AI visibility risk</p>
+        <div class="risk-status">{{ _risk_status }}</div>
+        <h2 class="risk-headline">{{ _risk_headline }}</h2>
+        <p class="risk-summary-lede">{{ _risk_diagnosis }}</p>
       </div>
-      <div class="score-gauge">
-        <div class="score-gauge-header">GEO Score</div>
-        <div
-          class="gauge-value {{ score_snapshot.geo_rating_class }}{% if score_snapshot.geo_score == _max_score and _max_score > 0 %} score-primary{% endif %}">
-          {{ score_snapshot.geo_score | round(1) }}
+      <aside class="risk-diagnostics" aria-label="Risk diagnostics">
+        <div class="risk-diagnostic-chip">
+          <span>Weakest lens</span>
+          <strong>{{ _weakest }}</strong>
         </div>
-        <div class="gauge-rating">{{ score_snapshot.geo_rating }}</div>
-        <div class="gauge-context">Generative discovery and brand visibility</div>
-      </div>
-      <div class="score-gauge score-gauge-aax">
-        <div class="score-gauge-header">AAX Score</div>
-        {% if score_snapshot.aax_score is not none %}
-        <div
-          class="gauge-value {{ score_snapshot.aax_rating_class }}{% if score_snapshot.aax_score == _max_score and _max_score > 0 %} score-primary{% endif %}">
-          {{ score_snapshot.aax_score | round(1) }}
+        <div class="risk-diagnostic-chip">
+          <span>Primary exposure</span>
+          <strong>{{ _primary_exposure }}</strong>
         </div>
-        <div class="gauge-rating">{{ score_snapshot.aax_rating }}</div>
-        <div class="gauge-context">Agent usability and task completion</div>
-        {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
-        <div class="aax-summary-note">{{ score_snapshot.aax_analysis.summary }}</div>
-        {% endif %}
-        {% else %}
-        <div class="gauge-value">—</div>
-        <div class="gauge-rating">Not available</div>
-        {% endif %}
-      </div>
+        <div class="risk-diagnostic-chip">
+          <span>Fix priority</span>
+          <strong>{{ _fix_priority }}</strong>
+        </div>
+      </aside>
     </div>
-  </section>
-  {% endif %}
+    <p class="risk-method-note"><strong>Method:</strong> scored across citation, recommendation, and agent usability.
+      Fix
+      order is based on visibility risk, not vanity scores.</p>
+    </section>
 
-  <!-- Score Breakdown (3 columns: AEO, GEO, AAX) -->
-  {% if score_snapshot and score_snapshot.score_data %}
-  <section id="score-breakdown" class="panel mt-2 score-breakdown" role="region" aria-label="Score Breakdown">
-    <h2>Score Breakdown</h2>
-    <div class="breakdown-grid">
-      <!-- AEO Column -->
-      <div class="breakdown-column">
-        <h3 class="breakdown-col-header">AEO Factors</h3>
-        {% for factor in score_snapshot.score_data.aeo.factors.values() %}
-        <div class="factor-row">
-          <div class="factor-row-head">
-            <span class="factor-label">{{ factor.display_name }}</span>
-            {% if factor.score is not none %}
-            <span
-              class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-              {{ factor.score | round(1) }}
-            </span>
-            {% else %}
-            <span class="factor-score factor-score-missing">—</span>
-            {% endif %}
+    <section class="panel mt-3 score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
+      <div class="score-gauges">
+        <div class="score-gauge">
+          <div class="score-gauge-header">Can the site be quoted?</div>
+          <div class="gauge-value {{ score_snapshot.aeo_rating_class }}">{{ score_snapshot.aeo_score | round(1) }}</div>
+          <div class="gauge-pillar">AEO</div>
+          <div class="gauge-implication">
+            {% if score_snapshot.aeo_score < 40 %} Weak answer structure makes the brand's expertise harder to cite. {%
+              elif score_snapshot.aeo_score < 70 %} Some answers are extractable, but citation confidence is
+              inconsistent. Important expertise can still be skipped. {% else %} Strong content structure makes it
+              easier for the brand to appear in direct answers. {% endif %} </div>
           </div>
-          {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
-          <div class="factor-row-foot">
-            <div class="factor-bar">
-              <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+          <div class="score-gauge">
+            <div class="score-gauge-header">Will the brand be recommended?</div>
+            <div class="gauge-value {{ score_snapshot.geo_rating_class }}">{{ score_snapshot.geo_score | round(1) }}
+            </div>
+            <div class="gauge-pillar">GEO</div>
+            <div class="gauge-implication">
+              {% if score_snapshot.geo_score < 40 %} Trust and entity signals are too thin for the brand to be
+                recommended. {% elif score_snapshot.geo_score < 70 %} Some recommendation signals exist, but authority
+                and entity clarity are not strong enough to defend category visibility. {% else %} Strong signals
+                position this brand as a credible option in recommendation contexts. {% endif %} </div>
+            </div>
+            <div class="score-gauge">
+              <div class="score-gauge-header">Can agents complete the journey?</div>
+              {% if score_snapshot.aax_score is not none %}
+              <div class="gauge-value {{ score_snapshot.aax_rating_class }}">{{ score_snapshot.aax_score | round(1) }}
+              </div>
+              <div class="gauge-pillar">AAX</div>
+              <div class="gauge-implication">
+                {% if score_snapshot.aax_score < 40 %} Agents face serious friction understanding, navigating, or acting
+                  on this site. {% elif score_snapshot.aax_score < 70 %} Agents can use parts of this site, but gaps
+                  still create some friction. {% else %} Agents can understand and use this site reliably, but crawler
+                  guidance and conversion paths should still be protected. {% endif %} </div>
+                  {% else %}
+                  <div class="gauge-value">—</div>
+                  <div class="gauge-pillar">AAX</div>
+                  <div class="gauge-implication">Not available</div>
+                  {% endif %}
               </div>
             </div>
-            <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      <!-- GEO Column -->
-      <div class="breakdown-column">
-        <h3 class="breakdown-col-header">GEO Factors</h3>
-        {% for factor in score_snapshot.score_data.geo.factors.values() %}
-        <div class="factor-row">
-          <div class="factor-row-head">
-            <span class="factor-label">{{ factor.display_name }}</span>
-            {% if factor.score is not none %}
-            <span
-              class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-              {{ factor.score | round(1) }}
-            </span>
-            {% else %}
-            <span class="factor-score factor-score-missing">—</span>
-            {% endif %}
-          </div>
-          {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
-          <div class="factor-row-foot">
-            <div class="factor-bar">
-              <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
-              </div>
+    </section>
+    {% endif %}
+
+    <section class="panel mt-2 site-identity" role="region" aria-label="Machine-Readable Trust Signals">
+      <div class="site-identity-inner">
+        <h2>Machine-Readable Trust Signals</h2>
+        <p class="small identity-intro">These are the signals AI systems use to identify the brand, understand the
+          offer,
+          and decide whether the site is trustworthy enough to cite or recommend.</p>
+        <div class="identity-header">
+          {% if og.image %}
+          <img src="{{ og.image }}" alt="OG preview" class="identity-og-image" onerror="this.style.display='none'">
+          {% endif %}
+          <div class="identity-meta-primary">
+            <div class="identity-field">
+              <span class="identity-label">Title</span>
+              <span class="identity-value">{{ pg.title or '—' }}</span>
             </div>
-            <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      <!-- AAX Column -->
-      <div class="breakdown-column">
-        <h3 class="breakdown-col-header">AAX Factors</h3>
-        {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
-        {% for factor in score_snapshot.score_data.aax.factors.values() %}
-        <div class="factor-row">
-          <div class="factor-row-head">
-            <span class="factor-label">{{ factor.display_name }}</span>
-            {% if factor.score is not none %}
-            <span
-              class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-              {{ factor.score | round(1) }}
-            </span>
-            {% else %}
-            <span class="factor-score factor-score-missing">—</span>
-            {% endif %}
-          </div>
-          {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
-          <div class="factor-row-foot">
-            <div class="factor-bar">
-              <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
-              </div>
+            <div class="identity-field">
+              <span class="identity-label">Description</span>
+              <span class="identity-value">{{ pg.description or '—' }}</span>
             </div>
-            <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
           </div>
         </div>
-        {% endfor %}
-        {% else %}
-        <p class="small">No AAX factors available.</p>
-        {% endif %}
-      </div>
-    </div>
-  </section>
-  {% endif %}
-
-  <!-- AAX AI Agent Diagnostics -->
-  {% if score_snapshot and score_snapshot.aax_analysis %}
-  {% set aax = score_snapshot.aax_analysis %}
-  <section class="panel mt-2" role="region" aria-label="Agent Access Review">
-    <h2>Agent Access Review</h2>
-    <p class="small">Automated site review findings</p>
-
-    <!-- Brand Comprehension -->
-    {% if aax.homepage_comprehension %}
-    {% set hc = aax.homepage_comprehension %}
-    <div class="aax-crawler-card mt-3">
-      <h3 class="m0">Brand Comprehension</h3>
-      <p class="small mb-2">An AI agent identifies you as:</p>
-      {% if hc.brand or hc.product or hc.target_audience %}
-      <div class="aax-ai-quote">
-        {% if hc.brand %}{{ hc.brand }}{% else %}This company{% endif %}
-        {% if hc.product %} — {{ hc.product }}{% endif %}.
-        {% if hc.target_audience %} Target audience: {{ hc.target_audience }}.{% endif %}
-      </div>
-      {% endif %}
-
-      <div class="aax-check-grid">
-        <span class="aax-check {% if hc.brand %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          Brand clearly identified
-        </span>
-        <span class="aax-check {% if hc.target_audience %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          Audience detected
-        </span>
-        <span class="aax-check {% if hc.call_to_action %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          CTA found
-        </span>
-        <span
-          class="aax-check {% if hc.information_density in ['dense', 'adequate'] %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          Information Density: {{ hc.information_density or 'Unknown' }}
-        </span>
-      </div>
-
-      {% if hc.key_features and hc.key_features | length > 0 %}
-      <p class="small mt-2 mb-1">Key features the AI detected:</p>
-      <ul class="m0 pl-md">
-        {% for feature in hc.key_features %}
-        <li class="small">{{ feature }}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    <!-- Strengths / Weaknesses -->
-    {% if aax.content_delta %}
-    {% set cd = aax.content_delta %}
-    {% if (cd.strengths and cd.strengths | length > 0) or (cd.weaknesses and cd.weaknesses | length > 0) %}
-    <div class="aax-audit-grid">
-      <div class="aax-audit-column aax-audit-strengths">
-        <h4>Confirmed signals</h4>
-        {% if cd.strengths %}
-        {% for s in cd.strengths %}
-        <div class="aax-audit-item">{{ s }}</div>
-        {% endfor %}
-        {% else %}
-        <p class="small">No strengths identified</p>
-        {% endif %}
-      </div>
-      <div class="aax-audit-column aax-audit-weaknesses">
-        <h4>Missing or ambiguous signals</h4>
-        {% if cd.weaknesses %}
-        {% for w in cd.weaknesses %}
-        <div class="aax-audit-item">{{ w }}</div>
-        {% endfor %}
-        {% else %}
-        <p class="small">No gaps identified</p>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-    {% endif %}
-
-    <!-- Crawler Access (.well-known) -->
-    {% if aax.llms_txt %}
-    {% set llms = aax.llms_txt %}
-    <div class="aax-crawler-card mt-3">
-      <h3 class="m0">Crawler Access (.well-known)</h3>
-      {% set llms_txt_data = llms.llms_txt or {} %}
-      {% set llms_full_data = llms.llms_full_txt or {} %}
-      <div class="aax-crawler-row">
-        <span class="aax-crawler-label">llms.txt</span>
-        <span class="{% if llms_txt_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          {% if llms_txt_data.exists %}Active{% else %}Missing{% endif %}
-        </span>
-        <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }} bytes{% endif %}</span>
-      </div>
-      <div class="aax-crawler-row">
-        <span class="aax-crawler-label">llms-full.txt</span>
-        <span class="{% if llms_full_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-          {% if llms_full_data.exists %}Active{% else %}Missing{% endif %}
-        </span>
-        <span class="small">{% if llms_full_data.url %}URL: {{ llms_full_data.url }}{% endif %}</span>
-      </div>
-      {% if llms_txt_data.content %}
-      <div class="aax-crawler-preview">{{ llms_txt_data.content[:500] }}</div>
-      {% endif %}
-    </div>
-    {% endif %}
-  </section>
-  {% endif %}
-
-  <!-- Recommendations (grouped by pillar) -->
-  {% if score_snapshot and score_snapshot.recommendations %}
-  {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
-  <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
-    <div class="recommendations-header">
-      <div>
-        <h2>Recommendations</h2>
-        <p class="small recommendations-intro">Priority fixes to improve citation readiness, discoverability, and agent
-          usability.</p>
-      </div>
-    </div>
-    {% for pillar_key, pillar_label, pillar_score in [
-    ('aeo', 'AEO', score_snapshot.aeo_score),
-    ('geo', 'GEO', score_snapshot.geo_score),
-    ('aax', 'AAX', score_snapshot.aax_score)
-    ] %}
-    {% if rec_groups[pillar_key] | length > 0 %}
-    <div class="rec-group">
-      <div class="rec-group-header">
-        <div class="rec-group-heading">
-          <span class="rec-group-name">{{ pillar_label }} recommendations</span>
-          <span class="rec-group-count">{{ rec_groups[pillar_key] | length }} fix{{ 'es' if rec_groups[pillar_key] |
-            length != 1 else '' }}</span>
+        <div class="identity-signals" role="list" aria-label="Identity summary">
+          <div class="identity-signal" role="listitem">
+            <span class="identity-signal-label">Entity</span>
+            <span
+              class="identity-signal-value {% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
+              {{ _entity_name or 'Not detected' }}
+            </span>
+          </div>
+          <div class="identity-signal" role="listitem">
+            <span class="identity-signal-label">Schema</span>
+            <span
+              class="identity-signal-value {% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
+              {{ _pages_with_schema }}/{{ _total_pages }} pages
+            </span>
+          </div>
+          <div class="identity-signal" role="listitem">
+            <span class="identity-signal-label">Canonical</span>
+            <span class="identity-signal-value {% if _canonical_present %}stat-ok{% else %}stat-err{% endif %}">
+              {% if _canonical_present %}Present{% else %}Missing{% endif %}
+            </span>
+          </div>
         </div>
-        {% if pillar_score is not none %}
-        <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
-        {% endif %}
+        <ul class="identity-details">
+          <li>
+            <span>Canonical</span>
+            <span>
+              {% if pg.canonical %}<a href="{{ pg.canonical }}" target="_blank" rel="noopener">{{ pg.canonical }}</a>
+              {% else %}—{% endif %}
+            </span>
+          </li>
+          <li>
+            <span>Entity</span>
+            <span
+              class="{% if not _entity_name %}stat-err{% elif _sameas and _sameas|length > 0 %}stat-ok{% else %}stat-warn{% endif %}">
+              {{ _entity_name or '— (not detected)' }}
+            </span>
+          </li>
+          <li>
+            <span>Schema Coverage</span>
+            <span
+              class="{% if _schema_pct >= 50 %}stat-ok{% elif _schema_pct > 0 %}stat-warn{% else %}stat-err{% endif %}">
+              {{ _schema_pct }}% ({{ _pages_with_schema }}/{{ _total_pages }} pages)
+            </span>
+          </li>
+          <li>
+            <span>OG Title</span>
+            <span>{% if _og_title_matches %}Matches page title{% else %}{{ og.title or '—' }}{% endif %}</span>
+          </li>
+          <li>
+            <span>OG Description</span>
+            <span>{% if _og_description_matches %}Matches page description{% else %}{{ og.description or '—' }}{% endif
+              %}</span>
+          </li>
+          {% if _canonical_issues and _canonical_issues|length > 0 %}
+          <li>
+            <span>Canonical Issues</span>
+            <span class="stat-err">{{ _canonical_issues|length }} issue{{ 's' if _canonical_issues|length != 1 }}</span>
+          </li>
+          {% endif %}
+          {% if _og_missing and _og_missing|length > 0 %}
+          <li>
+            <span>Missing OG</span>
+            <span class="stat-warn">{{ _og_missing|join(', ') }}</span>
+          </li>
+          {% endif %}
+        </ul>
       </div>
-      {% for rec in rec_groups[pillar_key] %}
-      <div class="rec-item rec-priority-{{ rec.priority }}">
-        <div class="rec-header">
-          <span class="rec-priority-badge">
-            {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+    </section>
+
+    <!-- Score Breakdown (3 columns: AEO, GEO, AAX) -->
+    {% if score_snapshot and score_snapshot.score_data %}
+    <section id="score-breakdown" class="panel mt-2 score-breakdown" role="region"
+      aria-label="The Three Failure Points Behind AI Invisibility">
+      <h2>The Three Failure Points Behind AI Invisibility</h2>
+      <p class="small score-breakdown-intro">These scores are diagnostic lenses. They show where AI systems cannot
+        quote,
+        recommend, or use this site reliably — and which weaknesses create the greatest visibility risk.</p>
+      <div class="breakdown-grid">
+        <!-- AEO Column -->
+        <div class="breakdown-column">
+          <h3 class="breakdown-col-header">AEO — Can AI quote this site?</h3>
+          {% for factor in score_snapshot.score_data.aeo.factors.values() %}
+          <div class="factor-row">
+            <div class="factor-row-head">
+              <span class="factor-label">{{ factor.display_name }}</span>
+              {% if factor.score is not none %}
+              <span
+                class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+                {{ factor.score | round(1) }}
+              </span>
+              {% else %}
+              <span class="factor-score factor-score-missing">—</span>
+              {% endif %}
+            </div>
+            {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif
+            %}
+            <div class="factor-row-foot">
+              <div class="factor-bar">
+                <div class="factor-bar-fill"
+                  style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+                </div>
+              </div>
+              <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <!-- GEO Column -->
+        <div class="breakdown-column">
+          <h3 class="breakdown-col-header">GEO — Will AI recommend this brand?</h3>
+          {% for factor in score_snapshot.score_data.geo.factors.values() %}
+          <div class="factor-row">
+            <div class="factor-row-head">
+              <span class="factor-label">{{ factor.display_name }}</span>
+              {% if factor.score is not none %}
+              <span
+                class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+                {{ factor.score | round(1) }}
+              </span>
+              {% else %}
+              <span class="factor-score factor-score-missing">—</span>
+              {% endif %}
+            </div>
+            {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif
+            %}
+            <div class="factor-row-foot">
+              <div class="factor-bar">
+                <div class="factor-bar-fill"
+                  style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+                </div>
+              </div>
+              <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <!-- AAX Column -->
+        <div class="breakdown-column">
+          <h3 class="breakdown-col-header">AAX — Can AI agents use this site?</h3>
+          {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
+          <div class="aax-summary-note">
+            <span class="aax-summary-label">Agent readout</span>
+            <span>{{ score_snapshot.aax_analysis.summary }}</span>
+          </div>
+          {% endif %}
+          {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
+          {% for factor in score_snapshot.score_data.aax.factors.values() %}
+          <div class="factor-row">
+            <div class="factor-row-head">
+              <span class="factor-label">{{ factor.display_name }}</span>
+              {% if factor.score is not none %}
+              <span
+                class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+                {{ factor.score | round(1) }}
+              </span>
+              {% else %}
+              <span class="factor-score factor-score-missing">—</span>
+              {% endif %}
+            </div>
+            {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif
+            %}
+            <div class="factor-row-foot">
+              <div class="factor-bar">
+                <div class="factor-bar-fill"
+                  style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};">
+                </div>
+              </div>
+              <span class="factor-weight">{{ (factor.weight * 100) | round(0) }}%</span>
+            </div>
+          </div>
+          {% endfor %}
+          {% else %}
+          <p class="small">No AAX factors available.</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- AAX AI Agent Diagnostics -->
+    {% if score_snapshot and score_snapshot.aax_analysis %}
+    {% set aax = score_snapshot.aax_analysis %}
+    <section class="panel mt-2" role="region" aria-label="AI Agent Usability Review">
+      <h2>AI Agent Usability Review</h2>
+      <p class="small">Tomorrow’s buyer can be an AI agent. This section shows whether an agent can understand the
+        offer, detect the next step, and avoid abandoning the task.</p>
+
+      <!-- Brand Comprehension -->
+      {% if aax.homepage_comprehension %}
+      {% set hc = aax.homepage_comprehension %}
+      <div class="aax-crawler-card mt-3">
+        <h3 class="m0">What the Agent Understands</h3>
+        <p class="small mb-2">An AI agent identifies you as:</p>
+        {% if hc.brand or hc.product or hc.target_audience %}
+        <div class="aax-ai-quote">
+          {% if hc.brand %}{{ hc.brand }}{% else %}This company{% endif %}
+          {% if hc.product %} — {{ hc.product }}{% endif %}.
+          {% if hc.target_audience %} Target audience: {{ hc.target_audience }}.{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="aax-check-grid">
+          <span class="aax-check {% if hc.brand %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+            Brand clearly identified
           </span>
-          <div class="rec-copy">
-            <span class="rec-title">{{ rec.title }}</span>
-            <div class="rec-detail">{{ rec.detail }}</div>
-          </div>
-          <span class="rec-impact">{{ rec.impact }}</span>
+          <span class="aax-check {% if hc.target_audience %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+            Audience detected
+          </span>
+          <span class="aax-check {% if hc.call_to_action %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+            CTA found
+          </span>
+          <span
+            class="aax-check {% if hc.information_density in ['dense', 'adequate'] %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+            Information Density: {{ hc.information_density or 'Unknown' }}
+          </span>
+        </div>
+
+        {% if hc.key_features and hc.key_features | length > 0 %}
+        <p class="small mt-2 mb-1">Key features the AI detected:</p>
+        <ul class="m0 pl-md">
+          {% for feature in hc.key_features %}
+          <li class="small">{{ feature }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Strengths / Weaknesses -->
+      {% if aax.content_delta %}
+      {% set cd = aax.content_delta %}
+      {% if (cd.strengths and cd.strengths | length > 0) or (cd.weaknesses and cd.weaknesses | length > 0) %}
+      <div class="aax-audit-grid">
+        <div class="aax-audit-column aax-audit-strengths">
+          <h4>Signals AI can trust</h4>
+          {% if cd.strengths %}
+          {% for s in cd.strengths %}
+          <div class="aax-audit-item">{{ s }}</div>
+          {% endfor %}
+          {% else %}
+          <p class="small">No strengths identified</p>
+          {% endif %}
+        </div>
+        <div class="aax-audit-column aax-audit-weaknesses">
+          <h4>Signals causing agent friction</h4>
+          {% if cd.weaknesses %}
+          {% for w in cd.weaknesses %}
+          <div class="aax-audit-item">{{ w }}</div>
+          {% endfor %}
+          {% else %}
+          <p class="small">No gaps identified</p>
+          {% endif %}
         </div>
       </div>
+      {% endif %}
+      {% endif %}
+
+      <!-- Crawler Access (.well-known) -->
+      {% if aax.llms_txt %}
+      {% set llms = aax.llms_txt %}
+      <div class="aax-crawler-card mt-3">
+        <h3 class="m0">Crawler Guidance for AI Agents</h3>
+        {% set llms_txt_data = llms.llms_txt or {} %}
+        {% set llms_full_data = llms.llms_full_txt or {} %}
+        <div class="aax-crawler-row">
+          <span class="aax-crawler-label">llms.txt</span>
+          <span class="{% if llms_txt_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+            {% if llms_txt_data.exists %}Active{% else %}Missing{% endif %}
+          </span>
+          <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }} bytes{% endif %}</span>
+        </div>
+        <div class="aax-crawler-row">
+          <span class="aax-crawler-label">llms-full.txt</span>
+          <span class="{% if llms_full_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
+            {% if llms_full_data.exists %}Active{% else %}Missing{% endif %}
+          </span>
+          <span class="small">{% if llms_full_data.url %}URL: {{ llms_full_data.url }}{% endif %}</span>
+        </div>
+        {% if llms_txt_data.content %}
+        <div class="aax-crawler-preview">{{ llms_txt_data.content[:500] }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- Recommendations (grouped by pillar) -->
+    {% if score_snapshot and score_snapshot.recommendations %}
+    {% set rec_groups = group_recommendations_by_pillar(score_snapshot.recommendations) %}
+    <section class="panel mt-2 recommendations" role="region" aria-label="Recommendations">
+      <div class="recommendations-header">
+        <div>
+          <h2>Priority Fixes to Reduce AI Invisibility</h2>
+          <p class="small recommendations-intro">Start here. These fixes are ranked by their ability to reduce the
+            specific ways AI systems fail to quote, recommend, or use this site. Each fix protects visibility before
+            more
+            demand leaks to competitors.</p>
+        </div>
+      </div>
+      {% for pillar_key, pillar_label, pillar_score in [
+      ('aeo', 'AEO quote-risk fixes', score_snapshot.aeo_score),
+      ('geo', 'GEO recommendation-risk fixes', score_snapshot.geo_score),
+      ('aax', 'AAX agent-usability fixes', score_snapshot.aax_score)
+      ] %}
+      {% if rec_groups[pillar_key] | length > 0 %}
+      <div class="rec-group">
+        <div class="rec-group-header">
+          <div class="rec-group-heading">
+            <span class="rec-group-name">{{ pillar_label }} recommendations</span>
+            <span class="rec-group-count">{{ rec_groups[pillar_key] | length }} fix{{ 'es' if rec_groups[pillar_key] |
+              length != 1 else '' }}</span>
+          </div>
+          {% if pillar_score is not none %}
+          <span class="rec-group-score">{{ pillar_score | round(1) }}/100</span>
+          {% endif %}
+        </div>
+        <p class="small rec-group-risk-note">
+          {% if pillar_key == 'aeo' %}
+          Fix these first so AI systems can extract and cite the brand’s best answers instead of flattening them into
+          generic summaries.
+          {% elif pillar_key == 'geo' %}
+          Fix these first so AI systems can recognize the brand as a credible option and stop defaulting to competitors
+          with clearer trust signals.
+          {% else %}
+          Fix these first so AI agents can understand, navigate, and complete useful tasks without abandoning the site.
+          {% endif %}
+        </p>
+        {% for rec in rec_groups[pillar_key] %}
+        <div class="rec-item rec-priority-{{ rec.priority }}">
+          <div class="rec-header">
+            <span class="rec-priority-badge">
+              {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+            </span>
+            <div class="rec-copy">
+              <span class="rec-title">{{ rec.title }}</span>
+              <div class="rec-detail">{{ rec.detail }}</div>
+            </div>
+            <span class="rec-impact">{{ rec.impact }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
       {% endfor %}
-    </div>
+    </section>
     {% endif %}
-    {% endfor %}
-  </section>
-  {% endif %}
 
-  <!-- Pages panel -->
-  {% if payload and payload.pages %}
-  <section class="panel mt-2" role="region" aria-label="Content pages">
-    <div class="content-pages-header">
-      <h2>Content pages</h2>
-      <div id="pages-pager" role="navigation" aria-label="Pages pagination"></div>
-    </div>
-    <p class="content-pages-intro small">These are the pages discovered, crawled, and synthesized into clean Markdown.
-      This view represents exactly how AI search engines, LLM crawler agents, and web scrapers ingest and comprehend
-      your company's digital footprint.</p>
-    <div class="layout layout-pages">
-      <!-- Left: Pages stats table -->
-      <div class="pages-page">
-        <div class="pages-panel">
-          <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
+    <!-- Pages panel -->
+    {% if payload and payload.pages %}
+    <section class="panel mt-2" role="region" aria-label="What AI Systems Can Actually Read">
+      <div class="content-pages-header">
+        <h2>What AI Systems Can Actually Read</h2>
+        <div id="pages-pager" role="navigation" aria-label="Pages pagination"></div>
+      </div>
+      <p class="content-pages-intro small">This is the machine-readable version of the site. If important claims, proof,
+        pricing, or next steps are missing here, AI systems are less likely to quote, trust, or recommend them.</p>
+      <div class="layout layout-pages">
+        <!-- Left: Pages stats table -->
+        <div class="pages-page">
+          <div class="pages-panel">
+            <ul class="pages-list" id="pages-list" aria-label="Pages list"><!-- filled by JS --></ul>
+          </div>
+        </div>
+
+        <!-- Right: Markdown preview -->
+        <div class="pages-page">
+          <div class="pages-pane-header">
+            <span>Content (Markdown)</span>
+            <span class="pages-pane-actions">
+              <button class="btn btn-sm" id="toggle-raw-btn" onclick="toggleMarkdownView()">View raw</button>
+              <button class="btn btn-sm" onclick="copyCurrentPage()">Copy content</button>
+              <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
+            </span>
+          </div>
+          <div class="pages-panel">
+            <div id="page-content" class="page-content" aria-label="Rendered content"></div>
+            <pre id="page-markdown" class="pages-markdown hidden"
+              aria-label="Raw markdown content"><!-- filled by JS --></pre>
+          </div>
         </div>
       </div>
+    </section>
+    {% endif %}
 
-      <!-- Right: Markdown preview -->
-      <div class="pages-page">
-        <div class="pages-pane-header">
-          <span>Content (Markdown)</span>
-          <span class="pages-pane-actions">
-            <button class="btn btn-sm" id="toggle-raw-btn" onclick="toggleMarkdownView()">View raw</button>
-            <button class="btn btn-sm" onclick="copyCurrentPage()">Copy content</button>
-            <button class="btn btn-sm" onclick="downloadCurrentPage()">Download</button>
-          </span>
-        </div>
-        <div class="pages-panel">
-          <div id="page-content" class="page-content" aria-label="Rendered content"></div>
-          <pre id="page-markdown" class="pages-markdown hidden"
-            aria-label="Raw markdown content"><!-- filled by JS --></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-  {% endif %}
+    <!-- Reachability -->
+    {% if payload %}
+    <section class="panel mt-2" role="region" aria-label="Agent Conversion Readiness">
+      <h2>Agent Conversion Readiness</h2>
+      <p class="reachability-subtitle">Can an AI agent find a credible next step — contact, social proof, or a
+        conversion
+        path — without stalling?</p>
 
-  <!-- Reachability -->
-  {% if payload %}
-  <section class="panel mt-2" role="region" aria-label="Reachability">
-    <h2>Reachability</h2>
-    <p class="reachability-subtitle">Can someone — or an AI agent — contact this company?</p>
-
-    <!-- Contactability Score -->
-    {% set contactability = (payload.scores.aax.contactability if payload.scores and payload.scores.aax and
-    payload.scores.aax.contactability else none) %}
-    {% if contactability %}
-    <div class="contactability-card">
-      <div class="contactability-head">
-        <div class="contactability-score">
-          <span class="contactability-value {{ rating_class(contactability.rating) if contactability.rating else '' }}">
-            {{ (contactability.score / 10) | round(1) }}/10
-          </span>
-          <span class="contactability-label">Contactability</span>
+      <!-- Contactability Score -->
+      {% set contactability = (payload.scores.aax.contactability if payload.scores and payload.scores.aax and
+      payload.scores.aax.contactability else none) %}
+      {% if contactability %}
+      <div class="contactability-card">
+        <div class="contactability-head">
+          <div class="contactability-score">
+            <span
+              class="contactability-value {{ rating_class(contactability.rating) if contactability.rating else '' }}">
+              {{ (contactability.score / 10) | round(1) }}/10
+            </span>
+            <span class="contactability-label">Contactability</span>
+          </div>
         </div>
-      </div>
-      <ul class="contactability-checks">
-        <li class="{% if contactability.has_email %}check-pass{% else %}check-fail{% endif %}">
-          Email{% if contactability.has_email %}: {{ contactability.email_count | default(0) }}{% endif %}
-        </li>
-        <li class="{% if contactability.has_mailto %}check-pass{% else %}check-fail{% endif %}">
-          Mailto link
-        </li>
-        <li class="{% if contactability.has_contact_page %}check-pass{% else %}check-fail{% endif %}">
-          Contact page
-        </li>
-        <li class="{% if contactability.has_social_links %}check-pass{% else %}check-fail{% endif %}">
-          Social links
-        </li>
-        <li class="{% if contactability.has_contact_point_schema %}check-pass{% else %}check-fail{% endif %}">
-          ContactPoint schema
-        </li>
-      </ul>
-      {% if contactability.penalties %}
-      <div class="contactability-penalties">
-        {% for penalty in contactability.penalties %}
-        <span class="penalty-note">{{ penalty }}</span>
-        {% endfor %}
+        <ul class="contactability-checks">
+          <li class="{% if contactability.has_email %}check-pass{% else %}check-fail{% endif %}">
+            Email{% if contactability.has_email %}: {{ contactability.email_count | default(0) }}{% endif %}
+          </li>
+          <li class="{% if contactability.has_mailto %}check-pass{% else %}check-fail{% endif %}">
+            Mailto link
+          </li>
+          <li class="{% if contactability.has_contact_page %}check-pass{% else %}check-fail{% endif %}">
+            Contact page
+          </li>
+          <li class="{% if contactability.has_social_links %}check-pass{% else %}check-fail{% endif %}">
+            Social links
+          </li>
+          <li class="{% if contactability.has_contact_point_schema %}check-pass{% else %}check-fail{% endif %}">
+            ContactPoint schema
+          </li>
+        </ul>
+        {% if contactability.penalties %}
+        <div class="contactability-penalties">
+          {% for penalty in contactability.penalties %}
+          <span class="penalty-note">{{ penalty }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% endif %}
-    </div>
+
+      <!-- Contact Intelligence -->
+      <h3>Contact Paths AI Can Find</h3>
+      {% set has_email_detail = payload.emails and payload.emails.unique and payload.emails.unique|length > 0 %}
+      {% if has_email_detail %}
+      <div class="table-wrap">
+        <table class="table mt-1" aria-label="Emails table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Found On</th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody">
+            <!-- Rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+      <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
+      {% else %}
+      <div class="small mt-1">
+        {% if payload.emails and payload.emails.counts %}
+        No detailed email records available for this run.
+        Email summary: {{ payload.emails.counts.total_unique | default(0) }} unique,
+        {{ payload.emails.counts.total_mentions | default(0) }} mentions.
+        {% else %}
+        No emails detected.
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Social Links -->
+      <section class="mt-2" role="region" aria-label="Social Links">
+        <h3>External Trust and Social Proof</h3>
+        <p class="small reachability-helper">External profiles and communities AI systems can use to corroborate the
+          brand.</p>
+        <div id="social-groups"><!-- filled by JS --></div>
+      </section>
+
+      <!-- External Links -->
+      <section class="mt-2" role="region" aria-label="External links">
+        <h3>External References Detected</h3>
+        {% if summary and summary.links and summary.links.top_external_domains and
+        summary.links.top_external_domains|length > 0 %}
+        <div class="tag-cloud">
+          {% for td in summary.links.top_external_domains %}
+          <a href="https://{{ td.domain }}" target="_blank" rel="noopener" class="link-tag">
+            {{ td.domain }}
+            <span class="tag-count">{{ td.count }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="small">No external domains detected.</div>
+        {% endif %}
+      </section>
+    </section>
     {% endif %}
 
-    <!-- Contact Intelligence -->
-    <h3>Contact Intelligence</h3>
-    {% set has_email_detail = payload.emails and payload.emails.unique and payload.emails.unique|length > 0 %}
-    {% if has_email_detail %}
-    <div class="table-wrap">
-      <table class="table mt-1" aria-label="Emails table">
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Found On</th>
-          </tr>
-        </thead>
-        <tbody id="leads-tbody">
-          <!-- Rows injected by JS -->
-        </tbody>
-      </table>
-    </div>
-    <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
+    <!-- Mobile sections -->
+    <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel">
+    </section>
+
+    <!-- Hidden markdown for download only -->
+    <pre id="markdown-content"
+      class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
     {% else %}
-    <div class="small mt-1">
-      {% if payload.emails and payload.emails.counts %}
-      No detailed email records available for this run.
-      Email summary: {{ payload.emails.counts.total_unique | default(0) }} unique,
-      {{ payload.emails.counts.total_mentions | default(0) }} mentions.
-      {% else %}
-      No emails detected.
-      {% endif %}
-    </div>
+    <p>No data available.</p>
     {% endif %}
-
-    <!-- Social Links -->
-    <section class="mt-2" role="region" aria-label="Social Links">
-      <h3>Social Links</h3>
-      <p class="small reachability-helper">External profiles and communities linked from the site.</p>
-      <div id="social-groups"><!-- filled by JS --></div>
-    </section>
-
-    <!-- External Links -->
-    <section class="mt-2" role="region" aria-label="External links">
-      <h3>External Links</h3>
-      {% if summary and summary.links and summary.links.top_external_domains and
-      summary.links.top_external_domains|length > 0 %}
-      <div class="tag-cloud">
-        {% for td in summary.links.top_external_domains %}
-        <a href="https://{{ td.domain }}" target="_blank" rel="noopener" class="link-tag">
-          {{ td.domain }}
-          <span class="tag-count">{{ td.count }}</span>
-        </a>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="small">No external domains detected.</div>
-      {% endif %}
-    </section>
-  </section>
-  {% endif %}
-
-  <!-- Mobile sections -->
-  <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel">
-  </section>
-
-  <!-- Hidden markdown for download only -->
-  <pre id="markdown-content"
-    class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
-  {% else %}
-  <p>No data available.</p>
-  {% endif %}
 
 </div>
 {% endblock %}

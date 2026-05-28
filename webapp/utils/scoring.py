@@ -97,6 +97,43 @@ MANUAL_INPUT_SPECS = {
 }
 
 
+def score_implication(pillar: str, score: float | None) -> str:
+    """Return a capability statement for a pillar score."""
+    if score is None:
+        return ""
+    s = max(0, min(100, int(round(score))))
+
+    implications = {
+        "aeo": [
+            (0, 25, "Not extractable."),
+            (26, 45, "Limited extractability."),
+            (46, 65, "Partially extractable."),
+            (66, 85, "Reliably extractable."),
+            (86, 100, "Fully extractable."),
+        ],
+        "geo": [
+            (0, 25, "Not recognized."),
+            (26, 45, "Weak signal."),
+            (46, 65, "Recognized, not preferred."),
+            (66, 85, "Consistently recommended."),
+            (86, 100, "Category leader."),
+        ],
+        "aax": [
+            (0, 24, "Not usable."),
+            (25, 39, "Significant friction."),
+            (40, 59, "Partial usability."),
+            (60, 79, "Reliably usable."),
+            (80, 100, "Fully agent-ready."),
+        ],
+    }
+
+    bands = implications.get(pillar, [])
+    for lo, hi, text in bands:
+        if lo <= s <= hi:
+            return text
+    return ""
+
+
 def rating_class(rating: str | None) -> str:
     mapping = {
         # AEO ratings
@@ -272,4 +309,14 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "aax_tests_total": aax_tests_total,
         # AAX raw analysis data for diagnostic section
         "aax_analysis": aax_analysis,
+        # Capability implication statements
+        "aeo_implication": score_implication(
+            "aeo", snapshot.aeo_score
+        ),
+        "geo_implication": score_implication(
+            "geo", snapshot.geo_score
+        ),
+        "aax_implication": score_implication(
+            "aax", aax_section.get("composite")
+        ),
     }
