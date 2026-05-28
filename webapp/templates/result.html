@@ -137,36 +137,16 @@
   {% if score_snapshot and score_snapshot.interpretation %}
   {% set interp = score_snapshot.interpretation %}
   <section class="panel mt-3 risk-summary risk-{{ interp.tone }}" role="region" aria-label="AI Visibility Risk Summary">
-    <div class="risk-summary-grid">
-      <div class="risk-summary-main">
-        <p class="risk-eyebrow">AI visibility profile</p>
-        <div class="risk-status">{{ interp.profile_label }}</div>
-        <h2 class="risk-headline">{{ interp.headline }}</h2>
-        <p class="risk-summary-lede">{{ interp.diagnosis }}</p>
+    <div class="risk-summary-compact">
+      <div class="risk-status">{{ interp.profile_label }}</div>
+      <h2 class="risk-headline">{{ interp.headline }}</h2>
+      <p class="risk-summary-lede">{{ interp.diagnosis }}</p>
+      <div class="risk-chips-inline" aria-label="Risk diagnostics">
+        <span class="risk-chip-inline"><span>Weakest lens</span> <strong>{{ interp.weakest_lens }}</strong></span>
+        <span class="risk-chip-inline"><span>Business risk</span> <strong>{{ interp.primary_exposure }}</strong></span>
+        <span class="risk-chip-inline"><span>Fix priority</span> <strong>{{ interp.fix_priority }}</strong></span>
       </div>
-      <aside class="risk-diagnostics" aria-label="Risk diagnostics">
-        <div class="risk-diagnostic-chip">
-          <span>Weakest lens</span>
-          <strong>{{ interp.weakest_lens }}</strong>
-        </div>
-        <div class="risk-diagnostic-chip">
-          <span>Business risk</span>
-          <strong>{{ interp.primary_exposure }}</strong>
-        </div>
-        <div class="risk-diagnostic-chip">
-          <span>Fix priority</span>
-          <strong>{{ interp.fix_priority }}</strong>
-        </div>
-      </aside>
     </div>
-    <p class="risk-method-note"><strong>Method:</strong> scored across citation, recommendation, and agent usability.
-      Fix order is based on which area has the weakest automated signal.</p>
-    {% if interp.score_basis == "auto" %}
-    <p class="risk-caveat">This assessment is based on automated signals only.
-      Manual evaluation of citation presence, query match, voice readiness,
-      and capture rate requires an expert audit and may significantly change
-      these findings.</p>
-    {% endif %}
   </section>
 
   <section class="score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
@@ -732,6 +712,20 @@
   <!-- Mobile sections -->
   <section id="m-summary" class="mobile-section panel mt-2 hidden" role="region" aria-label="Summary Panel">
   </section>
+
+  <!-- Methodology note — placed at bottom for transparency without cluttering the verdict -->
+  {% if score_snapshot and score_snapshot.interpretation %}
+  {% set interp = score_snapshot.interpretation %}
+  <div class="risk-methodology-footer mt-2">
+    <p class="risk-method-note"><strong>Method:</strong> scored across citation, recommendation, and agent usability.
+      Fix order is based on which area has the weakest automated signal.</p>
+    {% if interp.score_basis == "auto" %}
+    <p class="risk-caveat">This assessment is based on automated signals only. Manual evaluation of citation presence,
+      query match, voice readiness, and capture rate requires an expert audit and may significantly change these
+      findings.</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <!-- Hidden markdown for download only -->
   <pre id="markdown-content"
