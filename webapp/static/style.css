@@ -2832,74 +2832,7 @@ p.card-meta {
    SCORE-RELATED STYLES
    ------------------------------------------------------------------------ */
 
-/* Score Gauges */
-.score-gauges {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--space-lg);
-  margin-bottom: var(--space-md);
-}
-
-.score-gauge {
-  text-align: center;
-  padding: var(--space-lg);
-  background: var(--color-canvas);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-none);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 220px;
-}
-
-.score-gauge-header {
-  font: var(--font-caption);
-  color: var(--color-ink-muted);
-  margin-bottom: var(--space-sm);
-  max-width: none;
-  white-space: normal;
-}
-
-.gauge-value {
-  font-size: clamp(40px, 5vw, 56px);
-  font-weight: 600;
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-  line-height: 1;
-  margin: var(--space-xs) 0 4px;
-}
-
-.gauge-value.rating-low {
-  color: var(--color-semantic-error);
-}
-
-.gauge-value.rating-ok {
-  color: var(--color-semantic-warning);
-}
-
-.gauge-value.rating-good {
-  color: var(--color-primary);
-}
-
-.gauge-value.rating-excellent {
-  color: var(--color-semantic-success);
-}
-
-.gauge-pillar {
-  font-size: 11px;
-  font-weight: 400;
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-ink-subtle);
-}
-
-.gauge-implication {
-  font: var(--font-body);
-  color: var(--color-ink-muted);
-  margin-top: var(--space-md);
-  max-width: 28ch;
-}
+/* Score Gauges — canonical definitions at end of file */
 
 .score-summary-bridge {
   margin: 0;
@@ -5458,5 +5391,123 @@ p.card-meta {
     display: block;
     margin-left: 0;
   }
+}
 
+/* ========================================================================
+   SCORE GAUGES — AEO / GEO / AAX summary cards
+   ======================================================================== */
+.score-summary {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-top: var(--space-lg);
+}
+
+.score-gauges {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+}
+
+.score-gauge {
+  position: relative;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-top: 3px solid var(--color-hairline);
+  border-radius: var(--radius-none);
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  overflow: hidden;
+}
+
+.score-gauge::before {
+  display: none;
+}
+
+.score-gauge.score-gauge--rating-good,
+.score-gauge.score-gauge--rating-excellent {
+  border-top-color: var(--color-semantic-success);
+}
+
+.score-gauge.score-gauge--rating-ok {
+  border-top-color: var(--color-semantic-serious);
+}
+
+.score-gauge.score-gauge--rating-low {
+  border-top-color: var(--color-semantic-error);
+}
+
+.score-gauge-header {
+  font: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+  line-height: 1.35;
+  letter-spacing: 0.32px;
+  margin-bottom: var(--space-sm);
+}
+
+.gauge-value {
+  font-size: 48px;
+  font-weight: 600;
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  line-height: 1;
+  margin-bottom: var(--space-xs);
+  letter-spacing: -1px;
+}
+
+.gauge-value.rating-good {
+  color: var(--color-semantic-success);
+}
+
+.gauge-value.rating-ok {
+  color: var(--color-semantic-serious);
+}
+
+.gauge-value.rating-low {
+  color: var(--color-semantic-error);
+}
+
+.gauge-pillar {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-none);
+  border: 1px solid var(--color-hairline);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-sm);
+  background: var(--color-surface-1);
+  color: var(--color-ink-muted);
+}
+
+.gauge-pillar--aeo {
+  border-color: rgba(36, 161, 72, 0.3);
+  color: var(--color-semantic-success);
+}
+
+.gauge-pillar--geo {
+  border-color: rgba(36, 161, 72, 0.3);
+  color: var(--color-semantic-success);
+}
+
+.gauge-pillar--aax {
+  border-color: rgba(177, 127, 42, 0.3);
+  color: var(--color-semantic-caution);
+}
+
+.gauge-implication {
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .score-gauges {
+    grid-template-columns: 1fr;
+  }
 }

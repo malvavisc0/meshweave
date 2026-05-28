@@ -169,12 +169,12 @@
     {% endif %}
   </section>
 
-  <section class="panel mt-3 score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
+  <section class="score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
     <div class="score-gauges">
-      <div class="score-gauge">
+      <div class="score-gauge {% if score_snapshot %}score-gauge--{{ score_snapshot.aeo_rating_class }}{% endif %}">
         <div class="score-gauge-header">Can the site be quoted?</div>
         <div class="gauge-value {{ score_snapshot.aeo_rating_class }}">{{ score_snapshot.aeo_score | round(1) }}</div>
-        <div class="gauge-pillar">AEO</div>
+        <span class="gauge-pillar gauge-pillar--aeo">AEO</span>
         <div class="gauge-implication">
           {% if interp.lens_details and interp.lens_details.AEO %}
           {{ interp.lens_details.AEO.meaning }}
@@ -185,10 +185,10 @@
             Covers most automated checks. {% else %} Strong read across all automated checks. {% endif %} {% endif %}
             </div>
         </div>
-        <div class="score-gauge">
+        <div class="score-gauge {% if score_snapshot %}score-gauge--{{ score_snapshot.geo_rating_class }}{% endif %}">
           <div class="score-gauge-header">Will the brand be recommended?</div>
           <div class="gauge-value {{ score_snapshot.geo_rating_class }}">{{ score_snapshot.geo_score | round(1) }}</div>
-          <div class="gauge-pillar">GEO</div>
+          <span class="gauge-pillar gauge-pillar--geo">GEO</span>
           <div class="gauge-implication">
             {% if interp.lens_details and interp.lens_details.GEO %}
             {{ interp.lens_details.GEO.meaning }}
@@ -199,12 +199,13 @@
               score_snapshot.geo_score < 85 %} Solid baseline. Covers most automated checks. {% else %} Strong read
               across all automated checks. {% endif %} {% endif %} </div>
           </div>
-          <div class="score-gauge">
+          <div
+            class="score-gauge {% if score_snapshot and score_snapshot.aax_score is not none %}score-gauge--{{ score_snapshot.aax_rating_class }}{% endif %}">
             <div class="score-gauge-header">Can agents complete the journey?</div>
             {% if score_snapshot.aax_score is not none %}
             <div class="gauge-value {{ score_snapshot.aax_rating_class }}">{{ score_snapshot.aax_score | round(1) }}
             </div>
-            <div class="gauge-pillar">AAX</div>
+            <span class="gauge-pillar gauge-pillar--aax">AAX</span>
             <div class="gauge-implication">
               {% if interp.lens_details and interp.lens_details.AAX %}
               {{ interp.lens_details.AAX.meaning }}
@@ -216,7 +217,7 @@
                 across all automated checks. {% endif %} {% endif %} </div>
                 {% else %}
                 <div class="gauge-value">—</div>
-                <div class="gauge-pillar">AAX</div>
+                <span class="gauge-pillar gauge-pillar--aax">AAX</span>
                 <div class="gauge-implication">Not available</div>
                 {% endif %}
             </div>
