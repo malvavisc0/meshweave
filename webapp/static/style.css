@@ -5511,6 +5511,21 @@ p.card-meta {
   color: var(--color-semantic-caution);
 }
 
+.gauge-pillar.rating-good {
+  border-color: rgba(36, 161, 72, 0.3);
+  color: var(--color-semantic-success);
+}
+
+.gauge-pillar.rating-ok {
+  border-color: rgba(232, 125, 29, 0.3);
+  color: var(--color-semantic-serious);
+}
+
+.gauge-pillar.rating-low {
+  border-color: rgba(218, 30, 40, 0.3);
+  color: var(--color-semantic-error);
+}
+
 .gauge-implication {
   font: var(--font-body-sm);
   color: var(--color-ink-muted);
