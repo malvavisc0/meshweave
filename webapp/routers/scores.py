@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from meshweave.scoring.interpretation import interpret_profile
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.auth import require_auth, require_ownership
@@ -36,6 +37,13 @@ async def get_scores(request: Request, crawl_id: str):
         )
 
     score_data = snapshot.score_json or {}
+    aax_section = score_data.get("aax", {})
+    interp = interpret_profile(
+        snapshot.aeo_score,
+        snapshot.geo_score,
+        aax_section.get("composite"),
+        score_basis="auto",
+    )
     return JSONResponse(
         content={
             "crawl_id": crawl_id,
@@ -46,6 +54,7 @@ async def get_scores(request: Request, crawl_id: str):
             "score_data": _build_score_data_for_template(score_data),
             "manual_input_fields": _build_manual_input_fields(score_data),
             "has_manual_missing": _has_manual_missing(score_data),
+            "interpretation": interp,
         }
     )
 
@@ -70,7 +79,7 @@ async def update_manual_inputs(request: Request, crawl_id: str):
                 val = float(data[key])
                 if 0 <= val <= 100:
                     inputs[key] = val
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 pass
 
     if not inputs:

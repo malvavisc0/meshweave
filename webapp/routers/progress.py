@@ -149,7 +149,6 @@ async def api_progress(request: Request, crawl_id: str):
     # Count visited pages from payload_json (CrawlLink table removed)
     visited_pages = 0
     try:
-
         _p = row.payload_json or {}
         visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
     except Exception:
@@ -284,7 +283,6 @@ async def api_progress(request: Request, crawl_id: str):
     links_internal_so_far = 0
     external_domains_so_far = 0
     try:
-
         _cp = row.payload_json or {}
         if isinstance(_cp, dict):
             emails_so_far = len((_cp.get("emails") or {}).get("unique", []))
@@ -334,7 +332,6 @@ async def api_progress_public(key: str):
     # Count visited pages from payload_json (CrawlLink table removed)
     visited_pages = 0
     try:
-
         _p = row.payload_json or {}
         visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
     except Exception:
@@ -465,7 +462,6 @@ async def api_progress_public(key: str):
     links_internal_so_far = 0
     external_domains_so_far = 0
     try:
-
         _cp = row.payload_json or {}
         if isinstance(_cp, dict):
             emails_so_far = len((_cp.get("emails") or {}).get("unique", []))

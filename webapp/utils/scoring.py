@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from meshweave.scoring.interpretation import interpret_profile
+
 # Mapping of factor keys to human-readable display names
 FACTOR_DISPLAY_NAMES = {
     "schema": "Schema Implementation",
@@ -287,6 +289,15 @@ def build_score_snapshot_context(crawl) -> dict | None:
     ai_analysis = snapshot.ai_analysis_json or {}
     aax_analysis = ai_analysis.get("aax") or {}
 
+    # Build interpretation using auto-only scores for free scan
+    aax_composite = aax_section.get("composite")
+    interp = interpret_profile(
+        snapshot.aeo_score,
+        snapshot.geo_score,
+        aax_composite,
+        score_basis="auto",
+    )
+
     return {
         "crawl_id": crawl.id,
         "aeo_score": snapshot.aeo_score,
@@ -302,7 +313,7 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "manual_input_fields": build_manual_input_fields(score_data),
         "has_manual_missing": has_manual_missing(score_data),
         # AAX fields
-        "aax_score": aax_section.get("composite"),
+        "aax_score": aax_composite,
         "aax_rating": aax_section.get("rating", "Unknown"),
         "aax_rating_class": rating_class(aax_section.get("rating")),
         "aax_tests_completed": aax_tests_completed,
@@ -310,13 +321,9 @@ def build_score_snapshot_context(crawl) -> dict | None:
         # AAX raw analysis data for diagnostic section
         "aax_analysis": aax_analysis,
         # Capability implication statements
-        "aeo_implication": score_implication(
-            "aeo", snapshot.aeo_score
-        ),
-        "geo_implication": score_implication(
-            "geo", snapshot.geo_score
-        ),
-        "aax_implication": score_implication(
-            "aax", aax_section.get("composite")
-        ),
+        "aeo_implication": score_implication("aeo", snapshot.aeo_score),
+        "geo_implication": score_implication("geo", snapshot.geo_score),
+        "aax_implication": score_implication("aax", aax_composite),
+        # Interpretation matrix result
+        "interpretation": interp,
     }
