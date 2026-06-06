@@ -260,13 +260,13 @@
 
   /* ── Rotating hero headline ── */
   var headlines = [
-    "Your site is visible to humans and invisible to AI buyers.",
+    "Your site could be readable to humans but invisible to AI systems",
     "If AI cannot cite or recommend you, will you exist for the buyer of tomorrow?",
-    "Tomorrow's buyer is an AI agent. It can't use your site.",
-    "Competitors aren't better — they're just easier for AI to recommend.",
-    "Your content is perfectly written and ignored by AI systems.",
-    "Digital invisibility is the new funnel leak. Yours is open.",
-    "AI systems are shaping demand. They are skipping your brand.",
+    "Tomorrow's buyer is an AI agent - can an AI use your website?",
+    "Competitors are not better, they just actively use AI to beat you",
+    "Your content is well written and ignored by AI agents shaping buyer decisions",
+    "Your AI funnel is leaking demand straight to your competitors",
+    "When buyers ask AI, it recommends your competitors, not you",
   ];
 
   function initHeadlineRotation() {

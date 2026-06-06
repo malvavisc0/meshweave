@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
   "beautifulsoup4",
   "cloakbrowser",
-  "html-to-markdown[lxml]",
+  "html-to-markdown",
   "lxml",
   "psycopg2-binary",
   "pydantic",

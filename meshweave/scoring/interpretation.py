@@ -56,30 +56,30 @@ BandName = Literal["broken", "weak", "developing", "strong", "excellent"]
 # ---------------------------------------------------------------------------
 
 _BAND_THRESHOLDS: list[tuple[float, float, BandName, str]] = [
-    (0, 39, "broken", "AI can't work with this yet."),
+    (0, 39, "broken", "AI can't make sense of this"),
     (
         40,
         54,
         "weak",
-        "Important pieces are missing or unclear.",
+        "Missing key pieces",
     ),
     (
         55,
         69,
         "developing",
-        "The basics are there. Key gaps remain.",
+        "Got the basics, but incomplete",
     ),
     (
         70,
         84,
         "strong",
-        "Solid baseline. Most signals are in place.",
+        "Good foundation in place",
     ),
     (
         85,
         100,
         "excellent",
-        "Strong across all automated checks.",
+        "Clean read, no obvious issues",
     ),
 ]
 
@@ -108,27 +108,27 @@ def _band_meaning(band: BandName) -> str:
 
 _LENS_META: dict[LensName, dict[str, str]] = {
     "AEO": {
-        "gap": "citation gap",
+        "gap": "answers aren't citeable",
         "exposure": "answer structure",
-        "failure": "answer-extraction failure",
-        "critical_label": "AI can't find any answers",
-        "primary_exposure": "AI won't quote you",
+        "failure": "answers fall apart",
+        "critical_label": "no answers to find",
+        "primary_exposure": "won't get quoted",
         "fix_priority": "Structured answers",
     },
     "GEO": {
-        "gap": "recommendation gap",
+        "gap": "no one recommends this brand",
         "exposure": "trust signals",
-        "failure": "recommendation-signal failure",
-        "critical_label": "Not enough trust",
-        "primary_exposure": "AI won't recommend this website",
+        "failure": "invisible to recommenders",
+        "critical_label": "trust factor too low",
+        "primary_exposure": "won't show in AI results",
         "fix_priority": "Entity + trust signals",
     },
     "AAX": {
-        "gap": "agent-readiness gap",
+        "gap": "agents get lost here",
         "exposure": "agent experience",
-        "failure": "agent-usability failure",
-        "critical_label": "AI agents can't use the website",
-        "primary_exposure": "Agents abandon the site before converting",
+        "failure": "agents can't navigate",
+        "critical_label": "agents hit a wall",
+        "primary_exposure": "agents bounce before buying",
         "fix_priority": "Navigation + action paths",
     },
 }
@@ -136,45 +136,35 @@ _LENS_META: dict[LensName, dict[str, str]] = {
 # ---------------------------------------------------------------------------
 # Headline copy (per profile shape)
 # ---------------------------------------------------------------------------
-
 _HEADLINES: dict[str, str] = {
-    "high_invisibility": ("AI systems are mostly guessing about this site"),
-    "critical_failure": ("One thing is dragging everything else down"),
-    "broken_in_strong_profile": ("The rest of the site works — one area doesn't"),
-    "material_risk": ("AI can see the site, but doesn't trust what it finds"),
-    "broad_exposure": ("One clear gap, plus a second area that's not ready"),
-    "single_exposure": ("One area to fix. The rest holds up"),
-    "partial_exposure": (
-        "AI picks up pieces of the site, but can't get the full picture"
-    ),
-    "developing_with_strong": (
-        "Almost there — {lens} is the one thing holding it back"
-    ),
-    "highly_readable": (
-        "Strong automated baseline. Now verify the signals we can't measure"
-    ),
-    "strong_profile": ("Solid across the board. Next step: manual checks"),
-    "needs_review": (
-        "Unusual score pattern — review the factors before drawing conclusions"
-    ),
-    "incomplete": ("One or more scores could not be calculated"),
+    "high_invisibility": "AI agents can't make sense of the website content",
+    "critical_failure": "One weak spot is affecting the visibility of the whole site",
+    "broken_in_strong_profile": "Everything works except this one broken thing",
+    "material_risk": "AI agents see the site but can't fully trust it",
+    "broad_exposure": "One big gap, plus a few other issues",
+    "single_exposure": "Fix this one thing and everything improves",
+    "partial_exposure": "AI agents only get fragments of the website",
+    "developing_with_strong": "Good shape overall — {lens} just needs polish",
+    "highly_readable": "AI agents read this cleanly. Go check it yourself.",
+    "strong_profile": "Solid foundation. Quick check recommended.",
+    "needs_review": "Scores feel off — double-check these",
+    "incomplete": "Missing scores — re-run the scan",
 }
 
 # ---------------------------------------------------------------------------
 # Profile labels (per profile shape, with lens interpolation)
 # ---------------------------------------------------------------------------
-
 _PROFILE_LABELS: dict[str, str] = {
-    "high_invisibility": "Invisible to AI",
+    "high_invisibility": "Can't be found by AI",
     "critical_failure": "{critical_label}",
     "broken_in_strong_profile": "{critical_label}",
-    "material_risk": "Multiple blind spots for AI",
+    "material_risk": "Several blind spots",
     "broad_exposure": "Two areas need attention",
     "single_exposure": "{exposure} needs work",
-    "partial_exposure": "Half-visible to AI",
+    "partial_exposure": "Partially visible",
     "developing_with_strong": "{exposure} needs work",
-    "highly_readable": "AI reads this site well",
-    "strong_profile": "Strong foundation for AI visibility",
+    "highly_readable": "AI Agents read this site well",
+    "strong_profile": "Solid foundation",
     "needs_review": "Unusual pattern — needs review",
     "incomplete": "Incomplete scan",
 }
@@ -185,157 +175,109 @@ _PROFILE_LABELS: dict[str, str] = {
 # Single-string entries for non-lens-specific profiles.
 # Dict entries for lens-specific profiles (AEO/GEO/AAX variants).
 # ---------------------------------------------------------------------------
-
 _DIAGNOSIS: dict[str, str | dict[str, str]] = {
     # Rule 1 — no lens variant
     "high_invisibility": (
-        "AI systems can't reliably quote, recommend, or "
-        "act on this site. The information might be there, "
-        "but it's not structured in a way AI can use."
+        "AI agents can't work with the content. Maybe the information is there, "
+        "but it's not organized for AI agents to understand and use."
     ),
     # Rule 2a — lens-specific
     "critical_failure": {
         "AEO": (
-            "The content is probably good, but AI can't "
-            "pull clean answers from it. Without structured "
-            "answers, your best content gets paraphrased into "
-            "generic summaries — or skipped entirely."
+            "The content looks good, but AI agents can't pull clean answers from it. "
+            "The best insights get lost in generic summaries or skipped entirely."
         ),
         "GEO": (
-            "When someone asks AI for a recommendation in "
-            "your space, your brand won't come up. The trust "
-            "signals AI needs — entity data, authority "
-            "markers, social proof — aren't strong enough yet."
+            "When people ask AI agents for recommendations, "
+            "this brand won't show up. Missing entity data, authority signals, and social proof."
         ),
         "AAX": (
-            "AI agents land on this site and get stuck. They "
-            "can't figure out the offer, find the next step, "
-            "or complete a task. That means lost conversions "
-            "from agent-mediated buyers."
+            "AI agents land here and get stuck. They can't figure out the offer, "
+            "find next steps, or complete tasks. Missed sales opportunities."
         ),
     },
     # Rule 2b — lens-specific
     "broken_in_strong_profile": {
         "AEO": (
-            "AI agents can use the site and trust signals "
-            "are decent, but AI can't extract clean answers. "
-            "This one gap means your content gets flattened "
-            "or ignored in AI-generated responses."
+            "AI agents can navigate and trust signals are decent, but answers fall apart. "
+            "The content gets ignored in AI responses."
         ),
         "GEO": (
-            "Answers are extractable and agents can navigate, "
-            "but AI doesn't see enough authority or trust "
-            "signals to recommend the brand. Competitors with "
-            "clearer entity data will get picked instead."
+            "Answers work and agents can navigate, but AI agents don't see enough "
+            "authority or trust signals to recommend the brand. Competitors with clearer "
+            "entity data will get picked instead."
         ),
         "AAX": (
-            "Answers and trust signals work, but AI agents "
-            "hit friction trying to complete tasks. If an "
-            "agent can't finish the journey, agent-mediated "
-            "buyers drop off before converting."
+            "Answers and trust are solid, but agents hit friction. "
+            "If they can't finish the journey, agent-mediated buyers drop off before converting."
         ),
     },
     # Rule 3 — no lens variant
     "material_risk": (
-        "AI picks up fragments of the site but can't build "
-        "a complete picture. Important content, trust signals, "
-        "or agent paths are missing or unclear in more than "
-        "one area."
+        "AI grabs fragments but can't see the whole story. "
+        "Key content, trust signals, or navigation paths are missing in multiple places."
     ),
     # Rule 4 — lens-specific
     "broad_exposure": {
         "AEO": (
-            "AI struggles to extract answers, and a second "
-            "area is only partially ready. The site isn't "
-            "giving AI enough to work with in multiple places."
+            "Answers aren't working, plus another area needs attention. "
+            "AI doesn't have enough to go on in two places."
         ),
         "GEO": (
-            "Trust and authority signals are weak, and "
-            "another area is still developing. AI doesn't "
-            "have enough reason to recommend this brand over "
-            "alternatives."
+            "Trust signals are weak and another area is still developing. "
+            "AI doesn't have enough reason to recommend this brand over alternatives."
         ),
         "AAX": (
-            "AI agents face friction on this site, and a "
-            "second area isn't fully ready either. Agent-"
-            "mediated buyers are unlikely to complete their "
-            "journey here."
+            "Agents face friction here and another area isn't ready. "
+            "Agent-mediated buyers are unlikely to complete their journey here."
         ),
     },
     # Rule 5 — lens-specific
     "single_exposure": {
         "AEO": (
-            "Trust signals and agent experience are in good "
-            "shape, but AI can't consistently pull structured "
-            "answers from the content. Fix the answer "
-            "structure and the overall picture improves fast."
+            "Trust and navigation are good. But fix answers and everything improves fast."
         ),
         "GEO": (
-            "Answers are extractable and agents can navigate, "
-            "but AI doesn't see enough trust signals to "
-            "recommend the brand. Entity data, author info, "
-            "and social proof need work."
+            "Answers work and AI agents could navigate them, but don't see enough "
+            "trust signals to recommend the brand. Entity data, author info, and social proof need work."
         ),
         "AAX": (
-            "Answers and trust signals work, but AI agents "
-            "struggle to complete tasks on this site. "
-            "Navigation, CTAs, or action paths need to be "
-            "clearer for agents to follow through."
+            "Answers and trust work, but agents struggle to complete tasks. "
+            "Navigation, CTAs, or action paths need to be clearer for agents to follow through."
         ),
     },
     # Rule 6 — no lens variant
     "partial_exposure": (
-        "AI can read parts of the site, but the overall "
-        "picture is incomplete. Multiple areas are partially "
-        "there — close, but not enough for AI to act on "
-        "with confidence."
+        "AI reads parts of the website, but the full picture's missing. "
+        "Multiple areas are 'almost there'—not enough for confident AI action."
     ),
     # Rule 7 — lens-specific
     "developing_with_strong": {
         "AEO": (
-            "Trust signals and agent experience are strong. "
-            "The gap is answer structure — AI can't "
-            "consistently extract the best content yet. "
-            "This is the one area holding the score back."
+            "Trust and navigation are strong. Answer structure is the only area holding this site back."
         ),
         "GEO": (
-            "Answers are extractable and agents work well. "
-            "The gap is trust: authority, entity, and social "
-            "proof signals need to be stronger for AI to "
-            "recommend the brand."
+            "Answers work and AI agents can navigate well. Trust signals need strengthening for AI recommendations."
         ),
-        "AAX": (
-            "Answers and trust signals are strong. The gap "
-            "is agent experience — AI agents need clearer "
-            "guidance, navigation, or action paths to "
-            "complete useful tasks."
-        ),
+        "AAX": ("Answers and trust are solid. Agent experience needs clearer paths."),
     },
     # Rule 8 — no lens variant
     "highly_readable": (
-        "AI reads the site well across citation, "
-        "recommendation, and agent usability. The automated "
-        "baseline is strong — the next step is verifying "
-        "the signals this scan can't measure."
+        "AI reads the content well. Citations, recommendations, and navigation all pass automated checks. "
+        "Run self-verification to be sure."
     ),
     # Rule 9 — no lens variant
     "strong_profile": (
-        "Strong baseline across all three areas. This scan "
-        "doesn't cover citation accuracy, competitive "
-        "positioning, or capture rate — those need manual "
-        "checks."
+        "Strong scores across the board. Manual verification needed for citation accuracy, competitive positioning, or capture rate."
     ),
     # Rule 10 — no lens variant
     "needs_review": (
-        "The score pattern is unusual and doesn't match "
-        "common profiles. Look at the individual factors "
-        "before drawing conclusions."
+        "These scores don't match typical patterns. Check individual factors before deciding next steps."
     ),
     # Incomplete — no lens variant
     "incomplete": (
-        "All three scores (AEO, GEO, AAX) are needed for "
-        "a complete read. Re-run the analysis or check for "
-        "scoring errors."
+        "Need all three scores (AEO, GEO, AAX) for a full picture. "
+        "Re-run the crawl or check for scoring errors."
     ),
 }
 
@@ -344,18 +286,20 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
 # ---------------------------------------------------------------------------
 
 _AUTO_ONLY_LIMITATIONS: list[str] = [
-    "Actual citation frequency (requires manual citation audit)",
-    "Query-match relevance (requires query-match analysis)",
-    "Competitor comparison (requires competitive analysis)",
-    "Voice assistant presence (requires voice testing)",
-    "Capture rate accuracy (requires Search Console verification)",
+    "Citation frequency — requires checking manually",
+    "Query-match relevance — requires query-match analysis",
+    "Competitor comparison — requires competitive analysis",
+    "Voice assistant presence — requires testing through voice",
+    "Capture rate accuracy — requires Search Console data",
 ]
 
 # ---------------------------------------------------------------------------
 # Next step recommendation (always present)
 # ---------------------------------------------------------------------------
 
-_NEXT_STEP: str = "Review the missing manual checks before treating this as final."
+_NEXT_STEP: str = (
+    "A few things only a human can verify — run through those before treating this as final."
+)
 
 
 def _resolve_diagnosis(
@@ -424,9 +368,9 @@ def interpret_profile(
     """Classify the shape of an AEO/GEO/AAX score profile.
 
     Args:
-        aeo_score: AEO composite score (0–100) or None.
-        geo_score: GEO composite score (0–100) or None.
-        aax_score: AAX composite score (0–100) or None.
+        aeo_score: AEO composite score (0-100) or None.
+        geo_score: GEO composite score (0-100) or None.
+        aax_score: AAX composite score (0-100) or None.
         score_basis: "auto" for free scans (auto-only composites),
                      "full" for paid audits (complete composites).
 
@@ -443,11 +387,10 @@ def interpret_profile(
         return {
             "profile_label": "Incomplete data",
             "tone": "moderate",
-            "headline": ("One or more scores could not be calculated."),
+            "headline": "One or more scores couldn't be calculated.",
             "diagnosis": (
-                "The interpretation matrix requires all three "
-                "lens scores (AEO, GEO, AAX). Re-run the crawl "
-                "or check for scoring errors."
+                "We need all three lens scores (AEO, GEO, AAX) for a full picture. "
+                "Re-run the crawl or check for scoring errors."
             ),
             "weakest_lens": None,
             "strongest_lens": None,

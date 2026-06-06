@@ -22,7 +22,7 @@ _NOISE_CLASSES = re.compile(
     r"(cookie|consent|gdpr|nav(bar|-links)?|menu(-bar)?|"
     r"site-header|page-header|main-header|"
     r"site-footer|page-footer|main-footer|"
-    r"social(-links)?|ad(s|vertisement|wrapper)?|"
+    r"social(-links)?|\bad(s|vertisement|wrapper)?|"
     r"popup|modal|banner|overlay|tooltip)",
     re.I,
 )

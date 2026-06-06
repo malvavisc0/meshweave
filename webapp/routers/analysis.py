@@ -15,6 +15,7 @@ from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.reasons import friendly_reason
 from webapp.utils.scoring import (
+    PRIORITY_NUMERIC,
     build_score_snapshot_context as _build_score_snapshot_context,
 )
 from webapp.utils.security import _make_csrf_token
@@ -22,6 +23,33 @@ from webapp.utils.summary import build_summary
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
+
+def _sorted_recommendations(ss: dict | None) -> list[dict]:
+    """Pre-compute sorted recommendations for the template.
+
+    Sorts by priority (high→low) then by weakest pillar first.
+    """
+    if not ss or not ss.get("recommendations"):
+        return []
+    pillar_scores = {
+        "aeo": ss.get("aeo_score") or 100,
+        "geo": ss.get("geo_score") or 100,
+        "aax": ss.get("aax_score") or 100,
+    }
+    pillar_rank = {
+        k: i
+        for i, (k, _) in enumerate(
+            sorted(pillar_scores.items(), key=lambda x: x[1])
+        )
+    }
+    return sorted(
+        ss["recommendations"],
+        key=lambda r: (
+            PRIORITY_NUMERIC.get(r.get("priority", "medium"), 1),
+            pillar_rank.get(r.get("pillar", ""), 99),
+        ),
+    )
 
 
 # Simple in-memory rate limiter for share toggle (max 5 per hour per user)
@@ -83,6 +111,8 @@ async def view_shared_analysis(request: Request, share_key: str):
 
     summary = build_summary(row, payload)
 
+    _ss_shared = _build_score_snapshot_context(row)
+
     resp = templates.TemplateResponse(
         request,
         "result.html",
@@ -101,7 +131,9 @@ async def view_shared_analysis(request: Request, share_key: str):
             "abs_api_url": _abs_url(request, f"/api/analysis/private/{row.id}"),
             "summary": summary,
             "reason_stopped_label": (
-                friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
+                friendly_reason(
+                    payload.get("summary", {}).get("reason_stopped", "")
+                )
                 if payload and payload.get("summary")
                 else ""
             ),
@@ -122,7 +154,10 @@ async def view_shared_analysis(request: Request, share_key: str):
             "retry_eta": "",
             "can_refresh": False,
             "refresh_eta": "",
-            "score_snapshot": _build_score_snapshot_context(row),
+            "score_snapshot": _ss_shared,
+            "sorted_recommendations": _sorted_recommendations(
+                _ss_shared
+            ),
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -362,6 +397,7 @@ async def view_analysis(request: Request, ref: str):
             else ""
         )
 
+        _ss_private = _build_score_snapshot_context(row)
         resp = templates.TemplateResponse(
             request,
             "result.html",
@@ -396,11 +432,16 @@ async def view_analysis(request: Request, ref: str):
                 # Owner toggles
                 "listed": row.listed,
                 "share_url": (
-                    f"/analysis/shared/{row.share_key}" if row.share_key else ""
+                    f"/analysis/shared/{row.share_key}"
+                    if row.share_key
+                    else ""
                 ),
                 "can_refresh": can_retry,
                 "refresh_eta": retry_eta,
-                "score_snapshot": _build_score_snapshot_context(row),
+                "score_snapshot": _ss_private,
+                "sorted_recommendations": _sorted_recommendations(
+                    _ss_private
+                ),
             },
         )
         # Prevent indexing of private results
@@ -654,6 +695,7 @@ async def view_analysis(request: Request, ref: str):
     current_user = getattr(request.state, "current_user", None)
     is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
 
+    _ss_public = _build_score_snapshot_context(row)
     resp = templates.TemplateResponse(
         request,
         "result.html",
@@ -697,7 +739,10 @@ async def view_analysis(request: Request, ref: str):
             # Refresh cooldown
             "can_refresh": can_refresh,
             "refresh_eta": refresh_eta,
-            "score_snapshot": _build_score_snapshot_context(row),
+            "score_snapshot": _ss_public,
+            "sorted_recommendations": _sorted_recommendations(
+                _ss_public
+            ),
         },
     )
     # Set session cookie if newly created for CSRF
@@ -713,7 +758,7 @@ async def view_analysis(request: Request, ref: str):
             secure=cookie_secure,
         )
 
-    # Prevent indexing of non-succeeded public pages (avoid thin/placeholder content)
+    # Prevent indexing of non-succeeded public pages
     if row.status != "succeeded":
         resp.headers["X-Robots-Tag"] = "noindex"
     return resp
