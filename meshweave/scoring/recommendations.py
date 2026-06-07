@@ -506,12 +506,95 @@ def generate_recommendations(
                     }
                 )
 
-    # Add pillar to each recommendation
+    # Add pillar and guidance to each recommendation
     for rec in recs:
         rec["pillar"] = _FACTOR_TO_PILLAR.get(rec.get("factor", ""), "aeo")
+        rec["guidance"] = _get_guidance(rec["title"], rec.get("factor", ""))
 
     # Sort by priority
     priority_order = {"high": 0, "medium": 1, "low": 2}
     recs.sort(key=lambda r: priority_order.get(r["priority"], 1))
 
     return recs
+
+
+def _get_guidance(title: str, factor: str) -> str:
+    """Return guidance string for a recommendation, or empty string."""
+    # Exact match first
+    if title in _GUIDANCE:
+        return _GUIDANCE[title]
+    # Prefix match for dynamic titles
+    for prefix, guidance in _GUIDANCE_PREFIX.items():
+        if title.startswith(prefix):
+            return guidance
+    return ""
+
+
+# Guidance strings keyed on exact recommendation title.
+# Low-priority positive callouts get no guidance.
+_GUIDANCE: dict[str, str] = {
+    "Add structured data (JSON-LD) to more pages": (
+        "Add FAQPage, HowTo, or Article JSON-LD to key pages."
+    ),
+    "Add FAQPage schema to key pages": (
+        "Add FAQ sections with short, direct answers to product and pricing pages."
+    ),
+    "Improve content structure across pages": (
+        "Add headings, lists, and tables. Shoot for 300+ words per page."
+    ),
+    "Add sameAs links to your Organization schema": (
+        "Add links to your LinkedIn, GitHub, and social profiles in Organization JSON-LD."
+    ),
+    "Add Organization JSON-LD schema": (
+        "Drop an Organization block on your homepage with name, logo, URL, and sameAs."
+    ),
+    "Add author information to articles": (
+        "Add author JSON-LD with name, URL, and sameAs to article pages."
+    ),
+    "Re-analyze as domain for accessibility score": (
+        "Run the analysis at the domain root for a complete accessibility score."
+    ),
+    "Publish an llms.txt file": (
+        "Create /.well-known/llms.txt with a short site description for AI crawlers."
+    ),
+    "Add a robots.txt file": (
+        "Create /robots.txt to control which crawlers can access your site."
+    ),
+    "Increase average content depth": (
+        "Aim for 500+ words on your key pages."
+    ),
+    "Optimize metadata for AI crawlers": (
+        "Improve your value proposition, metadata, and descriptions for LLM understanding."
+    ),
+    "Publish llms.txt for AI crawler discovery": (
+        "Create /.well-known/llms.txt with your site name, description, and crawler rules."
+    ),
+    "Publish llms-full.txt for full AI access": (
+        "Create /.well-known/llms-full.txt for full AI crawler access."
+    ),
+    "Add valid contact emails for AI verification": (
+        "Add mailto: links with real addresses to your contact page."
+    ),
+    "Improve contactability for AI agents": (
+        "Add the missing contact signals so AI agents can verify and recommend you."
+    ),
+    "Improve homepage clarity for AI agents": (
+        "Make your brand, product, audience, and call-to-action clear on the homepage."
+    ),
+    "Enhance content richness for AI processing": (
+        "Add product descriptions, pricing, audience info, features, and use cases."
+    ),
+}
+
+# Prefix-based guidance for dynamic titles (contain counts, etc.).
+_GUIDANCE_PREFIX: dict[str, str] = {
+    "Enrich": "Add headings, content, and alt text to the listed pages.",
+    "Fix canonical URL mismatches": (
+        "Update the canonical tag on the listed page to match its actual URL."
+    ),
+    "Differentiate OG titles": (
+        "Give each page a unique OG title that describes what's actually on it."
+    ),
+    "Add alt text to": "Add descriptive alt text to the listed images.",
+    "Address": "Fill in the missing product info, pricing, use cases, or company details.",
+}

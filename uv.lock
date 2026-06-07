@@ -1412,7 +1412,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4" },
     { name = "cloakbrowser" },
-    { name = "html-to-markdown", extras = ["lxml"] },
+    { name = "html-to-markdown" },
     { name = "lxml" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },

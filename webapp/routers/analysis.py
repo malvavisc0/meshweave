@@ -52,6 +52,38 @@ def _sorted_recommendations(ss: dict | None) -> list[dict]:
     )
 
 
+def _factor_extremes(factors: dict) -> tuple:
+    """Return (weakest_item, strongest_item, first_missing_key).
+
+    Each item is (factor_key, factor_dict) or None.
+    first_missing_key is the first factor key where score is None,
+    or None if all factors are scored (or dict is empty).
+    """
+    scored = [
+        (k, v) for k, v in factors.items() if v.get("score") is not None
+    ]
+    missing = [k for k, v in factors.items() if v.get("score") is None]
+    if scored:
+        return (
+            min(scored, key=lambda x: x[1]["score"]),
+            max(scored, key=lambda x: x[1]["score"]),
+            missing[0] if missing else None,
+        )
+    return None, None, missing[0] if missing else None
+
+
+def _build_factor_extremes(ss: dict | None) -> dict:
+    """Build factor_extremes dict for all pillars from score_snapshot."""
+    if not ss or not ss.get("score_data"):
+        return {"aeo": (None, None, None), "geo": (None, None, None), "aax": (None, None, None)}
+    sd = ss["score_data"]
+    return {
+        "aeo": _factor_extremes(sd.get("aeo", {}).get("factors", {})),
+        "geo": _factor_extremes(sd.get("geo", {}).get("factors", {})),
+        "aax": _factor_extremes(sd.get("aax", {}).get("factors", {})),
+    }
+
+
 # Simple in-memory rate limiter for share toggle (max 5 per hour per user)
 import time
 
@@ -158,6 +190,7 @@ async def view_shared_analysis(request: Request, share_key: str):
             "sorted_recommendations": _sorted_recommendations(
                 _ss_shared
             ),
+            "factor_extremes": _build_factor_extremes(_ss_shared),
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -442,6 +475,7 @@ async def view_analysis(request: Request, ref: str):
                 "sorted_recommendations": _sorted_recommendations(
                     _ss_private
                 ),
+                "factor_extremes": _build_factor_extremes(_ss_private),
             },
         )
         # Prevent indexing of private results
@@ -743,6 +777,7 @@ async def view_analysis(request: Request, ref: str):
             "sorted_recommendations": _sorted_recommendations(
                 _ss_public
             ),
+            "factor_extremes": _build_factor_extremes(_ss_public),
         },
     )
     # Set session cookie if newly created for CSRF
