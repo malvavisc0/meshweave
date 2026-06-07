@@ -3535,13 +3535,16 @@ p.card-meta {
 /* Priority badge — flat, square, outlined */
 .rec-priority-badge {
   display: inline-block;
+  box-sizing: border-box;
+  min-width: 72px;
   padding: 2px 8px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-none);
   font-family: IBM Plex Sans, ui-monospace, monospace;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.32px;
+  text-align: center;
   flex-shrink: 0;
 }
 
@@ -4509,7 +4512,7 @@ p.card-meta {
 }
 
 .rec-priority-badge {
-  font-weight: 600;
+  font-weight: 400;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -4520,39 +4523,13 @@ p.card-meta {
   color: var(--color-semantic-error);
 }
 
-.rec-priority-high .rec-priority-badge::before {
-  content: "[";
-}
-
-.rec-priority-high .rec-priority-badge::after {
-  content: "]";
-}
-
 .rec-priority-medium .rec-priority-badge {
   color: var(--color-semantic-warning);
-}
-
-.rec-priority-medium .rec-priority-badge::before {
-  content: "[";
-}
-
-.rec-priority-medium .rec-priority-badge::after {
-  content: "]";
 }
 
 .rec-priority-low .rec-priority-badge,
 .rec-priority-info .rec-priority-badge {
   color: var(--color-ink-subtle);
-}
-
-.rec-priority-low .rec-priority-badge::before,
-.rec-priority-info .rec-priority-badge::before {
-  content: "[";
-}
-
-.rec-priority-low .rec-priority-badge::after,
-.rec-priority-info .rec-priority-badge::after {
-  content: "]";
 }
 
 .rec-title {
@@ -5948,7 +5925,7 @@ p.card-meta {
 }
 
 .analysis-result-page .breakdown-fixes .rec-item {
-  padding: var(--space-sm) 0;
+  padding: var(--space-md) 0;
   border: none;
   border-top: 1px solid var(--color-hairline);
   background: transparent;
