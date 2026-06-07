@@ -131,7 +131,8 @@
     </div>
   </section>
 
-  {# === FROZEN: Risk Summary + Score Gauges === #}
+  {# === Risk Summary === #}
+  {% set _total_recs = sorted_recommendations | length if sorted_recommendations else 0 %}
   {% if score_snapshot and score_snapshot.interpretation %}
   {% set interp = score_snapshot.interpretation %}
   <section class="panel mt-3 risk-summary risk-{{ interp.tone }}" role="region" aria-label="AI Visibility Risk Summary">
@@ -146,222 +147,65 @@
       </div>
     </div>
   </section>
-
-  <section class="score-summary" role="region" aria-label="AEO, GEO, and AAX Scores">
-    <div class="score-gauges">
-      <div class="score-gauge {% if score_snapshot %}score-gauge--{{ score_snapshot.aeo_rating_class }}{% endif %}">
-        <span class="gauge-pillar gauge-pillar--aeo {{ score_snapshot.aeo_rating_class }}">AEO</span>
-        <div class="score-gauge-header">Can the site be quoted?</div>
-        <div class="gauge-value {{ score_snapshot.aeo_rating_class }}">{{ score_snapshot.aeo_score | round(1) }}</div>
-        <div class="gauge-implication">
-          {% if interp.lens_details and interp.lens_details.AEO %}
-          {{ interp.lens_details.AEO.meaning }}
-          {% else %}
-          {% if score_snapshot.aeo_score < 40 %} Not enough signal for a reliable read. {% elif score_snapshot.aeo_score
-            < 55 %} Partial signal. Important pieces are missing or unclear. {% elif score_snapshot.aeo_score < 70 %}
-            Basic structure is there. Key checks still pending. {% elif score_snapshot.aeo_score < 85 %} Solid baseline.
-            Covers most automated checks. {% else %} Strong read across all automated checks. {% endif %} {% endif %}
-            </div>
-        </div>
-        <div class="score-gauge {% if score_snapshot %}score-gauge--{{ score_snapshot.geo_rating_class }}{% endif %}">
-          <span class="gauge-pillar gauge-pillar--geo {{ score_snapshot.geo_rating_class }}">GEO</span>
-          <div class="score-gauge-header">Will the brand be recommended?</div>
-          <div class="gauge-value {{ score_snapshot.geo_rating_class }}">{{ score_snapshot.geo_score | round(1) }}</div>
-          <div class="gauge-implication">
-            {% if interp.lens_details and interp.lens_details.GEO %}
-            {{ interp.lens_details.GEO.meaning }}
-            {% else %}
-            {% if score_snapshot.geo_score < 40 %} Not enough signal for a reliable read. {% elif
-              score_snapshot.geo_score < 55 %} Partial signal. Important pieces are missing or unclear. {% elif
-              score_snapshot.geo_score < 70 %} Basic structure is there. Key checks still pending. {% elif
-              score_snapshot.geo_score < 85 %} Solid baseline. Covers most automated checks. {% else %} Strong read
-              across all automated checks. {% endif %} {% endif %} </div>
-          </div>
-          <div
-            class="score-gauge {% if score_snapshot and score_snapshot.aax_score is not none %}score-gauge--{{ score_snapshot.aax_rating_class }}{% endif %}">
-            <span class="gauge-pillar gauge-pillar--aax {{ score_snapshot.aax_rating_class }}">AAX</span>
-            <div class="score-gauge-header">Can agents complete the journey?</div>
-            {% if score_snapshot.aax_score is not none %}
-            <div class="gauge-value {{ score_snapshot.aax_rating_class }}">{{ score_snapshot.aax_score | round(1) }}
-            </div>
-            <div class="gauge-implication">
-              {% if interp.lens_details and interp.lens_details.AAX %}
-              {{ interp.lens_details.AAX.meaning }}
-              {% else %}
-              {% if score_snapshot.aax_score < 40 %} Not enough signal for a reliable read. {% elif
-                score_snapshot.aax_score < 55 %} Partial signal. Important pieces are missing or unclear. {% elif
-                score_snapshot.aax_score < 70 %} Basic structure is there. Key checks still pending. {% elif
-                score_snapshot.aax_score < 85 %} Solid baseline. Covers most automated checks. {% else %} Strong read
-                across all automated checks. {% endif %} {% endif %} </div>
-                {% else %}
-                <span class="gauge-pillar gauge-pillar--aax">AAX</span>
-                <div class="score-gauge-header">Can agents complete the journey?</div>
-                <div class="gauge-value">—</div>
-                <div class="gauge-implication">Not available</div>
-                {% endif %}
-            </div>
-          </div>
-  </section>
   {% endif %}
 
   {# ================================================================
   PUBLIC SECTIONS — visible to all visitors
   ================================================================ #}
 
-  {# --- Recommended Fixes (summary only — details in Score Breakdown) --- #}
-  <section class="panel mt-2" role="region" aria-label="Recommended Fixes">
-    {% if sorted_recommendations %}
-    <div class="recommendations-header">
-      <h2>Recommended Fixes</h2>
-      <span class="rec-count">{{ sorted_recommendations | length }} fix{{ 'es' if sorted_recommendations | length != 1 }}</span>
-    </div>
-    <p class="small">Start with the first one — it targets your weakest area. See details in Score Breakdown below.</p>
-    {% else %}
-    <h2>Recommended Fixes</h2>
-    <p>No issues found. Your site is in good shape for automated AI visibility checks.</p>
-    {% endif %}
-  </section>
-
-  {# --- Score Breakdown — full-width sections per pillar, with fixes inline --- #}
+  {# --- Score Breakdown — each lens combines score, factors, and fixes --- #}
   {% if score_snapshot and score_snapshot.score_data %}
   {% set _grouped_recs = group_recommendations_by_pillar(sorted_recommendations) %}
+  {% set interp = score_snapshot.interpretation if score_snapshot.interpretation else none %}
   <section id="score-breakdown" class="panel mt-2 score-breakdown" role="region" aria-label="Score Breakdown">
-    <h2>Score Breakdown</h2>
-    <p class="small score-breakdown-intro">Each lens shows where AI systems are strong and where they need work.</p>
-
-    {# ── AEO ── #}
-    <div class="breakdown-column">
-      <h3 class="breakdown-col-header">AEO — Can AI quote this site?</h3>
-      {% set ext = factor_extremes.aeo %}
-      {% if ext[0] or ext[2] %}
-      <div class="breakdown-interpretation">
-        {% if ext[2] %}
-        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
-        {% endif %}
-        {% if ext[0] and ext[0][0] != ext[2] %}
-          {% if ext[0][1].score < 40 %}
-          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
-          {% elif ext[0][1].score < 55 %}
-          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
-          {% endif %}
-        {% endif %}
-        {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
-        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
-        {% endif %}
+    <div class="score-breakdown-head">
+      <div>
+        <h2>Score Breakdown</h2>
+        <p class="small score-breakdown-intro">Each lens combines the score, the signals behind it, and the fixes that improve it.</p>
       </div>
-      {% endif %}
-      {% for factor in score_snapshot.score_data.aeo.factors.values() %}
-      <div class="factor-row">
-        <div class="factor-row-head">
-          <span class="factor-label">{{ factor.display_name }}</span>
-          {% if factor.score is not none %}
-          <span class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) }}
-          </span>
-          {% else %}
-          <span class="factor-score factor-score-missing">—</span>
-          {% endif %}
-        </div>
-        {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
-        <div class="factor-row-foot">
-          <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};"></div>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-      {% if _grouped_recs.aeo and _grouped_recs.aeo | length > 0 %}
-      <div class="breakdown-fixes">
-        <h4 class="breakdown-fixes-header">Fixes <span class="rec-count">{{ _grouped_recs.aeo | length }}</span></h4>
-        {% for rec in _grouped_recs.aeo %}
-        <div class="rec-item rec-priority-{{ rec.priority }}">
-          <div class="rec-header">
-            <span class="rec-priority-badge">
-              {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
-            </span>
-            <div class="rec-copy">
-              <span class="rec-title">{{ rec.title }}</span>
-              <div class="rec-detail">{{ rec.detail }}</div>
-              {% if rec.impact %}<div class="rec-impact small">{{ rec.impact }}</div>{% endif %}
-            </div>
-          </div>
-          {% if rec.guidance %}
-          <div class="rec-guidance">→ {{ rec.guidance }}</div>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
-
-    {# ── GEO ── #}
-    <div class="breakdown-column">
-      <h3 class="breakdown-col-header">GEO — Will AI recommend this brand?</h3>
-      {% set ext = factor_extremes.geo %}
-      {% if ext[0] or ext[2] %}
-      <div class="breakdown-interpretation">
-        {% if ext[2] %}
-        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
-        {% endif %}
-        {% if ext[0] and ext[0][0] != ext[2] %}
-          {% if ext[0][1].score < 40 %}
-          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
-          {% elif ext[0][1].score < 55 %}
-          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
-          {% endif %}
-        {% endif %}
-        {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
-        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
-        {% endif %}
-      </div>
-      {% endif %}
-      {% for factor in score_snapshot.score_data.geo.factors.values() %}
-      <div class="factor-row">
-        <div class="factor-row-head">
-          <span class="factor-label">{{ factor.display_name }}</span>
-          {% if factor.score is not none %}
-          <span class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) }}
-          </span>
-          {% else %}
-          <span class="factor-score factor-score-missing">—</span>
-          {% endif %}
-        </div>
-        {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
-        <div class="factor-row-foot">
-          <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};"></div>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-      {% if _grouped_recs.geo and _grouped_recs.geo | length > 0 %}
-      <div class="breakdown-fixes">
-        <h4 class="breakdown-fixes-header">Fixes <span class="rec-count">{{ _grouped_recs.geo | length }}</span></h4>
-        {% for rec in _grouped_recs.geo %}
-        <div class="rec-item rec-priority-{{ rec.priority }}">
-          <div class="rec-header">
-            <span class="rec-priority-badge">
-              {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
-            </span>
-            <div class="rec-copy">
-              <span class="rec-title">{{ rec.title }}</span>
-              <div class="rec-detail">{{ rec.detail }}</div>
-              {% if rec.impact %}<div class="rec-impact small">{{ rec.impact }}</div>{% endif %}
-            </div>
-          </div>
-          {% if rec.guidance %}
-          <div class="rec-guidance">→ {{ rec.guidance }}</div>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
+      <span class="score-breakdown-rec-count">{{ _total_recs }} finding{{ 's' if _total_recs != 1 }}</span>
     </div>
 
     {# ── AAX ── #}
-    <div class="breakdown-column">
-      <h3 class="breakdown-col-header">AAX — Can AI agents use this site?</h3>
+    <div class="lens-breakdown-section">
+      <div class="lens-breakdown-summary {% if score_snapshot.aax_score is not none %}lens-breakdown-summary--{{ score_snapshot.aax_rating_class }}{% endif %}">
+        <span class="gauge-pillar gauge-pillar--aax {{ score_snapshot.aax_rating_class }}">AAX</span>
+        {% if score_snapshot.aax_score is not none %}
+        <div class="lens-breakdown-score {{ score_snapshot.aax_rating_class }}">{{ score_snapshot.aax_score | round(1) }}</div>
+        {% else %}
+        <div class="lens-breakdown-score">—</div>
+        {% endif %}
+        <h3>Can agents complete the journey?</h3>
+        <p>{% if score_snapshot.aax_score is not none and interp and interp.lens_details and interp.lens_details.AAX %}{{ interp.lens_details.AAX.meaning }}{% else %}Measures whether automated agents can identify the offer and find a credible next step.{% endif %}</p>
+        <div class="factor-mini-list" aria-label="AAX factor scores">
+          {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
+          {% for factor in score_snapshot.score_data.aax.factors.values() %}
+          <div class="factor-row">
+            <div class="factor-row-head">
+              <span class="factor-label">{{ factor.display_name }}</span>
+              {% if factor.score is not none %}
+              <span class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+                {{ factor.score | round(1) }}
+              </span>
+              {% else %}
+              <span class="factor-score factor-score-missing">—</span>
+              {% endif %}
+            </div>
+            {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+            <div class="factor-row-foot">
+              <div class="factor-bar">
+                <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%;"></div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          {% else %}
+          <p class="small">No AAX factors available.</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="lens-breakdown-detail">
+      <h3 class="breakdown-col-header">AAX signals and fixes</h3>
       {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
       <div class="aax-summary-note">
         <span class="aax-summary-label">Agent readout</span>
@@ -386,30 +230,6 @@
         {% endif %}
       </div>
       {% endif %}
-      {% if score_snapshot.score_data.aax and score_snapshot.score_data.aax.factors %}
-      {% for factor in score_snapshot.score_data.aax.factors.values() %}
-      <div class="factor-row">
-        <div class="factor-row-head">
-          <span class="factor-label">{{ factor.display_name }}</span>
-          {% if factor.score is not none %}
-          <span class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
-            {{ factor.score | round(1) }}
-          </span>
-          {% else %}
-          <span class="factor-score factor-score-missing">—</span>
-          {% endif %}
-        </div>
-        {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
-        <div class="factor-row-foot">
-          <div class="factor-bar">
-            <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%; background: {{ factor.bar_color }};"></div>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-      {% else %}
-      <p class="small">No AAX factors available.</p>
-      {% endif %}
       {% if _grouped_recs.aax and _grouped_recs.aax | length > 0 %}
       <div class="breakdown-fixes">
         <h4 class="breakdown-fixes-header">Fixes <span class="rec-count">{{ _grouped_recs.aax | length }}</span></h4>
@@ -432,7 +252,159 @@
         {% endfor %}
       </div>
       {% endif %}
+      </div>
     </div>
+
+    {# ── AEO ── #}
+    <div class="lens-breakdown-section">
+      <div class="lens-breakdown-summary lens-breakdown-summary--{{ score_snapshot.aeo_rating_class }}">
+        <span class="gauge-pillar gauge-pillar--aeo {{ score_snapshot.aeo_rating_class }}">AEO</span>
+        <div class="lens-breakdown-score {{ score_snapshot.aeo_rating_class }}">{{ score_snapshot.aeo_score | round(1) }}</div>
+        <h3>Can the site be quoted?</h3>
+        <p>{% if interp and interp.lens_details and interp.lens_details.AEO %}{{ interp.lens_details.AEO.meaning }}{% else %}Measures whether pages provide clear, attributable content AI systems can cite.{% endif %}</p>
+        <div class="factor-mini-list" aria-label="AEO factor scores">
+          {% for factor in score_snapshot.score_data.aeo.factors.values() %}
+          <div class="factor-row">
+            <div class="factor-row-head">
+              <span class="factor-label">{{ factor.display_name }}</span>
+              {% if factor.score is not none %}
+              <span class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+                {{ factor.score | round(1) }}
+              </span>
+              {% else %}
+              <span class="factor-score factor-score-missing">—</span>
+              {% endif %}
+            </div>
+            {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+            <div class="factor-row-foot">
+              <div class="factor-bar">
+                <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%;"></div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="lens-breakdown-detail">
+      <h3 class="breakdown-col-header">AEO signals and fixes</h3>
+      {% set ext = factor_extremes.aeo %}
+      {% if ext[0] or ext[2] %}
+      <div class="breakdown-interpretation">
+        {% if ext[2] %}
+        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
+        {% endif %}
+        {% if ext[0] and ext[0][0] != ext[2] %}
+          {% if ext[0][1].score < 40 %}
+          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
+          {% elif ext[0][1].score < 55 %}
+          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
+          {% endif %}
+        {% endif %}
+        {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
+        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if _grouped_recs.aeo and _grouped_recs.aeo | length > 0 %}
+      <div class="breakdown-fixes">
+        <h4 class="breakdown-fixes-header">Fixes <span class="rec-count">{{ _grouped_recs.aeo | length }}</span></h4>
+        {% for rec in _grouped_recs.aeo %}
+        <div class="rec-item rec-priority-{{ rec.priority }}">
+          <div class="rec-header">
+            <span class="rec-priority-badge">
+              {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+            </span>
+            <div class="rec-copy">
+              <span class="rec-title">{{ rec.title }}</span>
+              <div class="rec-detail">{{ rec.detail }}</div>
+              {% if rec.impact %}<div class="rec-impact small">{{ rec.impact }}</div>{% endif %}
+            </div>
+          </div>
+          {% if rec.guidance %}
+          <div class="rec-guidance">→ {{ rec.guidance }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      </div>
+    </div>
+
+    {# ── GEO ── #}
+    <div class="lens-breakdown-section">
+      <div class="lens-breakdown-summary lens-breakdown-summary--{{ score_snapshot.geo_rating_class }}">
+        <span class="gauge-pillar gauge-pillar--geo {{ score_snapshot.geo_rating_class }}">GEO</span>
+        <div class="lens-breakdown-score {{ score_snapshot.geo_rating_class }}">{{ score_snapshot.geo_score | round(1) }}</div>
+        <h3>Will the brand be recommended?</h3>
+        <p>{% if interp and interp.lens_details and interp.lens_details.GEO %}{{ interp.lens_details.GEO.meaning }}{% else %}Measures whether the site gives enough evidence for AI systems to understand and recommend the brand.{% endif %}</p>
+        <div class="factor-mini-list" aria-label="GEO factor scores">
+          {% for factor in score_snapshot.score_data.geo.factors.values() %}
+          <div class="factor-row">
+            <div class="factor-row-head">
+              <span class="factor-label">{{ factor.display_name }}</span>
+              {% if factor.score is not none %}
+              <span class="factor-score {% if factor.score >= 70 %}factor-score-good{% elif factor.score >= 40 %}factor-score-ok{% else %}factor-score-low{% endif %}">
+                {{ factor.score | round(1) }}
+              </span>
+              {% else %}
+              <span class="factor-score factor-score-missing">—</span>
+              {% endif %}
+            </div>
+            {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+            <div class="factor-row-foot">
+              <div class="factor-bar">
+                <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%;"></div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="lens-breakdown-detail">
+      <h3 class="breakdown-col-header">GEO signals and fixes</h3>
+      {% set ext = factor_extremes.geo %}
+      {% if ext[0] or ext[2] %}
+      <div class="breakdown-interpretation">
+        {% if ext[2] %}
+        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
+        {% endif %}
+        {% if ext[0] and ext[0][0] != ext[2] %}
+          {% if ext[0][1].score < 40 %}
+          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
+          {% elif ext[0][1].score < 55 %}
+          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
+          {% endif %}
+        {% endif %}
+        {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
+        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if _grouped_recs.geo and _grouped_recs.geo | length > 0 %}
+      <div class="breakdown-fixes">
+        <h4 class="breakdown-fixes-header">Fixes <span class="rec-count">{{ _grouped_recs.geo | length }}</span></h4>
+        {% for rec in _grouped_recs.geo %}
+        <div class="rec-item rec-priority-{{ rec.priority }}">
+          <div class="rec-header">
+            <span class="rec-priority-badge">
+              {% if rec.priority == 'high' %}High{% elif rec.priority == 'medium' %}Med{% else %}Info{% endif %}
+            </span>
+            <div class="rec-copy">
+              <span class="rec-title">{{ rec.title }}</span>
+              <div class="rec-detail">{{ rec.detail }}</div>
+              {% if rec.impact %}<div class="rec-impact small">{{ rec.impact }}</div>{% endif %}
+            </div>
+          </div>
+          {% if rec.guidance %}
+          <div class="rec-guidance">→ {{ rec.guidance }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      </div>
+    </div>
+
   </section>
   {% endif %}
 

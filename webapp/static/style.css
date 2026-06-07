@@ -3100,6 +3100,7 @@ p.card-meta {
 .factor-bar-fill {
   height: 100%;
   border-radius: inherit;
+  background: var(--color-primary);
   transition: width 0.3s ease;
 }
 
@@ -5941,52 +5942,6 @@ p.card-meta {
   max-width: 76ch;
 }
 
-/* -----------------------------------------------------------------------
-   SCORE GAUGES — reduce number, increase label, reorder
-   ----------------------------------------------------------------------- */
-.analysis-result-page .score-gauge {
-  padding: var(--space-lg) var(--space-lg) var(--space-md);
-  align-items: flex-start;
-}
-
-.analysis-result-page .gauge-pillar {
-  order: -1;
-  margin-bottom: var(--space-xs);
-}
-
-.analysis-result-page .score-gauge-header {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-ink);
-  margin-bottom: var(--space-sm);
-  line-height: 1.35;
-}
-
-.analysis-result-page .gauge-value {
-  font-size: clamp(36px, 5vw, 44px);
-  line-height: 1;
-  margin-bottom: var(--space-xs);
-}
-
-.analysis-result-page .gauge-implication {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* -----------------------------------------------------------------------
-   RECOMMENDED FIXES — stronger action cards
-   ----------------------------------------------------------------------- */
-.analysis-result-page .recommendations-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: var(--space-sm);
-}
-
-.analysis-result-page .recommendations-header h2 {
-  margin: 0;
-}
-
 .analysis-result-page .rec-count {
   font-size: 13px;
   color: var(--color-ink-muted);
@@ -6055,10 +6010,130 @@ p.card-meta {
 }
 
 /* -----------------------------------------------------------------------
-   SCORE BREAKDOWN — intentionally technical/secondary
+   SCORE BREAKDOWN — two-column diagnostic workflow
    ----------------------------------------------------------------------- */
 .analysis-result-page .score-breakdown {
   background: var(--color-surface-1);
+}
+
+.score-breakdown-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.score-breakdown-rec-count {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-canvas);
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+.lens-breakdown-section {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: var(--space-xl);
+  align-items: start;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  padding: var(--space-lg);
+}
+
+.lens-breakdown-section + .lens-breakdown-section {
+  margin-top: var(--space-md);
+}
+
+.lens-breakdown-summary {
+  border-left: 3px solid var(--color-hairline);
+  padding-left: var(--space-md);
+  min-width: 0;
+}
+
+.lens-breakdown-summary--rating-good,
+.lens-breakdown-summary--rating-excellent {
+  border-left-color: var(--color-semantic-success);
+}
+
+.lens-breakdown-summary--rating-ok {
+  border-left-color: var(--color-semantic-serious);
+}
+
+.lens-breakdown-summary--rating-low {
+  border-left-color: var(--color-semantic-error);
+}
+
+.lens-breakdown-score {
+  margin: var(--space-sm) 0 var(--space-xs);
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-size: clamp(36px, 5vw, 48px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  color: var(--color-ink);
+}
+
+.lens-breakdown-score.rating-good,
+.lens-breakdown-score.rating-excellent {
+  color: var(--color-semantic-success);
+}
+
+.lens-breakdown-score.rating-ok {
+  color: var(--color-semantic-serious);
+}
+
+.lens-breakdown-score.rating-low {
+  color: var(--color-semantic-error);
+}
+
+.lens-breakdown-summary h3 {
+  margin: 0 0 var(--space-xs);
+  font-size: 16px;
+}
+
+.lens-breakdown-summary p {
+  margin: 0;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+.factor-mini-list {
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--color-hairline);
+}
+
+.factor-mini-list .factor-row {
+  padding: var(--space-xs) 0;
+  gap: var(--space-xs);
+}
+
+.factor-mini-list .factor-row-head {
+  align-items: baseline;
+}
+
+.factor-mini-list .factor-label {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-ink-muted);
+}
+
+.factor-mini-list .factor-score {
+  font-size: 12px;
+}
+
+.factor-mini-list .factor-note {
+  font-size: 12px;
+}
+
+.factor-mini-list .factor-bar {
+  height: 6px;
+}
+
+.lens-breakdown-detail {
+  min-width: 0;
 }
 
 .analysis-result-page .breakdown-col-header {
@@ -6111,12 +6186,19 @@ p.card-meta {
     max-width: none;
   }
 
-  .analysis-result-page .score-gauges {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .analysis-result-page .aax-audit-grid {
     grid-template-columns: 1fr;
+  }
+
+  .score-breakdown-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .lens-breakdown-section {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+    padding: var(--space-md);
   }
 }
 
@@ -6125,7 +6207,7 @@ p.card-meta {
     padding: var(--space-sm);
   }
 
-  .analysis-result-page .score-gauges {
-    grid-template-columns: 1fr;
+  .lens-breakdown-section {
+    padding: var(--space-sm);
   }
 }
