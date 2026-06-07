@@ -135,7 +135,7 @@
   {% set _total_recs = sorted_recommendations | length if sorted_recommendations else 0 %}
   {% if score_snapshot and score_snapshot.interpretation %}
   {% set interp = score_snapshot.interpretation %}
-  <section class="panel mt-3 risk-summary risk-{{ interp.tone }}" role="region" aria-label="AI Visibility Risk Summary">
+  <section class="panel result-section risk-summary risk-{{ interp.tone }}" role="region" aria-label="AI Visibility Risk Summary">
     <div class="risk-summary-compact">
       <div class="risk-status">{{ interp.profile_label }}</div>
       <h2 class="risk-headline">{{ interp.headline }}</h2>
@@ -157,7 +157,7 @@
   {% if score_snapshot and score_snapshot.score_data %}
   {% set _grouped_recs = group_recommendations_by_pillar(sorted_recommendations) %}
   {% set interp = score_snapshot.interpretation if score_snapshot.interpretation else none %}
-  <section id="score-breakdown" class="panel mt-2 score-breakdown" role="region" aria-label="Score Breakdown">
+  <section id="score-breakdown" class="panel result-section score-breakdown" role="region" aria-label="Score Breakdown">
     <div class="score-breakdown-head">
       <div>
         <h2>Score Breakdown</h2>
@@ -194,7 +194,7 @@
             {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
             <div class="factor-row-foot">
               <div class="factor-bar">
-                <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%;"></div>
+                <div class="factor-bar-fill" style="--factor-score: {{ factor.score or 0 }};"></div>
               </div>
             </div>
           </div>
@@ -216,17 +216,17 @@
       {% if ext[0] or ext[2] %}
       <div class="breakdown-interpretation">
         {% if ext[2] %}
-        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
+        <span class="interp-critical">{{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
         {% endif %}
         {% if ext[0] and ext[0][0] != ext[2] %}
           {% if ext[0][1].score < 40 %}
-          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
+          <span class="interp-critical">{{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
           {% elif ext[0][1].score < 55 %}
-          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
+          <span class="interp-weak">{{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
           {% endif %}
         {% endif %}
         {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
-        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
+        <span class="interp-strong">{{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
         {% endif %}
       </div>
       {% endif %}
@@ -245,7 +245,7 @@
             </div>
           </div>
           {% if rec.guidance %}
-          <div class="rec-guidance">→ {{ rec.guidance }}</div>
+          <div class="rec-guidance">{{ rec.guidance }}</div>
           {% endif %}
         </div>
         {% endfor %}
@@ -277,7 +277,7 @@
             {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
             <div class="factor-row-foot">
               <div class="factor-bar">
-                <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%;"></div>
+                <div class="factor-bar-fill" style="--factor-score: {{ factor.score or 0 }};"></div>
               </div>
             </div>
           </div>
@@ -290,17 +290,17 @@
       {% if ext[0] or ext[2] %}
       <div class="breakdown-interpretation">
         {% if ext[2] %}
-        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
+        <span class="interp-critical">{{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
         {% endif %}
         {% if ext[0] and ext[0][0] != ext[2] %}
           {% if ext[0][1].score < 40 %}
-          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
+          <span class="interp-critical">{{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
           {% elif ext[0][1].score < 55 %}
-          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
+          <span class="interp-weak">{{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
           {% endif %}
         {% endif %}
         {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
-        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
+        <span class="interp-strong">{{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
         {% endif %}
       </div>
       {% endif %}
@@ -319,7 +319,7 @@
             </div>
           </div>
           {% if rec.guidance %}
-          <div class="rec-guidance">→ {{ rec.guidance }}</div>
+          <div class="rec-guidance">{{ rec.guidance }}</div>
           {% endif %}
         </div>
         {% endfor %}
@@ -351,7 +351,7 @@
             {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
             <div class="factor-row-foot">
               <div class="factor-bar">
-                <div class="factor-bar-fill" style="width: {{ factor.score or 0 }}%;"></div>
+                <div class="factor-bar-fill" style="--factor-score: {{ factor.score or 0 }};"></div>
               </div>
             </div>
           </div>
@@ -364,17 +364,17 @@
       {% if ext[0] or ext[2] %}
       <div class="breakdown-interpretation">
         {% if ext[2] %}
-        <span class="interp-critical">✗ {{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
+        <span class="interp-critical">{{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be lower</span>
         {% endif %}
         {% if ext[0] and ext[0][0] != ext[2] %}
           {% if ext[0][1].score < 40 %}
-          <span class="interp-critical">✗ {{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
+          <span class="interp-critical">{{ ext[0][1].display_name }} critically low ({{ ext[0][1].score | round(1) }})</span>
           {% elif ext[0][1].score < 55 %}
-          <span class="interp-weak">! {{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
+          <span class="interp-weak">{{ ext[0][1].display_name }} needs work ({{ ext[0][1].score | round(1) }})</span>
           {% endif %}
         {% endif %}
         {% if ext[1] and (not ext[0] or ext[1][0] != ext[0][0]) and ext[1][1].score >= 70 %}
-        <span class="interp-strong">✓ {{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
+        <span class="interp-strong">{{ ext[1][1].display_name }} strong ({{ ext[1][1].score | round(1) }})</span>
         {% endif %}
       </div>
       {% endif %}
@@ -393,7 +393,7 @@
             </div>
           </div>
           {% if rec.guidance %}
-          <div class="rec-guidance">→ {{ rec.guidance }}</div>
+          <div class="rec-guidance">{{ rec.guidance }}</div>
           {% endif %}
         </div>
         {% endfor %}
@@ -413,7 +413,7 @@
   {# --- AI Agent Usability Review (owner-only) --- #}
   {% if score_snapshot and score_snapshot.aax_analysis %}
   {% set aax = score_snapshot.aax_analysis %}
-  <section class="panel mt-2" role="region" aria-label="AI Agent Usability Review">
+  <section class="panel result-section" role="region" aria-label="AI Agent Usability Review">
     <h2>AI Agent Usability Review</h2>
     <p class="small">Tomorrow's buyer can be an AI agent. This section shows whether an agent can understand the
       offer, detect the next step, and avoid abandoning the task.</p>
@@ -516,7 +516,7 @@
 
   {# --- Page-by-Page Content Stats (owner-only, reworked: stats table, no raw markdown) --- #}
   {% if _payload.pages %}
-  <section class="panel mt-2" role="region" aria-label="Page-by-Page Stats">
+  <section class="panel result-section" role="region" aria-label="Page-by-Page Stats">
     <h2>Page-by-Page Content Stats</h2>
     <p class="small">Structural metrics per page — these drive your AEO and GEO scores. (Raw page content is not shown.)
     </p>
@@ -548,7 +548,7 @@
           <td>{{ pg_headings.depth or 0 }}</td>
           <td>{{ pg_metrics.lists or 0 }}</td>
           <td>{{ pg_metrics.tables or 0 }}</td>
-          <td>{% if pg_item.jsonld and pg_item.jsonld|length > 0 %}✓{% else %}✗{% endif %}</td>
+          <td>{% if pg_item.jsonld and pg_item.jsonld|length > 0 %}<span class="cell-flag cell-flag--yes" aria-label="present"></span>{% else %}<span class="cell-flag cell-flag--no" aria-label="absent"></span>{% endif %}</td>
           <td>{% if pg_img_total > 0 %}{{ ((pg_img_alt / pg_img_total) * 100) | round }}%{% else %}—{% endif %}</td>
           <td>
             {% if pg_item.jsonld %}
@@ -566,7 +566,7 @@
 
   {# --- Agent Conversion Readiness (owner-only, PII) --- #}
   {% if payload %}
-  <section class="panel mt-2" role="region" aria-label="Agent Conversion Readiness">
+  <section class="panel result-section" role="region" aria-label="Agent Conversion Readiness">
     <h2>Agent Conversion Readiness</h2>
     <p class="reachability-subtitle">Can an AI agent find a credible next step — contact, social proof, or a
       conversion path — without stalling?</p>
@@ -645,7 +645,7 @@
   {# --- Methodology footer (FROZEN) --- #}
   {% if score_snapshot and score_snapshot.interpretation %}
   {% set interp = score_snapshot.interpretation %}
-  <div class="risk-methodology-footer mt-2">
+  <div class="risk-methodology-footer result-section">
     <p class="risk-method-note"><strong>Method:</strong> scored across citation, recommendation, and agent usability.
       Fix order is based on which area has the weakest automated signal.</p>
     {% if interp.score_basis == "auto" %}

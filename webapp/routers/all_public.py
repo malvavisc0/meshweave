@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
+from meshweave.scoring.interpretation import interpret_profile
 from webapp.db import get_db
 from webapp.infra import templates
 from webapp.models import Crawl
@@ -21,7 +22,7 @@ router = APIRouter()
 async def view_all(
     request: Request,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = 12,
     domain: str | None = None,
     status: str | None = None,
     cursor: str | None = None,
@@ -43,9 +44,9 @@ async def view_all(
     try:
         page_size = int(page_size)
     except Exception:
-        page_size = 50
-    if page_size not in (25, 50, 100):
-        page_size = 50
+        page_size = 12
+    if page_size not in (12, 24, 48):
+        page_size = 12
 
     dom = None
     if domain:
@@ -227,10 +228,24 @@ async def view_all(
 
                 # Extract scores
                 aax_sc = None
+                aax_rt = None
                 try:
                     snap = row.score_snapshot
                     if snap and snap.score_json:
-                        aax_sc = (snap.score_json.get("aax") or {}).get("composite")
+                        aax_data = snap.score_json.get("aax") or {}
+                        aax_sc = aax_data.get("composite")
+                        aax_rt = aax_data.get("rating")
+                except Exception:
+                    pass
+
+                # Interpretation headline for card preview
+                headline = None
+                tone = None
+                try:
+                    if row.aeo_score is not None and row.geo_score is not None and aax_sc is not None:
+                        interp = interpret_profile(row.aeo_score, row.geo_score, aax_sc, score_basis="auto")
+                        headline = interp.get("headline")
+                        tone = interp.get("tone")
                 except Exception:
                     pass
 
@@ -255,6 +270,9 @@ async def view_all(
                         "aax_score": aax_sc,
                         "aeo_rating": row.aeo_rating,
                         "geo_rating": row.geo_rating,
+                        "aax_rating": aax_rt,
+                        "headline": headline,
+                        "tone": tone,
                         "summary_snippet": (
                             summary_snippet if scope_val == "site" else ""
                         ),
@@ -427,10 +445,24 @@ async def view_all(
 
                 # Extract scores
                 aax_sc = None
+                aax_rt = None
                 try:
                     snap = r.score_snapshot
                     if snap and snap.score_json:
-                        aax_sc = (snap.score_json.get("aax") or {}).get("composite")
+                        aax_data = snap.score_json.get("aax") or {}
+                        aax_sc = aax_data.get("composite")
+                        aax_rt = aax_data.get("rating")
+                except Exception:
+                    pass
+
+                # Interpretation headline for card preview
+                headline = None
+                tone = None
+                try:
+                    if r.aeo_score is not None and r.geo_score is not None and aax_sc is not None:
+                        interp = interpret_profile(r.aeo_score, r.geo_score, aax_sc, score_basis="auto")
+                        headline = interp.get("headline")
+                        tone = interp.get("tone")
                 except Exception:
                     pass
 
@@ -455,6 +487,9 @@ async def view_all(
                         "aax_score": aax_sc,
                         "aeo_rating": r.aeo_rating,
                         "geo_rating": r.geo_rating,
+                        "aax_rating": aax_rt,
+                        "headline": headline,
+                        "tone": tone,
                         "summary_snippet": (
                             summary_snippet if scope_val == "site" else ""
                         ),

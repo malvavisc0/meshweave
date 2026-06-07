@@ -2,7 +2,14 @@
 <li
   class="card {{ 'card-leads' if highlight_complete and (item.aeo_score is not none and item.geo_score is not none and item.aax_score is not none) else '' }} {{ 'card-dense' if dense else '' }}">
   <h3 class="card-title">
-    <span class="card-domain-initial" aria-hidden="true">{{ item.domain[0]|upper if item.domain else '' }}</span>
+    <span class="card-favicon-wrap">
+      {% if item.domain %}
+      <img src="https://www.google.com/s2/favicons?domain={{ item.domain }}&sz=32" alt="" class="card-favicon"
+        width="20" height="20" loading="lazy"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+      {% endif %}
+      <span class="card-domain-initial" aria-hidden="true" style="{{ 'display:none' if item.domain else '' }}">{{ item.domain[0]|upper if item.domain else '' }}</span>
+    </span>
     {% set display_title = item.title or item.domain or item.canonical_url %}
     {% if item.key %}
     <a href="/analysis/{{ item.key }}" class="ml-1" aria-label="Open analysis for {{ display_title }}"
@@ -13,13 +20,13 @@
     <span class="ml-1">{{ display_title }}</span>
     {% endif %}
     {% if item.is_new %}
-    <span class="badge ml-1" title="Recently updated">NEW</span>
+    <span class="badge badge-new ml-1" title="Recently updated">New</span>
     {% endif %}
     {% if item.run_count is defined and item.run_count > 1 %}
-    <span class="badge ml-1" title="{{ item.run_count }} runs">{{ item.run_count }} Runs</span>
+    <span class="badge ml-1" title="{{ item.run_count }} runs">{{ item.run_count }} runs</span>
     {% endif %}
     {% if item.status == "failed" %}
-    <span class="badge status-failed ml-1" title="Analysis failed">FAILED</span>
+    <span class="badge badge-status-failed ml-1" title="Analysis failed">Failed</span>
     {% endif %}
   </h3>
 
@@ -28,30 +35,43 @@
     <span class="domain">{{ display_domain }}</span>
   </p>
 
+  {% if item.headline %}
+  <p class="card-diagnosis risk-{{ item.tone }}">
+    <span class="card-diagnosis-label">Diagnosis</span>
+    <span class="card-diagnosis-text">{{ item.headline }}</span>
+  </p>
+  {% endif %}
+
   <p class="card-meta small">
     {% if item.aeo_score is not none or item.geo_score is not none or item.aax_score is not none %}
-    {% if item.aeo_score is not none %}
-    AEO: <strong class="score-value score-{{ item.aeo_rating|default('unknown')|lower }}">{{ item.aeo_score|int
-      }}</strong>
-    {% endif %}
-    {% if item.geo_score is not none %}
-    · GEO: <strong class="score-value score-{{ item.geo_rating|default('unknown')|lower }}">{{ item.geo_score|int
-      }}</strong>
-    {% endif %}
-    {% if item.aax_score is not none %}
-    · AAX: <strong class="score-value">{{ item.aax_score|int }}</strong>
-    {% endif %}
+    <span class="card-scores">
+      {% if item.aax_score is not none %}
+      <span class="card-score">
+        <span class="gauge-pillar gauge-pillar--aax {{ item.aax_rating|rating_class }}">AAX</span>
+        <strong class="score-value">{{ item.aax_score|int }}</strong>
+      </span>
+      {% endif %}
+      {% if item.aeo_score is not none %}
+      <span class="card-score">
+        <span class="gauge-pillar gauge-pillar--aeo {{ item.aeo_rating|rating_class }}">AEO</span>
+        <strong class="score-value">{{ item.aeo_score|int }}</strong>
+      </span>
+      {% endif %}
+      {% if item.geo_score is not none %}
+      <span class="card-score">
+        <span class="gauge-pillar gauge-pillar--geo {{ item.geo_rating|rating_class }}">GEO</span>
+        <strong class="score-value">{{ item.geo_score|int }}</strong>
+      </span>
+      {% endif %}
+    </span>
     {% else %}
     <span class="badge badge-status-partial">Partial</span>
     {% endif %}
-    Updated
-    <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">
-      {{ item.updated_relative or item.updated_at }}
-    </time>
+    <span class="card-meta-updated">Updated
+      <time datetime="{{ item.updated_iso or item.updated_at }}" title="{{ item.updated_iso or item.updated_at }}">
+        {{ item.updated_relative or item.updated_at }}
+      </time>
+    </span>
   </p>
-
-  {% if show_summary and item.summary_snippet %}
-  <p class="card-summary small">{{ item.summary_snippet }}</p>
-  {% endif %}
 </li>
 {%- endmacro %}

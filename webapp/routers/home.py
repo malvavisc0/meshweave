@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
+from meshweave.scoring.interpretation import interpret_profile
 from webapp.db import get_db
 from webapp.infra import templates
 from webapp.models import Crawl
@@ -127,7 +128,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
             ),
             Crawl.updated_at.desc(),
         )
-        .limit(5)
+        .limit(6)
         .all()
     )
 
@@ -226,11 +227,24 @@ async def home(request: Request, db: Session = Depends(get_db)):
         aeo_rt = r.aeo_rating
         geo_rt = r.geo_rating
         aax_sc = None
+        aax_rt = None
         try:
             snap = r.score_snapshot
             if snap and snap.score_json:
                 aax_data = snap.score_json.get("aax") or {}
                 aax_sc = aax_data.get("composite")
+                aax_rt = aax_data.get("rating")
+        except Exception:
+            pass
+
+        # Interpretation headline for card preview
+        headline = None
+        tone = None
+        try:
+            if aeo_sc is not None and geo_sc is not None and aax_sc is not None:
+                interp = interpret_profile(aeo_sc, geo_sc, aax_sc, score_basis="auto")
+                headline = interp.get("headline")
+                tone = interp.get("tone")
         except Exception:
             pass
 
@@ -251,11 +265,14 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 "aax_score": aax_sc,
                 "aeo_rating": aeo_rt,
                 "geo_rating": geo_rt,
+                "aax_rating": aax_rt,
                 "updated_iso": updated_iso,
                 "updated_relative": updated_relative,
                 "is_new": bool(is_new),
                 "summary_snippet": (summary_snippet if bool(r.crawl_params) else ""),
                 "run_count": domain_run_counts.get(r.domain, 1),
+                "headline": headline,
+                "tone": tone,
                 # Back-compat fields (legacy templates)
                 "updated_at": updated_iso,
             }
