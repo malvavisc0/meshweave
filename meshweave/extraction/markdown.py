@@ -84,6 +84,11 @@ def to_markdown(soup: BeautifulSoup) -> str:
     # Remove elements with class="no-md" (UI-only noise)
     for el in target.find_all(class_="no-md"):
         el.decompose()
+    # Strip non-content elements that produce noise in markdown output
+    for tag in target.find_all(["script", "style"]):
+        tag.decompose()
+    for el in target.find_all(class_="hidden"):
+        el.decompose()
     # Collapse source-level newlines inside content elements so the
     # markdown converter receives properly normalised text.
     _collapse_ws(target)
@@ -104,4 +109,7 @@ def to_markdown(soup: BeautifulSoup) -> str:
     md = re.sub(r"\)(?=[^\s\[\]])", ") ", md)
     # - Add space before '[' when preceded by a non-space char
     md = re.sub(r"(?<=\S)\[(?!\()", " [", md)
+
+    # Collapse runs of 3+ blank lines to 2
+    md = re.sub(r"\n{3,}", "\n\n", md)
     return md

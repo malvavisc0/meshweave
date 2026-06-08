@@ -56,7 +56,7 @@ BandName = Literal["broken", "weak", "developing", "strong", "excellent"]
 # ---------------------------------------------------------------------------
 
 _BAND_THRESHOLDS: list[tuple[float, float, BandName, str]] = [
-    (0, 39, "broken", "AI can't make sense of this"),
+    (0, 39, "broken", "This site's content can't be parsed by AI agents"),
     (
         40,
         54,
@@ -137,7 +137,7 @@ _LENS_META: dict[LensName, dict[str, str]] = {
 # Headline copy (per profile shape)
 # ---------------------------------------------------------------------------
 _HEADLINES: dict[str, str] = {
-    "high_invisibility": "AI agents can't make sense of the website content",
+    "high_invisibility": "AI agents can't parse the website content",
     "critical_failure": "One weak spot is affecting the visibility of the whole site",
     "broken_in_strong_profile": "Everything works except this one broken thing",
     "material_risk": "AI agents see the site but can't fully trust it",
