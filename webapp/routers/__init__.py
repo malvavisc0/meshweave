@@ -11,6 +11,7 @@ from . import (
     prospects,
     prospects_page,
     scores,
+    scoring,
     submissions,
 )
 
@@ -25,6 +26,7 @@ __all__ = [
     "prospects",
     "prospects_page",
     "scores",
+    "scoring",
     "submissions",
     "legal",
     "products",

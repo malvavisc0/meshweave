@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any
 
-from ..crawling.fetcher import BrowserSession, get_rendered_html
+from ..crawling.fetcher import BrowserSession, fetch_text
 
 _HTML_RE = re.compile(
     r"^\s*(<!doctype\s+html|<html[\s>]|<head[\s>]" r"|<body[\s>]|<p[\s>])",
@@ -91,45 +91,6 @@ def _parse_robots(
     return {bot: _status(bot) for bot in bots}
 
 
-async def _fetch_text(
-    url: str,
-    *,
-    session: BrowserSession,
-    timeout: float = 10.0,
-) -> str | None:
-    """Fetch a URL via cloakbrowser and return body text, or None."""
-    try:
-        html = await get_rendered_html(
-            url=url,
-            session=session,
-            progressive_scroll=False,
-            return_metrics=False,
-            timeout=timeout,
-            wait_until="domcontentloaded",
-        )
-        # robots.txt / llms.txt are plain text served as-is;
-        # cloakbrowser wraps them in <html><body><pre>…</pre>
-        # so we strip tags if present.
-        if isinstance(html, str):
-            text = html
-            # Strip common browser wrapper for plain-text files
-            for tag in (
-                "<html>",
-                "</html>",
-                "<head>",
-                "</head>",
-                "<body>",
-                "</body>",
-                "<pre>",
-                "</pre>",
-            ):
-                text = text.replace(tag, "")
-            return text.strip()
-    except Exception as exc:
-        logger.debug("Failed to fetch %s: %s", url, exc)
-    return None
-
-
 async def fetch_robots_info(
     base_url: str,
     *,
@@ -145,7 +106,7 @@ async def fetch_robots_info(
         "sitemaps": [],
         "size_bytes": 0,
     }
-    body = await _fetch_text(robots_url, session=session, timeout=timeout)
+    body = await fetch_text(robots_url, session=session, timeout=timeout)
     if body:
         result["exists"] = True
         result["size_bytes"] = len(body.encode())
@@ -194,7 +155,7 @@ async def check_llms_txt(
     ):
         for path in paths:
             url = base + path
-            body = await _fetch_text(url, session=session, timeout=timeout)
+            body = await fetch_text(url, session=session, timeout=timeout)
             if body and _is_valid_llms_content(body):
                 result[key] = {
                     "exists": True,

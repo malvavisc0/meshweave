@@ -10,10 +10,6 @@ from sqlalchemy import func
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl, Product, ScoreSnapshot
-
-# Treat SQLAlchemy declarative models as Any for type checkers to avoid circular/forward-ref analysis issues
-Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
-Product = cast(Any, Product)  # pyright: ignore[reportGeneralTypeIssues]
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -24,6 +20,11 @@ from webapp.utils.quotas import (
 )
 from webapp.utils.security import _make_csrf_token, _verify_csrf_token
 from webapp.utils.url import _abs_url
+
+# Treat SQLAlchemy declarative models as Any for type checkers to avoid
+# circular/forward-ref analysis issues
+Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
+Product = cast(Any, Product)  # pyright: ignore[reportGeneralTypeIssues]
 
 router = APIRouter()
 
@@ -253,7 +254,7 @@ async def my_jobs(
         if i["status"] in ("running", "pending", "failed", "succeeded")
     ][:5]
 
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Dashboard — {site_name}"
     meta_description = "Your recent crawls."
 

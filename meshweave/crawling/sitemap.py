@@ -11,57 +11,13 @@ from typing import Any
 from urllib.parse import urljoin
 
 from ..urls import normalize_domain
-from .fetcher import BrowserSession, get_rendered_html
+from .fetcher import BrowserSession, fetch_text
 
 __all__ = [
     "discover_sitemap_urls",
 ]
 
 logger = logging.getLogger(__name__)
-
-# HTML tags that CloakBrowser wraps around plain-text/XML content.
-_STRIP_TAGS = (
-    "<html>",
-    "</html>",
-    "<head>",
-    "</head>",
-    "<body>",
-    "</body>",
-    "<pre>",
-    "</pre>",
-)
-
-
-async def _fetch_text(
-    url: str,
-    *,
-    session: BrowserSession,
-    timeout: float = 10.0,
-) -> str | None:
-    """Fetch a URL via CloakBrowser and return body text, or None.
-
-    CloakBrowser renders through Chromium which handles bot
-    detection, JS challenges, and TLS fingerprinting.
-    Plain-text/XML responses are wrapped in minimal HTML tags
-    which are stripped before returning.
-    """
-    try:
-        html = await get_rendered_html(
-            url=url,
-            session=session,
-            progressive_scroll=False,
-            return_metrics=False,
-            timeout=timeout,
-            wait_until="domcontentloaded",
-        )
-        if isinstance(html, str):
-            text = html
-            for tag in _STRIP_TAGS:
-                text = text.replace(tag, "")
-            return text.strip()
-    except Exception as exc:
-        logger.debug("Failed to fetch %s: %s", url, exc)
-    return None
 
 
 def _parse_sitemap_xml(xml_text: str, base_url: str) -> tuple[list[str], list[str]]:
@@ -157,7 +113,7 @@ async def discover_sitemap_urls(
             # robots.txt discovery
             for scheme in ("https", "http"):
                 robots_url = f"{scheme}://{d}/robots.txt"
-                text = await _fetch_text(
+                text = await fetch_text(
                     robots_url,
                     session=session,
                     timeout=8.0,
@@ -205,7 +161,7 @@ async def discover_sitemap_urls(
             continue
         seen_sitemaps.add(sm_url)
 
-        text = await _fetch_text(sm_url, session=session, timeout=12.0)
+        text = await fetch_text(sm_url, session=session, timeout=12.0)
         meta: dict[str, Any] = {
             "type": "sitemap",
             "url": sm_url,

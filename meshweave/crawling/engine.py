@@ -5,7 +5,6 @@ import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
-from urllib.parse import urlparse
 
 from ..extraction import (
     classify_links,
@@ -18,42 +17,13 @@ from ..extraction import (
     to_markdown,
 )
 from ..urls import normalize_abs_url, origin_prefix, should_follow
-from .fetcher import BrowserSession, get_rendered_html
+from .fetcher import BrowserSession, get_rendered_html, render_metrics_to_dict
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "bfs_crawl",
 ]
-
-
-def _render_metrics_to_dict(metrics: Any) -> dict[str, Any]:
-    """Extract render metrics dict from a metrics dataclass."""
-    return {
-        "final_url": str(getattr(metrics, "final_url", "")),
-        "response_status": int(getattr(metrics, "response_status", 0)),
-        "network_requests": int(getattr(metrics, "network_requests", 0)),
-        "content_length": int(getattr(metrics, "content_length", 0)),
-        "load_time_ms": round(
-            float(getattr(metrics, "load_time", 0.0)) * 1000,
-            2,
-        ),
-        "cache_hit": bool(getattr(metrics, "cache_hit", False)),
-        "errors": list(getattr(metrics, "errors", [])),
-    }
-
-
-def _url_depth(url: str, origin: str) -> int:
-    """Infer BFS depth from URL path segments relative to *origin*.
-
-    Examples (origin ``https://example.com/``):
-    * ``/news``          → 1
-    * ``/news/article``  → 2
-    * ``/a/b/c``         → 3
-    """
-    origin_segs = len([s for s in urlparse(origin).path.strip("/").split("/") if s])
-    url_segs = len([s for s in urlparse(url).path.strip("/").split("/") if s])
-    return max(1, url_segs - origin_segs)
 
 
 async def bfs_crawl(
@@ -119,6 +89,7 @@ async def bfs_crawl(
     visited_list: list[str] = []
     markdowns: dict[str, dict[str, Any]] = {}
     stop_reason = "queue_empty"
+    frontier_truncated_by_depth = False
 
     origin_pfx = origin_prefix(origin)
     norm_start = normalize_abs_url(origin, origin)
@@ -138,7 +109,10 @@ async def bfs_crawl(
             absu
             and should_follow(absu, origin_pfx)
             and absu not in visited_norm
-            and len(visited_norm) < crawl_max_pages
+            # Bound queued work to the page budget using *actual* visits plus
+            # already-queued URLs. visited_norm is reserved for dedup only, so
+            # failed renders / redirect aliases don't shrink the budget.
+            and len(visited_list) + len(q) < crawl_max_pages
         ):
             if url_filter and not url_filter(absu):
                 return False
@@ -147,14 +121,16 @@ async def bfs_crawl(
             return True
         return False
 
-    # Seed from start page links (shortest URLs first, then alpha)
+    # Seed from start page links (shortest URLs first, then alpha).
+    # Links discovered on the origin page are first-hop, i.e. depth 1.
     for href in sorted(internal_links, key=lambda u: (len(u), u)):
-        _enqueue(href, origin, _url_depth(href, origin))
+        _enqueue(href, origin, 1)
 
-    # Seed from sitemap (shortest URLs first, then alpha)
+    # Seed from sitemap (shortest URLs first, then alpha). Sitemap URLs are
+    # treated as first-hop seeds (depth 1) so depth stays a pure BFS hop count.
     seeded = 0
     for su in sorted(sitemap_seeds or [], key=lambda u: (len(u), u)):
-        if _enqueue(su, origin, _url_depth(su, origin)):
+        if _enqueue(su, origin, 1):
             seeded += 1
 
     # BFS loop
@@ -166,9 +142,10 @@ async def bfs_crawl(
 
         u, depth = q.popleft()
 
-        # Depth limit
+        # Depth limit (defensive: frontier expansion below is already
+        # depth-bounded, so queued items should not exceed max_depth). Do not
+        # set stop_reason here — depth pruning is not a loop-termination reason.
         if max_depth > 0 and depth > max_depth:
-            stop_reason = "max_depth"
             continue
 
         try:
@@ -207,7 +184,7 @@ async def bfs_crawl(
         visited_list.append(final_u)
 
         # Per-page render metrics
-        render_metrics = _render_metrics_to_dict(m2)
+        render_metrics = render_metrics_to_dict(m2)
 
         # Generate markdown and extract metadata for crawled page
         soup_raw = None
@@ -254,6 +231,10 @@ async def bfs_crawl(
         if max_depth == 0 or depth < max_depth:
             for href2 in new_int:
                 _enqueue(href2, final_u, depth + 1)
+        elif new_int:
+            # Internal links exist but the depth limit stops us from following
+            # them — the crawl is bounded by depth rather than running dry.
+            frontier_truncated_by_depth = True
 
         # Heartbeat callback
         if on_page_crawled:
@@ -265,8 +246,14 @@ async def bfs_crawl(
         if throttle_ms > 0:
             await asyncio.sleep(throttle_ms / 1000)
 
-    if q and len(visited_list) >= crawl_max_pages:
-        stop_reason = "max_pages"
+    # Determine the terminal stop reason in priority order. "cancelled" is set
+    # on break and must not be overridden.
+    if stop_reason != "cancelled":
+        if q and len(visited_list) >= crawl_max_pages:
+            stop_reason = "max_pages"
+        elif not q and frontier_truncated_by_depth:
+            stop_reason = "max_depth"
+        # otherwise the queue drained naturally: keep the default "queue_empty"
 
     return {
         "visited": visited_list,

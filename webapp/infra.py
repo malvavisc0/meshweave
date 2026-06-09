@@ -78,7 +78,7 @@ try:
             if isinstance(dt, str):
                 try:
                     dt = _dt.fromisoformat(dt)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     return ""
             base = dt or now
             if base.tzinfo is None:
@@ -117,7 +117,7 @@ try:
         """Return CSS BEM modifier class for score bar fill based on numeric score."""
         try:
             s = float(score)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return ""
         if s >= 80:
             return "score-bar-fill--good"

@@ -12,6 +12,7 @@ from .crawling import (
     discover_sitemap_urls,
     get_rendered_html,
 )
+from .crawling.fetcher import render_metrics_to_dict
 from .extraction import (
     analyze_faq_schema,
     audit_entity_consistency,
@@ -55,22 +56,6 @@ def _resolve_cache_config(
         "MESHWEAVE_DISABLE_CACHE", ""
     ).strip().lower() in ("1", "true", "yes", "on")
     return None if disable else cache_env
-
-
-def _build_render_metrics(metrics: Any) -> dict[str, Any]:
-    """Extract render metrics into a plain dict."""
-    return {
-        "final_url": str(getattr(metrics, "final_url", "")),
-        "response_status": int(getattr(metrics, "response_status", 0)),
-        "network_requests": int(getattr(metrics, "network_requests", 0)),
-        "content_length": int(getattr(metrics, "content_length", 0)),
-        "load_time_ms": round(
-            float(getattr(metrics, "load_time", 0.0)) * 1000,
-            2,
-        ),
-        "cache_hit": bool(getattr(metrics, "cache_hit", False)),
-        "errors": list(getattr(metrics, "errors", [])),
-    }
 
 
 def _process_page(
@@ -339,7 +324,7 @@ async def crawl(
                 exc_info=True,
             )
 
-        render_metrics = _build_render_metrics(metrics)
+        render_metrics = render_metrics_to_dict(metrics)
 
         # 5) Collect emails on start page
         all_emails: set[str] = set()

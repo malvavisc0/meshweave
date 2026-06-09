@@ -13,7 +13,9 @@ from cloakbrowser import launch_context_async
 __all__ = [
     "BrowserSession",
     "RenderMetrics",
+    "fetch_text",
     "get_rendered_html",
+    "render_metrics_to_dict",
 ]
 
 _INSTALL_HINT = "CloakBrowser binary not found. Install it with: cloakbrowser install"
@@ -42,6 +44,22 @@ class RenderMetrics:
     content_length: int = 0
     errors: list[str] = field(default_factory=list)
     cache_hit: bool = False
+
+
+def render_metrics_to_dict(metrics: Any) -> dict[str, Any]:
+    """Extract render metrics into a plain dict."""
+    return {
+        "final_url": str(getattr(metrics, "final_url", "")),
+        "response_status": int(getattr(metrics, "response_status", 0)),
+        "network_requests": int(getattr(metrics, "network_requests", 0)),
+        "content_length": int(getattr(metrics, "content_length", 0)),
+        "load_time_ms": round(
+            float(getattr(metrics, "load_time", 0.0)) * 1000,
+            2,
+        ),
+        "cache_hit": bool(getattr(metrics, "cache_hit", False)),
+        "errors": list(getattr(metrics, "errors", [])),
+    }
 
 
 def _cache_path(cache_dir: str, url: str, params: dict[str, Any]) -> Path:
@@ -195,3 +213,46 @@ async def get_rendered_html(
         raise RuntimeError(f"Failed to render {url}: {e}") from e
     finally:
         await page.close()
+
+
+# HTML wrapper tags that CloakBrowser wraps around plain-text/XML content.
+_BROWSER_STRIP_TAGS = (
+    "<html>",
+    "</html>",
+    "<head>",
+    "</head>",
+    "<body>",
+    "</body>",
+    "<pre>",
+    "</pre>",
+)
+
+
+async def fetch_text(
+    url: str,
+    *,
+    session: BrowserSession,
+    timeout: float = 10.0,
+) -> str | None:
+    """Fetch a URL via CloakBrowser and return body text, or None.
+
+    Plain-text/XML responses are wrapped in minimal HTML tags
+    by the browser, which are stripped before returning.
+    """
+    try:
+        html = await get_rendered_html(
+            url=url,
+            session=session,
+            progressive_scroll=False,
+            return_metrics=False,
+            timeout=timeout,
+            wait_until="domcontentloaded",
+        )
+        if isinstance(html, str):
+            text = html
+            for tag in _BROWSER_STRIP_TAGS:
+                text = text.replace(tag, "")
+            return text.strip()
+    except Exception as exc:
+        logger.debug("Failed to fetch %s: %s", url, exc)
+    return None

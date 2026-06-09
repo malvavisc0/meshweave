@@ -11,7 +11,7 @@ def main() -> None:
     Returns:
         None
     """
-    parser = argparse.ArgumentParser(description="Run the markdownify webapp server")
+    parser = argparse.ArgumentParser(description="Run the MeshWeave webapp server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind")
     parser.add_argument("--log-level", default="info", help="Uvicorn log level")

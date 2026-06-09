@@ -297,9 +297,7 @@ _AUTO_ONLY_LIMITATIONS: list[str] = [
 # Next step recommendation (always present)
 # ---------------------------------------------------------------------------
 
-_NEXT_STEP: str = (
-    "A few things only a human can verify — run through those before treating this as final."
-)
+_NEXT_STEP: str = "A few things only a human can verify — run through those before treating this as final."
 
 
 def _resolve_diagnosis(

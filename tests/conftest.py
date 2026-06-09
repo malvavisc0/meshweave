@@ -37,5 +37,4 @@ except Exception:
 def _stable_env(monkeypatch):
     """Stabilize environment for deterministic tests."""
     monkeypatch.setenv("MESHWEAVE_DISABLE_CACHE", "true")
-    monkeypatch.setenv("SQLITE_PATH", "/tmp/test_app.db")
     yield

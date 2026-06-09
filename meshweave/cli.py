@@ -49,7 +49,8 @@ def _md_file_path(url: str, output_dir: str) -> str:
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
-    domain = parsed.hostname.lower()
+    # hostname is None for malformed/hostless URLs; fall back to a safe label.
+    domain = (parsed.hostname or "unknown-host").lower()
     path = parsed.path.rstrip("/") or "/"
 
     if path == "/":
@@ -293,9 +294,10 @@ def _run_crawl(args: argparse.Namespace) -> None:
         if args.refresh:
             from urllib.parse import urlparse
 
-            domain = urlparse(
-                payload.get("crawl", {}).get("start_url", "")
-            ).hostname.lower()
+            domain = (
+                urlparse(payload.get("crawl", {}).get("start_url", "")).hostname
+                or ""
+            ).lower()
             if domain:
                 import shutil
 

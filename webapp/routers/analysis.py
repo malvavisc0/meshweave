@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -16,6 +17,8 @@ from webapp.utils.config import _env_bool
 from webapp.utils.reasons import friendly_reason
 from webapp.utils.scoring import (
     PRIORITY_NUMERIC,
+)
+from webapp.utils.scoring import (
     build_score_snapshot_context as _build_score_snapshot_context,
 )
 from webapp.utils.security import _make_csrf_token
@@ -39,9 +42,7 @@ def _sorted_recommendations(ss: dict | None) -> list[dict]:
     }
     pillar_rank = {
         k: i
-        for i, (k, _) in enumerate(
-            sorted(pillar_scores.items(), key=lambda x: x[1])
-        )
+        for i, (k, _) in enumerate(sorted(pillar_scores.items(), key=lambda x: x[1]))
     }
     return sorted(
         ss["recommendations"],
@@ -59,9 +60,7 @@ def _factor_extremes(factors: dict) -> tuple:
     first_missing_key is the first factor key where score is None,
     or None if all factors are scored (or dict is empty).
     """
-    scored = [
-        (k, v) for k, v in factors.items() if v.get("score") is not None
-    ]
+    scored = [(k, v) for k, v in factors.items() if v.get("score") is not None]
     missing = [k for k, v in factors.items() if v.get("score") is None]
     if scored:
         return (
@@ -75,7 +74,11 @@ def _factor_extremes(factors: dict) -> tuple:
 def _build_factor_extremes(ss: dict | None) -> dict:
     """Build factor_extremes dict for all pillars from score_snapshot."""
     if not ss or not ss.get("score_data"):
-        return {"aeo": (None, None, None), "geo": (None, None, None), "aax": (None, None, None)}
+        return {
+            "aeo": (None, None, None),
+            "geo": (None, None, None),
+            "aax": (None, None, None),
+        }
     sd = ss["score_data"]
     return {
         "aeo": _factor_extremes(sd.get("aeo", {}).get("factors", {})),
@@ -85,8 +88,6 @@ def _build_factor_extremes(ss: dict | None) -> dict:
 
 
 # Simple in-memory rate limiter for share toggle (max 5 per hour per user)
-import time
-
 share_toggle_limits = {}
 
 
@@ -163,9 +164,7 @@ async def view_shared_analysis(request: Request, share_key: str):
             "abs_api_url": _abs_url(request, f"/api/analysis/private/{row.id}"),
             "summary": summary,
             "reason_stopped_label": (
-                friendly_reason(
-                    payload.get("summary", {}).get("reason_stopped", "")
-                )
+                friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
                 if payload and payload.get("summary")
                 else ""
             ),
@@ -187,9 +186,7 @@ async def view_shared_analysis(request: Request, share_key: str):
             "can_refresh": False,
             "refresh_eta": "",
             "score_snapshot": _ss_shared,
-            "sorted_recommendations": _sorted_recommendations(
-                _ss_shared
-            ),
+            "sorted_recommendations": _sorted_recommendations(_ss_shared),
             "factor_extremes": _build_factor_extremes(_ss_shared),
         },
     )
@@ -465,16 +462,12 @@ async def view_analysis(request: Request, ref: str):
                 # Owner toggles
                 "listed": row.listed,
                 "share_url": (
-                    f"/analysis/shared/{row.share_key}"
-                    if row.share_key
-                    else ""
+                    f"/analysis/shared/{row.share_key}" if row.share_key else ""
                 ),
                 "can_refresh": can_retry,
                 "refresh_eta": retry_eta,
                 "score_snapshot": _ss_private,
-                "sorted_recommendations": _sorted_recommendations(
-                    _ss_private
-                ),
+                "sorted_recommendations": _sorted_recommendations(_ss_private),
                 "factor_extremes": _build_factor_extremes(_ss_private),
             },
         )
@@ -774,9 +767,7 @@ async def view_analysis(request: Request, ref: str):
             "can_refresh": can_refresh,
             "refresh_eta": refresh_eta,
             "score_snapshot": _ss_public,
-            "sorted_recommendations": _sorted_recommendations(
-                _ss_public
-            ),
+            "sorted_recommendations": _sorted_recommendations(_ss_public),
             "factor_extremes": _build_factor_extremes(_ss_public),
         },
     )

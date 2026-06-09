@@ -218,8 +218,15 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
         result.has_contact_page = True
         pts += 10
 
-    # Email on homepage or contact page
-    homepage_emails = by_url.get("/", []) or by_url.get("", [])
+    # Email on homepage or contact page. emails_by_url is keyed by the full
+    # crawled URL (e.g. "https://example.com/"), so detect the homepage by its
+    # root path rather than a literal "/" key.
+    from urllib.parse import urlparse
+
+    homepage_emails: list[str] = []
+    for u, emails_list in by_url.items():
+        if urlparse(u).path in ("", "/"):
+            homepage_emails.extend(emails_list or [])
     contact_emails = []
     for cp in contact_pages:
         contact_emails.extend(by_url.get(cp, []) or [])

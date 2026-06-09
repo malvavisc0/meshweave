@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, datetime
 
@@ -259,7 +261,7 @@ class Crawl(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    score_snapshot: Mapped["ScoreSnapshot | None"] = relationship(
+    score_snapshot: Mapped[ScoreSnapshot | None] = relationship(
         "ScoreSnapshot",
         back_populates="crawl",
         uselist=False,
@@ -388,7 +390,7 @@ class ScoreSnapshot(Base):
     )
 
     # Relationships
-    crawl: Mapped["Crawl"] = relationship("Crawl", back_populates="score_snapshot")
+    crawl: Mapped[Crawl] = relationship("Crawl", back_populates="score_snapshot")
 
 
 class Product(Base):

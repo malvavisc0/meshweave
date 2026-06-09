@@ -25,6 +25,8 @@ from webapp.routers import (
     legal,
     products,
     progress,
+    prospects,
+    prospects_page,
     scores,
     scoring,
     submissions,
@@ -178,7 +180,7 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application instance.
     """
-    app = FastAPI(title="Markdownify Web App", lifespan=lifespan)  # type: ignore[arg-type]
+    app = FastAPI(title="MeshWeave", lifespan=lifespan)  # type: ignore[arg-type]
 
     # Middleware: attach per-request ID
     app.add_middleware(RequestIDMiddleware)
@@ -231,7 +233,7 @@ def create_app() -> FastAPI:
                 content={"detail": "Internal Server Error"},
             )
         # Non-API: render HTML template
-        site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+        site_name = os.getenv("SITE_NAME", "MeshWeave")
         og_image_url = os.getenv("OG_IMAGE_URL") or None
         page_title = f"Server Error — {site_name}"
         meta_description = "An unexpected error occurred."
@@ -275,7 +277,7 @@ def create_app() -> FastAPI:
                     status_code=status.HTTP_404_NOT_FOUND,
                     content={"detail": "Not Found"},
                 )
-            site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+            site_name = os.getenv("SITE_NAME", "MeshWeave")
             og_image_url = os.getenv("OG_IMAGE_URL") or None
             page_title = f"Page Not Found — {site_name}"
             meta_description = "The page you requested was not found."
@@ -313,7 +315,7 @@ def create_app() -> FastAPI:
                 )
             # Non-API: render templates for 401/403; fallback to plain text for others
             if status_code == status.HTTP_401_UNAUTHORIZED:
-                site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+                site_name = os.getenv("SITE_NAME", "MeshWeave")
                 og_image_url = os.getenv("OG_IMAGE_URL") or None
                 page_title = f"Sign in required — {site_name}"
                 meta_description = "You need to sign in to access this page."
@@ -333,7 +335,7 @@ def create_app() -> FastAPI:
                 resp.headers["X-Robots-Tag"] = "noindex"
                 return resp
             if status_code == status.HTTP_403_FORBIDDEN:
-                site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+                site_name = os.getenv("SITE_NAME", "MeshWeave")
                 og_image_url = os.getenv("OG_IMAGE_URL") or None
                 page_title = f"Access denied — {site_name}"
                 meta_description = "You don't have permission to access this page."
@@ -385,6 +387,9 @@ def create_app() -> FastAPI:
     app.include_router(all_public.router)
     # Pages: Products management page
     app.include_router(products.router)
+    # Prospects management page and API
+    app.include_router(prospects.router)
+    app.include_router(prospects_page.router)
     # Scoring methodology page
     app.include_router(scoring.router)
     # Score API router

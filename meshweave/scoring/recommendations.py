@@ -560,9 +560,7 @@ _GUIDANCE: dict[str, str] = {
     "Add a robots.txt file": (
         "Create /robots.txt to control which crawlers can access your site."
     ),
-    "Increase average content depth": (
-        "Aim for 500+ words on your key pages."
-    ),
+    "Increase average content depth": ("Aim for 500+ words on your key pages."),
     "Optimize metadata for AI crawlers": (
         "Improve your value proposition, metadata, and descriptions for LLM understanding."
     ),

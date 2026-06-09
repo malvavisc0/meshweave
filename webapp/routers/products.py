@@ -18,7 +18,7 @@ async def products_page(request: Request):
     """Products management page."""
     await require_auth(request)
 
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Products — {site_name}"
     meta_description = "Manage your products."
 

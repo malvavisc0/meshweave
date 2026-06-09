@@ -51,10 +51,10 @@ class TestBandMeaning:
         assert "basics" in _band_meaning("developing").lower()
 
     def test_strong_meaning(self):
-        assert "baseline" in _band_meaning("strong").lower()
+        assert "foundation" in _band_meaning("strong").lower()
 
     def test_excellent_meaning(self):
-        assert "strong" in _band_meaning("excellent").lower()
+        assert "clean" in _band_meaning("excellent").lower()
 
 
 class TestInterpretProfile:

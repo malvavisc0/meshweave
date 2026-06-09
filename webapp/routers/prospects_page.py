@@ -18,7 +18,7 @@ async def prospects_page(request: Request):
     """Prospects management page (UI mirrors Products page patterns)."""
     await require_auth(request)
 
-    site_name = os.getenv("SITE_NAME", "Markdownify Web App")
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Prospects — {site_name}"
     meta_description = "Manage your prospects and contacts."
 

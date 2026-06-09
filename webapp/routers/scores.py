@@ -79,7 +79,7 @@ async def update_manual_inputs(request: Request, crawl_id: str):
                 val = float(data[key])
                 if 0 <= val <= 100:
                     inputs[key] = val
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
 
     if not inputs:

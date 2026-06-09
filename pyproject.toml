@@ -53,6 +53,7 @@ meshweave = "meshweave.cli:main"
 include = ["meshweave*"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 norecursedirs = [
   ".git",
@@ -73,10 +74,14 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py314"
+extend-exclude = ["data", "alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+# Line length is enforced by the formatter; E501 only flags un-splittable
+# long strings, copy text, and docstrings, so we ignore it for linting.
+ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -154,8 +154,8 @@ def rating_class(rating: str | None) -> str:
         "Opaque": "rating-low",
         "Unclear": "rating-low",
         "Readable": "rating-ok",
-        "Clear": "rating-ok",
-        "Fluent": "rating-good",
+        "Clear": "rating-good",
+        "Fluent": "rating-excellent",
     }
     return mapping.get(rating, "") if rating else ""
 

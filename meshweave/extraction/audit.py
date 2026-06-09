@@ -4,12 +4,26 @@ from __future__ import annotations
 
 from collections import Counter
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 __all__ = [
     "audit_meta_uniqueness",
     "audit_entity_consistency",
     "audit_schema_coverage",
 ]
+
+
+def _canonical_key(url: str) -> tuple[str, str]:
+    """Normalise a URL to (host, path) for canonical comparison.
+
+    Scheme, query, and fragment are ignored; the host is lowercased and the
+    path's trailing slash is stripped. This detects cross-domain and
+    host-variant (e.g. ``www.``) mismatches, not just last-segment changes.
+    """
+    parsed = urlparse(url)
+    host = (parsed.netloc or "").lower()
+    path = parsed.path.rstrip("/") or "/"
+    return host, path
 
 
 def audit_meta_uniqueness(
@@ -42,14 +56,14 @@ def audit_meta_uniqueness(
         if og_d:
             og_descs.setdefault(og_d, []).append(url)
 
-        # Canonical mismatch: canonical doesn't match the page URL
-        canonical = page.get("canonical", "").strip().rstrip("/")
+        # Canonical mismatch: the canonical URL points somewhere other than
+        # the page itself. Resolve relative canonicals against the page URL,
+        # then compare normalised (host, path) so cross-domain and host-variant
+        # mismatches are caught — not only last-path-segment changes.
+        canonical = page.get("canonical", "").strip()
         if canonical and url != "(start)":
-            # Normalise for comparison
-            url_clean = url.rstrip("/")
-            if canonical and not url_clean.endswith(
-                canonical.split("/")[-1] if "/" in canonical else canonical
-            ):
+            resolved = urljoin(url, canonical)
+            if _canonical_key(resolved) != _canonical_key(url):
                 canonical_issues.append(
                     {
                         "page": url,

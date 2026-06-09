@@ -242,8 +242,14 @@ async def view_all(
                 headline = None
                 tone = None
                 try:
-                    if row.aeo_score is not None and row.geo_score is not None and aax_sc is not None:
-                        interp = interpret_profile(row.aeo_score, row.geo_score, aax_sc, score_basis="auto")
+                    if (
+                        row.aeo_score is not None
+                        and row.geo_score is not None
+                        and aax_sc is not None
+                    ):
+                        interp = interpret_profile(
+                            row.aeo_score, row.geo_score, aax_sc, score_basis="auto"
+                        )
                         headline = interp.get("headline")
                         tone = interp.get("tone")
                 except Exception:
@@ -459,8 +465,14 @@ async def view_all(
                 headline = None
                 tone = None
                 try:
-                    if r.aeo_score is not None and r.geo_score is not None and aax_sc is not None:
-                        interp = interpret_profile(r.aeo_score, r.geo_score, aax_sc, score_basis="auto")
+                    if (
+                        r.aeo_score is not None
+                        and r.geo_score is not None
+                        and aax_sc is not None
+                    ):
+                        interp = interpret_profile(
+                            r.aeo_score, r.geo_score, aax_sc, score_basis="auto"
+                        )
                         headline = interp.get("headline")
                         tone = interp.get("tone")
                 except Exception:

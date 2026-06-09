@@ -260,31 +260,18 @@ def score_content_depth(payload: dict) -> dict:
     """G5. Content Depth & Originality (10% weight, auto)."""
     md_dict = payload.get("markdowns") or {}
     pages = []
-    if isinstance(md_dict, dict):
+    if isinstance(md_dict, dict) and md_dict:
         for _url, pg in md_dict.items():
             if isinstance(pg, dict):
                 pages.append(pg)
     elif isinstance(md_dict, list):
         pages = [p for p in md_dict if isinstance(p, dict)]
-
-    # Track seen URLs for deduplication across sources
-    seen_urls: set[str] = set()
-    for pg in pages:
-        url = (pg.get("page") or pg).get("url") or ""
-        if url:
-            seen_urls.add(url)
-
-    # Also check payload["pages"], deduplicating by URL
-    pages_list = payload.get("pages") or []
-    if isinstance(pages_list, list):
-        for item in pages_list:
-            if isinstance(item, dict):
-                url = (item.get("page") or item).get("url") or ""
-                if url and url in seen_urls:
-                    continue
-                if url:
-                    seen_urls.add(url)
-                pages.append(item)
+    else:
+        # payload["pages"] is a derived view of markdowns; only use it as a
+        # fallback when there are no markdowns, to avoid double-counting.
+        pages_list = payload.get("pages") or []
+        if isinstance(pages_list, list):
+            pages = [p for p in pages_list if isinstance(p, dict)]
 
     if not pages:
         # Single page

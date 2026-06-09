@@ -96,7 +96,7 @@ def extract_content_metrics(
         try:
             if int(w) <= 1 or int(h) <= 1:
                 continue
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             pass
         img_total += 1
         if img.get("alt", "").strip():

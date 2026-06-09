@@ -63,7 +63,9 @@ def score_content_structure(payload: dict) -> dict:
     # Collect pages — site crawls have markdowns (or pages), page crawls have page
     pages_data = []
 
-    # Site crawl: pages in payload["pages"] or payload["markdowns"]
+    # Site crawl: pages live in payload["markdowns"]; payload["pages"] is a
+    # derived view of the same pages, so use exactly one source to avoid
+    # double-counting (which inflates pages_evaluated and skews the average).
     md_dict = payload.get("markdowns") or {}
     if md_dict and isinstance(md_dict, dict):
         for _url, page_data in md_dict.items():
@@ -74,13 +76,13 @@ def score_content_structure(payload: dict) -> dict:
         for item in md_dict:
             if isinstance(item, dict):
                 pages_data.append(item)
-
-    # Also check payload["pages"] for structured page data
-    pages_list = payload.get("pages") or []
-    if isinstance(pages_list, list):
-        for item in pages_list:
-            if isinstance(item, dict) and "page" in item:
-                pages_data.append(item)
+    else:
+        # Fall back to payload["pages"] only when there are no markdowns
+        pages_list = payload.get("pages") or []
+        if isinstance(pages_list, list):
+            for item in pages_list:
+                if isinstance(item, dict) and "page" in item:
+                    pages_data.append(item)
 
     # Single page crawl
     if not pages_data:
@@ -244,7 +246,9 @@ def score_freshness(payload: dict) -> dict:
         }
 
     now = datetime.now(UTC)
-    days_old = [(now - d).days for d in dates]
+    # Clamp to >= 0 so future-dated (scheduled) content can't pull the average
+    # below zero and inflate the freshness score.
+    days_old = [max(0, (now - d).days) for d in dates]
     avg_days = sum(days_old) / len(days_old) if days_old else 0
 
     if avg_days <= 30:
