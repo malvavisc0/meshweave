@@ -129,7 +129,9 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      DOMAINS: "${SITE_DOMAIN:?set SITE_DOMAIN} -> http://meshweave:8080"
+      DOMAINS: >
+        ${SITE_DOMAIN} -> http://meshweave:8080,
+        www.${SITE_DOMAIN} -> http://meshweave:8080
       STAGE: ${HTTPS_PORTAL_STAGE:-staging}
       WEBSOCKET: "true"
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-1M}

@@ -122,36 +122,62 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
 db_pool = DatabaseConnectionPool(DATABASE_URL, SQLITE_PATH)
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, "" if not default else "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _run_alembic_upgrade() -> None:
+    """Apply Alembic migrations to head.
+
+    Configures Alembic from alembic.ini and runs `upgrade head` in-process.
+    The database URL is resolved by alembic/env.py from DATABASE_URL/SQLITE_PATH.
+    """
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        cfg = Config("alembic.ini")
+        cfg.set_main_option("script_location", "alembic")
+        command.upgrade(cfg, "head")
+        log.info("init_db: alembic upgrade head completed")
+    except Exception as e:
+        log.error("init_db: alembic upgrade head failed: %s", e)
+        raise
+
+
 def init_db() -> None:
     """
-    Initialize database for local/dev when using SQLite.
+    Initialize database.
 
     Policy:
-      - Non-SQLite: rely exclusively on Alembic migrations (no-op here).
+      - Non-SQLite (e.g. Postgres):
+          * When WEBAPP_AUTO_MIGRATE=true, run `alembic upgrade head` on startup
+            so the schema is current with the running image.
+          * Otherwise, rely on migrations being applied out-of-band.
       - SQLite:
-          * When WEBAPP_SQLITE_USE_ALEMBIC=true (default), do not perform bootstrap here;
-            expect Alembic to run at startup (see app.lifespan auto-migrate).
-          * When WEBAPP_SQLITE_BOOTSTRAP=true (escape hatch), apply minimal bootstrap and
-            enforce critical invariants on crawls and products.
+          * When WEBAPP_SQLITE_USE_ALEMBIC=true (default), run `alembic upgrade head`
+            here (no bootstrap).
+          * When WEBAPP_SQLITE_BOOTSTRAP=true (escape hatch), apply minimal bootstrap
+            and enforce critical invariants on crawls and products.
     """
     dialect = db_pool.engine.dialect.name
+
     if dialect != "sqlite":
-        log.info("init_db: dialect=%s, path=alembic_only", dialect)
+        if _env_bool("WEBAPP_AUTO_MIGRATE", False):
+            _run_alembic_upgrade()
+        else:
+            log.info("init_db: dialect=%s, path=manual_migrate", dialect)
         return
 
-    use_alembic = os.getenv("WEBAPP_SQLITE_USE_ALEMBIC", "true").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    do_bootstrap = os.getenv("WEBAPP_SQLITE_BOOTSTRAP", "false").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    use_alembic = _env_bool("WEBAPP_SQLITE_USE_ALEMBIC", True)
+    do_bootstrap = _env_bool("WEBAPP_SQLITE_BOOTSTRAP", False)
     if use_alembic and not do_bootstrap:
+        _run_alembic_upgrade()
         log.info("init_db: dialect=sqlite, path=alembic_preferred (no bootstrap)")
         return
 
