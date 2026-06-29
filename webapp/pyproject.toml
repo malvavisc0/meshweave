@@ -3,8 +3,8 @@ requires = ["setuptools>=82", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshweave"
-version = "0.1.0"
+name = "meshweave-webapp"
+version = "0.1.2"
 description = "Turn websites into words and signals"
 requires-python = ">=3.14"
 readme = ""
@@ -29,11 +29,11 @@ runtime = [
 ]
 
 [tool.setuptools]
-packages = ["meshweave"]
-package-dir = { "meshweave" = "." }
+packages = ["webapp", "webapp.routers", "webapp.services", "webapp.utils"]
+package-dir = { "webapp" = "." }
 
 [tool.setuptools.package-data]
-meshweave = [
+webapp = [
   "templates/*.html",
   "static/*",
   "static/**/*.css",

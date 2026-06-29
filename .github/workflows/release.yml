@@ -67,5 +67,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Release builds must be fully reproducible from source. The previous
+          # GHA layer cache could reuse a stale `meshweave` install layer (e.g.
+          # missing the scoring subpackage), producing an image inconsistent with
+          # the tagged source. Disable caching for release images.
+          no-cache: true

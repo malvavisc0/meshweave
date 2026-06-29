@@ -970,7 +970,7 @@ wheels = [
 
 [[package]]
 name = "meshweave"
-version = "0.0.1"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
