@@ -138,8 +138,9 @@ def _run_alembic_upgrade() -> None:
     The database URL is resolved by alembic/env.py from DATABASE_URL/SQLITE_PATH.
     """
     try:
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         cfg = Config("alembic.ini")
         cfg.set_main_option("script_location", "alembic")
