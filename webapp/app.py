@@ -406,7 +406,7 @@ def create_app() -> FastAPI:
                     "FOOTER_REPO_URL", "https://github.com/malvavisc0/meshweave"
                 ).strip(),
                 "FOOTER_CONTACT_EMAIL": os.getenv(
-                    "FOOTER_CONTACT_EMAIL", "hello@meshweave.com"
+                    "FOOTER_CONTACT_EMAIL", "hello@meshweaveai.com"
                 ).strip(),
                 "FOOTER_PRIVACY_URL": os.getenv(
                     "FOOTER_PRIVACY_URL", "/privacy"

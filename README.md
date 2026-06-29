@@ -114,7 +114,7 @@ FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── Playwright (headless 
 | `LLM_MODEL` | Model name for scoring | — |
 | `AAX_ENABLED` | Enable AAX scoring lens | — |
 | `MESHWEAVE_CACHE_DIR` | HTML cache directory | `/tmp/meshweave/cache` |
-| `FOOTER_CONTACT_EMAIL` | Contact email in footer/legal | `hello@meshweave.com` |
+| `FOOTER_CONTACT_EMAIL` | Contact email in footer/legal | `hello@meshweaveai.com` |
 
 See `docker-compose.yaml` for the full set of configuration options.
 

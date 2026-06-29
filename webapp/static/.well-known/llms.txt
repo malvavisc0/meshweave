@@ -21,12 +21,12 @@ MeshWeave audits how AI systems crawl, understand, and cite websites. It identif
 
 ## Key Pages
 
-- Homepage: https://meshweave.com/
-- Browse analyses: https://meshweave.com/browse
-- Products: https://meshweave.com/products
-- Methodology: https://meshweave.com/methodology
-- Privacy: https://meshweave.com/privacy
-- Terms: https://meshweave.com/terms
+- Homepage: https://meshweaveai.com/
+- Browse analyses: https://meshweaveai.com/browse
+- Products: https://meshweaveai.com/products
+- Methodology: https://meshweaveai.com/methodology
+- Privacy: https://meshweaveai.com/privacy
+- Terms: https://meshweaveai.com/terms
 
 ## Built For
 
@@ -34,4 +34,4 @@ SEO & Content Teams · Product & Web Teams · Marketing & Growth Teams · Founde
 
 ## Contact
 
-- Email: hello@meshweave.com
+- Email: hello@meshweaveai.com

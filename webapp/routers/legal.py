@@ -36,7 +36,7 @@ async def privacy(request: Request):
                 "isPartOf": _abs_url(request, "/"),
                 "contactPoint": {
                     "@type": "ContactPoint",
-                    "email": os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweave.com"),
+                    "email": os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweaveai.com"),
                 },
                 "mainEntity": {
                     "@type": "CreativeWork",

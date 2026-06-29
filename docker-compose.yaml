@@ -15,7 +15,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: meshweave
     volumes:
-      - ./data/postgres:/var/lib/postgresql
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d meshweave" ]
       interval: 10s
@@ -70,7 +70,7 @@ services:
       FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL}
       WEBAPP_AUTO_MIGRATE: true
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
-      MESHWEAVEMESHWEAVE_DISABLE_CACHE: true
+      MESHWEAVE_DISABLE_CACHE: true
       # Prefer local source templates/static during local dev so code edits take effect without rebuild
       WEBAPP_PREFER_LOCAL_TEMPLATES: "true"
       WEBAPP_PREFER_LOCAL_STATIC: "true"

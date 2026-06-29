@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Turn websites into words and signals"
 requires-python = ">=3.14"
 readme = ""
-authors = [{ name = "MeshWeave", email = "hello@meshweave.com" }]
+authors = [{ name = "MeshWeave", email = "hello@meshweaveai.com" }]
 dependencies = []
 
 [project.optional-dependencies]

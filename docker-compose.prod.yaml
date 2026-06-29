@@ -1,0 +1,125 @@
+---
+name: meshweave-prod
+
+# Production deployment stack.
+# Pulls a prebuilt image from GHCR (built by .github/workflows/release.yml).
+# Configure secrets/host via a .env.prod file placed next to this compose file
+# (gitignored) or via real environment variables on the host.
+
+networks:
+  magics:
+
+volumes:
+  postgres_data:
+  redis_data:
+  cache_data:
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: postgres
+    hostname: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-meshweave}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-meshweave}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - magics
+
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: redis
+    hostname: redis
+    restart: always
+    # Enable append-only persistence so data in the redis_data volume survives restarts
+    environment:
+      REDIS_ARGS: "--appendonly yes"
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - magics
+
+  webapp:
+    image: ghcr.io/malvavisc0/meshweave:${MESHWEAVE_VERSION:-latest}
+    container_name: meshweave
+    hostname: meshweave
+    restart: always
+    environment:
+      SITE_BASE_URL: ${SITE_BASE_URL:?set SITE_BASE_URL}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meshweave}
+      FOOTER_REPO_URL: ${FOOTER_REPO_URL:-https://github.com/malvavisc0/meshweave}
+      FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL:?set FOOTER_CONTACT_EMAIL}
+      WEBAPP_AUTO_MIGRATE: "true"
+      MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
+      SITE_NAME: MeshWeave
+      WEBAPP_AUTH_ENABLED: "true"
+      WEBAPP_READYZ_REQUIRE_AUTH: "true"
+      WEBAPP_AUTH_COOKIE_NAME: auth_sid
+      WEBAPP_AUTH_COOKIE_SECURE: "true"
+      WEBAPP_AUTH_TTL_SECONDS: "86400"
+      WEBAPP_AUTH_ABS_MAX_SECONDS: "604800"
+      AUTH_USER_MAX_SESSIONS: "5"
+      AUTH_USER_DAILY_SITE_CRAWLS: "20"
+      AUTH_USER_CONCURRENT_JOBS: "2"
+      AUTH_SITE_MAX_PAGES_DEFAULT: "25"
+      AUTH_SITE_MAX_DEPTH_DEFAULT: "1"
+      AUTH_SITE_TIME_BUDGET_MS_DEFAULT: "600000"
+      AUTH_SITE_MAX_PAGES_CAP: "250"
+      AUTH_SITE_MAX_DEPTH_CAP: "3"
+      ANON_SITE_MAX_PAGES_DEFAULT: "10"
+      ANON_SITE_MAX_DEPTH_DEFAULT: "1"
+      ANON_SITE_MAX_PAGES_CAP: "10"
+      OAUTH_PROVIDER: google
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?set OAUTH_CLIENT_ID}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET}
+      # OAUTH_ALLOWED_DOMAINS: yourcompany.com
+      OAUTH_STATE_TTL: "600"
+      LOGIN_RATE_LIMIT_MAX: "5"
+      LOGIN_RATE_LIMIT_WINDOW_SEC: "900"
+      WEBAPP_CSRF_ENABLED: "true"
+      WEBAPP_CSRF_MAX_AGE: "7200"
+      CLAIM_PUBLIC_MIN_AGE_HOURS: "24"
+      LLM_BASE_URL: ${LLM_BASE_URL:?set LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:?set LLM_MODEL}
+      AAX_ENABLED: ${AAX_ENABLED:-true}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DEBUG: ""
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "10"
+      DB_POOL_RECYCLE: "1800"
+      DB_POOL_TIMEOUT: "30"
+    volumes:
+      - cache_data:/tmp/meshweave/cache
+    ports:
+      - "${WEBAPP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - magics
