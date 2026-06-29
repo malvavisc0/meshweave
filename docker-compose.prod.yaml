@@ -1,11 +1,6 @@
 ---
 name: meshweave-prod
 
-# Production deployment stack.
-# Pulls a prebuilt image from GHCR (built by .github/workflows/release.yml).
-# Configure secrets/host via a .env.prod file placed next to this compose file
-# (gitignored) or via real environment variables on the host.
-
 networks:
   magics:
 
@@ -13,6 +8,7 @@ volumes:
   postgres_data:
   redis_data:
   cache_data:
+  https_portal_data:
 
 services:
   postgres:
@@ -25,7 +21,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-meshweave}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresq
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-meshweave}"]
       interval: 10s
@@ -89,7 +85,7 @@ services:
       OAUTH_PROVIDER: google
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?set OAUTH_CLIENT_ID}
       OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET}
-      # OAUTH_ALLOWED_DOMAINS: yourcompany.com
+      OAUTH_ALLOWED_DOMAINS: ${SITE_DOMAIN}
       OAUTH_STATE_TTL: "600"
       LOGIN_RATE_LIMIT_MAX: "5"
       LOGIN_RATE_LIMIT_WINDOW_SEC: "900"
@@ -108,8 +104,8 @@ services:
       DB_POOL_TIMEOUT: "30"
     volumes:
       - cache_data:/tmp/meshweave/cache
-    ports:
-      - "${WEBAPP_PORT:-8080}:8080"
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,5 +117,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - magics
+
+  https-portal:
+    image: steveltn/https-portal:1
+    container_name: https-portal
+    hostname: https-portal
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAINS: "${SITE_DOMAIN:?set SITE_DOMAIN} -> http://meshweave:8080"
+      STAGE: ${HTTPS_PORTAL_STAGE:-staging}
+      WEBSOCKET: "true"
+      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-1M}
+    volumes:
+      - https_portal_data:/var/lib/https-portal
+    depends_on:
+      webapp:
+        condition: service_healthy
     networks:
       - magics
