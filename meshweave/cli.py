@@ -295,8 +295,7 @@ def _run_crawl(args: argparse.Namespace) -> None:
             from urllib.parse import urlparse
 
             domain = (
-                urlparse(payload.get("crawl", {}).get("start_url", "")).hostname
-                or ""
+                urlparse(payload.get("crawl", {}).get("start_url", "")).hostname or ""
             ).lower()
             if domain:
                 import shutil
