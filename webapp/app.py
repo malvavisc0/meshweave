@@ -114,11 +114,31 @@ async def _cleanup_oauth_states_loop(stop_event: asyncio.Event):
         await _sleep_until(stop_event, 900.0)
 
 
+def _init_sentry() -> None:
+    """Initialize the Sentry SDK against a Bugsink instance if configured.
+
+    SENTRY_DSN points at a Bugsink (Sentry-compatible) endpoint. Error
+    reporting only; set SENTRY_TRACES_SAMPLE_RATE to enable performance
+    data.
+    """
+    dsn = os.getenv("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=os.getenv("SENTRY_ENVIRONMENT", "staging"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan context (startup/shutdown).
 
-    Initializes the database on startup. Designed for FastAPI's lifespan parameter.
+    Initializes error reporting, logging, and the database on startup.
+    Designed for FastAPI's lifespan parameter.
 
     Args:
         app (FastAPI): The FastAPI application instance.
@@ -126,6 +146,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Yields:
         None: Control back to FastAPI to run the application.
     """
+    _init_sentry()
     init_logging()
     init_db()
 

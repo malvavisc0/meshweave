@@ -120,6 +120,10 @@ services:
       ENABLE_TELEMETRY: ${ENABLE_TELEMETRY:-false}
       RYBBIT_SCRIPT_URL: ${RYBBIT_SCRIPT_URL:-}
       RYBBIT_SITE_ID: ${RYBBIT_SITE_ID:-}
+      # Opt-in error reporting (Bugsink, Sentry-compatible); off without DSN
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-staging}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
       LLM_BASE_URL: ${LLM_BASE_URL:?set LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL:?set LLM_MODEL}

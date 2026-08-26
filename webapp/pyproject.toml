@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshweave-webapp"
-version = "0.1.3"
+version = "0.1.4"
 description = "Turn websites into words and signals"
 requires-python = ">=3.14"
 readme = ""
@@ -26,6 +26,7 @@ runtime = [
   "alembic",
   "openai",
   "redis",
+  "sentry-sdk",
 ]
 
 [tool.setuptools]
