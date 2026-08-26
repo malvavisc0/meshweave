@@ -91,6 +91,8 @@ async def submit(
             pass
         raise HTTPException(status_code=400, detail="Invalid submission")
 
+    crawl_id: str | None = None
+
     # SITE MODE
     if mode_val == "site" or (domain and (not url or not (url or "").strip())):
         # CSRF validation (same as old /submit-site)
@@ -432,7 +434,6 @@ async def submit(
     # - public: upsert by (visibility, domain, path, query)
     # - private: create new or update only if safe to do so
     with get_session() as s:
-        crawl_id = None
         key_val: str | None = None
 
         if is_public:
@@ -638,10 +639,13 @@ async def submit(
                 s.flush()
                 crawl_id = row.id
 
+    if crawl_id is None:
+        raise HTTPException(status_code=500, detail="Crawl creation failed")
+
     # Schedule background crawl if not already running
     with get_session() as s:
-        row = s.get(Crawl, crawl_id)
-        if row and row.status in {"pending", "failed", "succeeded"}:
+        existing_row = s.get(Crawl, crawl_id)
+        if existing_row and existing_row.status in {"pending", "failed", "succeeded"}:
             # Public analyses: run site crawl to populate pages[] with markdown
             if is_public:
                 background_tasks.add_task(run_site_crawl_task, crawl_id, force_refresh)
@@ -686,9 +690,9 @@ async def submit(
         # Determine status at submit time (after upsert)
         status_at_submit = "pending"
         with get_session() as s:
-            row = s.get(Crawl, crawl_id)
-            if row and row.status:
-                status_at_submit = row.status
+            status_row = s.get(Crawl, crawl_id)
+            if status_row and status_row.status:
+                status_at_submit = status_row.status
 
         # Persist submission log
         with get_session() as s:
