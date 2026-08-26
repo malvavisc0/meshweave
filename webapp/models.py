@@ -352,7 +352,7 @@ class ScoreSnapshot(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Composite scores (0-100 or NULL)
     aeo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
