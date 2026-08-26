@@ -110,6 +110,9 @@ docker/*.local.*
 docker-compose.override.yml
 Dockerfile
 
+# Runtime volumes (postgres data is root-owned; breaks build context)
+data
+
 # =========================
 # Binaries / archives / misc
 # =========================

@@ -8,7 +8,6 @@ volumes:
   postgres_data:
   redis_data:
   cache_data:
-  https_portal_data:
 
 services:
   postgres:
@@ -21,7 +20,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-meshweave}
     volumes:
-      - postgres_data:/var/lib/postgresq
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-meshweave}"]
       interval: 10s
@@ -52,6 +51,25 @@ services:
     networks:
       - magics
 
+  lightpanda:
+    # Pinned digest of lightpanda/browser:nightly (2026-08-26); bump deliberately
+    image: lightpanda/browser:0.3.7
+    container_name: lightpanda
+    hostname: lightpanda
+    restart: always
+    command: ["lightpanda", "serve", "--host", "0.0.0.0", "--port", "9222"]
+    expose:
+      - "9222"
+    healthcheck:
+      # No curl/wget in the image; use bash's /dev/tcp to probe the CDP port
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9222' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - magics
+
   webapp:
     image: ghcr.io/malvavisc0/meshweave:${MESHWEAVE_VERSION:-latest}
     container_name: meshweave
@@ -64,6 +82,8 @@ services:
       FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL:?set FOOTER_CONTACT_EMAIL}
       WEBAPP_AUTO_MIGRATE: "true"
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
+      # Render pages through the LightPanda CDP service (no local browser in image)
+      MESHWEAVE_CDP_ENDPOINT: http://lightpanda:9222
       SITE_NAME: MeshWeave
       WEBAPP_AUTH_ENABLED: "true"
       WEBAPP_READYZ_REQUIRE_AUTH: "true"
@@ -92,6 +112,11 @@ services:
       WEBAPP_CSRF_ENABLED: "true"
       WEBAPP_CSRF_MAX_AGE: "7200"
       CLAIM_PUBLIC_MIN_AGE_HOURS: "24"
+      # Opt-in telemetry (Rybbit analytics); off unless the operator
+      # enables it and provides their own instance's URL + site id
+      ENABLE_TELEMETRY: ${ENABLE_TELEMETRY:-false}
+      RYBBIT_SCRIPT_URL: ${RYBBIT_SCRIPT_URL:-}
+      RYBBIT_SITE_ID: ${RYBBIT_SITE_ID:-}
       LLM_BASE_URL: ${LLM_BASE_URL:?set LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL:?set LLM_MODEL}
@@ -111,34 +136,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      lightpanda:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 10s
-    networks:
-      - magics
-
-  https-portal:
-    image: steveltn/https-portal:1
-    container_name: https-portal
-    hostname: https-portal
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAINS: >
-        ${SITE_DOMAIN} -> http://meshweave:8080,
-        www.${SITE_DOMAIN} -> http://meshweave:8080
-      STAGE: ${HTTPS_PORTAL_STAGE:-staging}
-      WEBSOCKET: "true"
-      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-1M}
-    volumes:
-      - https_portal_data:/var/lib/https-portal
-    depends_on:
-      webapp:
-        condition: service_healthy
     networks:
       - magics

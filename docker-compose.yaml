@@ -15,7 +15,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: meshweave
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      # postgres:18+ stores data in version-specific subdirs under
+      # /var/lib/postgresql; mounting the parent enables pg_upgrade layout
+      - ./data/postgres:/var/lib/postgresql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d meshweave" ]
       interval: 10s
@@ -57,7 +59,7 @@ services:
       - magics
   lightpanda:
     # Pinned digest of lightpanda/browser:nightly (2026-08-26); bump deliberately
-    image: lightpanda/browser@sha256:8fd743c4b72487486e1889eb34539374f2760a8d2fae8b6c08f064705c3a741b
+    image: lightpanda/browser:0.3.7
     container_name: lightpanda
     hostname: lightpanda
     restart: always
