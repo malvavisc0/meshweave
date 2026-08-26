@@ -15,6 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from webapp.db import get_session, init_db
 from webapp.infra import mount_static, templates
+from webapp.models import OAuthState
 from webapp.routers import (
     all_public,
     analysis,
@@ -104,13 +105,10 @@ async def _cleanup_oauth_states_loop(stop_event: asyncio.Event):
     while True:
         if stop_event.is_set():
             break
-        now_iso = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
         try:
             with get_session() as s:
-                s.execute(
-                    text("DELETE FROM oauth_states WHERE expires_at <= :now"),
-                    {"now": now_iso},
-                )
+                s.query(OAuthState).filter(OAuthState.expires_at <= now).delete()
         except Exception:
             pass
         await _sleep_until(stop_event, 900.0)

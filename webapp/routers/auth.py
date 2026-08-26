@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import text
+from sqlalchemy import func
 from starlette import status
 
 from webapp.db import get_session
-from webapp.models import User
+from webapp.models import OAuthState, User
 from webapp.utils.auth import (
     create_auth_session,
     get_auth_cookie_value,
@@ -159,20 +159,12 @@ async def _rate_limit_login(sid: str | None) -> None:
     window_start = now - timedelta(seconds=window_sec)
     # Count recent oauth_states for this sid
     with get_session() as s:
+        count_query = s.query(func.count(OAuthState.id)).filter(
+            OAuthState.created_at >= window_start
+        )
         if sid:
-            res = s.execute(
-                text(
-                    "SELECT COUNT(1) FROM oauth_states WHERE sid = :sid AND created_at >= :start"
-                ),
-                {"sid": sid, "start": window_start},
-            ).scalar()
-        else:
-            # If no sid yet, rate limit by total recency (coarse)
-            res = s.execute(
-                text("SELECT COUNT(1) FROM oauth_states WHERE created_at >= :start"),
-                {"start": window_start},
-            ).scalar()
-        count = int(res or 0)
+            count_query = count_query.filter(OAuthState.sid == sid)
+        count = count_query.scalar() or 0
         if count >= max_attempts:
             try:
                 rate_limit_hits.labels("login").inc()
@@ -238,19 +230,14 @@ async def login(request: Request, provider: str = "google", next: str | None = N
     now = datetime.now(UTC)
     expires_at = now + timedelta(seconds=_oauth_state_ttl())
     with get_session() as s:
-        s.execute(
-            text(
-                "INSERT INTO oauth_states (id, sid, state, next_path, created_at, expires_at) "
-                "VALUES (:id, :sid, :state, :next_path, :created_at, :expires_at)"
-            ),
-            {
-                "id": str(uuid.uuid4()),
-                "sid": sid,
-                "state": state,
-                "next_path": next_path,
-                "created_at": now,
-                "expires_at": expires_at,
-            },
+        s.add(
+            OAuthState(
+                sid=sid,
+                state=state,
+                next_path=next_path,
+                created_at=now,
+                expires_at=expires_at,
+            )
         )
 
     # Build auth URL
@@ -319,34 +306,24 @@ async def auth_callback(
     sid = request.cookies.get(_sid_cookie_name()) or ""
     oauth_row = None
     with get_session() as s:
-        row = s.execute(
-            text(
-                "SELECT id, sid, state, next_path, created_at, expires_at "
-                "FROM oauth_states WHERE state = :state AND sid = :sid"
-            ),
-            {"state": state, "sid": sid},
-        ).first()
+        row = (
+            s.query(OAuthState)
+            .filter(OAuthState.state == state, OAuthState.sid == sid)
+            .first()
+        )
         if not row:
             raise HTTPException(status_code=400, detail="Invalid state")
-        # Expiry check
-        # Expiry check (handle both str and datetime from DB)
-        expires_val = getattr(row, "expires_at", None)  # type: ignore
-        try:
-            if isinstance(expires_val, datetime):
-                expires_at = expires_val
-            elif isinstance(expires_val, str):
-                expires_at = datetime.fromisoformat(expires_val)
-            else:
-                expires_at = datetime.now(UTC) - timedelta(seconds=1)
-        except Exception:
-            expires_at = datetime.now(UTC) - timedelta(seconds=1)
-        if datetime.now(UTC) > expires_at:
-            # delete the state and fail
-            s.execute(text("DELETE FROM oauth_states WHERE id = :id"), {"id": row.id})
-            raise HTTPException(status_code=400, detail="State expired")
-        # Capture next_path then delete
+        # SQLite returns naive datetimes for DateTime(timezone=True) columns
+        expires_at = row.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
         oauth_row = row
-        s.execute(text("DELETE FROM oauth_states WHERE id = :id"), {"id": row.id})
+        next_path_val = row.next_path
+        s.delete(row)
+
+    if datetime.now(UTC) > expires_at:
+        # State was already deleted above; commit happened on clean exit
+        raise HTTPException(status_code=400, detail="State expired")
 
     # Exchange code for tokens
     redirect_uri = _build_redirect_uri(request)
@@ -474,7 +451,7 @@ async def auth_callback(
             )
 
     # Redirect to requested path; set auth cookie
-    next_path = sanitize_next(getattr(oauth_row, "next_path", "/"))  # type: ignore
+    next_path = sanitize_next(next_path_val if oauth_row else None)
     resp = RedirectResponse(url=next_path or "/", status_code=status.HTTP_303_SEE_OTHER)
     set_auth_cookie(resp, sess.session_id)
     try:
