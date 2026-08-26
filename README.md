@@ -29,9 +29,19 @@ Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync
-uv run playwright install --with-deps chromium
 uv run uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --reload
 ```
+
+Pages are rendered through a remote CDP browser (LightPanda). Set
+`MESHWEAVE_CDP_ENDPOINT` before crawling locally:
+
+```bash
+docker run -d --name lightpanda -p 9222:9222 \
+  lightpanda/browser:nightly lightpanda serve --host 0.0.0.0 --port 9222
+export MESHWEAVE_CDP_ENDPOINT=http://localhost:9222
+```
+
+(Docker Compose already wires this up via the `lightpanda` service.)
 
 ## CLI
 
@@ -93,7 +103,7 @@ A full-featured FastAPI web application for submitting URLs and viewing AI visib
 ### Architecture
 
 ```
-FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── Playwright (headless Chromium)
+FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── LightPanda (CDP browser)
                                                     │
                                             LLM scoring engine
                                          (OpenAI-compatible API)
@@ -113,6 +123,7 @@ FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── Playwright (headless 
 | `LLM_API_KEY` | LLM API key | — |
 | `LLM_MODEL` | Model name for scoring | — |
 | `AAX_ENABLED` | Enable AAX scoring lens | — |
+| `MESHWEAVE_CDP_ENDPOINT` | CDP browser endpoint (required for rendering) | — |
 | `MESHWEAVE_CACHE_DIR` | HTML cache directory | `/tmp/meshweave/cache` |
 | `FOOTER_CONTACT_EMAIL` | Contact email in footer/legal | `hello@meshweaveai.com` |
 
@@ -123,9 +134,6 @@ See `docker-compose.yaml` for the full set of configuration options.
 ```bash
 # Install with dev dependencies
 uv sync
-
-# Install Playwright browser
-uv run playwright install --with-deps chromium
 
 # Run tests
 uv run pytest -q
