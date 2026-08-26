@@ -1,14 +1,19 @@
-"""Fetch fully-rendered HTML using CloakBrowser (Chromium)."""
+"""Fetch fully-rendered HTML via a CDP browser (LightPanda)."""
 
+import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
+import os
+import socket
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from cloakbrowser import launch_context_async
+from playwright.async_api import async_playwright
 
 __all__ = [
     "BrowserSession",
@@ -18,19 +23,57 @@ __all__ = [
     "render_metrics_to_dict",
 ]
 
-_INSTALL_HINT = "CloakBrowser binary not found. Install it with: cloakbrowser install"
+
+CDP_ENDPOINT_MISSING_MSG = (
+    "MESHWEAVE_CDP_ENDPOINT is not set. MeshWeave renders pages "
+    "through a remote CDP browser (e.g. LightPanda). Start one "
+    "and set MESHWEAVE_CDP_ENDPOINT, e.g. "
+    "http://localhost:9222 — see docker-compose.yaml "
+    "(service 'lightpanda')."
+)
+
+
+def _cdp_endpoint() -> str | None:
+    """Remote CDP endpoint to connect to, from ``MESHWEAVE_CDP_ENDPOINT``."""
+    return os.environ.get("MESHWEAVE_CDP_ENDPOINT") or None
+
+
+async def _resolve_cdp_ws_url(endpoint: str) -> str:
+    """Resolve *endpoint* to a direct ``ws://`` URL Playwright can dial.
+
+    LightPanda's ``/json/version`` advertises ``ws://127.0.0.1:9222/`` for a
+    wildcard bind, which is unreachable from other containers, and its
+    WebSocket handshake rejects non-IP-literal Host headers (403). Resolving
+    the endpoint host to an IP literal and dialing ``ws://<ip>:<port>/``
+    directly bypasses discovery and satisfies the Host check.
+    """
+    parts = urlsplit(endpoint)
+    if parts.scheme in {"ws", "wss"}:
+        host = parts.hostname or ""
+        try:
+            ipaddress.ip_address(host)
+            return endpoint  # already an IP literal
+        except ValueError:
+            pass  # resolve below
+    host = parts.hostname
+    if not host:
+        raise RuntimeError(f"Invalid MESHWEAVE_CDP_ENDPOINT: {endpoint!r}")
+    port = parts.port or (443 if parts.scheme in {"https", "wss"} else 80)
+    infos = await asyncio.get_running_loop().getaddrinfo(
+        host, port, type=socket.SOCK_STREAM
+    )
+    # Prefer IPv4; bracket IPv6 literals for URL formatting.
+    ip = infos[0][4][0]
+    for family, _, _, _, sockaddr in infos:
+        if family == socket.AF_INET:
+            ip = sockaddr[0]
+            break
+    host_part = f"[{ip}]" if ":" in ip else ip
+    scheme = "wss" if parts.scheme in {"https", "wss"} else "ws"
+    return f"{scheme}://{host_part}:{port}/"
+
 
 logger = logging.getLogger(__name__)
-
-
-def _ensure_binary() -> None:
-    """Pre-flight check that the CloakBrowser binary is available."""
-    from cloakbrowser import ensure_binary
-
-    try:
-        ensure_binary()
-    except (SystemExit, Exception) as exc:
-        raise RuntimeError(_INSTALL_HINT) from exc
 
 
 @dataclass
@@ -89,7 +132,11 @@ async def _progressive_scroll(page, timeout_ms: int) -> None:
 
 
 class BrowserSession:
-    """Reusable CloakBrowser context for a crawl session.
+    """Reusable browser context for a crawl session, connected via CDP.
+
+    Requires a remote CDP endpoint (e.g. the LightPanda container) from
+    ``MESHWEAVE_CDP_ENDPOINT`` or the ``cdp_endpoint`` argument. Connects
+    lazily on first use.
 
     Usage::
 
@@ -100,24 +147,62 @@ class BrowserSession:
             html2, m2 = await get_rendered_html(
                 "https://...", session=session
             )
-            # Same context, different pages -- TLS fingerprint preserved.
+            # Same context, different pages.
     """
 
-    def __init__(self):
+    def __init__(self, cdp_endpoint: str | None = None):
+        self._cdp_endpoint = cdp_endpoint or _cdp_endpoint()
         self._ctx = None
+        self._browser = None
+        self._pw = None
+        self._connected = False
 
     async def __aenter__(self):
-        _ensure_binary()
-        self._ctx = await launch_context_async()
         return self
 
     async def __aexit__(self, *exc):
+        await self.disconnect()
+
+    async def disconnect(self) -> None:
         if self._ctx:
             await self._ctx.close()
             self._ctx = None
+        if self._browser:
+            await self._browser.close()
+            self._browser = None
+        if self._pw:
+            await self._pw.stop()
+            self._pw = None
+        self._connected = False
+
+    async def ensure_connected(self) -> None:
+        """Connect to the CDP endpoint on first use (idempotent).
+
+        Raises:
+            RuntimeError: If no CDP endpoint is configured.
+        """
+        if self._connected:
+            return
+        endpoint = self._cdp_endpoint
+        if not endpoint:
+            raise RuntimeError(CDP_ENDPOINT_MISSING_MSG)
+        try:
+            ws_url = await _resolve_cdp_ws_url(endpoint)
+            self._pw = await async_playwright().start()
+            self._browser = await self._pw.chromium.connect_over_cdp(ws_url)
+            self._ctx = await self._browser.new_context()
+        except Exception:
+            # Don't leak a started Playwright driver / partial connection.
+            await self.disconnect()
+            raise
+        self._connected = True
 
     @property
     def context(self):
+        if not self._connected:
+            raise RuntimeError(
+                "BrowserSession not connected; call ensure_connected() first."
+            )
         return self._ctx
 
 
@@ -131,7 +216,7 @@ async def get_rendered_html(
     return_metrics: bool = False,
     cache_dir: str | None = None,
 ) -> str | tuple[str, RenderMetrics]:
-    """Render a URL in Chromium and return the HTML.
+    """Render a URL via a CDP browser and return the HTML.
 
     Returns html string, or (html, RenderMetrics) when
     return_metrics is True.
@@ -163,6 +248,7 @@ async def get_rendered_html(
         except Exception as e:
             metrics.errors.append(f"Cache read: {e}")
 
+    await session.ensure_connected()
     ctx = session.context
     page = await ctx.new_page()
     try:
@@ -215,7 +301,7 @@ async def get_rendered_html(
         await page.close()
 
 
-# HTML wrapper tags that CloakBrowser wraps around plain-text/XML content.
+# HTML wrapper tags that headless browsers wrap around plain-text/XML content.
 _BROWSER_STRIP_TAGS = (
     "<html>",
     "</html>",
@@ -234,7 +320,7 @@ async def fetch_text(
     session: BrowserSession,
     timeout: float = 10.0,
 ) -> str | None:
-    """Fetch a URL via CloakBrowser and return body text, or None.
+    """Fetch a URL via the browser session and return body text, or None.
 
     Plain-text/XML responses are wrapped in minimal HTML tags
     by the browser, which are stripped before returning.

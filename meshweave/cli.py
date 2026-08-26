@@ -259,6 +259,11 @@ def _run_crawl(args: argparse.Namespace) -> None:
     """Execute the crawl subcommand."""
 
     from .core import crawl  # lazy import
+    from .crawling.fetcher import CDP_ENDPOINT_MISSING_MSG, _cdp_endpoint
+
+    if not _cdp_endpoint():
+        _log(f"✗ {CDP_ENDPOINT_MISSING_MSG}")
+        sys.exit(2)
 
     async def _run():
         _log(f"► Crawling {args.url} …")
@@ -266,7 +271,7 @@ def _run_crawl(args: argparse.Namespace) -> None:
         # --refresh implies --disable-cache
         disable_cache = args.disable_cache or args.refresh
 
-        _log("► Rendering page with CloakBrowser …")
+        _log("► Rendering page …")
         payload = await crawl(
             url=args.url,
             crawl_max_pages=int(args.max_pages),
@@ -382,7 +387,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="meshweave",
         description=(
-            "Render pages with CloakBrowser, extract markdown, links, "
+            "Render pages, extract markdown, links, "
             "emails — and optionally crawl internal links."
         ),
         epilog=_EPILOG,
@@ -396,7 +401,7 @@ def main() -> None:
         "crawl",
         help="Render, extract, and optionally crawl a site",
         description=(
-            "Fetch a URL (or bare domain) with CloakBrowser, extract "
+            "Fetch a URL (or bare domain), extract "
             "markdown, links, and emails.  Always crawls internal links "
             "within the URL's path scope."
         ),
