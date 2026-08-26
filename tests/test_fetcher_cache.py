@@ -1,11 +1,9 @@
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from meshweave.crawling.fetcher import (
     BrowserSession,
-    RenderMetrics,
     _cache_path,
     get_rendered_html,
 )
@@ -39,9 +37,8 @@ async def test_cache_hit_returns_cached_html(tmp_path: Path):
         )
 
     assert html == cached_html
-    m = cast(RenderMetrics, metrics)
-    assert m.cache_hit is True
-    assert m.content_length == len(cached_html)
+    assert metrics.cache_hit is True
+    assert metrics.content_length == len(cached_html)
 
 
 @pytest.mark.asyncio

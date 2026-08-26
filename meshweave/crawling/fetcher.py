@@ -10,10 +10,15 @@ import socket
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, overload
 from urllib.parse import urlsplit
 
-from playwright.async_api import async_playwright
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    Playwright,
+    async_playwright,
+)
 
 __all__ = [
     "BrowserSession",
@@ -49,9 +54,9 @@ async def _resolve_cdp_ws_url(endpoint: str) -> str:
     """
     parts = urlsplit(endpoint)
     if parts.scheme in {"ws", "wss"}:
-        host = parts.hostname or ""
+        ws_host = parts.hostname or ""
         try:
-            ipaddress.ip_address(host)
+            ipaddress.ip_address(ws_host)
             return endpoint  # already an IP literal
         except ValueError:
             pass  # resolve below
@@ -63,10 +68,10 @@ async def _resolve_cdp_ws_url(endpoint: str) -> str:
         host, port, type=socket.SOCK_STREAM
     )
     # Prefer IPv4; bracket IPv6 literals for URL formatting.
-    ip = infos[0][4][0]
+    ip: str = str(infos[0][4][0])
     for family, _, _, _, sockaddr in infos:
         if family == socket.AF_INET:
-            ip = sockaddr[0]
+            ip = str(sockaddr[0])
             break
     host_part = f"[{ip}]" if ":" in ip else ip
     scheme = "wss" if parts.scheme in {"https", "wss"} else "ws"
@@ -150,11 +155,11 @@ class BrowserSession:
             # Same context, different pages.
     """
 
-    def __init__(self, cdp_endpoint: str | None = None):
+    def __init__(self, cdp_endpoint: str | None = None) -> None:
         self._cdp_endpoint = cdp_endpoint or _cdp_endpoint()
-        self._ctx = None
-        self._browser = None
-        self._pw = None
+        self._ctx: BrowserContext | None = None
+        self._browser: Browser | None = None
+        self._pw: Playwright | None = None
         self._connected = False
 
     async def __aenter__(self):
@@ -198,12 +203,43 @@ class BrowserSession:
         self._connected = True
 
     @property
-    def context(self):
+    def context(self) -> BrowserContext:
         if not self._connected:
             raise RuntimeError(
                 "BrowserSession not connected; call ensure_connected() first."
             )
-        return self._ctx
+        ctx = self._ctx
+        if ctx is None:
+            raise RuntimeError(
+                "BrowserSession not connected; call ensure_connected() first."
+            )
+        return ctx
+
+
+@overload
+async def get_rendered_html(
+    url: str,
+    *,
+    session: BrowserSession,
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "networkidle",
+    timeout: float = 30.0,
+    progressive_scroll: bool = False,
+    return_metrics: Literal[False] = False,
+    cache_dir: str | None = None,
+) -> str: ...
+
+
+@overload
+async def get_rendered_html(
+    url: str,
+    *,
+    session: BrowserSession,
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "networkidle",
+    timeout: float = 30.0,
+    progressive_scroll: bool = False,
+    return_metrics: Literal[True],
+    cache_dir: str | None = None,
+) -> tuple[str, RenderMetrics]: ...
 
 
 async def get_rendered_html(
@@ -334,11 +370,10 @@ async def fetch_text(
             timeout=timeout,
             wait_until="domcontentloaded",
         )
-        if isinstance(html, str):
-            text = html
-            for tag in _BROWSER_STRIP_TAGS:
-                text = text.replace(tag, "")
-            return text.strip()
+        text = html
+        for tag in _BROWSER_STRIP_TAGS:
+            text = text.replace(tag, "")
+        return text.strip()
     except Exception as exc:
         logger.debug("Failed to fetch %s: %s", url, exc)
     return None

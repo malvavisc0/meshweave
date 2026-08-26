@@ -17,7 +17,11 @@ from ..extraction import (
     to_markdown,
 )
 from ..urls import normalize_abs_url, origin_prefix, should_follow
-from .fetcher import BrowserSession, get_rendered_html, render_metrics_to_dict
+from .fetcher import (
+    BrowserSession,
+    get_rendered_html,
+    render_metrics_to_dict,
+)
 
 logger = logging.getLogger(__name__)
 
