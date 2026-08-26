@@ -32,7 +32,7 @@ from webapp.routers import (
     submissions,
 )
 from webapp.utils.auth import AuthSessionMiddleware
-from webapp.utils.config import _env_bool
+from webapp.utils.config import _env_bool, get_telemetry_config
 from webapp.utils.csrf import CSRFMiddleware
 from webapp.utils.logging import RequestIDMiddleware, init_logging, log_audit
 from webapp.utils.metrics import active_sessions
@@ -399,6 +399,7 @@ def create_app() -> FastAPI:
 
     # Expose footer links and version as Jinja globals
     try:
+        _telemetry_url, _telemetry_site, _telemetry_enabled = get_telemetry_config()
         templates.env.globals.update(
             {
                 "APP_VERSION": os.getenv("APP_VERSION", "").strip(),
@@ -416,6 +417,10 @@ def create_app() -> FastAPI:
                 "SITE_NAME_DEFAULT": os.getenv("SITE_NAME", "MeshWeave").strip(),
                 # Convenience for footer ©
                 "CURRENT_YEAR": datetime.now(UTC).year,
+                # Telemetry (analytics) script — off unless configured
+                "TELEMETRY_ENABLED": _telemetry_enabled,
+                "TELEMETRY_SCRIPT_URL": _telemetry_url,
+                "TELEMETRY_SITE_ID": _telemetry_site,
             }
         )
     except Exception:
@@ -426,17 +431,31 @@ def create_app() -> FastAPI:
     # Controlled by WEBAPP_ENABLE_CSP=true and optional WEBAPP_CSP override.
     # Note: Current templates use inline scripts; default includes 'unsafe-inline' to avoid breakage.
     # Tighten to nonced CSP in a subsequent phase.
+    # When telemetry is enabled, its script origin is added to the default
+    # policy's script-src/connect-src (not needed when WEBAPP_CSP overrides).
+    _telemetry_origin = ""
+    if _telemetry_enabled and _telemetry_url:
+        from urllib.parse import urlsplit
+
+        _parts = urlsplit(_telemetry_url)
+        if _parts.scheme and _parts.netloc:
+            _telemetry_origin = f"{_parts.scheme}://{_parts.netloc}"
+
     @app.middleware("http")
     async def _csp_middleware(request, call_next):
         resp = await call_next(request)
         try:
             if _env_bool("WEBAPP_ENABLE_CSP", False):
+                _origin = (
+                    f" {_telemetry_origin}" if _telemetry_origin else ""
+                )
                 default_csp = (
                     "default-src 'self'; "
                     "img-src 'self' data: blob:; "
                     "style-src 'self' 'unsafe-inline'; "
-                    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "
-                    "connect-src 'self'; "
+                    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'"
+                    f"{_origin}; "
+                    f"connect-src 'self'{_origin}; "
                     "font-src 'self' data:; "
                     "frame-ancestors 'none'; "
                     "base-uri 'self'; "

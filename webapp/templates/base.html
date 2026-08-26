@@ -46,6 +46,10 @@
     rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 
+  {% if TELEMETRY_ENABLED %}
+  <script src="{{ TELEMETRY_SCRIPT_URL }}" data-site-id="{{ TELEMETRY_SITE_ID }}" defer></script>
+  {% endif %}
+
   {% block head_extra %}{% endblock %}
 </head>
 
