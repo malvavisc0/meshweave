@@ -58,22 +58,6 @@ def check_all(payload: dict) -> dict[str, str | None]:
     }
 
 
-def _extract_brand_name(payload: dict) -> str:
-    """Extract brand name from payload."""
-    entity = (payload.get("audit") or {}).get("entity") or {}
-    name = entity.get("name") or ""
-    if name:
-        return name.strip()
-    # Fallback: extract from page title
-    page = payload.get("page") or {}
-    title = page.get("title") or ""
-    if "|" in title:
-        return title.split("|")[0].strip()
-    if " - " in title:
-        return title.split(" - ")[0].strip()
-    return title.strip()
-
-
 def _get_homepage_markdown(payload: dict) -> str:
     """Get homepage markdown content.
 

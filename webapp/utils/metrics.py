@@ -56,8 +56,6 @@ prospects_patch = Counter(
     "prospects_patch_total", "Prospects partial update operations"
 )
 contacts_create = Counter("contacts_create_total", "Prospect contacts created")
-products_create = Counter("products_create_total", "Products created")
-products_update = Counter("products_update_total", "Products updated")
 
 # Stale finalization metrics
 stale_finalize_attempts = Counter(

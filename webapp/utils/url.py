@@ -124,27 +124,6 @@ def _abs_url(request: Request, path: str) -> str:
     return f"{base}{path}"
 
 
-def _safe_summary(text: str | None, max_len: int = 160) -> str:
-    """Create a one-line safe summary from text.
-
-    Collapses newlines, trims carriage returns, and truncates with an ellipsis.
-
-    Args:
-        text (Optional[str]): Source text.
-        max_len (int): Maximum output length.
-
-    Returns:
-        str: Safe, single-line summary string.
-    """
-    try:
-        s = (text or "").strip().replace("\n", " ").replace("\r", " ")
-        if len(s) <= max_len:
-            return s
-        return s[: max_len - 1].rstrip() + "…"
-    except Exception:
-        return ""
-
-
 def generate_short_key() -> str:
     """Generate a short, URL-safe key derived from UUID4 bytes.
 
