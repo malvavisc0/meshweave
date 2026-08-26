@@ -123,7 +123,8 @@ services:
       # Opt-in error reporting (Bugsink, Sentry-compatible); off without DSN
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-staging}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      # Tag events with the deployed image version (e.g. v0.1.4)
+      SENTRY_RELEASE: ${MESHWEAVE_VERSION:-latest}
       LLM_BASE_URL: ${LLM_BASE_URL:?set LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL:?set LLM_MODEL}

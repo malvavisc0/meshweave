@@ -117,9 +117,9 @@ async def _cleanup_oauth_states_loop(stop_event: asyncio.Event):
 def _init_sentry() -> None:
     """Initialize the Sentry SDK against a Bugsink instance if configured.
 
-    SENTRY_DSN points at a Bugsink (Sentry-compatible) endpoint. Error
-    reporting only; set SENTRY_TRACES_SAMPLE_RATE to enable performance
-    data.
+    SENTRY_DSN points at a Bugsink (Sentry-compatible) endpoint. Bugsink
+    only supports error events, so transactions, client reports, and
+    session tracking stay off.
     """
     dsn = os.getenv("SENTRY_DSN", "").strip()
     if not dsn:
@@ -128,8 +128,13 @@ def _init_sentry() -> None:
 
     sentry_sdk.init(
         dsn=dsn,
-        environment=os.getenv("SENTRY_ENVIRONMENT", "staging"),
-        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "staging").strip(),
+        release=os.getenv("SENTRY_RELEASE", "").strip() or None,
+        send_default_pii=True,
+        max_request_body_size="always",
+        traces_sample_rate=0,
+        send_client_reports=False,
+        auto_session_tracking=False,
     )
 
 
