@@ -479,26 +479,26 @@ def generate_recommendations(
         aax_scores = scores.get("aax") or {}
         contactability = aax_scores.get("contactability")
         if contactability:
-            missing: list[str] = []
+            missing_signals: list[str] = []
             if not contactability.get("has_email"):
-                missing.append("email address")
+                missing_signals.append("email address")
             if not contactability.get("has_mailto"):
-                missing.append("mailto: link")
+                missing_signals.append("mailto: link")
             if not contactability.get("has_contact_page"):
-                missing.append("contact page")
+                missing_signals.append("contact page")
             if not contactability.get("has_social_links"):
-                missing.append("social links")
+                missing_signals.append("social links")
             if not contactability.get("has_contact_point_schema"):
-                missing.append("ContactPoint schema")
+                missing_signals.append("ContactPoint schema")
 
-            if missing:
+            if missing_signals:
                 recs.append(
                     {
                         "factor": "contactability",
                         "priority": "high",
                         "title": "Improve contactability for AI agents",
                         "detail": (
-                            f"Missing: {', '.join(missing)}. "
+                            f"Missing: {', '.join(missing_signals)}. "
                             "AI agents need clear contact signals to "
                             "verify and recommend your business."
                         ),

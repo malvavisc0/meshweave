@@ -123,7 +123,8 @@ def get_auth_cookie_value(request: Request) -> str | None:
     if not getattr(request, "cookies", None):
         return None
     secure_name, base = _resolve_cookie_names_for_read()
-    return request.cookies.get(secure_name) or request.cookies.get(base)
+    value: str | None = request.cookies.get(secure_name) or request.cookies.get(base)
+    return value
 
 
 def set_auth_cookie(resp: Response, session_id: str) -> None:

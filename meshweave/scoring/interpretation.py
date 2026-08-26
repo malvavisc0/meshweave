@@ -405,11 +405,14 @@ def interpret_profile(
     # ------------------------------------------------------------------
     # Score bands (per lens)
     # ------------------------------------------------------------------
+    assert aeo_score is not None
+    assert geo_score is not None
+    assert aax_score is not None
     scores: dict[LensName, float] = {
         "AEO": aeo_score,
         "GEO": geo_score,
         "AAX": aax_score,
-    }  # type: ignore[assignment]
+    }
     bands: dict[LensName, BandName] = {}
     for lens, score in scores.items():
         bands[lens] = _band_for(score)

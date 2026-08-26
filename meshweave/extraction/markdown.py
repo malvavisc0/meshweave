@@ -2,7 +2,7 @@
 
 import re
 
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
 from html_to_markdown import convert
 
 __all__ = [
@@ -59,7 +59,7 @@ _COLLAPSE_WS_TAGS = frozenset(
 _WS_NL = re.compile(r"[ \t]*\n[ \t]*")
 
 
-def _collapse_ws(soup: BeautifulSoup) -> None:
+def _collapse_ws(soup: BeautifulSoup | Tag) -> None:
     """Collapse source-level newlines inside content tags to single spaces.
 
     HTML treats newlines inside flow/phrasing content as whitespace.
@@ -93,10 +93,11 @@ def to_markdown(soup: BeautifulSoup) -> str:
     # markdown converter receives properly normalised text.
     _collapse_ws(target)
     result = convert(str(target))
-    md = result.content
+    md = result.content or ""
 
     # Strip injected HTML comment block at the top
-    if md.lstrip().startswith("<!--"):
+    content = md.lstrip()
+    if content.startswith("<!--"):
         end = md.find("-->")
         if end != -1:
             md = md[end + 3 :].lstrip("\n\r ")

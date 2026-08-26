@@ -54,7 +54,7 @@ def preprocess_soup(
             node.decompose()
 
     # Remove by role
-    for node in soup.find_all(attrs={"role": _NOISE_ROLES}):
+    for node in soup.find_all(role=_NOISE_ROLES):
         node.decompose()
 
     # Remove by class / id patterns

@@ -325,7 +325,7 @@ async def view_all(
             else:
                 q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
 
-            rows_db = (
+            rows_db_recent = (
                 q.options(joinedload(Crawl.score_snapshot)).limit(page_size + 1).all()
             )
 
@@ -333,7 +333,7 @@ async def view_all(
             email_counts_map: dict[str, int] = {}
             page_counts_map: dict[str, int] = {}
 
-            for r in rows_db:
+            for r in rows_db_recent:
                 try:
                     p = r.payload_json or {} if r.payload_json else {}
                     if isinstance(p, dict):
@@ -348,8 +348,8 @@ async def view_all(
                     page_counts_map[r.id] = 0
 
             # Build items
-            more = len(rows_db) > page_size
-            rows = rows_db[:page_size]
+            more = len(rows_db_recent) > page_size
+            rows = rows_db_recent[:page_size]
             for r in rows:
                 title = ""
                 payload = None
@@ -643,7 +643,7 @@ async def view_all(
                         "@type": "CreativeWork",
                         "name": f"Analysis for {it.get('domain') or 'site'}",
                         "identifier": it.get("key", ""),
-                        "about": (it.get("domain") or "").strip(),
+                        "about": str(it.get("domain") or "").strip(),
                         "url": _abs_url(request, f"/analysis/{it.get('key', '')}"),
                         "dateModified": str(it.get("updated_at", ""))[:19],  # ISO-like
                         "keywords": ["AEO", "GEO", "AI search", "optimization"],

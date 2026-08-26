@@ -446,9 +446,7 @@ def create_app() -> FastAPI:
         resp = await call_next(request)
         try:
             if _env_bool("WEBAPP_ENABLE_CSP", False):
-                _origin = (
-                    f" {_telemetry_origin}" if _telemetry_origin else ""
-                )
+                _origin = f" {_telemetry_origin}" if _telemetry_origin else ""
                 default_csp = (
                     "default-src 'self'; "
                     "img-src 'self' data: blob:; "

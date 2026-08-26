@@ -138,13 +138,12 @@ def _run_alembic_upgrade() -> None:
     The database URL is resolved by alembic/env.py from DATABASE_URL/SQLITE_PATH.
     """
     try:
+        from alembic.command import upgrade
         from alembic.config import Config
-
-        from alembic import command
 
         cfg = Config("alembic.ini")
         cfg.set_main_option("script_location", "alembic")
-        command.upgrade(cfg, "head")
+        upgrade(cfg, "head")
         log.info("init_db: alembic upgrade head completed")
     except Exception as e:
         log.error("init_db: alembic upgrade head failed: %s", e)

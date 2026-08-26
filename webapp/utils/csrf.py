@@ -64,13 +64,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     pass
                 is_api = str(request.url.path).startswith("/api")
                 if is_api:
-                    return JSONResponse(
+                    response: Response = JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
                         content={"detail": "Forbidden"},
                     )
-                return PlainTextResponse(
+                    return response
+                response = PlainTextResponse(
                     status_code=status.HTTP_403_FORBIDDEN, content="Forbidden"
                 )
+                return response
 
             if origin_hdr:
                 if _host_of(origin_hdr) != host_hdr:

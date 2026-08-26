@@ -98,7 +98,7 @@ def score_content_structure(payload: dict) -> dict:
             "raw": {"per_page_scores": {}, "site_average": 0, "pages_evaluated": 0},
         }
 
-    per_page_scores = {}
+    per_page_scores: dict[str, float] = {}
     for pd in pages_data:
         page_score = _score_single_page(pd)
         # Use a meaningful key

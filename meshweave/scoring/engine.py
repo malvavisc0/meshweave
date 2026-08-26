@@ -44,7 +44,7 @@ def _weighted_composite(
 
     Returns None if no factors have scores.
     """
-    scored = {}
+    scored: dict[str, float] = {}
     for key, factor in factors.items():
         score = factor.get("score")
         if score is not None and key in weights:
@@ -68,8 +68,8 @@ def _weighted_composite(
     # Calibration curve: compress upper range so average sites don't
     # score artificially high.  Power 1.15 pulls 80→73, 70→62, 60→51,
     # 50→42, 40→33 while leaving 100 untouched.
-    calibrated = 100.0 * (composite / 100.0) ** 1.15
-    return round(min(100.0, calibrated), 1)
+    calibrated = 100.0 * (float(composite) / 100.0) ** 1.15
+    return float(round(min(100.0, calibrated), 1))
 
 
 def compute_scores(

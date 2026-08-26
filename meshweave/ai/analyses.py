@@ -227,7 +227,7 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     for u, emails_list in by_url.items():
         if urlparse(u).path in ("", "/"):
             homepage_emails.extend(emails_list or [])
-    contact_emails = []
+    contact_emails: list[str] = []
     for cp in contact_pages:
         contact_emails.extend(by_url.get(cp, []) or [])
     if homepage_emails or contact_emails:

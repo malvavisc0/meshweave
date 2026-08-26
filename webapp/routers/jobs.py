@@ -1,7 +1,7 @@
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,7 +9,7 @@ from sqlalchemy import func
 
 from webapp.db import get_session
 from webapp.infra import templates
-from webapp.models import Crawl, Product, ScoreSnapshot
+from webapp.models import Crawl, ScoreSnapshot
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -21,18 +21,15 @@ from webapp.utils.quotas import (
 from webapp.utils.security import _make_csrf_token, _verify_csrf_token
 from webapp.utils.url import _abs_url
 
-# Treat SQLAlchemy declarative models as Any for type checkers to avoid
-# circular/forward-ref analysis issues
-Crawl = cast(Any, Crawl)  # pyright: ignore[reportGeneralTypeIssues]
-Product = cast(Any, Product)  # pyright: ignore[reportGeneralTypeIssues]
-
 router = APIRouter()
 
 
-def _extract_aax_score(snapshot) -> float | None:
+def _extract_aax_score(snapshot: ScoreSnapshot | None) -> float | None:
     """Extract AAX composite score from a ScoreSnapshot."""
     if snapshot and snapshot.score_json:
-        return snapshot.score_json.get("aax", {}).get("composite")
+        composite = snapshot.score_json.get("aax", {}).get("composite")
+        if isinstance(composite, (int, float)):
+            return float(composite)
     return None
 
 

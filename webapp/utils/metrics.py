@@ -44,7 +44,7 @@ homepage_signin_cta_clicks = Counter(
 result_share_clicks = Counter(
     "result_share_clicks_total",
     "Result page share/copy clicks",
-    ["type"],  # type: copy|link|other
+    ["type"],  # label: copy|link|other
 )
 
 
@@ -74,7 +74,8 @@ stale_finalize_finished = Counter(
 
 def metrics_body() -> bytes:
     """Return Prometheus metrics exposition as bytes."""
-    return generate_latest()
+    latest: bytes = generate_latest()
+    return latest
 
 
 def metrics_content_type() -> str:
@@ -83,4 +84,5 @@ def metrics_content_type() -> str:
     Returns:
         str: Content type for Prometheus metrics (e.g., text/plain; version=0.0.4; charset=utf-8).
     """
-    return CONTENT_TYPE_LATEST
+    content_type: str = CONTENT_TYPE_LATEST
+    return content_type

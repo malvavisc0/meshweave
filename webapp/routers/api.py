@@ -165,7 +165,7 @@ async def domain_history_csv(request: Request, domain: str):
     w.writerow(
         ["run", "date", "aeo", "aeo_delta", "geo", "geo_delta", "aax", "aax_delta"]
     )
-    prev = None
+    prev: Crawl | None = None
     for i, c in enumerate(crawls, 1):
         aax_val = None
         if c.score_snapshot and c.score_snapshot.score_json:

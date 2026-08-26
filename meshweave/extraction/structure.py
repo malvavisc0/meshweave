@@ -84,22 +84,22 @@ def extract_content_metrics(
         # Skip decorative / hidden images
         if img.get("role") == "presentation":
             continue
-        if img.get("aria-hidden", "").lower() == "true":
+        if str(img.get("aria-hidden", "")).lower() == "true":
             continue
-        src = img.get("src", "")
+        src = str(img.get("src", ""))
         # Skip tracking pixels and data-URI placeholders
         if not src or src.startswith("data:"):
             continue
         # Skip 1x1 tracking pixels by dimension
-        w = img.get("width", "")
-        h = img.get("height", "")
+        w = str(img.get("width", ""))
+        h = str(img.get("height", ""))
         try:
             if int(w) <= 1 or int(h) <= 1:
                 continue
         except ValueError, TypeError:
             pass
         img_total += 1
-        if img.get("alt", "").strip():
+        if str(img.get("alt", "")).strip():
             img_with_alt += 1
 
     # Word count from markdown if available, else body text
