@@ -88,7 +88,7 @@ def _build_factor_extremes(ss: dict | None) -> dict:
 
 
 # Simple in-memory rate limiter for share toggle (max 5 per hour per user)
-share_toggle_limits = {}
+share_toggle_limits: dict[str, list[float]] = {}
 
 
 @router.get("/analysis/shared/{share_key}", response_class=HTMLResponse)
@@ -104,12 +104,7 @@ async def view_shared_analysis(request: Request, share_key: str):
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
 
-    payload: dict | None = None
-    if row.payload_json:
-        try:
-            payload = row.payload_json or {}
-        except json.JSONDecodeError:
-            payload = None
+    payload: dict | None = row.payload_json
 
     # Similar to public view, but with Unlisted badge and no claim
     # Compute SEO/meta
@@ -225,12 +220,7 @@ async def view_analysis(request: Request, ref: str):
             else:
                 row = await require_ownership(request, ref)
 
-        payload: dict | None = None
-        if row.payload_json:
-            try:
-                payload = row.payload_json or {}
-            except json.JSONDecodeError:
-                payload = None
+        payload: dict | None = row.payload_json
 
         # Compute SEO/meta and summary for private view
         title_from_payload = ""
@@ -490,21 +480,17 @@ async def view_analysis(request: Request, ref: str):
 
     # Public by short key
     with get_session() as s:
-        row = (
+        row_result = (
             s.query(Crawl)
             .options(joinedload(Crawl.score_snapshot))
             .filter(Crawl.key == ref, Crawl.visibility == "public")
             .one_or_none()
         )
-    if not row:
+    if not row_result:
         raise HTTPException(status_code=404, detail="Not found")
+    row = row_result
 
-    payload: dict | None = None
-    if row.payload_json:
-        try:
-            payload = row.payload_json or {}
-        except json.JSONDecodeError:
-            payload = None
+    payload = row.payload_json
 
     # SEO/meta computation
     title_from_payload = ""
