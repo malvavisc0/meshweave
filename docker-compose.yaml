@@ -55,6 +55,24 @@ services:
       - ./data/redis:/data
     networks:
       - magics
+  lightpanda:
+    # Pinned digest of lightpanda/browser:nightly (2026-08-26); bump deliberately
+    image: lightpanda/browser@sha256:8fd743c4b72487486e1889eb34539374f2760a8d2fae8b6c08f064705c3a741b
+    container_name: lightpanda
+    hostname: lightpanda
+    restart: always
+    command: ["lightpanda", "serve", "--host", "0.0.0.0", "--port", "9222"]
+    expose:
+      - "9222"
+    healthcheck:
+      # No curl/wget in the image; use bash's /dev/tcp to probe the CDP port
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9222' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - magics
   webapp:
     build:
       context: .
@@ -71,6 +89,11 @@ services:
       WEBAPP_AUTO_MIGRATE: true
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
       MESHWEAVE_DISABLE_CACHE: true
+      ENABLE_TELEMETRY: false
+      RYBBIT_SCRIPT_URL: ${RYBBIT_SCRIPT_URL}
+      RYBBIT_SITE_ID: ${RYBBIT_SITE_ID}
+      # Render pages through the LightPanda CDP service instead of local Chromium
+      MESHWEAVE_CDP_ENDPOINT: http://lightpanda:9222
       # Prefer local source templates/static during local dev so code edits take effect without rebuild
       WEBAPP_PREFER_LOCAL_TEMPLATES: "true"
       WEBAPP_PREFER_LOCAL_STATIC: "true"
@@ -111,6 +134,11 @@ services:
       # CSRF for logout forms
       WEBAPP_CSRF_ENABLED: true
       WEBAPP_CSRF_MAX_AGE: 7200
+      # Staged CSP: overrides the built-in default once WEBAPP_ENABLE_CSP=true.
+      # Permits Google Fonts/favicons alongside 'self'. If you enable telemetry,
+      # add your analytics origin to script-src and connect-src here (the
+      # built-in default already derives it from RYBBIT_SCRIPT_URL).
+      WEBAPP_CSP: "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://www.google.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
       # Claim public analyses minimum age (hours)
       CLAIM_PUBLIC_MIN_AGE_HOURS: 24
       # AI integration (llamacpp via OpenAI-compatible endpoint)
@@ -138,6 +166,8 @@ services:
     command: [ "uv", "run", "uvicorn", "webapp.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload" ]
     depends_on:
       postgres:
+        condition: service_healthy
+      lightpanda:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://localhost:8080/readyz" ]

@@ -119,13 +119,8 @@ RUN uv pip uninstall --system rjsmin rcssmin || true
 # Install curl for container healthchecks and diagnostics
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Install Chromium system shared libraries (libglib2.0, libnss3, etc.)
-RUN python -m playwright install-deps chromium
-
-# Install CloakBrowser stealth Chromium binary
-RUN python -m cloakbrowser install
-
-RUN rm -rf /var/lib/apt/lists/*
+# Pages are rendered by the LightPanda CDP service (docker-compose "lightpanda"),
+# so no local Chromium/CloakBrowser binary is needed in this image.
 
 # Create cache dir
 RUN mkdir -p /tmp/meshweave/cache
