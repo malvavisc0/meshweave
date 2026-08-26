@@ -5,3 +5,10 @@
 !.gitignore
 
 !*/
+
+# Runtime data written by containers (root-owned; keep git out)
+postgres/
+redis/
+cache/
+webapp/
+output/

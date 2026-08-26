@@ -77,6 +77,9 @@ services:
     restart: always
     environment:
       SITE_BASE_URL: ${SITE_BASE_URL:?set SITE_BASE_URL}
+      # HMAC key for CSRF tokens; required so prod never falls back to the
+      # hard-coded development default
+      WEBAPP_SECRET_KEY: ${WEBAPP_SECRET_KEY:?set WEBAPP_SECRET_KEY}
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meshweave}
       FOOTER_REPO_URL: ${FOOTER_REPO_URL:-https://github.com/malvavisc0/meshweave}
       FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL:?set FOOTER_CONTACT_EMAIL}
