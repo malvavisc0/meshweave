@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 from meshweave.ai.models import (
     AAXAnalysisResult,
@@ -50,6 +51,16 @@ async def run_aax_analysis(payload: dict) -> dict[str, Any]:
     domain = payload.get("domain") or ""
     md_dict = payload.get("markdowns") or {}
 
+    # Prefer the site's canonical identity (canonical/og:url host) over the
+    # crawl host: when a staging host is crawled (e.g. internal docker
+    # names), judging contact emails "same-domain" against the crawl host
+    # produces false mismatches.
+    canonical = page.get("canonical") or (page.get("og") or {}).get("url") or ""
+    if canonical:
+        canonical_host = urlsplit(canonical).hostname
+        if canonical_host:
+            domain = canonical_host
+
     # Get homepage markdown (reuse preconditions helper)
     from meshweave.ai.preconditions import _get_homepage_markdown
 
@@ -72,12 +83,16 @@ async def run_aax_analysis(payload: dict) -> dict[str, Any]:
     # Test 3: Meta Optimization
     if conditions.get("meta_optimization") is None:
         og = page.get("og") or {}
+        twitter = page.get("twitter") or {}
         p, s = meta_optimization_prompt(
             page.get("title") or "",
             page.get("description") or "",
             og.get("title") or "",
             og.get("description") or "",
             summarize_jsonld(page.get("jsonld") or []),
+            og_image=og.get("image") or "",
+            canonical=page.get("canonical") or "",
+            twitter_image=twitter.get("image") or "",
         )
         tasks["meta_optimization"] = asyncio.create_task(
             run_structured_test(MetaOptimizationResult, p, s)
@@ -370,12 +385,27 @@ def _filter_quality_emails(payload: dict) -> list[dict]:
         pages = email_pages.get(email, [])
         source = email_sources.get(email, "text")
 
+        # Show page paths, not full crawl URLs: the crawl host can differ
+        # from the site's canonical domain (staging/internal crawls), and a
+        # host mismatch between the prompt's domain and the listed page
+        # URLs reads as "emails not on the company's site".
+        page_display = ", ".join(_url_path(p) for p in pages[:5]) or "unknown"
+
         quality.append(
             {
                 "email": email,
                 "source": source,
-                "page": ", ".join(pages[:3]) if pages else "unknown",
+                "page": page_display,
             }
         )
 
     return quality
+
+
+def _url_path(url: str) -> str:
+    """Return '/path' for a URL, or the original string if unparseable."""
+    try:
+        parts = urlsplit(url)
+        return parts.path or "/"
+    except Exception:
+        return url

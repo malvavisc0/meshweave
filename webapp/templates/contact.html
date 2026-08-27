@@ -19,10 +19,12 @@
     <h2>Email us</h2>
     <p class="m0">The fastest way to reach us. We answer questions about audits, scores, and methodology —
       and we offer expert-guided reviews of your AI visibility report.</p>
-    <p class="mt-2">
-      <a class="btn btn-primary" href="mailto:{{ contact_email }}?subject={{ 'MeshWeave inquiry' | urlencode }}">Email
-        {{ contact_email }}</a>
-    </p>
+    <ul class="structured-list mt-2">
+      <li><strong>Sales &amp; expert audits</strong> —
+        <a href="mailto:sales@meshweaveai.com?subject={{ 'MeshWeave expert audit inquiry' | urlencode }}">sales@meshweaveai.com</a></li>
+      <li><strong>General questions</strong> —
+        <a href="mailto:{{ contact_email }}?subject={{ 'MeshWeave inquiry' | urlencode }}">{{ contact_email }}</a></li>
+    </ul>
   </section>
 
   <!-- WHAT TO ASK -->

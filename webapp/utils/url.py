@@ -99,8 +99,9 @@ def _get_base_url(request: Request) -> str:
     Returns:
         str: Base URL string, without trailing slash.
     """
-    env_base = request.app.state.__dict__.get("SITE_BASE_URL_OVERRIDE") or None
-    # Fallback to environment if available (without importing os here)
+    # app.state attributes live in Starlette's State._state — a plain
+    # __dict__ lookup always misses them.
+    env_base = getattr(request.app.state, "SITE_BASE_URL_OVERRIDE", None)
     if isinstance(env_base, str) and env_base:
         return env_base.rstrip("/")
     scheme = getattr(request.url, "scheme", None) or "http"

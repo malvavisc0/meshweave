@@ -358,16 +358,17 @@ async def home(request: Request, db: Session = Depends(get_db)):
         _make_csrf_token(session_id) if _env_bool("WEBAPP_CSRF_ENABLED", False) else ""
     )
 
-    # SEO meta for home (LLM-first)
+    # SEO meta for home (LLM-first): audience + value + CTA so metadata
+    # alone answers who/what/why.
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-    page_title = f"{site_name} — AI Visibility Risk Analysis"
+    page_title = f"{site_name} — Free AI Visibility Audit: See Why AI Skips Your Site"
     meta_description = (
-        "Identify the structural weaknesses limiting citation, discovery, "
-        "and AI agent trust. MeshWeave audits how AI systems crawl, "
-        "understand, and recommend your site."
+        "Run a free AI visibility audit. MeshWeave shows SEO, content, "
+        "and growth teams exactly where AI tools misread their website "
+        "— and what to fix first."
     )
     abs_page_url = _abs_url(request, "/")
-    og_image_url = os.getenv("OG_IMAGE_URL") or None
+    og_image_url = os.getenv("OG_IMAGE_URL") or _abs_url(request, "/static/brain.png")
 
     # JSON-LD: SoftwareApplication (include once via base template)
     try:
@@ -396,6 +397,16 @@ async def home(request: Request, db: Session = Depends(get_db)):
                 "Entity consistency and crawl-access auditing",
                 "Prioritized remediation roadmap",
             ],
+            "offers": {
+                "@type": "Offer",
+                "name": "Free site analysis",
+                "price": "0",
+                "priceCurrency": "USD",
+                "description": (
+                    "Running a site analysis is free. Expert-guided audits "
+                    "and remediation roadmaps are priced per engagement."
+                ),
+            },
             "termsOfService": _abs_url(request, "/terms"),
             "privacyPolicy": _abs_url(request, "/privacy"),
             "isAccessibleForFree": True,

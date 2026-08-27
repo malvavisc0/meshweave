@@ -58,6 +58,9 @@ def meta_optimization_prompt(
     og_title: str,
     og_description: str,
     jsonld_summary: str,
+    og_image: str = "",
+    canonical: str = "",
+    twitter_image: str = "",
 ) -> tuple[str, str]:
     """Test 3: Are the meta tags optimized for LLM consumption?"""
     user = f"""You are an AI agent evaluating a website's metadata. You have NOT visited the website — you only have its metadata tags:
@@ -66,6 +69,9 @@ Title: {title or "(empty)"}
 Description: {description or "(empty)"}
 OG Title: {og_title or "(empty)"}
 OG Description: {og_description or "(empty)"}
+OG Image: {og_image or "(empty)"}
+Twitter Image: {twitter_image or "(empty)"}
+Canonical URL: {canonical or "(empty)"}
 JSON-LD: {jsonld_summary}
 
 Based ONLY on this metadata, extract the following information.
@@ -81,7 +87,8 @@ Respond in this JSON format:
   "llm_optimization": "one of: optimized, adequate, poor",
   "missing_fields": ["field1", ...],
   "improvement_suggestions": ["suggestion1", ...]
-}}"""
+}}
+"""
     return user, SYSTEM_BASE
 
 
@@ -213,16 +220,101 @@ Respond in this JSON format:
 
 
 def summarize_jsonld(jsonld: list) -> str:
-    """Summarize JSON-LD objects for the meta optimization prompt."""
+    """Summarize JSON-LD objects for the meta optimization prompt.
+
+    Includes the fields an LLM consuming the page's structured data would
+    actually read — not just type/name/description. Without these, a
+    FAQPage with a full mainEntity reports as an "empty type" and the
+    meta test penalizes sites for data they do publish.
+    """
     if not jsonld:
         return "None"
+
+    flat_keys = (
+        "@type",
+        "name",
+        "description",
+        "applicationCategory",
+        "operatingSystem",
+        "softwareVersion",
+        "url",
+        "logo",
+        "datePublished",
+        "dateModified",
+        "isAccessibleForFree",
+        "priceCurrency",
+        "contactType",
+        "email",
+        "availableLanguage",
+    )
+    nested_name_keys = ("author", "publisher", "provider")
     summaries = []
     for obj in jsonld[:5]:
-        summary = {}
-        for key in ("@type", "name", "description", "applicationCategory"):
+        if not isinstance(obj, dict):
+            continue
+        summary: dict = {}
+        for key in flat_keys:
             val = obj.get(key)
             if val:
                 summary[key] = val
+        for key in nested_name_keys:
+            nested = obj.get(key)
+            if isinstance(nested, dict) and nested.get("name"):
+                summary[key] = nested["name"]
+        contact_point = obj.get("contactPoint")
+        if isinstance(contact_point, dict):
+            summary["contactPoint"] = {
+                k: contact_point[k]
+                for k in ("contactType", "email", "telephone", "availableLanguage")
+                if contact_point.get(k)
+            }
+        elif isinstance(contact_point, list):
+            pts = []
+            for cp in contact_point[:3]:
+                if isinstance(cp, dict):
+                    pts.append(
+                        {
+                            k: cp[k]
+                            for k in ("contactType", "email", "telephone")
+                            if cp.get(k)
+                        }
+                    )
+            if pts:
+                summary["contactPoint"] = pts
+        offers = obj.get("offers")
+        if isinstance(offers, dict):
+            price = offers.get("price")
+            if price is not None:
+                summary["offers"] = {
+                    k: offers[k] for k in ("price", "priceCurrency") if offers.get(k)
+                }
+        same_as = obj.get("sameAs")
+        if isinstance(same_as, list) and same_as:
+            summary["sameAs_count"] = len(same_as)
+            summary["sameAs_sample"] = [str(u) for u in same_as[:3]]
+        features = obj.get("featureList")
+        if isinstance(features, list) and features:
+            summary["featureList"] = [str(f) for f in features[:6]]
+        main_entity = obj.get("mainEntity")
+        if isinstance(main_entity, list) and main_entity:
+            qa_pairs = []
+            for e in main_entity:
+                if not isinstance(e, dict) or not e.get("name"):
+                    continue
+                answer = e.get("acceptedAnswer") or {}
+                text = answer.get("text") or ""
+                # First sentence of the answer, capped — enough for the
+                # meta test to see real Q&A content without dumping the
+                # full FAQ into the prompt.
+                snippet = text.split(". ")[0][:120] if text else ""
+                qa_pairs.append(
+                    {"question": str(e["name"]), "answer_excerpt": snippet}
+                    if snippet
+                    else {"question": str(e["name"])}
+                )
+            if qa_pairs:
+                summary["mainEntity_count"] = len(main_entity)
+                summary["mainEntity_qa"] = qa_pairs[:6]
         if summary:
             summaries.append(summary)
     return json.dumps(summaries, indent=2) if summaries else "None"

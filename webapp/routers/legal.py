@@ -128,7 +128,7 @@ async def contact(request: Request):
     abs_page_url = _abs_url(request, "/contact")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
-    # JSON-LD: ContactPage with a top-level ContactPoint (LLM-first)
+    # JSON-LD: ContactPage with sales + general ContactPoints (LLM-first)
     try:
         json_ld = json.dumps(
             {
@@ -138,12 +138,20 @@ async def contact(request: Request):
                 "url": abs_page_url,
                 "isPartOf": _abs_url(request, "/"),
                 "dateModified": "2026-08-27",
-                "mainEntity": {
-                    "@type": "ContactPoint",
-                    "contactType": "customer support",
-                    "email": contact_email,
-                    "availableLanguage": "English",
-                },
+                "mainEntity": [
+                    {
+                        "@type": "ContactPoint",
+                        "contactType": "sales",
+                        "email": "sales@meshweaveai.com",
+                        "availableLanguage": "English",
+                    },
+                    {
+                        "@type": "ContactPoint",
+                        "contactType": "customer support",
+                        "email": contact_email,
+                        "availableLanguage": "English",
+                    },
+                ],
             }
         )
     except Exception:
