@@ -3,6 +3,7 @@
 This project exposes Prometheus-compatible metrics and a readiness probe by default:
 - Metrics endpoint: GET /metrics (Prometheus exposition format)
 - Readiness probe: GET /readyz (200 OK when ready, 503 with a reason when not)
+- LLM observability (Langfuse tracing for AAX analyses) is covered separately in [langfuse.md](langfuse.md)
 
 Important
 - Metrics do not require authentication and should only be exposed inside trusted networks or behind an ingress with access control.
@@ -32,6 +33,9 @@ Quick reference: scrape targets and names
   - result_share_clicks_total{type}
   - stale_finalize_attempts_total{scope}
   - stale_finalize_finished_total{scope, outcome}
+  - prospects_upsert_total
+  - prospects_patch_total
+  - contacts_create_total
 
 Optional: Blackbox/HTTP probing for /readyz
 - You can use Prometheus Blackbox Exporter to actively probe /readyz. This helps catch conditions where the process responds but is not fully healthy.

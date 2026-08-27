@@ -45,21 +45,22 @@ export MESHWEAVE_CDP_ENDPOINT=http://localhost:9222
 
 ## CLI
 
-The CLI provides the `crawl` subcommand. Running `meshweave <url>` without a subcommand defaults to `crawl`.
+The CLI provides the `crawl` subcommand. Running `meshweave <url>` without a subcommand defaults to `crawl`. Internal links within the URL's path scope are always crawled (`--max-pages` defaults to 25). `--output/-o` is required. Requires `MESHWEAVE_CDP_ENDPOINT` to be set — the CLI exits early otherwise.
 
 ```bash
-# Single page
-meshweave crawl https://example.com
+# Site crawl within the URL's path scope (default: up to 25 pages)
+meshweave crawl https://example.com -o output.json
 
-# Site crawl (internal links, up to 50 pages)
+# Larger crawl with link depth control
 meshweave crawl https://example.com \
-  --crawl-internal --max-pages 50 \
+  --max-pages 50 --max-depth 2 \
   -o output.json
 
 # Markdown output per page
 meshweave crawl https://example.com \
-  --crawl-internal --max-pages 10 \
-  --output-dir ./data/output
+  --max-pages 10 \
+  --output-dir ./data/output \
+  -o output.json
 ```
 
 Run `meshweave crawl --help` for all options.
@@ -74,9 +75,8 @@ from meshweave import crawl
 async def main():
     payload = await crawl(
         url="https://example.com",
-        crawl_internal=True,
         crawl_max_pages=25,
-        same_domain_only=True,
+        max_depth=1,
         include_emails=True,
         deobfuscate_emails=True,
     )
@@ -125,6 +125,7 @@ FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── LightPanda (CDP brows
 | `AAX_ENABLED` | Enable AAX scoring lens | — |
 | `MESHWEAVE_CDP_ENDPOINT` | CDP browser endpoint (required for rendering) | — |
 | `MESHWEAVE_CACHE_DIR` | HTML cache directory | `/tmp/meshweave/cache` |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse credentials for AAX LLM tracing (opt-in, see [docs/langfuse.md](docs/langfuse.md)) | — |
 | `FOOTER_CONTACT_EMAIL` | Contact email in footer/legal | `hello@meshweaveai.com` |
 
 See `docker-compose.yaml` for the full set of configuration options.

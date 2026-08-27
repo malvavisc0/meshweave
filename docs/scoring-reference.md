@@ -19,7 +19,7 @@ composite = Σ(score_i × weight_i) / Σ(weight_i)    # only for factors with no
   ```python
   calibrated = 100.0 * (composite / 100.0) ** 1.15
   ```
-  This pulls 80→73, 70→62, 60→51, 50→42, 40→33 while leaving 100 untouched.
+  This pulls 80→77, 70→66, 60→56, 50→45, 40→35 while leaving 100 untouched. Compress more by raising the exponent (e.g. 1.4 gives 80→73, 70→61).
 - The result is capped at 100 and rounded to 1 decimal place.
 - Each score also produces an **auto-only composite** that excludes manual-input factors.
 
@@ -48,9 +48,12 @@ composite = Σ(score_i × weight_i) / Σ(weight_i)    # only for factors with no
 Base score = schema_coverage.coverage_pct (0-100)
 +10 if FAQPage schema present
 +5  if HowTo schema present
-+10 if faq_analysis.answers_in_optimal_range > 0
++10 if at least half the FAQ answers are in the optimal length range
+    (faq_analysis.answers_in_optimal_range >= max(1, count // 2))
 Cap: 100
 ```
+
+A single in-range answer among many is not "FAQ quality" — the bonus requires half the answers to qualify.
 
 **Source:** `meshweave/scoring/aeo.py` → `score_schema()`
 
@@ -74,7 +77,7 @@ Per-page scoring (0-100), then **averaged across all pages**:
 
 ### A3. Freshness (5%)
 
-Extracts `datePublished` / `dateModified` from JSON-LD across all pages:
+Extracts `datePublished` / `dateModified` / `dateCreated` from JSON-LD across all unique pages (the start page is counted once — it appears both in `page` and in `markdowns` for site crawls, so dates are deduplicated by URL). Future-dated content is clamped to 0 days old so scheduled posts can't inflate the score.
 
 | Avg days since publication | Score |
 |---------------------------|-------|
@@ -163,7 +166,7 @@ Additive scoring from robots.txt and llms.txt data:
 
 **Cap:** 100. Returns `None` if robots/llms data is placeholder (page-scope crawl).
 
-Bot status matching uses substring: `"allow" in status` to handle "allow", "allowed", "Allow", etc.
+Bot status matching: a status of exactly `allowed` earns full points; a partially-restricted status (allowed site-wide except specific paths) earns **half credit** (GPTBot 7, ClaudeBot 6, PerplexityBot 6). The structural maximum is 77 — the remaining 23 points don't exist to be earned, so the auto-only GEO composite tops out near "Authoritative" by design.
 
 **Source:** `meshweave/scoring/geo.py` → `score_crawl_access()`
 
@@ -179,7 +182,7 @@ Weighted blend:
 | Has code blocks | 0.15 | 100 if any page has code blocks, else 0 |
 | Has tables | 0.10 | 100 if any page has tables, else 0 |
 
-Pages are deduplicated across `markdowns` and `pages` sources by URL.
+Pages come from `markdowns`; the derived `pages` view is only used as a fallback when no markdowns exist (using both would double-count the same pages).
 
 **Source:** `meshweave/scoring/geo.py` → `score_content_depth()`
 
@@ -192,11 +195,11 @@ Additive scoring:
 | Entity name consistent across pages | +20 |
 | Description consistent across pages | +15 |
 | sameAs links: 0 | +0 |
-| sameAs links: 1–2 | +20 |
-| sameAs links: 3–4 | +30 |
-| sameAs links: 5+ | +40 |
+| sameAs links: 1–2 | +16 |
+| sameAs links: 3–5 | +28 |
+| sameAs links: 6+ | +40 |
 
-**Cap:** 100.
+**Cap:** 100. The sameAs points use the shared `_same_as_score` scale (0/40/70/100 — same buckets as topical authority) scaled by 0.4, so one signal can't be "good" in one factor and "mediocre" in another. Auto-measurable maximum is 75 — a full 40 for sameAs requires 6+ org profiles.
 
 **Source:** `meshweave/scoring/geo.py` → `score_entity_consistency()`
 
@@ -291,11 +294,14 @@ LLM validates email addresses found during crawling, classifying them by contact
 **Scoring formula:**
 
 ```
-contact_count_score          # min(valid_contacts × 20, 60)
-+ best_contact_type          # sales=25, support=20, general=15, legal=5, invalid=0
-+ confidence × 0.2           # high=90×0.2=18, medium=55×0.2=11, low=25×0.2=5
-+ has_best_contact            # 15 if best_contact exists, else 0
+presence                    # 0 with no valid contacts; 20 for the first,
+                            # +10 for the second, capped at 30
++ best_contact_type         # sales=25, support=20, general=15, legal=5, invalid=0
++ confidence × 0.35         # high=90×0.35=31.5, medium=55×0.35=19.25, low=25×0.35=8.75
++ has_best_contact          # 10 if best_contact exists, else 0
 ```
+
+Presence saturates quickly: one contact earns most of the presence points, a second adds a little, more add nothing — quantity must not outweigh quality.
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `email_validation_prompt()`
 
@@ -306,6 +312,7 @@ A 0–100 heuristic score based on crawl data — not part of the AAX composite 
 | Signal | Points |
 |--------|--------|
 | Same-domain emails found | +20 |
+| Only third-party emails found | +5 |
 | mailto links present | +10 |
 | Contact/about page exists | +10 |
 | Email on homepage or contact page | +15 |
@@ -354,12 +361,32 @@ Used by the AAX scoring engine to convert LLM categorical responses to 0–100 s
 ### CLI (`meshweave/cli.py`)
 
 ```
-1. Crawl URL → payload
+0. Fail fast unless MESHWEAVE_CDP_ENDPOINT is set (exit code 2)
+1. Crawl URL → payload (internal links are always crawled within the URL's path scope)
 2. Always: compute_scores(payload) → AEO + GEO scores
 3. If --ai-analysis: run_aax_analysis(payload) → AAX results
                      compute_aax_score(aax_result) → AAX score
                      Merge into payload["scores"]["aax"]
-4. Store ScoreSnapshot in database
+                     Re-generate recommendations with AAX factors + contactability
+4. Write per-page markdown files, then JSON payload to --output/-o (required)
+```
+
+The CLI never touches the database — `ScoreSnapshot` persistence happens in the webapp.
+
+### Webapp (`webapp/services/scoring.py`)
+
+```
+score_crawl(crawl_id, payload, manual_inputs)
+  → compute_scores(payload, manual_inputs)
+  → re-generate recommendations if AAX results are in the payload
+  → persist Crawl score columns + ScoreSnapshot (score_json, has_manual_input)
+
+run_aax_for_crawl(crawl_id, payload)
+  → run_aax_analysis(payload, trace_user_id, trace_session_id)
+  → compute_aax_score() → merge into snapshot score_json + payload_json
+  → re-generate recommendations with AAX factors + contactability
+
+update_manual_inputs(crawl_id, inputs) → re-score with manual factor values
 ```
 
 ### Key Entry Points
@@ -370,6 +397,9 @@ Used by the AAX scoring engine to convert LLM categorical responses to 0–100 s
 | `compute_aax_score()` | `meshweave/scoring/engine.py` | Computes AAX composite from LLM analysis results |
 | `run_aax_analysis()` | `meshweave/ai/analyses.py` | Orchestrates all LLM-powered AAX tests |
 | `_weighted_composite()` | `meshweave/scoring/engine.py` | Shared weighted average with re-normalization |
+| `score_crawl()` | `webapp/services/scoring.py` | Webapp scoring entry point with DB persistence |
+| `run_aax_for_crawl()` | `webapp/services/scoring.py` | Webapp AAX orchestration with DB persistence |
+| `update_manual_inputs()` | `webapp/services/scoring.py` | Re-scores a crawl with manual factor inputs |
 
 ---
 
@@ -396,8 +426,10 @@ Used by the AAX scoring engine to convert LLM categorical responses to 0–100 s
     "rating": "Clear",
     "factors": { ... },
     "contactability": { "score": 45.0, ... },
+    "skip_reasons": { ... },
     "tests_completed": 4,
-    "tests_skipped": 1
+    "tests_skipped": 1,
+    "model_id": "..."
   },
   "recommendations": [ ... ]
 }

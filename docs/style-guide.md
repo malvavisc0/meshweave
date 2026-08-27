@@ -285,9 +285,18 @@ webapp/
     base.html          # Base layout, topnav, footer
     home.html          # Landing page
     all.html           # Browse page
+    scoring.html       # Scoring methodology page
     dashboard.html     # Dashboard page
     result.html        # Analysis result page
-    partials/          # Reusable card components
+    domain_index.html  # Per-domain history page
+    contact.html       # Contact page
+    products.html      # Products page (auth-gated)
+    prospects.html     # Prospects page (auth-gated)
+    privacy.html       # Privacy policy
+    terms.html         # Terms of service
+    4xx/5xx.html       # Error pages (401, 403, 404, 500)
+    partials/          # Reusable components (analysis card,
+                       # domain card, site crawl form)
 ```
 
 ---
