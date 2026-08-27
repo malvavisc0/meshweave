@@ -11,6 +11,21 @@ Each factor takes the crawl payload (dict) and returns a dict with:
 from __future__ import annotations
 
 
+def _same_as_score(count: int) -> int:
+    """Shared sameAs presence scale used across GEO factors.
+
+    One bucketing for all factors so entity signals stay consistent:
+    0 → 0, 1-2 → 40, 3-5 → 70, 6+ → 100.
+    """
+    if count == 0:
+        return 0
+    if count <= 2:
+        return 40
+    if count <= 5:
+        return 70
+    return 100
+
+
 def score_topical_authority(payload: dict) -> dict:
     """G2. Topical Authority / Entity Coverage (20% weight, auto).
 
@@ -35,14 +50,7 @@ def score_topical_authority(payload: dict) -> dict:
 
     same_as = entity.get("same_as") or []
     same_as_count = len(same_as)
-    if same_as_count == 0:
-        same_as_score = 0
-    elif same_as_count <= 2:
-        same_as_score = 40
-    elif same_as_count <= 5:
-        same_as_score = 70
-    else:
-        same_as_score = 100
+    same_as_score = _same_as_score(same_as_count)
 
     # Content page ratio: pages with >300 words / total pages
     md_dict = payload.get("markdowns") or {}
@@ -86,7 +94,10 @@ def score_topical_authority(payload: dict) -> dict:
 def score_eeat(payload: dict) -> dict:
     """G3. E-E-A-T Signals (15% weight, partial auto).
 
-    Additive scoring up to 100.
+    Additive scoring: 15 organization + 15 author + 15 reviews + 10 sameAs
+    + 8 contact + 7 privacy/terms + 5 video. The auto-measurable maximum
+    is 75 (no reviews, no video) — the last 25 points require real
+    customer proof and video content, which a site cannot grant itself.
     """
     audit = payload.get("audit") or {}
     entity = audit.get("entity") or {}
@@ -127,7 +138,11 @@ def score_eeat(payload: dict) -> dict:
                 has_reviews = True
         if ld_type == "videoobject":
             has_video = True
-        if ld_type == "contactpage" or ld_type == "contactpoint":
+        # ContactPage at top level, or a ContactPoint nested inside
+        # e.g. an Organization or WebPage block.
+        if ld_type in ("contactpage", "contactpoint") or "contactpoint" in (
+            k.lower() for k in ld.keys()
+        ):
             has_contact = True
 
     # Check URL patterns for privacy/terms/contact
@@ -137,7 +152,7 @@ def score_eeat(payload: dict) -> dict:
     for _url in md_dict.keys() if isinstance(md_dict, dict) else []:
         all_urls.append(str(_url))
     urls_text = " ".join(all_urls).lower()
-    if "privacy" in urls_text or "terms" in urls_text:
+    if "privacy" in urls_text:
         has_privacy = True
     if "terms" in urls_text or "legal" in urls_text:
         has_terms = True
@@ -182,6 +197,14 @@ def score_eeat(payload: dict) -> dict:
 def score_crawl_access(payload: dict) -> dict:
     """G4. LLM Crawl Accessibility (15% weight, auto when data available).
 
+    Additive scoring: 8 robots.txt + up to 39 bot access (GPTBot 15,
+    ClaudeBot 12, PerplexityBot 12 — half credit when partially
+    restricted) + 15 llms.txt + 8 llms-full.txt + 7 sitemap.
+    Structural maximum: 77 — the remaining 23 points do not exist to be
+    earned. Combined with other factor ceilings, the auto-only GEO
+    composite tops out ≈84 ("Authoritative"); the "Dominant" rating is
+    reachable only with manual citation input, by design.
+
     If robots/llms data is only a placeholder (page-scope crawl),
     returns null with a note.
     """
@@ -214,7 +237,9 @@ def score_crawl_access(payload: dict) -> dict:
     if robots.get("exists"):
         pts += 8
 
-    # Bot access
+    # Bot access. "partially_restricted" means allowed site-wide except
+    # specific paths (e.g. private API endpoints) — the content is still
+    # crawlable, so those bots earn half credit.
     bots = robots.get("bots") or {}
     for bot_name, expected_pts in [
         ("GPTBot", 15),
@@ -222,8 +247,10 @@ def score_crawl_access(payload: dict) -> dict:
         ("PerplexityBot", 12),
     ]:
         status = str(bots.get(bot_name) or "").lower()
-        if "allow" in status:
+        if status == "allowed":
             pts += expected_pts
+        elif "partial" in status:
+            pts += expected_pts // 2
 
     # llms.txt exists: +15
     llms_txt_data = llms.get("llms_txt") or {}
@@ -355,7 +382,13 @@ def score_content_depth(payload: dict) -> dict:
 
 
 def score_entity_consistency(payload: dict) -> dict:
-    """G6. Cross-Platform Entity Consistency (10% weight, auto)."""
+    """G6. Cross-Platform Entity Consistency (10% weight, auto).
+
+    Additive scoring: 20 consistent name + 15 consistent description +
+    up to 40 for sameAs presence (shared _same_as_score scale, scaled).
+    Auto-measurable maximum: 75 — a full 40 for sameAs requires 6+ org
+    profiles, which most sites must accumulate externally.
+    """
     audit = payload.get("audit") or {}
     entity = audit.get("entity") or {}
 
@@ -365,21 +398,17 @@ def score_entity_consistency(payload: dict) -> dict:
     name_variants = entity.get("name_variants") or []
     desc_variants = entity.get("description_variants") or []
 
-    pts = 0
+    pts = 0.0
     if name_consistent:
         pts += 20
     if desc_consistent:
         pts += 15
 
-    same_as_count = len(same_as)
-    if same_as_count == 0:
-        pts += 0
-    elif same_as_count <= 2:
-        pts += 20
-    elif same_as_count <= 4:
-        pts += 30
-    else:
-        pts += 40
+    # sameAs on the shared scale (0/40/70/100), scaled to the 40-point
+    # remainder of this factor. Uses the same buckets as topical
+    # authority so one signal cannot be "good" in one factor and
+    # "mediocre" in another.
+    pts += _same_as_score(len(same_as)) * 0.4
 
     pts = min(100, pts)
 

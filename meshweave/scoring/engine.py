@@ -65,9 +65,10 @@ def _weighted_composite(
 
     composite = sum(scored[k] * weights[k] / total_weight for k in scored)
 
-    # Calibration curve: compress upper range so average sites don't
-    # score artificially high.  Power 1.15 pulls 80→73, 70→62, 60→51,
-    # 50→42, 40→33 while leaving 100 untouched.
+    # Calibration curve: compress the upper range so average sites don't
+    # score artificially high. Power 1.15 maps 80→77, 70→66, 60→56,
+    # 50→45, 40→35 while leaving 100 untouched. Compress more by raising
+    # the exponent (e.g. 1.4 gives 80→73, 70→61, 60→49).
     calibrated = 100.0 * (float(composite) / 100.0) ** 1.15
     return float(round(min(100.0, calibrated), 1))
 
@@ -292,7 +293,12 @@ def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
 
         confidence = CONFIDENCE_MAP.get(ev.get("confidence", "low"), 30)
         contacts = ev.get("valid_contacts") or []
-        contact_count_score = min(len(contacts) * 20, 60)
+        # Presence saturates quickly: one contact earns most of the
+        # presence points, a second adds a little, more add nothing —
+        # quantity must not outweigh quality.
+        presence = (
+            min(30.0, 20.0 + 10.0 * min(len(contacts) - 1, 1)) if contacts else 0.0
+        )
         type_scores = {
             "sales": 25,
             "support": 20,
@@ -304,11 +310,11 @@ def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
             (type_scores.get(c.get("contact_type", "invalid"), 0) for c in contacts),
             default=0,
         )
-        has_best = 15 if ev.get("best_contact") else 0
+        has_best = 10 if ev.get("best_contact") else 0
         factors["email_validation"] = {
             "score": min(
                 100.0,
-                float(contact_count_score + best_type + confidence * 0.2 + has_best),
+                float(presence + best_type + confidence * 0.35 + has_best),
             ),
             "weight": AAX_WEIGHTS["email_validation"],
             "auto_measurable": True,

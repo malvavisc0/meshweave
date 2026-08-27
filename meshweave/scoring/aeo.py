@@ -30,12 +30,15 @@ def score_schema(payload: dict) -> dict:
 
     # Base score = coverage percentage
     score = float(coverage_pct)
-    # Bonuses
+    # Bonuses. The FAQ bonus requires at least half the answers in the
+    # optimal range — a single in-range answer among many is not
+    # "FAQ quality".
     if has_faq:
         score += 10
     if has_howto:
         score += 5
-    if faq_in_optimal > 0:
+    faq_count = faq.get("count") or 0
+    if faq_count > 0 and faq_in_optimal >= max(1, faq_count // 2):
         score += 10
     score = min(100.0, score)
 
@@ -192,35 +195,46 @@ def score_freshness(payload: dict) -> dict:
 
     Uses datePublished/dateModified from JSON-LD articles.
     Fallback: use crawl.updated_at or metadata dates.
+
+    The start page is merged into ``markdowns`` by the crawl pipeline, so
+    dates are collected from *unique* pages only — never from both
+    ``payload["page"]`` and a ``markdowns`` entry describing the same page.
     """
     from datetime import datetime
 
-    dates: list[datetime] = []
-
-    # Extract dates from page JSON-LD
+    # Collect one JSON-LD list per unique page. The start page appears in
+    # payload["page"] *and* (for site crawls) as the origin entry in
+    # markdowns; only one of the two is used to avoid double-counting its
+    # dates. Deduplicate by the resolved page URL when available.
     page = payload.get("page") or {}
-    for ld in page.get("jsonld") or []:
-        if not isinstance(ld, dict):
-            continue
-        for key in ("datePublished", "dateModified", "dateCreated"):
-            val = ld.get(key)
-            if val:
-                try:
-                    d = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
-                    if d.tzinfo is None:
-                        d = d.replace(tzinfo=UTC)
-                    dates.append(d)
-                except Exception:
-                    pass
+    md_dict = payload.get("markdowns") or {}
+    origin_url = (page.get("url") or page.get("canonical") or "").rstrip("/")
 
-    # Check markdowns for per-page JSON-LD dates
-    for _url, md_data in (payload.get("markdowns") or {}).items():
-        if not isinstance(md_data, dict):
-            continue
-        pg = md_data.get("page") or {}
-        for ld in pg.get("jsonld") or []:
-            if not isinstance(ld, dict):
+    pages_jsonld: list[list[dict]] = []
+    seen_urls: set[str] = set()
+    start_ld = [ld for ld in page.get("jsonld") or [] if isinstance(ld, dict)]
+    if start_ld:
+        pages_jsonld.append(start_ld)
+        if origin_url:
+            seen_urls.add(origin_url)
+    if isinstance(md_dict, dict):
+        for url, md_data in md_dict.items():
+            if not isinstance(md_data, dict):
                 continue
+            key = str(url).rstrip("/")
+            if key in seen_urls:
+                continue
+            pg = md_data.get("page") or {}
+            lds = [ld for ld in pg.get("jsonld") or [] if isinstance(ld, dict)]
+            if lds:
+                pages_jsonld.append(lds)
+                seen_urls.add(key)
+
+    dates: list[datetime] = []
+    pages_with_dates = 0
+    for lds in pages_jsonld:
+        page_had_date = False
+        for ld in lds:
             for key in ("datePublished", "dateModified", "dateCreated"):
                 val = ld.get(key)
                 if val:
@@ -229,8 +243,11 @@ def score_freshness(payload: dict) -> dict:
                         if d.tzinfo is None:
                             d = d.replace(tzinfo=UTC)
                         dates.append(d)
+                        page_had_date = True
                     except Exception:
                         pass
+        if page_had_date:
+            pages_with_dates += 1
 
     if not dates:
         return {
@@ -270,7 +287,7 @@ def score_freshness(payload: dict) -> dict:
             "newest_date": max(dates).isoformat(),
             "oldest_date": min(dates).isoformat(),
             "avg_days_old": round(avg_days, 1),
-            "pages_with_dates": len(dates),
+            "pages_with_dates": pages_with_dates,
         },
     }
 

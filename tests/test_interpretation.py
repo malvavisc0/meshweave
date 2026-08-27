@@ -16,14 +16,14 @@ class TestBandFor:
             (39, "broken"),
             (40, "weak"),
             (50, "weak"),
-            (54, "weak"),
-            (55, "developing"),
+            (59, "weak"),
+            (60, "developing"),
             (62, "developing"),
             (69, "developing"),
             (70, "strong"),
             (78, "strong"),
-            (84, "strong"),
-            (85, "excellent"),
+            (85, "strong"),
+            (86, "excellent"),
             (92, "excellent"),
             (100, "excellent"),
         ],
@@ -97,6 +97,7 @@ class TestProfileShapes:
         assert result["tone"] == "critical"
 
     def test_rule1_low_avg(self):
+        # avg 35 with one broken lens → high invisibility
         result = interpret_profile(30.0, 35.0, 40.0)
         assert result["profile_shape"] == "high_invisibility"
         assert result["tone"] == "critical"
@@ -137,7 +138,8 @@ class TestProfileShapes:
 
     # Rule 6: Partial exposure
     def test_rule6_two_developing(self):
-        result = interpret_profile(58.0, 62.0, 75.0)
+        # 60-69 band is "developing" since the band alignment; 58 is weak.
+        result = interpret_profile(62.0, 65.0, 75.0)
         assert result["profile_shape"] == "partial_exposure"
         assert result["tone"] == "moderate"
 
@@ -164,8 +166,10 @@ class TestProfileShapes:
     # because all score combinations match rules 1-9.
     # The fallback exists as a safety net for edge cases.
     def test_rule10_unreachable(self):
-        # Verify Rule 6 catches what was previously tested as Rule 10
-        result = interpret_profile(58.0, 62.0, 68.0)
+        # Verify Rule 6 catches what was previously tested as Rule 10.
+        # Bands changed (weak now extends to 59), so use developing-only
+        # scores: 62 + 65 + 68 — no weak/broken lens.
+        result = interpret_profile(62.0, 65.0, 68.0)
         assert result["profile_shape"] == "partial_exposure"
         assert result["tone"] == "moderate"
 
@@ -275,9 +279,16 @@ class TestBoundaryScores:
         result = interpret_profile(40.0, 45.0, 50.0)
         assert result["profile_shape"] != "high_invisibility"
 
-    def test_avg_just_below_45_is_rule1(self):
-        # 40 + 44 + 50 = 134 / 3 = 44.67
+    def test_avg_just_below_45_without_broken_is_not_rule1(self):
+        """Three uniform sub-45 scores with no broken lens are weak, not
+        catastrophic — Rule 1's average clause requires a broken lens."""
+        # 40 + 44 + 50 = 134 / 3 = 44.67 — all weak, no broken
         result = interpret_profile(40.0, 44.0, 50.0)
+        assert result["profile_shape"] != "high_invisibility"
+
+    def test_avg_below_35_with_broken_is_rule1(self):
+        # 30 + 34 + 40 = 104 / 3 = 34.67, one broken
+        result = interpret_profile(30.0, 34.0, 40.0)
         assert result["profile_shape"] == "high_invisibility"
 
     def test_avg_exactly_65_is_rule2b(self):
@@ -295,17 +306,17 @@ class TestBoundaryScores:
         assert _band_for(39) == "broken"
         assert _band_for(40) == "weak"
 
-    def test_score_at_band_boundary_54_55(self):
-        assert _band_for(54) == "weak"
-        assert _band_for(55) == "developing"
+    def test_score_at_band_boundary_59_60(self):
+        assert _band_for(59) == "weak"
+        assert _band_for(60) == "developing"
 
     def test_score_at_band_boundary_69_70(self):
         assert _band_for(69) == "developing"
         assert _band_for(70) == "strong"
 
-    def test_score_at_band_boundary_84_85(self):
-        assert _band_for(84) == "strong"
-        assert _band_for(85) == "excellent"
+    def test_score_at_band_boundary_85_86(self):
+        assert _band_for(85) == "strong"
+        assert _band_for(86) == "excellent"
 
 
 class TestTiedScores:
@@ -339,7 +350,7 @@ class TestDiagnosisContent:
             (45.0, 50.0, 75.0, "material_risk"),
             (48.0, 60.0, 78.0, "broad_exposure"),
             (48.0, 75.0, 80.0, "single_exposure"),
-            (58.0, 62.0, 75.0, "partial_exposure"),
+            (62.0, 65.0, 75.0, "partial_exposure"),
             (82.0, 62.0, 77.0, "developing_with_strong"),
             (88.0, 91.0, 86.0, "highly_readable"),
             (72.0, 75.0, 78.0, "strong_profile"),

@@ -35,6 +35,7 @@ def generate_recommendations(
     geo_factors: dict[str, dict],
     payload: dict[str, Any] | None = None,
     aax_factors: dict[str, dict] | None = None,
+    contactability: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate actionable recommendations based on factor scores.
 
@@ -44,6 +45,10 @@ def generate_recommendations(
         payload: Optional crawl payload for audit.meta data
             (canonical_issues, duplicate_og_titles, etc.).
         aax_factors: Optional AAX factor score dicts.
+        contactability: Optional contactability signal dict
+            (``aax.contactability`` from the AAX analysis). Passed
+            explicitly because ``payload["scores"]`` is not yet set
+            when recommendations are first generated.
 
     Returns:
         List of recommendation dicts sorted by priority.
@@ -89,7 +94,10 @@ def generate_recommendations(
     site_avg = content_raw.get("site_average") or 0
     pages_evaluated = content_raw.get("pages_evaluated") or 0
 
-    if site_avg < 40 and pages_evaluated > 0:
+    # Thresholds track the interpretation bands: a site-average below 55
+    # sits in the "weak" band (40-59) or lower and needs the general
+    # structure recommendation.
+    if site_avg < 55 and pages_evaluated > 0:
         recs.append(
             {
                 "factor": "content_structure",
@@ -104,9 +112,9 @@ def generate_recommendations(
             }
         )
 
-    # Thin pages
+    # Thin pages — below the "broken"/"weak" band boundary (40)
     per_page = content_raw.get("per_page_scores") or {}
-    thin_pages = [u for u, s in per_page.items() if s < 30]
+    thin_pages = [u for u, s in per_page.items() if s < 40]
     if thin_pages:
         examples = ", ".join(thin_pages[:3])
         recs.append(
@@ -415,28 +423,17 @@ def generate_recommendations(
                         }
                     )
 
-        # llms.txt
+        # llms.txt — only emit the AAX variant for the *full* file.
+        # The plain llms.txt "publish it" card is already covered by the
+        # GEO crawl-access recommendation; emitting both duplicates the
+        # same user to-do.
         llms = aax_factors.get("llms_txt")
         if llms:
             llms_raw = llms.get("raw") or {}
             llms_txt_data = llms_raw.get("llms_txt") or {}
             llms_full_data = llms_raw.get("llms_full_txt") or {}
 
-            if not llms_txt_data.get("exists"):
-                recs.append(
-                    {
-                        "factor": "llms_txt",
-                        "priority": "high",
-                        "title": "Publish llms.txt for AI crawler discovery",
-                        "detail": (
-                            "Create /.well-known/llms.txt with site "
-                            "name, description, and AI crawler guidelines. "
-                            "Helps AI systems discover your site."
-                        ),
-                        "impact": "AAX +10-15 points estimated",
-                    }
-                )
-            elif not llms_full_data.get("exists"):
+            if llms_txt_data.get("exists") and not llms_full_data.get("exists"):
                 recs.append(
                     {
                         "factor": "llms_txt",
@@ -473,38 +470,41 @@ def generate_recommendations(
                     }
                 )
 
-    # --- Contactability recommendations (from payload) ---
-    if payload:
+    # --- Contactability recommendations ---
+    # Prefer the explicitly passed contactability signal; fall back to the
+    # payload only when the caller knows scores.aax is already present
+    # (e.g. manual-input re-scores loading a persisted payload).
+    if not contactability and payload:
         scores = payload.get("scores") or {}
         aax_scores = scores.get("aax") or {}
         contactability = aax_scores.get("contactability")
-        if contactability:
-            missing_signals: list[str] = []
-            if not contactability.get("has_email"):
-                missing_signals.append("email address")
-            if not contactability.get("has_mailto"):
-                missing_signals.append("mailto: link")
-            if not contactability.get("has_contact_page"):
-                missing_signals.append("contact page")
-            if not contactability.get("has_social_links"):
-                missing_signals.append("social links")
-            if not contactability.get("has_contact_point_schema"):
-                missing_signals.append("ContactPoint schema")
+    if contactability:
+        missing_signals: list[str] = []
+        if not contactability.get("has_email"):
+            missing_signals.append("email address")
+        if not contactability.get("has_mailto"):
+            missing_signals.append("mailto: link")
+        if not contactability.get("has_contact_page"):
+            missing_signals.append("contact page")
+        if not contactability.get("has_social_links"):
+            missing_signals.append("social links")
+        if not contactability.get("has_contact_point_schema"):
+            missing_signals.append("ContactPoint schema")
 
-            if missing_signals:
-                recs.append(
-                    {
-                        "factor": "contactability",
-                        "priority": "high",
-                        "title": "Improve contactability for AI agents",
-                        "detail": (
-                            f"Missing: {', '.join(missing_signals)}. "
-                            "AI agents need clear contact signals to "
-                            "verify and recommend your business."
-                        ),
-                        "impact": "AAX +10-20 points estimated",
-                    }
-                )
+        if missing_signals:
+            recs.append(
+                {
+                    "factor": "contactability",
+                    "priority": "high",
+                    "title": "Improve contactability for AI agents",
+                    "detail": (
+                        f"Missing: {', '.join(missing_signals)}. "
+                        "AI agents need clear contact signals to "
+                        "verify and recommend your business."
+                    ),
+                    "impact": "AAX +10-20 points estimated",
+                }
+            )
 
     # Add pillar and guidance to each recommendation
     for rec in recs:
@@ -563,9 +563,6 @@ _GUIDANCE: dict[str, str] = {
     "Increase average content depth": ("Aim for 500+ words on your key pages."),
     "Optimize metadata for AI crawlers": (
         "Improve your value proposition, metadata, and descriptions for LLM understanding."
-    ),
-    "Publish llms.txt for AI crawler discovery": (
-        "Create /.well-known/llms.txt with your site name, description, and crawler rules."
     ),
     "Publish llms-full.txt for full AI access": (
         "Create /.well-known/llms-full.txt for full AI crawler access."

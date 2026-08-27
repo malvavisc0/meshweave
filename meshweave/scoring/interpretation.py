@@ -53,30 +53,36 @@ BandName = Literal["broken", "weak", "developing", "strong", "excellent"]
 
 # ---------------------------------------------------------------------------
 # Score band definitions
+#
+# Bands are aligned with the per-lens rating scales (ratings.py): the
+# "excellent" band starts where AEO/GEO's "Excellent"/"Dominant" and AAX's
+# "Fluent" top bands start (86+), and "strong" matches their 70-85 band —
+# so a site can never be rated "Authoritative" while its band reads
+# "developing".
 # ---------------------------------------------------------------------------
 
 _BAND_THRESHOLDS: list[tuple[float, float, BandName, str]] = [
     (0, 39, "broken", "This site's content can't be parsed by AI agents"),
     (
         40,
-        54,
+        59,
         "weak",
         "Missing key pieces",
     ),
     (
-        55,
+        60,
         69,
         "developing",
         "Got the basics, but incomplete",
     ),
     (
         70,
-        84,
+        85,
         "strong",
         "Good foundation in place",
     ),
     (
-        85,
+        86,
         100,
         "excellent",
         "Clean read, no obvious issues",
@@ -451,8 +457,12 @@ def interpret_profile(
     tone: Tone
     profile_label: str
 
-    # Rule 1
-    if broken_count >= 2 or avg < 45:
+    # Rule 1 — two+ broken lenses, or an average so low that no lens is
+    # salvageable. The average clause requires < 35 *and* at least one
+    # broken lens, so a site with three uniform 44s (no broken lens) is
+    # not framed as catastrophic "can't be parsed" — it falls through to
+    # the material_risk/needs_review rules instead.
+    if broken_count >= 2 or (avg < 35 and broken_count >= 1):
         profile_shape = "high_invisibility"
         tone = "critical"
         profile_label = _PROFILE_LABELS["high_invisibility"]
