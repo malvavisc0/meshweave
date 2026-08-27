@@ -118,6 +118,16 @@ Consider:
 - Emails on tracking/analytics domains are not the company's contacts
 - Obfuscated or garbled addresses may not be real
 
+Set "confidence" based on the QUALITY OF THE EVIDENCE ON THE PAGE
+(not on whether the mailbox might receive mail — you cannot know that):
+- "high": the site explicitly presents the address as a contact — mailto
+  links, a dedicated contact page, or addresses labeled with a purpose
+  (sales, support)
+- "medium": the address appears in plain page text with clear context,
+  but is not linked or explicitly labeled
+- "low": the address was reconstructed from obfuscation, appears in
+  boilerplate/legal fine print, or its ownership is uncertain
+
 Respond in this JSON format:
 {{
   "valid_contacts": [

@@ -66,6 +66,11 @@ async def run_structured_test[T: BaseModel](
 
     Returns:
         Parsed Pydantic model instance.
+
+    The AAX tests are graders: the same site must yield the same verdict
+    every run. Sampling temperature is pinned to 0 so categorical
+    verdicts (clarity, completeness, confidence) do not flip between
+    grades on identical input.
     """
     model = _get_model()
     agent = Agent(
@@ -74,5 +79,5 @@ async def run_structured_test[T: BaseModel](
         system_prompt=system_prompt,
         retries=max_retries,
     )
-    result = await agent.run(user_prompt)
+    result = await agent.run(user_prompt, model_settings={"temperature": 0})
     return result.output
