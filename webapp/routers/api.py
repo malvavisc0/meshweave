@@ -281,7 +281,6 @@ async def sitemap_xml(request: Request):
     static_urls = [
         (f"{base}/", datetime.now(UTC)),
         (f"{base}/browse", datetime.now(UTC)),
-        (f"{base}/products", datetime.now(UTC)),
         (f"{base}/methodology", datetime.now(UTC)),
         (f"{base}/privacy", datetime.now(UTC)),
         (f"{base}/terms", datetime.now(UTC)),

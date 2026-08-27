@@ -1,0 +1,76 @@
+# MeshWeave
+
+> AI visibility risk analysis for citation, discovery, and agent trust.
+
+MeshWeave audits how AI systems crawl, understand, and cite websites. It identifies structural weaknesses that limit
+visibility, citation confidence, generative discovery, and AI agent trust — then delivers a prioritized remediation
+roadmap. This file is a fuller reference for AI agents and LLMs that want to understand MeshWeave and link to it
+accurately.
+
+## What MeshWeave does
+
+When buyers ask AI tools what to buy, the AI quotes, recommends, and acts on the sites it can understand. MeshWeave
+finds the gaps that make a brand invisible, untrusted, or unusable to those systems, and turns them into concrete fixes.
+
+It scores a site across three independent risk lenses and produces a prioritized list of changes ordered by revenue
+impact.
+
+## Core Capabilities
+
+- AI visibility risk analysis across three lenses: AEO, GEO, AAX
+- Citation-readiness diagnostics (can AI quote your content by name?)
+- Generative discovery optimization (does AI recommend you over competitors?)
+- AI agent experience auditing (can agents navigate and complete actions on your site?)
+- Entity consistency and crawl-access auditing
+- Prioritized, concrete remediation roadmap
+
+## Three Risk Lenses
+
+MeshWeave scores each lens on a 0–100 scale. Factors with no measured score are excluded and the remaining weights are
+renormalized, then the composite is calibrated to compress inflated upper-range scores.
+
+- **AEO (Answer Engine Optimization)**: Whether AI can extract clear, trustworthy answers from your content. Failure
+  means your brand is not quoted when buyers ask questions; competitors own the answer.
+  Factors: Capture Rate (30%), Schema Implementation (20%), Content Structure (20%), Query Match (15%), Voice Rate
+  (10%), Freshness (5%).
+- **GEO (Generative Engine Optimization)**: Whether AI systems see sufficient authority, trust, and entity signals.
+  Failure means your brand is overlooked or replaced in recommendations.
+  Factors: Citation (30%), Topical Authority (20%), E-E-A-T Signals (15%), Crawl Access (15%), Content Depth (10%),
+  Entity Consistency (10%).
+- **AAX (AI Agent Experience)**: Whether AI agents can understand, assess, and act on your site reliably. Failure means
+  agent-mediated buyers abandon before conversion.
+  Factors: Homepage Comprehension (30%), Meta Optimization (20%), Content Delta (20%), llms.txt (15%), Email Validation
+  (15%).
+
+### Score ratings
+
+- AEO / GEO: 0–25 Poor or Invisible, 26–45 Below Average or Emerging, 46–65 Average or Visible, 66–85 Strong or
+  Authoritative, 86–100 Excellent or Dominant.
+- AAX: 0–24 Opaque, 25–39 Unclear, 40–59 Readable, 60–79 Clear, 80–100 Fluent.
+
+Scores are diagnostic signals, not guarantees of ranking, traffic, or conversion.
+
+## How to be more visible to AI
+
+- Put clear, factual claims about your product near the top of each page.
+- Add structured data (JSON-LD schema) for your organization, products, and FAQs.
+- Maintain an `llms.txt` and a `robots.txt` that allow crawling.
+- Keep entity names, addresses, and contact details consistent across the site.
+- Write in short, declarative sentences that name the actor and the benefit.
+
+## Key Pages
+
+- Homepage: https://meshweaveai.com/
+- Browse analyses: https://meshweaveai.com/browse
+- Methodology: https://meshweaveai.com/methodology
+- Privacy: https://meshweaveai.com/privacy
+- Terms: https://meshweaveai.com/terms
+
+## Built For
+
+SEO & Content Teams · Product & Web Teams · Marketing & Growth Teams · Founders & Operators · Agencies & Consultants
+
+## Contact
+
+- Email: hello@meshweaveai.com
+- Open source: https://github.com/malvavisc0/meshweave

@@ -23,7 +23,6 @@ MeshWeave audits how AI systems crawl, understand, and cite websites. It identif
 
 - Homepage: https://meshweaveai.com/
 - Browse analyses: https://meshweaveai.com/browse
-- Products: https://meshweaveai.com/products
 - Methodology: https://meshweaveai.com/methodology
 - Privacy: https://meshweaveai.com/privacy
 - Terms: https://meshweaveai.com/terms
