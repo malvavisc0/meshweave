@@ -28,6 +28,16 @@
             excluded,
             the remaining weights are redistributed, and the result is calibrated to compress inflated upper-range
             scores.</p>
+        <ul class="structured-list mt-2">
+            <li><strong>Weighted composite</strong> — <code>Σ(score × weight) / Σ(weight)</code> using only factors
+                with non-<code>None</code> scores</li>
+            <li><strong>Re-normalization</strong> — when a factor is unmeasurable, its weight is redistributed across
+                the remaining factors</li>
+            <li><strong>Calibration</strong> — the composite is passed through a power curve that compresses the upper
+                range, so near-perfect scores require near-perfect factors</li>
+            <li><strong>Auto vs. manual</strong> — free scans score auto-measurable factors only; manual inputs
+                (citation frequency, capture rate, …) complete the picture for full audits</li>
+        </ul>
         <div class="table-wrap mt-2">
             <table class="table small">
                 <thead>
