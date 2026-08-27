@@ -96,23 +96,11 @@
 <section class="landing-hero" aria-label="AI visibility audit">
   <canvas class="hero-particle-canvas" aria-hidden="true"></canvas>
   <div class="container container-wide">
-    <h1 class="landing-hero-title" data-hero-headline>Your site could be readable to humans but invisible to AI systems
-    </h1>
-    <p class="landing-hero-supporting">Your website might work great for humans. But AI is starting to drive buyer
-      decisions
-      now—and
-      right now, it's steering customers straight to your competition. While you wait, they are already
-      optimizing for AI to beat you, <strong>making</strong> their <strong>websites easier for LLMs 🧠 to read, trust,
-        and
-        recommend </strong>.
-      We plug that
-      revenue leak by giving you a clear, developer-ready roadmap to <strong>make your site impossible for AI to
-        ignore</strong>
-      <a class="btn btn-expert-email"
-        href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ 'MeshWeave expert consultation' | urlencode }}"> Talk to
-        an
-        Expert 💬</a>
-    </p>
+    <h1 class="landing-hero-title">When buyers ask AI, why does it recommend your competitors instead?</h1>
+    <p class="landing-hero-supporting">Your website works fine for humans. But more and more buyers ask AI tools 🧠 what
+      to buy — and if AI can't understand your site, it recommends your competitors instead. MeshWeave audits your site,
+      shows you exactly where AI gets lost, and hands you a prioritized list of fixes.</p>
+    <p class="landing-hero-strong"><strong>Make your site impossible for AI to ignore.</strong></p>
     <div class="landing-hero-form mt-3">
       {% if notice == 'cooldown' %}
       <div role="alert" class="hero-inline-notice hero-inline-notice--cooldown">
@@ -128,6 +116,11 @@
         Teams</span> ·
       <span>Founders &amp; Operators</span> · <span>Agencies &amp; Consultants</span>
     </p>
+    <div class="landing-hero-cta">
+      <a class="btn btn-expert-email"
+        href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ 'MeshWeave expert consultation' | urlencode }}">Talk to an
+        Expert 💬</a>
+    </div>
   </div>
 </section>
 
@@ -135,6 +128,9 @@
 <section class="landing-section" id="how-it-works" aria-label="What happens when you run MeshWeave">
   <div class="container">
     <h2 class="landing-section-title">See where your website structure & content is failing</h2>
+    <p class="landing-section-subtitle">When buyers ask AI to recommend a vendor, it quotes the sites it can understand.
+      MeshWeave shows you exactly where your site breaks down — where AI misses your offer, skips your key pages, or stops
+      trusting your claims — so you can fix the specific failures that are pushing buyers toward your competitors.</p>
 
     <div class="pipeline">
       <div class="pipeline-step">
@@ -142,24 +138,24 @@
         <div class="pipeline-content">
           <span class="pipeline-number">01</span>
           <h3 class="m0">We show you the damage</h3>
-          <p class="m0">Your site looks clear to humans. Machines are missing the offer, skipping important content, and
-            failing to trust key claims. MeshWeave shows exactly where that breakdown is happening.</p>
+          <p class="m0">Your pages look clear to you. But AI tools often miss what you sell, skip your key pages, or distrust
+            your claims. MeshWeave shows you exactly where that happens.</p>
         </div>
       </div>
       <div class="pipeline-step">
         <div class="pipeline-content">
           <span class="pipeline-number">02</span>
           <h3 class="m0">We name the threat</h3>
-          <p class="m0">We identify the structural weaknesses making your brand harder to quote, recommend, or use —
-            the specific issues causing demand to leak before it reaches your funnel.</p>
+          <p class="m0">We list every problem that makes AI skip, mistrust, or misunderstand your site — and rank them by how
+            much revenue each one costs you.</p>
         </div>
       </div>
       <div class="pipeline-step">
         <div class="pipeline-content">
           <span class="pipeline-number">03</span>
           <h3 class="m0">We hand you the fix</h3>
-          <p class="m0">You get a focused, prioritized roadmap showing what to fix first so AI systems can understand,
-            cite, recommend, and act on your site. No generic checklists. Concrete actions.</p>
+          <p class="m0">You get a step-by-step fix list, ordered by impact, so AI systems can understand, quote, recommend,
+            and act on your site. No generic checklists — concrete actions.</p>
         </div>
       </div>
     </div>
@@ -167,7 +163,7 @@
     <div class="outcome-list">
       <div class="outcome-list-header">
         <h3 class="m0">What changes when you fix it</h3>
-        <p class="mt-1">When the structural failures are resolved, the results show up across citations, discovery,
+        <p class="mt-1">When you fix these problems, the results show up in citations, discovery,
           competitive positioning, and agent usability.</p>
       </div>
       <div class="outcome-grid">
@@ -177,7 +173,7 @@
             generic summary while competitors get cited by name.</p>
         </article>
         <article class="outcome-card">
-          <h4 class="m0">Own your recommendation share</h4>
+          <h4 class="m0">Get recommended more often</h4>
           <p class="m0">Fix the signals that determine whether AI systems recognize your brand as a credible option when
             buyers research vendors and categories.</p>
         </article>
@@ -236,9 +232,11 @@
 <!-- SCORE FRAMEWORK -->
 <section class="landing-section" id="scoring" aria-label="Scoring framework">
   <div class="container container-wide">
-    <h2 class="landing-section-title">Three ways your site is disappearing from AI-mediated buying</h2>
-    <p class="landing-section-subtitle">Each lens maps to a business risk that is costing you money right now: AI
-      cannot quote you, AI will not recommend you, or AI agents cannot use your site.</p>
+    <h2 class="landing-section-title">Three ways AI is steering buyers to your competitors</h2>
+    <p class="landing-section-subtitle">Every time a buyer asks AI for a vendor, one of three things decides who wins.
+      First, AI can or cannot quote your answer. Second, AI sees you as credible or overlooks you. Third, agents can or
+      cannot act on your site. These three lenses — AEO, GEO, and AAX — map to the exact risks costing you deals right
+      now.</p>
     <table class="table scoring-table">
       <thead>
         <tr>
@@ -255,13 +253,13 @@
         </tr>
         <tr>
           <td><strong>GEO</strong><br><span class="small">Generative Engine Optimization</span></td>
-          <td>AI systems see weaker authority, trust, or entity signals than competitors.</td>
-          <td>Your brand is overlooked or replaced in recommendations. Demand leaks silently.</td>
+          <td>AI systems see you as less authoritative and credible than competitors.</td>
+          <td>Your brand is overlooked or replaced in recommendations. You lose customers without seeing it.</td>
         </tr>
         <tr>
           <td><strong>AAX</strong><br><span class="small">AI Agent Experience</span></td>
           <td>AI agents cannot understand, navigate, or act on your site reliably.</td>
-          <td>Agent-mediated buyers abandon the journey before conversion. Revenue disappears.</td>
+          <td>AI assistants give up before reaching your sign-up or pricing page.</td>
         </tr>
       </tbody>
     </table>
@@ -288,7 +286,7 @@
       <h3>Is this an SEO tool?</h3>
       <p class="m0"><strong>No</strong>. Traditional SEO focuses on how humans find you through search engines.
         MeshWeave focuses on whether AI systems can understand, trust, cite, recommend, and use your website. The risk
-        is not ranking lower — it is being skipped entirely in AI-mediated discovery while your competitors steal your
+        is not ranking lower — it is being skipped entirely when buyers ask AI, while your competitors steal your
         visibility.</p>
     </div>
 
@@ -333,9 +331,9 @@
 {% else %}
 <section class="cta-banner" role="complementary" aria-label="Sign up">
   <div class="container">
-    <h2>AI agent are skipping your brand. Find out where — and fix it.</h2>
-    <p class="m0 mt-1 cta-banner-copy">Get an expert-guided audit that shows where your site is failing in AI-mediated
-      discovery.</p>
+    <h2>AI agents are skipping your brand. Find out where — and how to fix it.</h2>
+    <p class="m0 mt-1 cta-banner-copy">Get an expert-guided audit that shows where your site is failing when buyers ask
+      AI for recommendations.</p>
     <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary mt-3">Fix Your AI Blind Spots
       →</a>
   </div>

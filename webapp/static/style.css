@@ -1118,9 +1118,21 @@ label {
   font: var(--font-subhead);
   letter-spacing: 0;
   color: var(--color-dark-text);
-  margin: 0 0 var(--space-lg);
+  margin: 0 0 var(--space-sm);
   max-width: 800px;
   line-height: 1.6;
+}
+
+.landing-hero-strong {
+  font: var(--font-headline);
+  letter-spacing: 0;
+  color: var(--color-dark-text);
+  margin: 0 0 var(--space-lg);
+}
+
+.landing-hero-cta {
+  text-align: center;
+  margin: var(--space-lg) 0 var(--space-md);
 }
 
 .btn-expert-email {
@@ -1128,7 +1140,7 @@ label {
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
-  margin-left: var(--space-sm);
+  margin: 0;
   background: #0f62fe;
   color: var(--color-on-primary);
   border-color: #0f62fe;

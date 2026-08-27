@@ -1,7 +1,6 @@
 /* Home hero interactions:
    - Canvas particle network (neural mesh)
    - Momentum Bar count-up
-   - Rotating hero headline
    Respects prefers-reduced-motion · Idempotent · No deps
 */
 (function () {
@@ -258,27 +257,7 @@
     } catch (_) { /* noop */ }
   }
 
-  /* ── Rotating hero headline ── */
-  var headlines = [
-    "Your site could be readable to humans but invisible to AI systems",
-    "If AI cannot cite or recommend you, will you exist for the buyer of tomorrow?",
-    "Tomorrow's buyer is an AI agent - can an AI use your website?",
-    "Competitors are not better, they just actively use AI to beat you",
-    "Your content is well written and ignored by AI agents shaping buyer decisions",
-    "Your AI funnel is leaking demand straight to your competitors",
-    "When buyers ask AI, it recommends your competitors, not you",
-  ];
-
-  function initHeadlineRotation() {
-    try {
-      var el = document.querySelector('[data-hero-headline]');
-      if (!el || !headlines.length) return;
-      el.textContent = headlines[Math.floor(Math.random() * headlines.length)];
-    } catch (_) { /* noop */ }
-  }
-
   function initAll() {
-    initHeadlineRotation();
     initParticleNetwork();
     initCountups();
   }
