@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import uuid
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -20,6 +21,7 @@ from meshweave.ai.models import (
     HomepageComprehensionResult,
     MetaOptimizationResult,
 )
+from meshweave.ai.observability import trace_attributes
 from meshweave.ai.preconditions import check_all
 from meshweave.ai.prompts import (
     aax_summary_prompt,
@@ -35,14 +37,36 @@ from meshweave.ai.runner import run_structured_test
 logger = logging.getLogger(__name__)
 
 
-async def run_aax_analysis(payload: dict) -> dict[str, Any]:
+async def run_aax_analysis(
+    payload: dict,
+    *,
+    trace_user_id: str | None = None,
+    trace_session_id: str | None = None,
+) -> dict[str, Any]:
     """Run all AAX tests and return the analysis result as a dict.
 
     Returns a dict matching the AAXAnalysisResult schema, suitable
     for storage in ai_analysis_json.
 
     If AAX_ENABLED is not "true", returns {"status": "disabled"}.
+
+    When Langfuse tracing is enabled, the LLM calls made by this run are
+    grouped into a single Langfuse session so the whole analysis shows up as
+    one unit: ``trace_session_id`` when provided (e.g. the originating crawl
+    id), otherwise a fresh id per run. ``trace_user_id`` attributes the
+    traces to the user who triggered the analysis. Both are ignored when
+    tracing is disabled.
     """
+    with trace_attributes(
+        user_id=trace_user_id,
+        session_id=trace_session_id or uuid.uuid4().hex,
+        tags=["aax"],
+    ):
+        return await _run_aax_analysis(payload)
+
+
+async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
+    """AAX analysis implementation — see ``run_aax_analysis``."""
     if os.getenv("AAX_ENABLED", "false").lower() != "true":
         return {"status": "disabled"}
 

@@ -158,6 +158,7 @@ uv run pre-commit run --all-files
 - [Scoring Reference](docs/scoring-reference.md)
 - [Style Guide](docs/style-guide.md)
 - [Observability](docs/observability.md)
+- [LLM Observability (Langfuse)](docs/langfuse.md)
 
 ## License
 

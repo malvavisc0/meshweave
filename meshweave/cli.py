@@ -389,6 +389,10 @@ def main() -> None:
     ``crawl`` is assumed so that ``meshweave <url> …`` keeps working as
     before.
     """
+    from meshweave.ai.observability import enable_langfuse
+
+    enable_langfuse()
+
     # When called with no arguments, show help so the user can see the
     # available subcommands.  When the first argument is a URL (i.e. not a
     # known subcommand), default to "crawl" for backward compatibility

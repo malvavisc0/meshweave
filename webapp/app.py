@@ -154,6 +154,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _init_sentry()
     init_logging()
     init_db()
+    from meshweave.ai.observability import enable_langfuse
+
+    enable_langfuse()
 
     # Enforce OAuth config in prod if policy requires (fail-fast)
     if os.getenv("WEBAPP_AUTH_ENABLED", "true").strip().lower() in {

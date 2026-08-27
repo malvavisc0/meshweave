@@ -145,10 +145,14 @@ async def run_aax_for_crawl(
     """
     from meshweave.ai.analyses import run_aax_analysis
 
-    # Load payload if not provided
-    if payload is None:
-        with get_session() as s:
-            row = s.get(Crawl, crawl_id)
+    # Load payload if not provided; also resolve the crawl's owner so LLM
+    # traces can be attributed to the user who requested the analysis.
+    user_id: str | None = None
+    with get_session() as s:
+        row = s.get(Crawl, crawl_id)
+        if row:
+            user_id = row.user_id
+        if payload is None:
             if not row:
                 return None
             raw = row.payload_json or {}
@@ -162,7 +166,11 @@ async def run_aax_for_crawl(
 
     # Run AAX analysis
     try:
-        aax_result = await run_aax_analysis(payload)
+        aax_result = await run_aax_analysis(
+            payload,
+            trace_user_id=user_id,
+            trace_session_id=f"aax:{crawl_id}",
+        )
     except Exception as e:
         logger.warning("AAX analysis failed for crawl %s: %s", crawl_id, e)
         aax_result = {"status": "failed", "error": str(e)}

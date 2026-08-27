@@ -27,6 +27,7 @@ runtime = [
   "openai",
   "redis",
   "sentry-sdk",
+  "langfuse",
 ]
 
 [tool.setuptools]

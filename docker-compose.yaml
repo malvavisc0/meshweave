@@ -148,6 +148,10 @@ services:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL}
       AAX_ENABLED : ${AAX_ENABLED}
+      # Opt-in LLM observability (Langfuse); off unless both keys are provided
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DEBUG: yes
       # Database pool tuning (Postgres)

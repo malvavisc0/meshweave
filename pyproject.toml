@@ -29,6 +29,7 @@ dependencies = [
   "sqlalchemy",
   "pydantic-ai",
   "python-dotenv",
+  "langfuse",
 ]
 
 [dependency-groups]
