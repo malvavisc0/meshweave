@@ -79,3 +79,30 @@ def test_extract_emails_edge_cases():
     unique2, _ = extract_emails(html, deobfuscate=False)
     assert "hello@acme.com" not in unique2
     assert "info@acme.net" in unique2
+
+
+def test_extract_emails_does_not_absorb_sentence_after_mailto_link():
+    """An inline mailto link followed by ``. We will`` must not fuse.
+
+    ``soup.get_text(" ")`` inserts a separator between the anchor text
+    and the following text node, producing ``hello@meshweaveai.com . We``
+    in extracted text.  The deobfuscation dot-joiner must not collapse
+    that into ``hello@meshweaveai.com.we``.
+    """
+    html = (
+        "<html><body><p>by contacting us at "
+        '<a href="mailto:hello@meshweaveai.com">hello@meshweaveai.com</a>. '
+        "We will process deletion requests within 30 days.</p></body></html>"
+    )
+    unique, _ = extract_emails(html, deobfuscate=True)
+    assert "hello@meshweaveai.com" in unique
+    assert "hello@meshweaveai.com.we" not in unique
+
+
+def test_deobfuscation_still_joins_partial_addresses():
+    from meshweave.extraction.emails import _extract_text_emails
+
+    text = "Reach us at john@example . com or jane [at] other [dot] org"
+    emails, _ = _extract_text_emails(text, deobfuscate=True)
+    assert "john@example.com" in emails
+    assert "jane@other.org" in emails

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -40,6 +41,14 @@ from .urls import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Crawler-directive files that must never be seeded as content pages from
+# sitemap discovery: they carry no headings/schema and would skew every
+# per-page average (structure, schema coverage, content depth).
+_INFRA_FILE_RE = re.compile(
+    r"(^|/)(robots\.txt|llms(?:-full)?\.txt)$",
+    re.IGNORECASE,
+)
 
 __all__ = [
     "crawl",
@@ -218,10 +227,14 @@ def _build_payload(
 
     # AEO/GEO: cross-page audits
     page_meta = page_data.get("page_meta")
+    # The start page is already merged into *markdowns* above; only pass its
+    # meta separately when it is absent from markdowns (e.g. no markdown was
+    # extracted), so the audits do not double-count it.
+    audit_start_meta = page_meta if origin not in markdowns else None
     payload["audit"] = {
-        "meta": audit_meta_uniqueness(markdowns, page_meta),
-        "entity": audit_entity_consistency(markdowns, page_meta),
-        "schema_coverage": audit_schema_coverage(markdowns, page_meta),
+        "meta": audit_meta_uniqueness(markdowns, audit_start_meta),
+        "entity": audit_entity_consistency(markdowns, audit_start_meta),
+        "schema_coverage": audit_schema_coverage(markdowns, audit_start_meta),
     }
 
     return payload
@@ -316,6 +329,11 @@ async def crawl(
             for u in discovered:
                 normu = normalize_abs_url(u, origin)
                 if normu and should_follow(normu, origin_pfx):
+                    # Crawler directives are infrastructure, not content
+                    # pages: seeding them would drag every per-page average
+                    # (structure, schema coverage, depth) down.
+                    if _INFRA_FILE_RE.search(normu):
+                        continue
                     sitemap_seeds.append(normu)
         except Exception:
             logger.debug(

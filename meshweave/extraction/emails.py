@@ -68,16 +68,40 @@ def _deobfuscate_text(text: str) -> str:
     # 1. Bracket-based replacements
     s = re.sub(r"(?i)[\[\(\{]\s*at\s*[\]\)\}]", "@", s)
     s = re.sub(r"(?i)[\[\(\{]\s*dot\s*[\]\)\}]", ".", s)
-    # 2. Bare-word replacements (only between non-space chars)
-    s = re.sub(r"(?i)(?<=\S)\s+at\s+(?=\S)", " @ ", s)
+    # 2. Bare-word replacements (only between non-space chars). The bare
+    # "at" is converted only when the next token contains no "@" — ordinary
+    # prose like "contact us at hello@acme.com" must not be rewritten to
+    # "us@hello@acme.com" and then absorb following sentence punctuation.
+    s = re.sub(r"(?i)(?<=\S)\s+at\s+(?=[^\s@]+(?:\s|$))", " @ ", s)
     s = re.sub(r"(?i)(?<=\S)\s+dot\s+(?=\S)", " . ", s)
     # 3. Collapse whitespace around @ / . in email-like contexts
     prev: str = ""
     while prev != s:
         prev = s
         s = re.sub(r"(\w)\s+@\s+(\w)", r"\1@\2", s)
-        s = re.sub(r"(\w)\s+\.\s+(\w)", r"\1.\2", s)
+        s = _join_dotted_fragments(s)
     return s
+
+
+def _join_dotted_fragments(s: str) -> str:
+    """Collapse ``token . token`` when it continues a partial email.
+
+    A dot-fragment is joined only when the left side contains ``@``
+    but is *not* already a complete email address.  This keeps the
+    reconstruction of obfuscated addresses (``john@example . com``)
+    working while never absorbing sentence punctuation that follows a
+    complete address (``hello@meshweaveai.com . We will`` — an
+    artifact of HTML text extraction inserting a separator between
+    an inline link and the next text node).
+    """
+
+    def _repl(m: re.Match[str]) -> str:
+        left = m.group(1)
+        if _EMAIL_RE.fullmatch(left):
+            return m.group(0)
+        return f"{left}.{m.group(2)}"
+
+    return re.sub(r"(\S+@\S+)\s+\.\s+(\w)", _repl, s)
 
 
 def _extract_mailto_emails(soup: BeautifulSoup) -> set[str]:

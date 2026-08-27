@@ -59,16 +59,25 @@ def _parse_robots(
     """
     sections: dict[str, list[str]] = {}
     current_agents: list[str] = []
+    seen_directive = False
     for raw_line in text.splitlines():
         line = raw_line.split("#", 1)[0].strip()
         if not line:
             current_agents = []
+            seen_directive = False
             continue
         if line.lower().startswith("user-agent:"):
+            # Consecutive User-agent lines share one group; a
+            # User-agent line after directives starts a new group even
+            # without a blank line separator.
+            if seen_directive:
+                current_agents = []
+                seen_directive = False
             agent = line.split(":", 1)[1].strip().lower()
             current_agents.append(agent)
             sections.setdefault(agent, [])
         elif current_agents:
+            seen_directive = True
             for a in current_agents:
                 sections.setdefault(a, []).append(line.lower())
 

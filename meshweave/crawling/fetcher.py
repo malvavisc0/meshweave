@@ -6,9 +6,11 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import socket
 import time
 from dataclasses import dataclass, field
+from html import unescape
 from pathlib import Path
 from typing import Any, Literal, overload
 from urllib.parse import urlsplit
@@ -349,6 +351,21 @@ _BROWSER_STRIP_TAGS = (
     "</pre>",
 )
 
+# Headless browsers serve plain-text/XML responses wrapped in a minimal HTML
+# document: <!DOCTYPE html><html><head>…</head><body><pre>payload</pre></body></html>
+# with the payload HTML-entity-escaped inside <pre>. Match that wrapper
+# precisely so the payload can be extracted and unescaped; anything that does
+# not match is a real HTML page and falls through to tag stripping.
+_BROWSER_PLAINTEXT_WRAPPER_RE = re.compile(
+    r"^\s*<!DOCTYPE\s+html[^>]*>\s*"
+    r"<html[^>]*>\s*"
+    r"<head[^>]*>[\s\S]*?</head>\s*"
+    r"<body[^>]*>\s*"
+    r"<pre[^>]*>(?P<payload>[\s\S]*)</pre>\s*"
+    r"</body>\s*</html>\s*$",
+    re.IGNORECASE,
+)
+
 
 async def fetch_text(
     url: str,
@@ -356,24 +373,65 @@ async def fetch_text(
     session: BrowserSession,
     timeout: float = 10.0,
 ) -> str | None:
-    """Fetch a URL via the browser session and return body text, or None.
+    """Fetch a URL via the browser session and return the body text, or None.
 
-    Plain-text/XML responses are wrapped in minimal HTML tags
-    by the browser, which are stripped before returning.
+    Reads the response body from the network layer, which is exact for
+    non-HTML responses: LightPanda renders ``text/plain`` into an
+    entity-escaped ``<pre>`` wrapper and ``text/xml`` as an empty
+    document, so ``page.content()`` is unreliable for those. Falls back
+    to unwrapping the rendered DOM when the network body is unavailable.
+    Returns ``None`` on fetch failure or HTTP >= 400.
     """
+    timeout_ms = int(timeout * 1000)
     try:
-        html = await get_rendered_html(
-            url=url,
-            session=session,
-            progressive_scroll=False,
-            return_metrics=False,
-            timeout=timeout,
-            wait_until="domcontentloaded",
-        )
-        text = html
-        for tag in _BROWSER_STRIP_TAGS:
-            text = text.replace(tag, "")
-        return text.strip()
+        await session.ensure_connected()
+        page = await session.context.new_page()
+        try:
+            resp = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=timeout_ms,
+            )
+            if resp is None:
+                return None
+            if resp.status >= 400:
+                return None
+            body: str | None = None
+            try:
+                body = await resp.text()
+            except Exception as exc:
+                logger.debug("No network body for %s: %s", url, exc)
+            if body is not None and body.strip():
+                return body.strip()
+            # Fallback for browsers without network-body support: unwrap
+            # the DOM-rendered content (handles the <pre> plain-text
+            # wrapper and its entity escaping).
+            html = await page.content()
+            unwrapped = _unwrap_browser_plaintext(html)
+            return unwrapped or None
+        finally:
+            await page.close()
     except Exception as exc:
         logger.debug("Failed to fetch %s: %s", url, exc)
-    return None
+        return None
+
+
+def _unwrap_browser_plaintext(html: str) -> str:
+    """Extract the plain-text payload from a browser-rendered response.
+
+    Headless browsers (LightPanda) serve ``text/plain`` and XML responses as a
+    minimal HTML document — ``<!DOCTYPE html><html><head>…</head><body><pre>
+    payload</pre></body></html>`` — with the payload HTML-entity-escaped inside
+    ``<pre>``.  When that wrapper is matched exactly, the payload is returned
+    unescaped.  Anything else (a real HTML page) falls back to literal wrapper
+    tag stripping, preserving prior behaviour.
+
+    Returns the stripped text (empty string if *html* is empty).
+    """
+    wrapper = _BROWSER_PLAINTEXT_WRAPPER_RE.match(html)
+    if wrapper:
+        return unescape(wrapper.group("payload")).strip()
+    text = html
+    for tag in _BROWSER_STRIP_TAGS:
+        text = text.replace(tag, "")
+    return text.strip()

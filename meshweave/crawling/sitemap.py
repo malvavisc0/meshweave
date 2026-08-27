@@ -87,9 +87,52 @@ async def discover_sitemap_urls(
     urls: list[str] = []
     seen_sitemaps: set[str] = set()
 
-    # Candidates: common endpoints
     candidates: list[str] = []
+    if robots_sitemaps is not None:
+        # Use pre-fetched sitemap URLs (avoid redundant fetch). These are
+        # authoritative, so they are tried before common-endpoint guesses.
+        candidates.extend(robots_sitemaps)
+        sources.append(
+            {
+                "type": "robots",
+                "found": len(robots_sitemaps),
+                "status": "ok",
+            }
+        )
+    elif d:
+        # robots.txt discovery
+        for scheme in ("https", "http"):
+            robots_url = f"{scheme}://{d}/robots.txt"
+            text = await fetch_text(
+                robots_url,
+                session=session,
+                timeout=8.0,
+            )
+            found = 0
+            status = "miss"
+            if text:
+                try:
+                    for line in text.splitlines():
+                        stripped = line.strip()
+                        if stripped.lower().startswith("sitemap:"):
+                            loc = stripped.split(":", 1)[1].strip()
+                            if loc:
+                                candidates.append(loc)
+                                found += 1
+                    status = "ok"
+                except Exception:
+                    status = "error"
+            sources.append(
+                {
+                    "type": "robots",
+                    "url": robots_url,
+                    "found": found,
+                    "status": status,
+                }
+            )
+
     if d:
+        # Common endpoints as fallback guesses
         candidates.extend(
             [
                 f"https://{d}/sitemap.xml",
@@ -98,48 +141,6 @@ async def discover_sitemap_urls(
                 f"http://{d}/sitemap_index.xml",
             ]
         )
-
-        if robots_sitemaps is not None:
-            # Use pre-fetched sitemap URLs (avoid redundant fetch)
-            candidates.extend(robots_sitemaps)
-            sources.append(
-                {
-                    "type": "robots",
-                    "found": len(robots_sitemaps),
-                    "status": "ok",
-                }
-            )
-        else:
-            # robots.txt discovery
-            for scheme in ("https", "http"):
-                robots_url = f"{scheme}://{d}/robots.txt"
-                text = await fetch_text(
-                    robots_url,
-                    session=session,
-                    timeout=8.0,
-                )
-                found = 0
-                status = "miss"
-                if text:
-                    try:
-                        for line in text.splitlines():
-                            stripped = line.strip()
-                            if stripped.lower().startswith("sitemap:"):
-                                loc = stripped.split(":", 1)[1].strip()
-                                if loc:
-                                    candidates.append(loc)
-                                    found += 1
-                        status = "ok"
-                    except Exception:
-                        status = "error"
-                sources.append(
-                    {
-                        "type": "robots",
-                        "url": robots_url,
-                        "found": found,
-                        "status": status,
-                    }
-                )
 
     # De-duplicate candidates preserving order
     seen_c: set[str] = set()
