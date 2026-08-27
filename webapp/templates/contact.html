@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block head_extra %}{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HEADER -->
+<header class="page-header" aria-label="Contact">
+  <div class="container">
+    <h1 class="page-header-title">Contact MeshWeave</h1>
+    <p class="page-header-subtitle">Questions about AI visibility, our scoring methodology, or an audit you ran?
+      Talk to the team that built the tool.</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- EMAIL -->
+  <section class="prose-section" aria-label="Email">
+    <h2>Email us</h2>
+    <p class="m0">The fastest way to reach us. We answer questions about audits, scores, and methodology —
+      and we offer expert-guided reviews of your AI visibility report.</p>
+    <p class="mt-2">
+      <a class="btn btn-primary" href="mailto:{{ contact_email }}?subject={{ 'MeshWeave inquiry' | urlencode }}">Email
+        {{ contact_email }}</a>
+    </p>
+  </section>
+
+  <!-- WHAT TO ASK -->
+  <section class="prose-section" aria-label="What to ask">
+    <h2>What to ask</h2>
+    <ul class="structured-list m0">
+      <li><strong>Reading your report</strong> — what a lens score means and which fixes come first.</li>
+      <li><strong>Methodology</strong> — how the AEO, GEO, and AAX factors are measured and weighted.</li>
+      <li><strong>Expert-guided audit</strong> — a walkthrough of your results and a prioritized fix roadmap.</li>
+      <li><strong>Privacy or data requests</strong> — see our <a href="/privacy">privacy policy</a>.</li>
+    </ul>
+  </section>
+
+  <!-- METHODOLOGY LINK -->
+  <section class="prose-section" aria-label="Self-serve">
+    <h2>Self-serve first</h2>
+    <p class="m0">Many answers live in the product itself: run a free analysis from the
+      <a href="/">homepage</a>, or read exactly how scores are computed on the
+      <a href="/methodology">methodology page</a>.</p>
+  </section>
+
+</div>
+
+{% endblock %}

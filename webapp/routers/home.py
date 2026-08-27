@@ -378,6 +378,12 @@ async def home(request: Request, db: Session = Depends(get_db)):
             "applicationCategory": "DataExtraction",
             "url": abs_page_url,
             "softwareVersion": (os.getenv("APP_VERSION", "v1") or "v1"),
+            "author": {
+                "@type": "Organization",
+                "name": site_name,
+                "url": abs_page_url,
+            },
+            "dateModified": "2026-08-27",
             "provider": {"@type": "Organization", "name": site_name},
             "description": (
                 "MeshWeave audits how AI systems crawl, understand, and cite "

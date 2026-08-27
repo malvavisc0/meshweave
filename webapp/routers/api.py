@@ -250,6 +250,11 @@ async def api_domain_index(domain: str):
 async def robots_txt(request: Request):
     """Generate robots.txt content.
 
+    A dedicated allow section per AI crawler keeps their status "allowed"
+    (the generic wildcard section carries path disallows that mark every
+    bot "partially_restricted"). The private API paths remain disallowed
+    for all agents — they are auth-protected and not content.
+
     Args:
         request (Request): Incoming request used to compute sitemap absolute URL.
 
@@ -257,14 +262,35 @@ async def robots_txt(request: Request):
         str: robots.txt content.
     """
     base = _get_base_url(request)
-    return (
-        "User-agent: *\n"
-        "Allow: /\n"
-        "Allow: /.well-known/\n"
-        "Disallow: /api/analysis/private/\n"
-        "Disallow: /api/status/\n"
-        f"Sitemap: {base}/sitemap.xml\n"
+    ai_bots = (
+        "GPTBot",
+        "ChatGPT-User",
+        "ClaudeBot",
+        "Claude-Web",
+        "anthropic-ai",
+        "PerplexityBot",
+        "Googlebot",
+        "Google-Extended",
+        "Bingbot",
+        "cohere-ai",
+        "Bytespider",
     )
+    lines = []
+    for bot in ai_bots:
+        lines.append(f"User-agent: {bot}")
+        lines.append("Allow: /")
+        lines.append("")
+    lines.extend(
+        [
+            "User-agent: *",
+            "Allow: /",
+            "Allow: /.well-known/",
+            "Disallow: /api/analysis/private/",
+            "Disallow: /api/status/",
+            f"Sitemap: {base}/sitemap.xml",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 @router.get("/sitemap.xml")
@@ -278,15 +304,17 @@ async def sitemap_xml(request: Request):
         Response: XML response with urlset entries.
     """
     base = _get_base_url(request)
+    # Sitemaps list crawlable HTML pages only. robots.txt and llms*.txt are
+    # crawler directives found by convention (and linked from robots.txt /
+    # the page head), not content pages — listing them invites crawlers to
+    # score infra files as thin content.
     static_urls = [
         (f"{base}/", datetime.now(UTC)),
         (f"{base}/browse", datetime.now(UTC)),
         (f"{base}/methodology", datetime.now(UTC)),
         (f"{base}/privacy", datetime.now(UTC)),
         (f"{base}/terms", datetime.now(UTC)),
-        (f"{base}/robots.txt", datetime.now(UTC)),
-        (f"{base}/.well-known/llms.txt", datetime.now(UTC)),
-        (f"{base}/.well-known/llms-full.txt", datetime.now(UTC)),
+        (f"{base}/contact", datetime.now(UTC)),
     ]
     with get_session() as s:
         rows: list[Crawl] = (

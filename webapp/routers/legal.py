@@ -1,4 +1,4 @@
-"""Legal pages router providing /privacy and /terms templates."""
+"""Legal and informational pages: /privacy, /terms, /contact."""
 
 import json
 import os
@@ -112,5 +112,53 @@ async def terms(request: Request):
             "og_image_url": og_image_url,
             "json_ld": json_ld,
             "last_updated": "2025-05-20",
+        },
+    )
+
+
+@router.get("/contact", response_class=HTMLResponse)
+async def contact(request: Request):
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    contact_email = os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweaveai.com")
+    page_title = f"Contact — {site_name}"
+    meta_description = (
+        "Contact the MeshWeave team for questions about AI visibility "
+        "audits, scoring methodology, or expert-guided remediation."
+    )
+    abs_page_url = _abs_url(request, "/contact")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+
+    # JSON-LD: ContactPage with a top-level ContactPoint (LLM-first)
+    try:
+        json_ld = json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "ContactPage",
+                "name": "Contact MeshWeave",
+                "url": abs_page_url,
+                "isPartOf": _abs_url(request, "/"),
+                "dateModified": "2026-08-27",
+                "mainEntity": {
+                    "@type": "ContactPoint",
+                    "contactType": "customer support",
+                    "email": contact_email,
+                    "availableLanguage": "English",
+                },
+            }
+        )
+    except Exception:
+        json_ld = None
+
+    return templates.TemplateResponse(
+        request,
+        "contact.html",
+        {
+            "site_name": site_name,
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
+            "json_ld": json_ld,
+            "contact_email": contact_email,
         },
     )
