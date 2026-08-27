@@ -339,6 +339,21 @@ def _run_crawl(args: argparse.Namespace) -> None:
                     aax_score = compute_aax_score(aax_result)
                     if aax_score and payload.get("scores"):
                         payload["scores"]["aax"] = aax_score
+
+                        # Re-generate recommendations now that AAX factors
+                        # (and contactability) are available, so CLI output
+                        # matches what the webapp would show.
+                        from meshweave.scoring.recommendations import (
+                            generate_recommendations,
+                        )
+
+                        payload["scores"]["recommendations"] = generate_recommendations(
+                            payload["scores"]["aeo"]["factors"],
+                            payload["scores"]["geo"]["factors"],
+                            payload=payload,
+                            aax_factors=aax_score.get("factors"),
+                            contactability=aax_result.get("contactability"),
+                        )
                 _log("  ✓ AAX analysis complete")
             except Exception as e:
                 print(f"  ✗ AAX analysis failed: {e}", file=sys.stderr)

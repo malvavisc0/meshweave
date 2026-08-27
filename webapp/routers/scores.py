@@ -42,7 +42,7 @@ async def get_scores(request: Request, crawl_id: str):
         snapshot.aeo_score,
         snapshot.geo_score,
         aax_section.get("composite"),
-        score_basis="auto",
+        score_basis="full" if snapshot.has_manual_input else "auto",
     )
     return JSONResponse(
         content={

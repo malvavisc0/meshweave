@@ -83,6 +83,7 @@ def score_crawl(
                     geo_factors,
                     payload=payload,
                     aax_factors=aax_score_dict.get("factors"),
+                    contactability=aax_result.get("contactability"),
                 )
                 score_json["recommendations"] = all_recommendations
 
@@ -199,6 +200,7 @@ async def run_aax_for_crawl(
                         geo_f,
                         payload=payload,
                         aax_factors=aax_score_json.get("factors"),
+                        contactability=aax_result.get("contactability"),
                     )
                     snap.score_json["recommendations"] = all_recs
                 except Exception:

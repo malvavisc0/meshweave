@@ -289,13 +289,16 @@ def build_score_snapshot_context(crawl) -> dict | None:
     ai_analysis = snapshot.ai_analysis_json or {}
     aax_analysis = ai_analysis.get("aax") or {}
 
-    # Build interpretation using auto-only scores for free scan
+    # Build interpretation. score_basis reflects whether manual inputs
+    # (capture rate, citation, …) contributed to the composites: paid audits
+    # with manual inputs get the "full" basis (no free-scan limitations);
+    # free scans get "auto" (limitations shown).
     aax_composite = aax_section.get("composite")
     interp = interpret_profile(
         snapshot.aeo_score,
         snapshot.geo_score,
         aax_composite,
-        score_basis="auto",
+        score_basis="full" if snapshot.has_manual_input else "auto",
     )
 
     return {
