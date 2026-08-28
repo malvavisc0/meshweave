@@ -518,7 +518,11 @@ async def view_analysis(request: Request, ref: str):
 
         _ss_private = _build_score_snapshot_context(row)
         # Do not show the analysis page until AAX is calculated
-        if row.status == "succeeded" and _ss_private and _ss_private.get("aax_score") is None:
+        if (
+            row.status == "succeeded"
+            and _ss_private
+            and _ss_private.get("aax_score") is None
+        ):
             row.status = "running"
         resp = templates.TemplateResponse(
             request,
