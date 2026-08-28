@@ -7,14 +7,26 @@ from meshweave.scoring.interpretation import interpret_profile
 
 
 def aax_pending(crawl: Any) -> bool:
-    """True when AAX is enabled but has not finished for this crawl."""
+    """True when AAX is enabled but has not finished for this crawl.
+
+    Loads the score snapshot in a fresh session to avoid DetachedInstanceError
+    on callers that pass a Crawl bound to a closed session.
+    """
     if os.getenv("AAX_ENABLED", "false").lower() != "true":
         return False
-    snapshot = getattr(crawl, "score_snapshot", None)
-    if snapshot is None:
-        return True
-    aax = (snapshot.ai_analysis_json or {}).get("aax") or {}
-    return aax.get("status") != "completed"
+    from webapp.db import get_session
+    from webapp.models import ScoreSnapshot
+
+    with get_session() as s:
+        snap = (
+            s.query(ScoreSnapshot)
+            .filter(ScoreSnapshot.crawl_id == crawl.id)
+            .one_or_none()
+        )
+        if snap is None:
+            return True
+        aax = (snap.ai_analysis_json or {}).get("aax") or {}
+        return aax.get("status") != "completed"
 
 # Mapping of factor keys to human-readable display names
 FACTOR_DISPLAY_NAMES = {
