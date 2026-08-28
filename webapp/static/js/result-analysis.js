@@ -919,14 +919,12 @@
                         var pct = 0;
                         if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v / lim) * 100)));
                         var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct + '%';
-                        // Finalizing condition (site scope): budget exhausted but status still running
-                        if (st === 'running' && rem != null && !Number.isNaN(rem) && Number(rem) <= 0) {
-                            if (ps) ps.textContent = 'finalizing…';
-                            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                            setTimeout(function () { location.reload(); }, 1000);
+                        // AAX still running: keep polling, show finalizing state
+                        if (j.aax_pending) {
+                            if (ps) ps.textContent = 'analyzing…';
                             return;
                         }
-                        // Stop on terminal states
+                        // Stop on terminal states once AAX is done
                         if (st !== 'running' && st !== 'pending') {
                             if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
                             setTimeout(function () { location.reload(); }, 800);
@@ -1018,14 +1016,12 @@
                         var pct = 0;
                         if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v / lim) * 100)));
                         var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct + '%';
-                        // Finalizing condition (site scope)
-                        if (st === 'running' && rem != null && !Number.isNaN(rem) && Number(rem) <= 0) {
-                            if (ps) ps.textContent = 'finalizing…';
-                            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                            setTimeout(function () { location.reload(); }, 1000);
+                        // AAX still running: keep polling, show finalizing state
+                        if (j.aax_pending) {
+                            if (ps) ps.textContent = 'analyzing…';
                             return;
                         }
-                        // Stop on terminal states
+                        // Stop on terminal states once AAX is done
                         if (st !== 'running' && st !== 'pending') {
                             if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
                             setTimeout(function () { location.reload(); }, 800);

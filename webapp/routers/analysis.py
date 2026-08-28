@@ -400,9 +400,6 @@ async def view_shared_analysis(request: Request, share_key: str):
     summary = build_summary(row, payload)
 
     _ss_shared = _build_score_snapshot_context(row)
-    # Do not show the analysis page until AAX is calculated
-    if row.status == "succeeded" and _ss_shared and _ss_shared.get("aax_score") is None:
-        row.status = "running"
 
     resp = templates.TemplateResponse(
         request,
@@ -517,13 +514,6 @@ async def view_analysis(request: Request, ref: str):
         is_owner, current_user, user_id = _owner_state(request, row)
 
         _ss_private = _build_score_snapshot_context(row)
-        # Do not show the analysis page until AAX is calculated
-        if (
-            row.status == "succeeded"
-            and _ss_private
-            and _ss_private.get("aax_score") is None
-        ):
-            row.status = "running"
         resp = templates.TemplateResponse(
             request,
             "result.html",
@@ -656,9 +646,6 @@ async def view_analysis(request: Request, ref: str):
     is_owner, current_user, user_id = _owner_state(request, row)
 
     _ss_public = _build_score_snapshot_context(row)
-    # Do not show the analysis page until AAX is calculated
-    if row.status == "succeeded" and _ss_public and _ss_public.get("aax_score") is None:
-        row.status = "running"
     resp = templates.TemplateResponse(
         request,
         "result.html",

@@ -8,6 +8,7 @@ from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.auth import require_ownership
 from webapp.utils.metrics import stale_finalize_attempts, stale_finalize_finished
+from webapp.utils.scoring import aax_pending
 
 router = APIRouter()
 
@@ -363,6 +364,7 @@ async def api_progress(request: Request, crawl_id: str):
         "emails_so_far": emails_so_far,
         "links_internal_so_far": links_internal_so_far,
         "external_domains_so_far": external_domains_so_far,
+        "aax_pending": aax_pending(row),
     }
 
 
@@ -413,4 +415,5 @@ async def api_progress_public(key: str):
         "emails_so_far": emails_so_far,
         "links_internal_so_far": links_internal_so_far,
         "external_domains_so_far": external_domains_so_far,
+        "aax_pending": aax_pending(row),
     }

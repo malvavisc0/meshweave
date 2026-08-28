@@ -1,8 +1,20 @@
 """Shared AEO/GEO scoring helpers for templates and API responses."""
 
+import os
 from typing import Any
 
 from meshweave.scoring.interpretation import interpret_profile
+
+
+def aax_pending(crawl: Any) -> bool:
+    """True when AAX is enabled but has not finished for this crawl."""
+    if os.getenv("AAX_ENABLED", "false").lower() != "true":
+        return False
+    snapshot = getattr(crawl, "score_snapshot", None)
+    if snapshot is None:
+        return True
+    aax = (snapshot.ai_analysis_json or {}).get("aax") or {}
+    return aax.get("status") != "completed"
 
 # Mapping of factor keys to human-readable display names
 FACTOR_DISPLAY_NAMES = {

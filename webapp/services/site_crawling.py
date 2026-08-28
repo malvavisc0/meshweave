@@ -335,20 +335,13 @@ def _score_crawl(payload: dict[str, Any], crawl_id: str) -> None:
 
 
 def _enqueue_aax(crawl_id: str, payload: dict[str, Any]) -> None:
-    """Schedule AAX analysis (async, best-effort)."""
-    try:
-        import asyncio
+    """Schedule AAX analysis on the running event loop."""
+    import asyncio
 
-        from webapp.services.scoring import run_aax_for_crawl
+    from webapp.services.scoring import run_aax_for_crawl
 
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
-        except RuntimeError:
-            # No running event loop — run synchronously in a new loop
-            asyncio.run(run_aax_for_crawl(crawl_id, payload=payload))
-    except Exception:
-        logger.exception("Failed to enqueue AAX for crawl %s", crawl_id)
+    loop = asyncio.get_running_loop()
+    loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
 
 
 def _finish_task(
