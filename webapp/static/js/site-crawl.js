@@ -34,18 +34,18 @@
     }
   }
 
-  function initSiteCrawlForm() {
+  function initSiteCrawlForm(form) {
     try {
-      var siteForm = document.getElementById('site-form');
-      if (!siteForm) return; // Safe no-op if markup is absent
-      if (siteForm.dataset && siteForm.dataset.initialized === '1') return; // idempotent
-      if (siteForm.dataset) siteForm.dataset.initialized = '1';
+      if (!form) return;
+      if (form.dataset && form.dataset.initialized === '1') return; // idempotent
+      if (form.dataset) form.dataset.initialized = '1';
 
-      var siteInput = document.getElementById('site-input');
-      var siteDomain = document.getElementById('site-domain');
-      var sitePrivate = document.getElementById('site-private');
-      var sitePublic = document.getElementById('site-public');
-      var siteFeedback = document.getElementById('domain-feedback');
+      var siteInput = form.querySelector('.site-input');
+      var siteDomain = form.querySelector('.site-domain');
+      var sitePrivate = form.querySelector('.site-private');
+      var sitePublic = form.querySelector('.site-public');
+      var siteFeedback = form.querySelector('.domain-feedback');
+      var siteBtn = form.querySelector('.site-btn');
       var __firedValidEvent = false;
 
       // Autofocus input on load
@@ -60,23 +60,20 @@
 
       // Real-time validation feedback
       try {
-        if (siteInput && siteFeedback) {
+        if (siteInput && siteBtn) {
           siteInput.addEventListener('input', function (e) {
             var raw = String((e && e.target && e.target.value) || '');
             var dom = toDomain(raw);
             if (dom && dom.includes('.')) {
-              siteFeedback.className = 'small validation-success';
-              siteFeedback.textContent = '✓ Valid domain';
               try { siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
+              try { siteBtn.disabled = false; } catch (_) { }
               if (!__firedValidEvent) { try { trackEvent('domain_valid_input'); } catch (_) { } __firedValidEvent = true; }
             } else if (raw.trim().length > 0) {
-              siteFeedback.className = 'small validation-error';
-              siteFeedback.textContent = 'Enter a valid domain like example.com';
               try { siteInput.setAttribute('aria-invalid', 'true'); } catch (_) { }
+              try { siteBtn.disabled = true; } catch (_) { }
             } else {
-              siteFeedback.className = 'small';
-              siteFeedback.textContent = '';
               try { siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
+              try { siteBtn.disabled = true; } catch (_) { }
             }
           });
         }
@@ -86,7 +83,7 @@
       // Double-click guard
       var __submitting = false;
 
-      siteForm.addEventListener('submit', function (e) {
+      form.addEventListener('submit', function (e) {
         if (__submitting) { e.preventDefault(); return; }
         __submitting = true;
         try { trackEvent('submit_click'); } catch (_) { }
@@ -110,7 +107,7 @@
         if (siteDomain) siteDomain.value = dom;
         // Populate hidden url field with full URL (preserving path)
         var fullUrl = toFullUrl(val);
-        var urlField = siteForm.querySelector('input[name="url"]');
+        var urlField = form.querySelector('input[name="url"]');
         if (urlField && fullUrl) urlField.value = fullUrl;
         try { if (siteInput) siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
         // Toggle public hidden field based on checkbox (runs for all users)
@@ -119,11 +116,21 @@
     } catch (_) { /* swallow */ }
   }
 
+  // Initialize all site crawl forms on the page
+  function initAllSiteCrawlForms() {
+    try {
+      var forms = document.querySelectorAll('.site-crawl-form');
+      for (var i = 0; i < forms.length; i++) {
+        initSiteCrawlForm(forms[i]);
+      }
+    } catch (_) { }
+  }
+
   // Expose as global initializer
   try { window.initSiteCrawlForm = initSiteCrawlForm; } catch (_) { }
 
   // Auto-init when markup exists
-  function _auto() { try { initSiteCrawlForm(); } catch (_) { } }
+  function _auto() { try { initAllSiteCrawlForms(); } catch (_) { } }
   if (document.readyState === 'loading') {
     try { document.addEventListener('DOMContentLoaded', _auto, { once: true }); } catch (_) { document.addEventListener('DOMContentLoaded', _auto); }
   } else {

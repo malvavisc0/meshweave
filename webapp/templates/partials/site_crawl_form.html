@@ -1,37 +1,37 @@
 <!-- Site Crawl Form Partial -->
-<form id="site-form" action="/submit" method="post" aria-labelledby="site-heading">
+<form class="site-crawl-form" action="/submit" method="post" aria-labelledby="site-heading">
   {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
   <input type="hidden" name="return_to"
     value="{{ request.url.path if request and request.url and request.url.path else '/' }}">
   <input type="hidden" name="mode" value="site">
-  <input type="hidden" name="domain" id="site-domain">
+  <input type="hidden" name="domain" class="site-domain">
   <input type="hidden" name="url" value="">
   {% if request.state.current_user %}
-  <input type="hidden" name="public" id="site-public" value="">
+  <input type="hidden" name="public" class="site-public" value="">
   {% else %}
-  <input type="hidden" name="public" id="site-public" value="1">
+  <input type="hidden" name="public" class="site-public" value="1">
   {% endif %}
 
   <!-- Honeypot -->
   <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
     <label for="website">Website</label>
-    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+    <input type="text" name="website" tabindex="-1" autocomplete="off">
   </div>
 
-  <label for="site-input" class="mb-1 block sr-only">URL or domain (e.g., example.com/path):</label>
-  <input type="text" id="site-input" placeholder="example.com or example.com/subpath" required
-    aria-describedby="site-help domain-feedback" autocomplete="off" autocapitalize="off" spellcheck="false"
+  <label class="mb-1 block sr-only">URL or domain (e.g., example.com/path):</label>
+  <input type="text" class="site-input" placeholder="example.com or example.com/subpath" required
+    autocomplete="off" autocapitalize="off" spellcheck="false"
     inputmode="url" aria-invalid="false">
-  <button type="submit" id="site-btn" class="btn btn-primary mt-2" data-track="start_analysis_click"
-    aria-label="Start analysis">Run Analysis</button>
-  <div id="domain-feedback" class="small mt-1" aria-live="polite"></div>
+  <button type="submit" class="btn btn-primary mt-2 site-btn" data-track="start_analysis_click"
+    aria-label="Start analysis" disabled>Run Analysis</button>
+  <div class="small mt-1 domain-feedback"></div>
 
   {% if request.state.current_user %}
-  <div class="mt-2 mb-2"><label for="site-private"><input type="checkbox" id="site-private" checked="checked"> Keep
+  <div class="mt-2 mb-2"><label><input type="checkbox" class="site-private" checked="checked"> Keep
       private</label></div>
   {% endif %}
 
-  <div id="site-help" class="small mt-2">
+  <div class="small mt-2 site-help">
     <p><strong>Free analysis — no sign-up required.</strong> Results in a few minutes.</p>
     {% if request.state.current_user %}
     <p>Analyses are private by default when logged in.</p>

@@ -559,6 +559,12 @@ select:focus {
   background: var(--component-input-bg);
 }
 
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-bottom-color: var(--color-semantic-error) !important;
+}
+
 /* Labels */
 label {
   font: var(--font-body);
