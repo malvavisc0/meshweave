@@ -87,6 +87,59 @@ async def discover_sitemap_urls(
     urls: list[str] = []
     seen_sitemaps: set[str] = set()
 
+    candidates = await _sitemap_candidates(d, robots_sitemaps, session, sources)
+    dedup_candidates = _dedupe(candidates)
+
+    fetch_queue: deque[str] = deque(dedup_candidates)
+    # Limit nested sitemap traversal
+    child_sitemap_limit = 20
+
+    while fetch_queue and len(urls) < max_urls:
+        sm_url = fetch_queue.popleft()
+        if sm_url in seen_sitemaps:
+            continue
+        seen_sitemaps.add(sm_url)
+
+        text = await fetch_text(sm_url, session=session, timeout=12.0)
+        meta: dict[str, Any] = {
+            "type": "sitemap",
+            "url": sm_url,
+            "ok": bool(text),
+        }
+        if not text:
+            sources.append(meta)
+            continue
+
+        page_urls, child_sitemaps = _parse_sitemap_xml(text, base_url=sm_url)
+
+        # Enqueue child sitemaps within limit
+        for cs in child_sitemaps:
+            if len(seen_sitemaps) + len(fetch_queue) >= child_sitemap_limit:
+                break
+            if cs not in seen_sitemaps:
+                fetch_queue.append(cs)
+
+        # Collect URLs up to max
+        for u in page_urls:
+            if len(urls) >= max_urls:
+                break
+            urls.append(u)
+
+        meta["ok"] = True
+        meta["urls"] = len(page_urls)
+        meta["children"] = len(child_sitemaps)
+        sources.append(meta)
+
+    return urls, {"sources": sources}
+
+
+async def _sitemap_candidates(
+    d: str,
+    robots_sitemaps: list[str] | None,
+    session: BrowserSession,
+    sources: list[dict[str, Any]],
+) -> list[str]:
+    """Collect sitemap candidate URLs from robots.txt and common endpoints."""
     candidates: list[str] = []
     if robots_sitemaps is not None:
         # Use pre-fetched sitemap URLs (avoid redundant fetch). These are
@@ -141,8 +194,11 @@ async def discover_sitemap_urls(
                 f"http://{d}/sitemap_index.xml",
             ]
         )
+    return candidates
 
-    # De-duplicate candidates preserving order
+
+def _dedupe(candidates: list[str]) -> list[str]:
+    """De-duplicate candidates preserving order."""
     seen_c: set[str] = set()
     dedup_candidates: list[str] = []
     for c in candidates:
@@ -151,45 +207,4 @@ async def discover_sitemap_urls(
             continue
         seen_c.add(c)
         dedup_candidates.append(c)
-
-    fetch_queue: deque[str] = deque(dedup_candidates)
-    # Limit nested sitemap traversal
-    child_sitemap_limit = 20
-
-    while fetch_queue and len(urls) < max_urls:
-        sm_url = fetch_queue.popleft()
-        if sm_url in seen_sitemaps:
-            continue
-        seen_sitemaps.add(sm_url)
-
-        text = await fetch_text(sm_url, session=session, timeout=12.0)
-        meta: dict[str, Any] = {
-            "type": "sitemap",
-            "url": sm_url,
-            "ok": bool(text),
-        }
-        if not text:
-            sources.append(meta)
-            continue
-
-        page_urls, child_sitemaps = _parse_sitemap_xml(text, base_url=sm_url)
-
-        # Enqueue child sitemaps within limit
-        for cs in child_sitemaps:
-            if len(seen_sitemaps) + len(fetch_queue) >= child_sitemap_limit:
-                break
-            if cs not in seen_sitemaps:
-                fetch_queue.append(cs)
-
-        # Collect URLs up to max
-        for u in page_urls:
-            if len(urls) >= max_urls:
-                break
-            urls.append(u)
-
-        meta["ok"] = True
-        meta["urls"] = len(page_urls)
-        meta["children"] = len(child_sitemaps)
-        sources.append(meta)
-
-    return urls, {"sources": sources}
+    return dedup_candidates

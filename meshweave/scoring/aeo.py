@@ -10,7 +10,8 @@ Each factor takes the crawl payload (dict) and returns a dict with:
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime
+from typing import Any
 
 
 def score_schema(payload: dict) -> dict:
@@ -64,34 +65,7 @@ def score_content_structure(payload: dict) -> dict:
     Per-page scoring, then averaged across all pages.
     """
     # Collect pages — site crawls have markdowns (or pages), page crawls have page
-    pages_data = []
-
-    # Site crawl: pages live in payload["markdowns"]; payload["pages"] is a
-    # derived view of the same pages, so use exactly one source to avoid
-    # double-counting (which inflates pages_evaluated and skews the average).
-    md_dict = payload.get("markdowns") or {}
-    if md_dict and isinstance(md_dict, dict):
-        for _url, page_data in md_dict.items():
-            if isinstance(page_data, dict):
-                pages_data.append(page_data)
-    elif isinstance(md_dict, list):
-        # Some payloads store pages as a list
-        for item in md_dict:
-            if isinstance(item, dict):
-                pages_data.append(item)
-    else:
-        # Fall back to payload["pages"] only when there are no markdowns
-        pages_list = payload.get("pages") or []
-        if isinstance(pages_list, list):
-            for item in pages_list:
-                if isinstance(item, dict) and "page" in item:
-                    pages_data.append(item)
-
-    # Single page crawl
-    if not pages_data:
-        single_page = payload.get("page") or {}
-        if single_page:
-            pages_data.append(payload)
+    pages_data = _content_structure_pages(payload)
 
     if not pages_data:
         return {
@@ -125,9 +99,77 @@ def score_content_structure(payload: dict) -> dict:
     }
 
 
+def _content_structure_pages(payload: dict) -> list[dict]:
+    """Collect per-page dicts for content-structure scoring.
+
+    Site crawls have markdowns (or a derived pages view); page crawls
+    have a single page. One source is used to avoid double-counting.
+    """
+    pages_data: list[dict] = []
+
+    md_dict = payload.get("markdowns") or {}
+    if isinstance(md_dict, dict):
+        pages_data = [p for p in md_dict.values() if isinstance(p, dict)]
+    elif isinstance(md_dict, list):
+        # Some payloads store pages as a list
+        pages_data = [item for item in md_dict if isinstance(item, dict)]
+    else:
+        # Fall back to payload["pages"] only when there are no markdowns
+        pages_list = payload.get("pages") or []
+        if isinstance(pages_list, list):
+            pages_data = [
+                item for item in pages_list if isinstance(item, dict) and "page" in item
+            ]
+
+    # Single page crawl
+    if not pages_data:
+        single_page = payload.get("page") or {}
+        if single_page:
+            pages_data.append(payload)
+
+    return pages_data
+
+
 def _score_single_page(page_data: dict) -> float:
     """Score a single page's content structure (0-100)."""
-    # Extract headings and content_metrics from nested structure
+    headings, metrics = _page_headings_metrics(page_data)
+
+    h1_count = headings.get("h1_count") or len(headings.get("h1") or [])
+    depth = headings.get("depth") or 0
+    words = metrics.get("words") or 0
+
+    pts = 0.0
+    if h1_count == 1:
+        pts += 15
+    if depth >= 2:
+        pts += 15
+    if (metrics.get("lists") or 0) > 0:
+        pts += 10
+    if (metrics.get("tables") or 0) > 0:
+        pts += 10
+    if words >= 300:
+        pts += 15
+    if words >= 1000:
+        pts += 10
+
+    img_total = metrics.get("images_total") or 0
+    img_alt = metrics.get("images_with_alt") or 0
+    if img_total > 0 and (img_alt / img_total) >= 0.8:
+        pts += 10
+
+    if (metrics.get("paragraphs") or 0) >= 5:
+        pts += 10
+    if (headings.get("total") or 0) >= 5:
+        pts += 10
+
+    # faq bonus: +5
+    # (checked at site level, not per-page in this implementation)
+
+    return min(100.0, pts)
+
+
+def _page_headings_metrics(page_data: dict) -> tuple[dict, dict]:
+    """Extract headings and content_metrics, with nested-page fallback."""
     headings = page_data.get("headings") or {}
     metrics = page_data.get("content_metrics") or {}
 
@@ -137,57 +179,7 @@ def _score_single_page(page_data: dict) -> float:
         headings = page_info.get("headings") or headings
         metrics = page_info.get("content_metrics") or metrics
 
-    pts = 0.0
-
-    # h1_count == 1: +15
-    h1_count = headings.get("h1_count") or len(headings.get("h1") or [])
-    if h1_count == 1:
-        pts += 15
-
-    # heading_depth >= 2: +15
-    depth = headings.get("depth") or 0
-    if depth >= 2:
-        pts += 15
-
-    # has_lists (lists > 0): +10
-    lists = metrics.get("lists") or 0
-    if lists > 0:
-        pts += 10
-
-    # has_tables (tables > 0): +10
-    tables = metrics.get("tables") or 0
-    if tables > 0:
-        pts += 10
-
-    # word_count >= 300: +15
-    words = metrics.get("words") or 0
-    if words >= 300:
-        pts += 15
-
-    # word_count >= 1000: +10 bonus
-    if words >= 1000:
-        pts += 10
-
-    # images_with_alt / images_total >= 0.8: +10
-    img_total = metrics.get("images_total") or 0
-    img_alt = metrics.get("images_with_alt") or 0
-    if img_total > 0 and (img_alt / img_total) >= 0.8:
-        pts += 10
-
-    # paragraphs >= 5: +10
-    paragraphs = metrics.get("paragraphs") or 0
-    if paragraphs >= 5:
-        pts += 10
-
-    # headings_total >= 5: +10
-    total_headings = headings.get("total") or 0
-    if total_headings >= 5:
-        pts += 10
-
-    # faq bonus: +5
-    # (checked at site level, not per-page in this implementation)
-
-    return min(100.0, pts)
+    return headings, metrics
 
 
 def score_freshness(payload: dict) -> dict:
@@ -210,44 +202,8 @@ def score_freshness(payload: dict) -> dict:
     md_dict = payload.get("markdowns") or {}
     origin_url = (page.get("url") or page.get("canonical") or "").rstrip("/")
 
-    pages_jsonld: list[list[dict]] = []
-    seen_urls: set[str] = set()
-    start_ld = [ld for ld in page.get("jsonld") or [] if isinstance(ld, dict)]
-    if start_ld:
-        pages_jsonld.append(start_ld)
-        if origin_url:
-            seen_urls.add(origin_url)
-    if isinstance(md_dict, dict):
-        for url, md_data in md_dict.items():
-            if not isinstance(md_data, dict):
-                continue
-            key = str(url).rstrip("/")
-            if key in seen_urls:
-                continue
-            pg = md_data.get("page") or {}
-            lds = [ld for ld in pg.get("jsonld") or [] if isinstance(ld, dict)]
-            if lds:
-                pages_jsonld.append(lds)
-                seen_urls.add(key)
-
-    dates: list[datetime] = []
-    pages_with_dates = 0
-    for lds in pages_jsonld:
-        page_had_date = False
-        for ld in lds:
-            for key in ("datePublished", "dateModified", "dateCreated"):
-                val = ld.get(key)
-                if val:
-                    try:
-                        d = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
-                        if d.tzinfo is None:
-                            d = d.replace(tzinfo=UTC)
-                        dates.append(d)
-                        page_had_date = True
-                    except Exception:
-                        pass
-        if page_had_date:
-            pages_with_dates += 1
+    pages_jsonld = _collect_date_jsonld(page, md_dict, origin_url)
+    dates, pages_with_dates = _extract_dates(pages_jsonld)
 
     if not dates:
         return {
@@ -268,16 +224,7 @@ def score_freshness(payload: dict) -> dict:
     days_old = [max(0, (now - d).days) for d in dates]
     avg_days = sum(days_old) / len(days_old) if days_old else 0
 
-    if avg_days <= 30:
-        score = 100.0
-    elif avg_days <= 90:
-        score = 80.0
-    elif avg_days <= 180:
-        score = 60.0
-    elif avg_days <= 365:
-        score = 40.0
-    else:
-        score = 20.0
+    score = _freshness_score(avg_days)
 
     return {
         "score": score,
@@ -290,6 +237,70 @@ def score_freshness(payload: dict) -> dict:
             "pages_with_dates": pages_with_dates,
         },
     }
+
+
+def _collect_date_jsonld(
+    page: dict,
+    md_dict: Any,
+    origin_url: str,
+) -> list[list[dict]]:
+    """One JSON-LD list per unique page, deduplicated by URL."""
+    pages_jsonld: list[list[dict]] = []
+    seen_urls: set[str] = set()
+    start_ld = [ld for ld in page.get("jsonld") or [] if isinstance(ld, dict)]
+    if start_ld:
+        pages_jsonld.append(start_ld)
+        if origin_url:
+            seen_urls.add(origin_url)
+    if isinstance(md_dict, dict):
+        for url, md_data in md_dict.items():
+            if not isinstance(md_data, dict):
+                continue
+            key = str(url).rstrip("/")
+            if key in seen_urls:
+                continue
+            pg = md_data.get("page") or {}
+            lds = [ld for ld in pg.get("jsonld") or [] if isinstance(ld, dict)]
+            if lds:
+                pages_jsonld.append(lds)
+                seen_urls.add(key)
+    return pages_jsonld
+
+
+def _extract_dates(pages_jsonld: list[list[dict]]) -> tuple[list[datetime], int]:
+    """Collect published/modified/created dates and count pages that have them."""
+    dates: list[datetime] = []
+    pages_with_dates = 0
+    for lds in pages_jsonld:
+        page_had_date = False
+        for ld in lds:
+            for key in ("datePublished", "dateModified", "dateCreated"):
+                val = ld.get(key)
+                if val:
+                    try:
+                        d = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+                        if d.tzinfo is None:
+                            d = d.replace(tzinfo=UTC)
+                        dates.append(d)
+                        page_had_date = True
+                    except Exception:
+                        pass
+        if page_had_date:
+            pages_with_dates += 1
+    return dates, pages_with_dates
+
+
+def _freshness_score(avg_days: float) -> float:
+    """Map average page age in days to a 0-100 freshness score band."""
+    if avg_days <= 30:
+        return 100.0
+    if avg_days <= 90:
+        return 80.0
+    if avg_days <= 180:
+        return 60.0
+    if avg_days <= 365:
+        return 40.0
+    return 20.0
 
 
 def score_capture_rate(user_input: float | None = None) -> dict:

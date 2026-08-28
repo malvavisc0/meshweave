@@ -95,6 +95,57 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
     skip_reasons = {k: v for k, v in conditions.items() if v is not None}
 
     # Run eligible tests concurrently
+    tasks = _build_aax_tasks(
+        conditions,
+        domain=domain,
+        homepage_md=homepage_md,
+        page=page,
+        md_dict=md_dict,
+    )
+    results, skip_reasons = await _gather_results(tasks, skip_reasons)
+
+    # Test 6: Contactability (heuristic — no LLM)
+    contactability = _compute_contactability(payload)
+
+    # Test 7: Email Validation (LLM — only if emails were found)
+    email_validation, skip_reasons = await _run_email_validation(
+        payload, domain, skip_reasons
+    )
+
+    # Generate one-line summary verdict for the hero card
+    summary_text = await _generate_aax_summary(domain, results)
+
+    # Build aggregate result
+    completed = len(results) + (1 if email_validation else 0)
+    skipped = len(skip_reasons)
+
+    result = AAXAnalysisResult(
+        status="completed",
+        model_id=os.getenv("OPENAILIKE_LLM", "auto"),
+        tests_completed=completed,
+        tests_skipped=skipped,
+        homepage_comprehension=results.get("homepage_comprehension"),
+        meta_optimization=results.get("meta_optimization"),
+        content_delta=results.get("content_delta"),
+        contactability=contactability,
+        email_validation=email_validation,
+        llms_txt=payload.get("llms_txt"),
+        summary=summary_text,
+        skip_reasons=skip_reasons,
+    )
+
+    return result.model_dump(mode="json")
+
+
+def _build_aax_tasks(
+    conditions: dict,
+    *,
+    domain: str,
+    homepage_md: str,
+    page: dict,
+    md_dict: Any,
+) -> dict[str, asyncio.Task]:
+    """Schedule the eligible AAX LLM tests concurrently."""
     tasks: dict[str, asyncio.Task] = {}
 
     # Test 2: Homepage Comprehension
@@ -135,7 +186,14 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
                 run_structured_test(ContentDeltaResult, p, s)
             )
 
-    # Wait for all tasks
+    return tasks
+
+
+async def _gather_results(
+    tasks: dict[str, asyncio.Task],
+    skip_reasons: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Await all scheduled tasks, collecting results and failures."""
     results: dict[str, Any] = {}
     if tasks:
         done = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -145,66 +203,53 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
                 skip_reasons[key] = f"Test failed: {result}"
             else:
                 results[key] = result
+    return results, skip_reasons
 
-    # Test 6: Contactability (heuristic — no LLM)
-    contactability = _compute_contactability(payload)
 
-    # Test 7: Email Validation (LLM — only if emails were found)
-    email_validation = None
+async def _run_email_validation(
+    payload: dict,
+    domain: str,
+    skip_reasons: dict[str, str],
+) -> tuple[Any, dict[str, str]]:
+    """Run the email-validation LLM test when quality emails exist."""
     quality_emails = _filter_quality_emails(payload)
-    if quality_emails:
-        try:
-            p, s = email_validation_prompt(domain, quality_emails)
-            email_validation = await run_structured_test(EmailValidationResult, p, s)
-        except Exception as e:
-            logger.warning("Email validation test failed: %s", e)
-            skip_reasons["email_validation"] = f"Test failed: {e}"
-    else:
+    if not quality_emails:
         skip_reasons["email_validation"] = "No valid email addresses found to validate"
+        return None, skip_reasons
+    try:
+        p, s = email_validation_prompt(domain, quality_emails)
+        return await run_structured_test(EmailValidationResult, p, s), skip_reasons
+    except Exception as e:
+        logger.warning("Email validation test failed: %s", e)
+        skip_reasons["email_validation"] = f"Test failed: {e}"
+        return None, skip_reasons
 
-    # Generate one-line summary verdict for the hero card
-    summary_text = ""
+
+async def _generate_aax_summary(domain: str, results: dict[str, Any]) -> str:
+    """Generate the one-line summary verdict for the hero card."""
+    from meshweave.ai.models import AAXSummaryResult
+
     try:
         hc_data = results.get("homepage_comprehension")
         cd_data = results.get("content_delta")
-        hc_dict = (
-            hc_data.model_dump()
-            if hc_data and hasattr(hc_data, "model_dump")
-            else (hc_data if isinstance(hc_data, dict) else None)
-        )
-        cd_dict = (
-            cd_data.model_dump()
-            if cd_data and hasattr(cd_data, "model_dump")
-            else (cd_data if isinstance(cd_data, dict) else None)
-        )
+        hc_dict = _as_dict(hc_data)
+        cd_dict = _as_dict(cd_data)
         p, s = aax_summary_prompt(domain, hc_dict, cd_dict)
-        from meshweave.ai.models import AAXSummaryResult
 
         summary_result = await run_structured_test(AAXSummaryResult, p, s)
-        summary_text = summary_result.summary
+        return summary_result.summary
     except Exception as e:
         logger.warning("AAX summary generation failed: %s", e)
+        return ""
 
-    # Build aggregate result
-    completed = len(results) + (1 if email_validation else 0)
-    skipped = len(skip_reasons)
 
-    result = AAXAnalysisResult(
-        status="completed",
-        model_id=os.getenv("OPENAILIKE_LLM", "auto"),
-        tests_completed=completed,
-        tests_skipped=skipped,
-        homepage_comprehension=results.get("homepage_comprehension"),
-        meta_optimization=results.get("meta_optimization"),
-        content_delta=results.get("content_delta"),
-        contactability=contactability,
-        email_validation=email_validation,
-        llms_txt=payload.get("llms_txt"),
-        summary=summary_text,
-        skip_reasons=skip_reasons,
-    )
-
-    return result.model_dump(mode="json")
+def _as_dict(data: Any) -> dict | None:
+    """Coerce a structured-test result to a plain dict, or None."""
+    model_dump = getattr(data, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else None
+    return data if isinstance(data, dict) else None
 
 
 def _compute_contactability(payload: dict) -> ContactabilityResult:
@@ -229,22 +274,12 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     ]
     result.email_count = len(unique_emails)
 
-    if same_domain_emails:
-        result.has_email = True
-        pts += 20
-    elif unique_emails:
-        result.has_email = True
-        pts += 5  # Third-party emails only
+    pts, result = _score_email_presence(pts, result, same_domain_emails, unique_emails)
 
     # mailto links
-    for src in sources:
-        found_as = src.get("found_as", []) if isinstance(src, dict) else []
-        if isinstance(found_as, str):
-            found_as = [found_as]
-        if "mailto" in found_as:
-            result.has_mailto = True
-            pts += 10
-            break
+    if any("mailto" in _found_as(src) for src in sources):
+        result.has_mailto = True
+        pts += 10
 
     # Contact/about page
     md_dict = payload.get("markdowns") or {}
@@ -260,37 +295,16 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     # Email on homepage or contact page. emails_by_url is keyed by the full
     # crawled URL (e.g. "https://example.com/"), so detect the homepage by its
     # root path rather than a literal "/" key.
-    from urllib.parse import urlparse
-
-    homepage_emails: list[str] = []
-    for u, emails_list in by_url.items():
-        if urlparse(u).path in ("", "/"):
-            homepage_emails.extend(emails_list or [])
-    contact_emails: list[str] = []
-    for cp in contact_pages:
-        contact_emails.extend(by_url.get(cp, []) or [])
+    homepage_emails = _homepage_emails(by_url)
+    contact_emails = _contact_emails(by_url, contact_pages)
     if homepage_emails or contact_emails:
         pts += 15
 
     # JSON-LD ContactPoint
-    all_jsonld = []
-    page = payload.get("page") or {}
-    for ld in page.get("jsonld") or []:
-        if isinstance(ld, dict):
-            all_jsonld.append(ld)
-    for _url, data in md_dict.items():
-        if isinstance(data, dict):
-            pg = data.get("page") or data
-            for ld in pg.get("jsonld") or []:
-                if isinstance(ld, dict):
-                    all_jsonld.append(ld)
-
-    for ld in all_jsonld:
-        ld_type = (ld.get("@type") or "").lower()
-        if "contactpoint" in ld_type or "contact" in ld_type:
-            result.has_contact_point_schema = True
-            pts += 15
-            break
+    all_jsonld = _contactability_jsonld(payload, md_dict)
+    if _has_contactpoint_schema(all_jsonld):
+        result.has_contact_point_schema = True
+        pts += 15
 
     # Social links (sameAs)
     entity = (payload.get("audit") or {}).get("entity") or {}
@@ -304,18 +318,43 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     if any(
         any(e.lower().startswith(p) for p in generic_prefixes) for e in unique_emails
     ):
-        result.has_generic_email = True
         pts += 10
 
     # Phone number in JSON-LD
-    for ld in all_jsonld:
-        if ld.get("telephone") or ld.get("phone"):
-            result.has_phone = True
-            pts += 10
-            break
+    if any(ld.get("telephone") or ld.get("phone") for ld in all_jsonld):
+        pts += 10
 
     # Penalties
-    if unique_emails and not result.has_mailto:
+    pts, penalties = _contactability_penalties(
+        pts,
+        penalties,
+        unique_emails=unique_emails,
+        has_mailto=result.has_mailto,
+        by_url=by_url,
+        homepage_emails=homepage_emails,
+        contact_emails=contact_emails,
+        same_domain_emails=same_domain_emails,
+    )
+
+    result.score = max(0.0, min(100.0, float(pts)))
+    result.penalties = penalties
+
+    return result
+
+
+def _contactability_penalties(
+    pts: int,
+    penalties: list[str],
+    *,
+    unique_emails: list[str],
+    has_mailto: bool,
+    by_url: dict,
+    homepage_emails: list[str],
+    contact_emails: list[str],
+    same_domain_emails: list[str],
+) -> tuple[int, list[str]]:
+    """Apply contactability point penalties and log their reasons."""
+    if unique_emails and not has_mailto:
         pts -= 10
         penalties.append("All emails are obfuscated-only (no mailto links)")
 
@@ -336,10 +375,77 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
         pts = min(pts, 20)
         penalties.append("No same-domain email addresses found")
 
-    result.score = max(0.0, min(100.0, float(pts)))
-    result.penalties = penalties
+    return pts, penalties
 
-    return result
+
+def _found_as(src: Any) -> list[str]:
+    """Normalize the ``found_as`` source field to a list of strings."""
+    if not isinstance(src, dict):
+        return []
+    found_as = src.get("found_as", [])
+    if isinstance(found_as, str):
+        return [found_as]
+    return list(found_as) if isinstance(found_as, list) else []
+
+
+def _score_email_presence(
+    pts: int,
+    result: ContactabilityResult,
+    same_domain_emails: list[str],
+    unique_emails: list[str],
+) -> tuple[int, ContactabilityResult]:
+    """Award points for same-domain vs third-party email presence."""
+    if same_domain_emails:
+        result.has_email = True
+        return pts + 20, result
+    if unique_emails:
+        result.has_email = True
+        return pts + 5, result  # Third-party emails only
+    return pts, result
+
+
+def _homepage_emails(by_url: dict) -> list[str]:
+    """Emails found on the homepage (root path) keyed in emails_by_url."""
+    from urllib.parse import urlparse
+
+    emails: list[str] = []
+    for u, emails_list in by_url.items():
+        if urlparse(u).path in ("", "/"):
+            emails.extend(emails_list or [])
+    return emails
+
+
+def _contact_emails(by_url: dict, contact_pages: list[str]) -> list[str]:
+    """Emails found on contact/about pages."""
+    emails: list[str] = []
+    for cp in contact_pages:
+        emails.extend(by_url.get(cp, []) or [])
+    return emails
+
+
+def _contactability_jsonld(payload: dict, md_dict: dict) -> list[dict]:
+    """All JSON-LD dicts from the start page and markdown pages."""
+    all_jsonld: list[dict] = []
+    page = payload.get("page") or {}
+    for ld in page.get("jsonld") or []:
+        if isinstance(ld, dict):
+            all_jsonld.append(ld)
+    for _url, data in md_dict.items():
+        if isinstance(data, dict):
+            pg = data.get("page") or data
+            for ld in pg.get("jsonld") or []:
+                if isinstance(ld, dict):
+                    all_jsonld.append(ld)
+    return all_jsonld
+
+
+def _has_contactpoint_schema(all_jsonld: list[dict]) -> bool:
+    """True when any JSON-LD block declares a ContactPoint/contact type."""
+    for ld in all_jsonld:
+        ld_type = (ld.get("@type") or "").lower()
+        if "contactpoint" in ld_type or "contact" in ld_type:
+            return True
+    return False
 
 
 # Known-bad email prefixes that should never be treated as valid contacts
@@ -375,14 +481,30 @@ def _filter_quality_emails(payload: dict) -> list[dict]:
     if not unique_emails:
         return []
 
-    # Build reverse map: email → list of pages it was found on
+    email_pages = _email_page_map(by_url)
+    email_sources = _email_source_map(sources)
+
+    quality = []
+    for email in unique_emails:
+        item = _quality_item(email, email_pages, email_sources)
+        if item is not None:
+            quality.append(item)
+
+    return quality
+
+
+def _email_page_map(by_url: dict) -> dict[str, list[str]]:
+    """Build reverse map: email → list of pages it was found on."""
     email_pages: dict[str, list[str]] = {}
     for url, email_list in by_url.items():
         if isinstance(email_list, list):
             for email in email_list:
                 email_pages.setdefault(email, []).append(url)
+    return email_pages
 
-    # Build reverse map: email → source type (from found_as field)
+
+def _email_source_map(sources: list) -> dict[str, str]:
+    """Build reverse map: email → source type (from found_as field)."""
     email_sources: dict[str, str] = {}
     if isinstance(sources, list):
         for src in sources:
@@ -393,37 +515,39 @@ def _filter_quality_emails(payload: dict) -> list[dict]:
                 else:
                     source_str = str(found_as) if found_as else "unknown"
                 email_sources[src.get("email", "")] = source_str
+    return email_sources
 
-    quality = []
-    for email in unique_emails:
-        local_part = email.split("@")[0].lower() if "@" in email else ""
 
-        # Skip known-bad prefixes
-        if any(local_part.startswith(prefix) for prefix in _BAD_EMAIL_PREFIXES):
-            continue
+def _quality_item(
+    email: str,
+    email_pages: dict[str, list[str]],
+    email_sources: dict[str, str],
+) -> dict | None:
+    """Return a quality email item, or None if the email should be skipped."""
+    local_part = email.split("@")[0].lower() if "@" in email else ""
 
-        # Skip very short local parts (likely garbled)
-        if len(local_part) < 2:
-            continue
+    # Skip known-bad prefixes
+    if any(local_part.startswith(prefix) for prefix in _BAD_EMAIL_PREFIXES):
+        return None
 
-        pages = email_pages.get(email, [])
-        source = email_sources.get(email, "text")
+    # Skip very short local parts (likely garbled)
+    if len(local_part) < 2:
+        return None
 
-        # Show page paths, not full crawl URLs: the crawl host can differ
-        # from the site's canonical domain (staging/internal crawls), and a
-        # host mismatch between the prompt's domain and the listed page
-        # URLs reads as "emails not on the company's site".
-        page_display = ", ".join(_url_path(p) for p in pages[:5]) or "unknown"
+    pages = email_pages.get(email, [])
+    source = email_sources.get(email, "text")
 
-        quality.append(
-            {
-                "email": email,
-                "source": source,
-                "page": page_display,
-            }
-        )
+    # Show page paths, not full crawl URLs: the crawl host can differ
+    # from the site's canonical domain (staging/internal crawls), and a
+    # host mismatch between the prompt's domain and the listed page
+    # URLs reads as "emails not on the company's site".
+    page_display = ", ".join(_url_path(p) for p in pages[:5]) or "unknown"
 
-    return quality
+    return {
+        "email": email,
+        "source": source,
+        "page": page_display,
+    }
 
 
 def _url_path(url: str) -> str:

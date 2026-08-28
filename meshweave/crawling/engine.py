@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..extraction import (
@@ -28,6 +29,57 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "bfs_crawl",
 ]
+
+
+@dataclass
+class _CrawlState:
+    """Mutable state accumulated across BFS iterations."""
+
+    origin: str
+    origin_pfx: str
+    session: BrowserSession
+    include_emails: bool
+    deobfuscate_emails: bool
+    throttle_ms: int
+    per_page_timeout: float
+    crawl_max_pages: int
+    max_depth: int
+    cache_dir: str | None
+    url_filter: Callable[[str], bool] | None
+    on_page_crawled: Callable[[str, dict[str, Any]], Awaitable[None]] | None
+
+    visited_norm: set[str] = field(default_factory=set)
+    visited_list: list[str] = field(default_factory=list)
+    markdowns: dict[str, dict[str, Any]] = field(default_factory=dict)
+    all_emails: set[str] = field(default_factory=set)
+    email_sources: list[dict[str, Any]] = field(default_factory=list)
+    emails_by_url: dict[str, list[str]] = field(default_factory=dict)
+    seeded: int = 0
+    frontier_truncated_by_depth: bool = False
+
+    def enqueue(
+        self, q: deque[tuple[str, int]], href: str, base: str, depth: int
+    ) -> bool:
+        absu = normalize_abs_url(href, base)
+        if (
+            absu
+            and should_follow(absu, self.origin_pfx)
+            and absu not in self.visited_norm
+            # Bound queued work to the page budget using *actual* visits plus
+            # already-queued URLs. visited_norm is reserved for dedup only, so
+            # failed renders / redirect aliases don't shrink the budget.
+            and len(self.visited_list) + len(q) < self.crawl_max_pages
+        ):
+            if self.url_filter and not self.url_filter(absu):
+                return False
+            self.visited_norm.add(absu)
+            q.append((absu, depth))
+            return True
+        return False
+
+    async def wait_throttle(self) -> None:
+        if self.throttle_ms > 0:
+            await asyncio.sleep(self.throttle_ms / 1000)
 
 
 async def bfs_crawl(
@@ -89,56 +141,32 @@ async def bfs_crawl(
         Keys: ``visited``, ``markdowns``, ``stop_reason``, ``seeded``,
         ``all_emails``, ``emails_by_url``, ``email_sources``.
     """
-    visited_norm: set[str] = set()
-    visited_list: list[str] = []
-    markdowns: dict[str, dict[str, Any]] = {}
-    stop_reason = "queue_empty"
-    frontier_truncated_by_depth = False
+    state = _CrawlState(
+        origin=origin,
+        origin_pfx=origin_prefix(origin),
+        session=session,
+        include_emails=include_emails,
+        deobfuscate_emails=deobfuscate_emails,
+        throttle_ms=throttle_ms,
+        per_page_timeout=per_page_timeout,
+        crawl_max_pages=crawl_max_pages,
+        max_depth=max_depth,
+        cache_dir=cache_dir,
+        url_filter=url_filter,
+        on_page_crawled=on_page_crawled,
+    )
 
-    origin_pfx = origin_prefix(origin)
     norm_start = normalize_abs_url(origin, origin)
     if norm_start:
-        visited_norm.add(norm_start)
-        visited_list.append(origin)
-
-    all_emails: set[str] = set()
-    email_sources: list[dict[str, Any]] = []
-    emails_by_url: dict[str, list[str]] = {}
+        state.visited_norm.add(norm_start)
+        state.visited_list.append(origin)
 
     q: deque[tuple[str, int]] = deque()
-
-    def _enqueue(href: str, base: str, depth: int) -> bool:
-        absu = normalize_abs_url(href, base)
-        if (
-            absu
-            and should_follow(absu, origin_pfx)
-            and absu not in visited_norm
-            # Bound queued work to the page budget using *actual* visits plus
-            # already-queued URLs. visited_norm is reserved for dedup only, so
-            # failed renders / redirect aliases don't shrink the budget.
-            and len(visited_list) + len(q) < crawl_max_pages
-        ):
-            if url_filter and not url_filter(absu):
-                return False
-            visited_norm.add(absu)
-            q.append((absu, depth))
-            return True
-        return False
-
-    # Seed from start page links (shortest URLs first, then alpha).
-    # Links discovered on the origin page are first-hop, i.e. depth 1.
-    for href in sorted(internal_links, key=lambda u: (len(u), u)):
-        _enqueue(href, origin, 1)
-
-    # Seed from sitemap (shortest URLs first, then alpha). Sitemap URLs are
-    # treated as first-hop seeds (depth 1) so depth stays a pure BFS hop count.
-    seeded = 0
-    for su in sorted(sitemap_seeds or [], key=lambda u: (len(u), u)):
-        if _enqueue(su, origin, 1):
-            seeded += 1
+    _seed_queue(state, q, internal_links, sitemap_seeds, origin)
 
     # BFS loop
-    while q and len(visited_list) < crawl_max_pages:
+    stop_reason = "queue_empty"
+    while q and len(state.visited_list) < crawl_max_pages:
         # Cooperative cancellation check
         if should_continue and not (await should_continue()):
             stop_reason = "cancelled"
@@ -152,119 +180,165 @@ async def bfs_crawl(
         if max_depth > 0 and depth > max_depth:
             continue
 
-        try:
-            html2, m2 = await get_rendered_html(
-                url=u,
-                session=session,
-                progressive_scroll=False,
-                return_metrics=True,
-                timeout=max(1.0, per_page_timeout),
-                wait_until="networkidle",
-                cache_dir=cache_dir,
-            )
-        except Exception:
-            logger.debug("Failed to fetch %s", u, exc_info=True)
-            if throttle_ms > 0:
-                await asyncio.sleep(throttle_ms / 1000)
+        if not await _crawl_page(state, q, u, depth):
             continue
 
-        final_u = str(getattr(m2, "final_url", u)) or u
-
-        # Track the final (possibly redirected) URL to avoid revisits
-        norm_final = normalize_abs_url(final_u, final_u)
-        if norm_final and norm_final != normalize_abs_url(u, u):
-            if norm_final in visited_norm:
-                # Already visited via a different URL
-                if throttle_ms > 0:
-                    await asyncio.sleep(throttle_ms / 1000)
-                continue
-            visited_norm.add(norm_final)
-
-        if not should_follow(final_u, origin_pfx):
-            if throttle_ms > 0:
-                await asyncio.sleep(throttle_ms / 1000)
-            continue
-
-        visited_list.append(final_u)
-
-        # Per-page render metrics
-        render_metrics = render_metrics_to_dict(m2)
-
-        # Generate markdown and extract metadata for crawled page
-        soup_raw = None
-        page_data: dict[str, Any] = {}
-        try:
-            soup_raw = soup_from_html(html2)
-            page_meta = extract_page_meta(soup_raw)
-            soup_pre = preprocess_soup(
-                soup_raw,
-                base_url=final_u,
-                final_url=final_u,
-            )
-            md = to_markdown(soup_pre)
-            page_data = {
-                "markdown": md,
-                "page": page_meta,
-                "headings": extract_headings(soup_raw),
-                "content_metrics": extract_content_metrics(soup_raw, markdown=md),
-            }
-            markdowns[final_u] = page_data
-        except Exception:
-            logger.debug("Extraction failed for %s", final_u, exc_info=True)
-
-        # Per-page emails
-        collect_emails(
-            html2,
-            final_u,
-            include_emails=include_emails,
-            deobfuscate_emails=deobfuscate_emails,
-            all_emails=all_emails,
-            emails_by_url=emails_by_url,
-            email_sources=email_sources,
-        )
-
-        # Per-page links and extraction metrics
-        link_soup = soup_raw if soup_raw is not None else soup_from_html(html2)
-        new_int, new_ext, ext_metrics = classify_links(link_soup, base_url=final_u)
-        page_data["links"] = {"internal": new_int, "external": new_ext}
-        page_data["extraction_metrics"] = ext_metrics
-        page_data["render_metrics"] = render_metrics
-        page_data["emails_unique"] = emails_by_url.get(final_u, [])
-
-        # Expand BFS frontier (only if within depth limit)
-        if max_depth == 0 or depth < max_depth:
-            for href2 in new_int:
-                _enqueue(href2, final_u, depth + 1)
-        elif new_int:
-            # Internal links exist but the depth limit stops us from following
-            # them — the crawl is bounded by depth rather than running dry.
-            frontier_truncated_by_depth = True
-
-        # Heartbeat callback
-        if on_page_crawled:
-            try:
-                await on_page_crawled(final_u, page_data)
-            except Exception:
-                logger.debug("on_page_crawled callback failed", exc_info=True)
-
-        if throttle_ms > 0:
-            await asyncio.sleep(throttle_ms / 1000)
-
-    # Determine the terminal stop reason in priority order. "cancelled" is set
-    # on break and must not be overridden.
-    if stop_reason != "cancelled":
-        if q and len(visited_list) >= crawl_max_pages:
-            stop_reason = "max_pages"
-        elif not q and frontier_truncated_by_depth:
-            stop_reason = "max_depth"
-        # otherwise the queue drained naturally: keep the default "queue_empty"
+    stop_reason = _finalize_stop_reason(stop_reason, q, state, crawl_max_pages)
 
     return {
-        "visited": visited_list,
-        "markdowns": markdowns,
+        "visited": state.visited_list,
+        "markdowns": state.markdowns,
         "stop_reason": stop_reason,
-        "seeded": seeded,
-        "all_emails": all_emails,
-        "emails_by_url": emails_by_url,
-        "email_sources": email_sources,
+        "seeded": state.seeded,
+        "all_emails": state.all_emails,
+        "emails_by_url": state.emails_by_url,
+        "email_sources": state.email_sources,
     }
+
+
+def _seed_queue(
+    state: _CrawlState,
+    q: deque[tuple[str, int]],
+    internal_links: list[str],
+    sitemap_seeds: list[str] | None,
+    origin: str,
+) -> None:
+    # Seed from start page links (shortest URLs first, then alpha).
+    # Links discovered on the origin page are first-hop, i.e. depth 1.
+    for href in sorted(internal_links, key=lambda u: (len(u), u)):
+        state.enqueue(q, href, origin, 1)
+
+    # Seed from sitemap (shortest URLs first, then alpha). Sitemap URLs are
+    # treated as first-hop seeds (depth 1) so depth stays a pure BFS hop count.
+    for su in sorted(sitemap_seeds or [], key=lambda u: (len(u), u)):
+        if state.enqueue(q, su, origin, 1):
+            state.seeded += 1
+
+
+def _finalize_stop_reason(
+    stop_reason: str,
+    q: deque[tuple[str, int]],
+    state: _CrawlState,
+    crawl_max_pages: int,
+) -> str:
+    # "cancelled" is set on break and must not be overridden.
+    if stop_reason != "cancelled":
+        if q and len(state.visited_list) >= crawl_max_pages:
+            stop_reason = "max_pages"
+        elif not q and state.frontier_truncated_by_depth:
+            stop_reason = "max_depth"
+        # otherwise the queue drained naturally: keep the default "queue_empty"
+    return stop_reason
+
+
+async def _crawl_page(
+    state: _CrawlState,
+    q: deque[tuple[str, int]],
+    u: str,
+    depth: int,
+) -> bool:
+    """Fetch, parse, score, and enqueue one URL. Returns False to skip."""
+    try:
+        html2, m2 = await get_rendered_html(
+            url=u,
+            session=state.session,
+            progressive_scroll=False,
+            return_metrics=True,
+            timeout=max(1.0, state.per_page_timeout),
+            wait_until="networkidle",
+            cache_dir=state.cache_dir,
+        )
+    except Exception:
+        logger.debug("Failed to fetch %s", u, exc_info=True)
+        await state.wait_throttle()
+        return False
+
+    final_u = str(getattr(m2, "final_url", u)) or u
+
+    # Track the final (possibly redirected) URL to avoid revisits
+    norm_final = normalize_abs_url(final_u, final_u)
+    if norm_final and norm_final != normalize_abs_url(u, u):
+        if norm_final in state.visited_norm:
+            # Already visited via a different URL
+            await state.wait_throttle()
+            return False
+        state.visited_norm.add(norm_final)
+
+    if not should_follow(final_u, state.origin_pfx):
+        await state.wait_throttle()
+        return False
+
+    state.visited_list.append(final_u)
+
+    return await _process_page(state, q, html2, m2, u, final_u, depth)
+
+
+async def _process_page(
+    state: _CrawlState,
+    q: deque[tuple[str, int]],
+    html2: str,
+    m2: Any,
+    u: str,
+    final_u: str,
+    depth: int,
+) -> bool:
+    """Extract markdown/emails/links from a fetched page and expand the frontier."""
+    # Generate markdown and extract metadata for crawled page
+    soup_raw = None
+    page_data: dict[str, Any] = {}
+    try:
+        soup_raw = soup_from_html(html2)
+        page_meta = extract_page_meta(soup_raw)
+        soup_pre = preprocess_soup(
+            soup_raw,
+            base_url=final_u,
+            final_url=final_u,
+        )
+        md = to_markdown(soup_pre)
+        page_data = {
+            "markdown": md,
+            "page": page_meta,
+            "headings": extract_headings(soup_raw),
+            "content_metrics": extract_content_metrics(soup_raw, markdown=md),
+        }
+        state.markdowns[final_u] = page_data
+    except Exception:
+        logger.debug("Extraction failed for %s", final_u, exc_info=True)
+
+    # Per-page emails
+    collect_emails(
+        html2,
+        final_u,
+        include_emails=state.include_emails,
+        deobfuscate_emails=state.deobfuscate_emails,
+        all_emails=state.all_emails,
+        emails_by_url=state.emails_by_url,
+        email_sources=state.email_sources,
+    )
+
+    # Per-page links and extraction metrics
+    link_soup = soup_raw if soup_raw is not None else soup_from_html(html2)
+    new_int, new_ext, ext_metrics = classify_links(link_soup, base_url=final_u)
+    page_data["links"] = {"internal": new_int, "external": new_ext}
+    page_data["extraction_metrics"] = ext_metrics
+    page_data["render_metrics"] = render_metrics_to_dict(m2)
+    page_data["emails_unique"] = state.emails_by_url.get(final_u, [])
+
+    # Expand BFS frontier (only if within depth limit)
+    if state.max_depth == 0 or depth < state.max_depth:
+        for href2 in new_int:
+            state.enqueue(q, href2, final_u, depth + 1)
+    elif new_int:
+        # Internal links exist but the depth limit stops us from following
+        # them — the crawl is bounded by depth rather than running dry.
+        state.frontier_truncated_by_depth = True
+
+    # Heartbeat callback
+    if state.on_page_crawled:
+        try:
+            await state.on_page_crawled(final_u, page_data)
+        except Exception:
+            logger.debug("on_page_crawled callback failed", exc_info=True)
+
+    await state.wait_throttle()
+    return True

@@ -240,94 +240,123 @@ def summarize_jsonld(jsonld: list) -> str:
     if not jsonld:
         return "None"
 
-    flat_keys = (
-        "@type",
-        "name",
-        "description",
-        "applicationCategory",
-        "operatingSystem",
-        "softwareVersion",
-        "url",
-        "logo",
-        "datePublished",
-        "dateModified",
-        "isAccessibleForFree",
-        "priceCurrency",
-        "contactType",
-        "email",
-        "availableLanguage",
-    )
-    nested_name_keys = ("author", "publisher", "provider")
     summaries = []
     for obj in jsonld[:5]:
         if not isinstance(obj, dict):
             continue
-        summary: dict = {}
-        for key in flat_keys:
-            val = obj.get(key)
-            if val:
-                summary[key] = val
-        for key in nested_name_keys:
-            nested = obj.get(key)
-            if isinstance(nested, dict) and nested.get("name"):
-                summary[key] = nested["name"]
-        contact_point = obj.get("contactPoint")
-        if isinstance(contact_point, dict):
-            summary["contactPoint"] = {
-                k: contact_point[k]
-                for k in ("contactType", "email", "telephone", "availableLanguage")
-                if contact_point.get(k)
-            }
-        elif isinstance(contact_point, list):
-            pts = []
-            for cp in contact_point[:3]:
-                if isinstance(cp, dict):
-                    pts.append(
-                        {
-                            k: cp[k]
-                            for k in ("contactType", "email", "telephone")
-                            if cp.get(k)
-                        }
-                    )
-            if pts:
-                summary["contactPoint"] = pts
-        offers = obj.get("offers")
-        if isinstance(offers, dict):
-            price = offers.get("price")
-            if price is not None:
-                summary["offers"] = {
-                    k: offers[k] for k in ("price", "priceCurrency") if offers.get(k)
-                }
-        same_as = obj.get("sameAs")
-        if isinstance(same_as, list) and same_as:
-            summary["sameAs_count"] = len(same_as)
-            summary["sameAs_sample"] = [str(u) for u in same_as[:3]]
-        features = obj.get("featureList")
-        if isinstance(features, list) and features:
-            summary["featureList"] = [str(f) for f in features[:6]]
-        main_entity = obj.get("mainEntity")
-        if isinstance(main_entity, list) and main_entity:
-            qa_pairs = []
-            for e in main_entity:
-                if not isinstance(e, dict) or not e.get("name"):
-                    continue
-                answer = e.get("acceptedAnswer") or {}
-                text = answer.get("text") or ""
-                # First sentence of the answer, capped — enough for the
-                # meta test to see real Q&A content without dumping the
-                # full FAQ into the prompt.
-                snippet = text.split(". ")[0][:120] if text else ""
-                qa_pairs.append(
-                    {"question": str(e["name"]), "answer_excerpt": snippet}
-                    if snippet
-                    else {"question": str(e["name"])}
-                )
-            if qa_pairs:
-                summary["mainEntity_count"] = len(main_entity)
-                summary["mainEntity_qa"] = qa_pairs[:6]
+        summary = _summarize_jsonld_obj(obj)
         if summary:
             summaries.append(summary)
     return json.dumps(summaries, indent=2) if summaries else "None"
+
+
+def _summarize_jsonld_obj(obj: dict) -> dict:
+    """Summarize a single JSON-LD object into a flat dict of read fields."""
+    summary: dict = {}
+    for key in _FLAT_JSONLD_KEYS:
+        val = obj.get(key)
+        if val:
+            summary[key] = val
+    for key in _NESTED_NAME_KEYS:
+        nested = obj.get(key)
+        if isinstance(nested, dict) and nested.get("name"):
+            summary[key] = nested["name"]
+    _maybe_contact_point(obj, summary)
+    _maybe_offers(obj, summary)
+    _maybe_same_as(obj, summary)
+    _maybe_features(obj, summary)
+    _maybe_main_entity(obj, summary)
+    return summary
+
+
+def _maybe_contact_point(obj: dict, summary: dict) -> None:
+    contact_point = obj.get("contactPoint")
+    if isinstance(contact_point, dict):
+        summary["contactPoint"] = {
+            k: contact_point[k]
+            for k in ("contactType", "email", "telephone", "availableLanguage")
+            if contact_point.get(k)
+        }
+    elif isinstance(contact_point, list):
+        pts = []
+        for cp in contact_point[:3]:
+            if isinstance(cp, dict):
+                pts.append(
+                    {
+                        k: cp[k]
+                        for k in ("contactType", "email", "telephone")
+                        if cp.get(k)
+                    }
+                )
+        if pts:
+            summary["contactPoint"] = pts
+
+
+def _maybe_offers(obj: dict, summary: dict) -> None:
+    offers = obj.get("offers")
+    if isinstance(offers, dict):
+        price = offers.get("price")
+        if price is not None:
+            summary["offers"] = {
+                k: offers[k] for k in ("price", "priceCurrency") if offers.get(k)
+            }
+
+
+def _maybe_same_as(obj: dict, summary: dict) -> None:
+    same_as = obj.get("sameAs")
+    if isinstance(same_as, list) and same_as:
+        summary["sameAs_count"] = len(same_as)
+        summary["sameAs_sample"] = [str(u) for u in same_as[:3]]
+
+
+def _maybe_features(obj: dict, summary: dict) -> None:
+    features = obj.get("featureList")
+    if isinstance(features, list) and features:
+        summary["featureList"] = [str(f) for f in features[:6]]
+
+
+def _maybe_main_entity(obj: dict, summary: dict) -> None:
+    main_entity = obj.get("mainEntity")
+    if isinstance(main_entity, list) and main_entity:
+        qa_pairs = []
+        for e in main_entity:
+            if not isinstance(e, dict) or not e.get("name"):
+                continue
+            answer = e.get("acceptedAnswer") or {}
+            text = answer.get("text") or ""
+            # First sentence of the answer, capped — enough for the
+            # meta test to see real Q&A content without dumping the
+            # full FAQ into the prompt.
+            snippet = text.split(". ")[0][:120] if text else ""
+            qa_pairs.append(
+                {"question": str(e["name"]), "answer_excerpt": snippet}
+                if snippet
+                else {"question": str(e["name"])}
+            )
+        if qa_pairs:
+            summary["mainEntity_count"] = len(main_entity)
+            summary["mainEntity_qa"] = qa_pairs[:6]
+
+
+_FLAT_JSONLD_KEYS: tuple[str, ...] = (
+    "@type",
+    "name",
+    "description",
+    "applicationCategory",
+    "operatingSystem",
+    "softwareVersion",
+    "url",
+    "logo",
+    "datePublished",
+    "dateModified",
+    "isAccessibleForFree",
+    "priceCurrency",
+    "contactType",
+    "email",
+    "availableLanguage",
+)
+
+_NESTED_NAME_KEYS: tuple[str, ...] = ("author", "publisher", "provider")
 
 
 def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[dict]:
@@ -338,50 +367,12 @@ def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[
     if not md_dict:
         return []
 
-    pages = []
     tokens_used = 0
     chars_per_token = CHARS_PER_TOKEN
+    homepage_key = _find_homepage_key(md_dict)
+    ordered_urls = _order_urls_for_analysis(md_dict, homepage_key)
 
-    # Priority URL patterns
-    priority_patterns = ("/product", "/pricing", "/about", "/features")
-
-    # Separate homepage from rest
-    homepage_key = None
-    for url in md_dict:
-        normalized = url.rstrip("/").lower()
-        # Match common homepage patterns
-        if normalized in ("", "/", "homepage"):
-            homepage_key = url
-            break
-        # Match full URLs with no meaningful path (e.g. "https://example.com")
-        if "://" in normalized:
-            after_scheme = normalized.split("://", 1)[-1]
-            path_segments = after_scheme.split("/")[1:]
-            if not any(path_segments):
-                homepage_key = url
-                break
-
-    ordered_urls = []
-    if homepage_key:
-        ordered_urls.append(homepage_key)
-
-    # Priority pages next
-    for pattern in priority_patterns:
-        for url in md_dict:
-            if url != homepage_key and pattern in url.lower():
-                if url not in ordered_urls:
-                    ordered_urls.append(url)
-
-    # Remaining by word count (descending)
-    remaining = [
-        (url, data) for url, data in md_dict.items() if url not in ordered_urls
-    ]
-    remaining.sort(
-        key=lambda x: (x[1].get("content_metrics") or {}).get("words", 0),
-        reverse=True,
-    )
-    ordered_urls.extend(url for url, _ in remaining)
-
+    pages = []
     for url in ordered_urls:
         data = md_dict[url]
         md = data.get("markdown") or ""
@@ -389,21 +380,79 @@ def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[
             continue
         estimated_tokens = len(md) // chars_per_token
         if tokens_used + estimated_tokens > token_budget:
-            remaining_budget = token_budget - tokens_used
-            if remaining_budget > 500:
-                truncated = md[: remaining_budget * chars_per_token]
-                # Try to truncate at a sentence or paragraph boundary
-                for sep in ("\n\n", "\n", ". ", "! ", "? "):
-                    last = truncated.rfind(sep)
-                    if last > len(truncated) // 2:
-                        truncated = truncated[: last + len(sep)]
-                        break
-                md = truncated
-            else:
+            md = _truncate_markdown(md, token_budget, tokens_used, chars_per_token)
+            if not md:
                 continue
+        tokens_used += len(md) // chars_per_token
         page_title = (data.get("page") or {}).get("title") or url
         pages.append({"url": url, "title": page_title, "markdown": md})
-        # Use actual length (accounts for truncation)
-        tokens_used += len(md) // chars_per_token
 
     return pages
+
+
+def _find_homepage_key(md_dict: dict) -> str | None:
+    """Locate the homepage key among markdown page URLs."""
+    for url in md_dict:
+        url_str = str(url)
+        normalized = url_str.rstrip("/").lower()
+        # Match common homepage patterns
+        if normalized in ("", "/", "homepage"):
+            return url_str
+        # Match full URLs with no meaningful path (e.g. "https://example.com")
+        if "://" in normalized:
+            after_scheme = normalized.split("://", 1)[-1]
+            path_segments = after_scheme.split("/")[1:]
+            if not any(path_segments):
+                return url_str
+    return None
+
+
+def _order_urls_for_analysis(md_dict: dict, homepage_key: str | None) -> list[str]:
+    """Order pages: homepage first, then priority URLs, then by richness."""
+    ordered_urls: list[str] = []
+    if homepage_key:
+        ordered_urls.append(homepage_key)
+
+    # Priority pages next
+    for pattern in _PRIORITY_PATTERNS:
+        for url in md_dict:
+            url_str = str(url)
+            if url_str != homepage_key and pattern in url_str.lower():
+                if url_str not in ordered_urls:
+                    ordered_urls.append(url_str)
+
+    # Remaining by word count (descending)
+    remaining = sorted(
+        md_dict.items(),
+        key=lambda x: (x[1].get("content_metrics") or {}).get("words", 0),
+        reverse=True,
+    )
+    ordered_urls.extend(str(url) for url, _ in remaining if url not in ordered_urls)
+    return ordered_urls
+
+
+def _truncate_markdown(
+    md: str,
+    token_budget: int,
+    tokens_used: int,
+    chars_per_token: int,
+) -> str:
+    """Truncate markdown to fit the remaining token budget, or '' if not worth it."""
+    remaining_budget = token_budget - tokens_used
+    if remaining_budget <= 500:
+        return ""
+    truncated = md[: remaining_budget * chars_per_token]
+    # Try to truncate at a sentence or paragraph boundary
+    for sep in ("\n\n", "\n", ". ", "! ", "? "):
+        last = truncated.rfind(sep)
+        if last > len(truncated) // 2:
+            return truncated[: last + len(sep)]
+    return truncated
+
+
+_PRIORITY_PATTERNS: tuple[str, ...] = (
+    "/product",
+    "/pricing",
+    "/about",
+    "/features",
+)

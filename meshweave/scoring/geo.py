@@ -10,6 +10,8 @@ Each factor takes the crawl payload (dict) and returns a dict with:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 
 def _same_as_score(count: int) -> int:
     """Shared sameAs presence scale used across GEO factors.
@@ -24,6 +26,18 @@ def _same_as_score(count: int) -> int:
     if count <= 5:
         return 70
     return 100
+
+
+@dataclass
+class _EeatSignals:
+    """E-E-A-T signals collected across a payload."""
+
+    has_author: bool
+    has_reviews: bool
+    has_video: bool
+    has_contact: bool
+    has_privacy: bool
+    has_terms: bool
 
 
 def score_topical_authority(payload: dict) -> dict:
@@ -106,28 +120,42 @@ def score_eeat(payload: dict) -> dict:
     schema_types = set(type_counts.keys())
     pages_with_org = entity.get("pages_with_org_schema") or 0
 
-    # Check all JSON-LD for author/review/video
+    signals = _collect_eeat_signals(payload)
+    same_as = entity.get("same_as") or []
+
+    pts = _eeat_points(
+        pages_with_org=pages_with_org,
+        schema_types=schema_types,
+        signals=signals,
+        same_as_size=len(same_as),
+    )
+
+    return {
+        "score": float(pts),
+        "weight": 0.15,
+        "auto_measurable": True,
+        "raw": {
+            "has_org_schema": pages_with_org > 0,
+            "has_author_info": signals.has_author,
+            "has_reviews": signals.has_reviews,
+            "same_as_count": len(same_as),
+            "has_contact": signals.has_contact,
+            "has_privacy": signals.has_privacy or signals.has_terms,
+            "has_video": signals.has_video,
+        },
+    }
+
+
+def _collect_eeat_signals(payload: dict) -> _EeatSignals:
+    """Collect E-E-A-T signals (author/reviews/video/contact/privacy/terms)."""
+    all_jsonld = _collect_all_jsonld(payload)
+
     has_author = False
     has_reviews = False
     has_video = False
     has_contact = False
     has_privacy = False
     has_terms = False
-
-    all_jsonld = []
-    page = payload.get("page") or {}
-    for ld in page.get("jsonld") or []:
-        if isinstance(ld, dict):
-            all_jsonld.append(ld)
-
-    md_dict = payload.get("markdowns") or {}
-    if isinstance(md_dict, dict):
-        for _url, pg in md_dict.items():
-            if isinstance(pg, dict):
-                pg_data = pg.get("page") or pg
-                for ld in pg_data.get("jsonld") or []:
-                    if isinstance(ld, dict):
-                        all_jsonld.append(ld)
 
     for ld in all_jsonld:
         ld_type = (ld.get("@type") or "").lower()
@@ -146,12 +174,7 @@ def score_eeat(payload: dict) -> dict:
             has_contact = True
 
     # Check URL patterns for privacy/terms/contact
-    all_urls = []
-    all_urls.append(page.get("url") or "")
-    all_urls.append(page.get("canonical") or "")
-    for _url in md_dict.keys() if isinstance(md_dict, dict) else []:
-        all_urls.append(str(_url))
-    urls_text = " ".join(all_urls).lower()
+    urls_text = _eeat_urls_text(payload)
     if "privacy" in urls_text:
         has_privacy = True
     if "terms" in urls_text or "legal" in urls_text:
@@ -159,39 +182,69 @@ def score_eeat(payload: dict) -> dict:
     if "contact" in urls_text:
         has_contact = True
 
+    return _EeatSignals(
+        has_author=has_author,
+        has_reviews=has_reviews,
+        has_video=has_video,
+        has_contact=has_contact,
+        has_privacy=has_privacy,
+        has_terms=has_terms,
+    )
+
+
+def _collect_all_jsonld(payload: dict) -> list[dict]:
+    """Gather all JSON-LD dicts from the start page and markdown pages."""
+    all_jsonld: list[dict] = []
+    page = payload.get("page") or {}
+    for ld in page.get("jsonld") or []:
+        if isinstance(ld, dict):
+            all_jsonld.append(ld)
+
+    md_dict = payload.get("markdowns") or {}
+    if isinstance(md_dict, dict):
+        for _url, pg in md_dict.items():
+            if isinstance(pg, dict):
+                pg_data = pg.get("page") or pg
+                for ld in pg_data.get("jsonld") or []:
+                    if isinstance(ld, dict):
+                        all_jsonld.append(ld)
+    return all_jsonld
+
+
+def _eeat_urls_text(payload: dict) -> str:
+    """Concatenate all page URLs encountered in the payload, lowercased."""
+    page = payload.get("page") or {}
+    md_dict = payload.get("markdowns") or {}
+    all_urls: list[str] = [page.get("url") or "", page.get("canonical") or ""]
+    if isinstance(md_dict, dict):
+        all_urls.extend(str(u) for u in md_dict.keys())
+    return " ".join(all_urls).lower()
+
+
+def _eeat_points(
+    pages_with_org: int,
+    schema_types: set[str],
+    signals: _EeatSignals,
+    same_as_size: int,
+) -> int:
+    """Compute the additive E-E-A-T point total (capped at 100)."""
     pts = 0
     lower_types = {t.lower() for t in schema_types}
     if pages_with_org > 0 or "organization" in lower_types or "org" in lower_types:
         pts += 15
-    if has_author:
+    if signals.has_author:
         pts += 15
-    if has_reviews:
+    if signals.has_reviews:
         pts += 15
-    same_as = entity.get("same_as") or []
-    if len(same_as) > 0:
+    if same_as_size > 0:
         pts += 10
-    if has_contact:
+    if signals.has_contact:
         pts += 8
-    if has_privacy or has_terms:
+    if signals.has_privacy or signals.has_terms:
         pts += 7
-    if has_video:
+    if signals.has_video:
         pts += 5
-    pts = min(100, pts)
-
-    return {
-        "score": float(pts),
-        "weight": 0.15,
-        "auto_measurable": True,
-        "raw": {
-            "has_org_schema": pages_with_org > 0,
-            "has_author_info": has_author,
-            "has_reviews": has_reviews,
-            "same_as_count": len(same_as),
-            "has_contact": has_contact,
-            "has_privacy": has_privacy or has_terms,
-            "has_video": has_video,
-        },
-    }
+    return min(100, pts)
 
 
 def score_crawl_access(payload: dict) -> dict:
@@ -285,20 +338,7 @@ def score_crawl_access(payload: dict) -> dict:
 
 def score_content_depth(payload: dict) -> dict:
     """G5. Content Depth & Originality (10% weight, auto)."""
-    md_dict = payload.get("markdowns") or {}
-    pages = []
-    if isinstance(md_dict, dict) and md_dict:
-        for _url, pg in md_dict.items():
-            if isinstance(pg, dict):
-                pages.append(pg)
-    elif isinstance(md_dict, list):
-        pages = [p for p in md_dict if isinstance(p, dict)]
-    else:
-        # payload["pages"] is a derived view of markdowns; only use it as a
-        # fallback when there are no markdowns, to avoid double-counting.
-        pages_list = payload.get("pages") or []
-        if isinstance(pages_list, list):
-            pages = [p for p in pages_list if isinstance(p, dict)]
+    pages = _payload_pages(payload)
 
     if not pages:
         # Single page
@@ -307,56 +347,25 @@ def score_content_depth(payload: dict) -> dict:
             pages = [page]
 
     total_pages = max(len(pages), 1)
-    word_counts = []
-    pages_with_code = 0
-    pages_with_tables = 0
-    content_pages_gt200 = 0
-
-    for pg in pages:
-        cm = pg.get("content_metrics") or {}
-        # Fallback: check nested "page" key (single-page crawl structure)
-        if not cm:
-            page_info = pg.get("page") or {}
-            cm = page_info.get("content_metrics") or {}
-        words = cm.get("words") or 0
-        word_counts.append(words)
-        if words > 200:
-            content_pages_gt200 += 1
-        if (cm.get("code_blocks") or 0) > 0:
-            pages_with_code += 1
-        if (cm.get("tables") or 0) > 0:
-            pages_with_tables += 1
-
+    word_counts = _page_word_counts(pages)
     avg_words = sum(word_counts) / len(word_counts) if word_counts else 0
 
     # Average word count score (0-100)
-    if avg_words < 200:
-        word_score = 10
-    elif avg_words < 500:
-        word_score = 30
-    elif avg_words < 1000:
-        word_score = 50
-    elif avg_words < 2000:
-        word_score = 70
-    elif avg_words < 5000:
-        word_score = 90
-    else:
-        word_score = 100
+    word_score = _avg_words_score(avg_words)
 
     # Pages with 1000+ words ratio
     pages_gt1000 = sum(1 for w in word_counts if w >= 1000)
     depth_ratio = (pages_gt1000 / total_pages) * 100 if total_pages > 0 else 0
 
-    # Has code blocks
-    code_bonus = 100 if pages_with_code > 0 else 0
-
-    # Has tables (original data signal)
-    tables_bonus = 100 if pages_with_tables > 0 else 0
-
+    content_pages_gt200 = sum(1 for w in word_counts if w > 200)
     # Unique content pages scaled (> 200 words)
     content_ratio = (
         min((content_pages_gt200 / total_pages) * 100, 100) if total_pages > 0 else 0
     )
+
+    metrics = _code_table_metrics(pages)
+    code_bonus = 100 if metrics[0] > 0 else 0
+    tables_bonus = 100 if metrics[1] > 0 else 0
 
     score = (
         word_score * 0.35
@@ -375,10 +384,73 @@ def score_content_depth(payload: dict) -> dict:
             "avg_words": round(avg_words, 0),
             "total_pages": total_pages,
             "content_pages_gt200": content_pages_gt200,
-            "pages_with_code": pages_with_code,
-            "pages_with_tables": pages_with_tables,
+            "pages_with_code": metrics[0],
+            "pages_with_tables": metrics[1],
         },
     }
+
+
+def _payload_pages(payload: dict) -> list[dict]:
+    """Extract per-page dicts from markdowns/pages in the payload."""
+    md_dict = payload.get("markdowns") or {}
+    pages: list[dict] = []
+    if isinstance(md_dict, dict) and md_dict:
+        for _url, pg in md_dict.items():
+            if isinstance(pg, dict):
+                pages.append(pg)
+    elif isinstance(md_dict, list):
+        pages = [p for p in md_dict if isinstance(p, dict)]
+    else:
+        # payload["pages"] is a derived view of markdowns; only use it as a
+        # fallback when there are no markdowns, to avoid double-counting.
+        pages_list = payload.get("pages") or []
+        if isinstance(pages_list, list):
+            pages = [p for p in pages_list if isinstance(p, dict)]
+    return pages
+
+
+def _page_word_counts(pages: list[dict]) -> list[int]:
+    """Word counts across pages, with a nested-page fallback."""
+    word_counts: list[int] = []
+    for pg in pages:
+        cm = pg.get("content_metrics") or {}
+        # Fallback: check nested "page" key (single-page crawl structure)
+        if not cm:
+            page_info = pg.get("page") or {}
+            cm = page_info.get("content_metrics") or {}
+        word_counts.append(cm.get("words") or 0)
+    return word_counts
+
+
+def _code_table_metrics(pages: list[dict]) -> tuple[int, int]:
+    """Count pages containing code blocks and tables."""
+    pages_with_code = 0
+    pages_with_tables = 0
+    for pg in pages:
+        cm = pg.get("content_metrics") or {}
+        if not cm:
+            page_info = pg.get("page") or {}
+            cm = page_info.get("content_metrics") or {}
+        if (cm.get("code_blocks") or 0) > 0:
+            pages_with_code += 1
+        if (cm.get("tables") or 0) > 0:
+            pages_with_tables += 1
+    return pages_with_code, pages_with_tables
+
+
+def _avg_words_score(avg_words: float) -> float:
+    """Map average word count to a 0-100 score band."""
+    if avg_words < 200:
+        return 10
+    if avg_words < 500:
+        return 30
+    if avg_words < 1000:
+        return 50
+    if avg_words < 2000:
+        return 70
+    if avg_words < 5000:
+        return 90
+    return 100
 
 
 def score_entity_consistency(payload: dict) -> dict:

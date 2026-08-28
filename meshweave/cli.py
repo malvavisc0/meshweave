@@ -291,24 +291,13 @@ def _run_crawl(args: argparse.Namespace) -> None:
         load_ms = render.get("load_time_ms", 0)
         _log(f"  ✓ Page rendered — {status} {final_url} ({load_ms}ms)")
 
-        output_dir = args.output_dir
-        if not output_dir:
-            output_dir = os.getenv("MESHWEAVE_OUTPUT_DIR", "data/output")
+        output_dir: str = args.output_dir or os.getenv(
+            "MESHWEAVE_OUTPUT_DIR", "data/output"
+        )
 
         # --refresh clears existing .md files for this domain
         if args.refresh:
-            from urllib.parse import urlparse
-
-            domain = (
-                urlparse(payload.get("crawl", {}).get("start_url", "")).hostname or ""
-            ).lower()
-            if domain:
-                import shutil
-
-                domain_dir = Path(output_dir) / domain
-                if domain_dir.exists():
-                    shutil.rmtree(domain_dir)
-                    _log(f"  ✓ Refreshed cache: cleared {domain_dir}")
+            _clear_refresh_cache(payload, output_dir)
 
         # Always compute AEO/GEO scores (pure heuristic, no LLM)
         _log("► Computing AEO/GEO scores …")
@@ -323,41 +312,7 @@ def _run_crawl(args: argparse.Namespace) -> None:
 
         # AAX analysis (LLM-powered, only with --ai-analysis flag)
         if args.ai_analysis:
-            _log("► Running AAX analysis (LLM) …")
-            try:
-                # Override AAX_ENABLED since CLI flag is the explicit opt-in
-                os.environ["AAX_ENABLED"] = "true"
-                from meshweave.ai.analyses import run_aax_analysis
-
-                aax_result = await run_aax_analysis(payload)
-                payload["aax"] = aax_result
-
-                # Compute AAX composite and merge into scores
-                if aax_result and aax_result.get("status") == "completed":
-                    from meshweave.scoring.engine import compute_aax_score
-
-                    aax_score = compute_aax_score(aax_result)
-                    if aax_score and payload.get("scores"):
-                        payload["scores"]["aax"] = aax_score
-
-                        # Re-generate recommendations now that AAX factors
-                        # (and contactability) are available, so CLI output
-                        # matches what the webapp would show.
-                        from meshweave.scoring.recommendations import (
-                            generate_recommendations,
-                        )
-
-                        payload["scores"]["recommendations"] = generate_recommendations(
-                            payload["scores"]["aeo"]["factors"],
-                            payload["scores"]["geo"]["factors"],
-                            payload=payload,
-                            aax_factors=aax_score.get("factors"),
-                            contactability=aax_result.get("contactability"),
-                        )
-                _log("  ✓ AAX analysis complete")
-            except Exception as e:
-                print(f"  ✗ AAX analysis failed: {e}", file=sys.stderr)
-                payload["aax"] = {"status": "failed", "error": str(e)}
+            await _run_aax_for_cli(payload)
         else:
             payload["aax"] = None
 
@@ -372,6 +327,65 @@ def _run_crawl(args: argparse.Namespace) -> None:
         _log(f"✓ Done — {n_pages} page(s) visited, output written to {args.output}")
 
     asyncio.run(_run())
+
+
+def _clear_refresh_cache(payload: dict, output_dir: str) -> None:
+    """Clear existing .md files for the crawled domain when --refresh."""
+    import shutil
+    from urllib.parse import urlparse
+
+    domain = (
+        urlparse(payload.get("crawl", {}).get("start_url", "")).hostname or ""
+    ).lower()
+    if not domain:
+        return
+    domain_dir = Path(output_dir) / domain
+    if domain_dir.exists():
+        shutil.rmtree(domain_dir)
+        _log(f"  ✓ Refreshed cache: cleared {domain_dir}")
+
+
+async def _run_aax_for_cli(payload: dict) -> None:
+    """Run the LLM AAX analysis and merge results into the payload."""
+    _log("► Running AAX analysis (LLM) …")
+    try:
+        # Override AAX_ENABLED since CLI flag is the explicit opt-in
+        os.environ["AAX_ENABLED"] = "true"
+        from meshweave.ai.analyses import run_aax_analysis
+
+        aax_result = await run_aax_analysis(payload)
+        payload["aax"] = aax_result
+
+        # Compute AAX composite and merge into scores
+        if aax_result and aax_result.get("status") == "completed":
+            _merge_aax_into_scores(payload, aax_result)
+        _log("  ✓ AAX analysis complete")
+    except Exception as e:
+        print(f"  ✗ AAX analysis failed: {e}", file=sys.stderr)
+        payload["aax"] = {"status": "failed", "error": str(e)}
+
+
+def _merge_aax_into_scores(payload: dict, aax_result: dict) -> None:
+    """Compute the AAX composite and regenerate recommendations."""
+    from meshweave.scoring.engine import compute_aax_score
+
+    aax_score = compute_aax_score(aax_result)
+    if not (aax_score and payload.get("scores")):
+        return
+    payload["scores"]["aax"] = aax_score
+
+    # Re-generate recommendations now that AAX factors
+    # (and contactability) are available, so CLI output
+    # matches what the webapp would show.
+    from meshweave.scoring.recommendations import generate_recommendations
+
+    payload["scores"]["recommendations"] = generate_recommendations(
+        payload["scores"]["aeo"]["factors"],
+        payload["scores"]["geo"]["factors"],
+        payload=payload,
+        aax_factors=aax_score.get("factors"),
+        contactability=aax_result.get("contactability"),
+    )
 
 
 _EPILOG = """\

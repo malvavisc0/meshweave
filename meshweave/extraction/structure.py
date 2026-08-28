@@ -75,10 +75,34 @@ def extract_content_metrics(
         paragraphs = len(blocks)
 
     # Count meaningful images, skipping decorative ones
-    images = body.find_all("img")
+    img_total, img_with_alt = _count_images(body)
+
+    # Word count from markdown if available, else body text
+    if markdown:
+        words = len(markdown.split())
+    else:
+        text = body.get_text(separator=" ", strip=True)
+        words = len(text.split())
+
+    heading_count = sum(len(body.find_all(f"h{i}")) for i in range(1, 7))
+
+    return {
+        "words": words,
+        "paragraphs": paragraphs,
+        "lists": lists,
+        "tables": tables,
+        "code_blocks": code_blocks,
+        "images_total": img_total,
+        "images_with_alt": img_with_alt,
+        "headings": heading_count,
+    }
+
+
+def _count_images(soup: Any) -> tuple[int, int]:
+    """Count meaningful images (non-decorative, non-pixel) and those with alt."""
     img_total = 0
     img_with_alt = 0
-    for img in images:
+    for img in soup.find_all("img"):
         if not isinstance(img, Tag):
             continue
         # Skip decorative / hidden images
@@ -101,26 +125,7 @@ def extract_content_metrics(
         img_total += 1
         if str(img.get("alt", "")).strip():
             img_with_alt += 1
-
-    # Word count from markdown if available, else body text
-    if markdown:
-        words = len(markdown.split())
-    else:
-        text = body.get_text(separator=" ", strip=True)
-        words = len(text.split())
-
-    heading_count = sum(len(body.find_all(f"h{i}")) for i in range(1, 7))
-
-    return {
-        "words": words,
-        "paragraphs": paragraphs,
-        "lists": lists,
-        "tables": tables,
-        "code_blocks": code_blocks,
-        "images_total": img_total,
-        "images_with_alt": img_with_alt,
-        "headings": heading_count,
-    }
+    return img_total, img_with_alt
 
 
 _OPTIMAL_MIN = 40

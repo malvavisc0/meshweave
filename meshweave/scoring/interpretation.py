@@ -24,6 +24,7 @@ Profile Shape Enum Values
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,157 @@ def _band_meaning(band: BandName) -> str:
         if b == band:
             return meaning
     return ""
+
+
+def _compute_bands(scores: dict[LensName, float]) -> dict[LensName, BandName]:
+    """Map each lens score to its band."""
+    return {lens: _band_for(score) for lens, score in scores.items()}
+
+
+def _classify_profile(
+    bands: dict[LensName, BandName],
+    scores: dict[LensName, float],
+    avg: float,
+    lens_meta: dict[str, str],
+) -> tuple[ProfileShape, Tone, str]:
+    """Classify the profile shape via an ordered first-match rule table.
+
+    Preserves the original 10-rule decision priority exactly.
+    """
+    band_counts: dict[BandName, int] = {b: 0 for b in _BAND_ORDER}
+    for band in bands.values():
+        band_counts[band] += 1
+    broken_count = band_counts["broken"]
+    weak_count = band_counts["weak"]
+    developing_count = band_counts["developing"]
+    strong_count = band_counts["strong"]
+    excellent_count = band_counts["excellent"]
+    strong_or_better_count = strong_count + excellent_count
+
+    for rule in _PROFILE_RULES:
+        shape, tone = rule.shape, rule.tone
+        ctx = _RuleContext(
+            broken_count=broken_count,
+            weak_count=weak_count,
+            developing_count=developing_count,
+            strong_count=strong_count,
+            excellent_count=excellent_count,
+            strong_or_better_count=strong_or_better_count,
+            avg=avg,
+        )
+        if rule.matches(ctx):
+            label = _resolve_profile_label(shape, lens_meta)
+            return shape, tone, label
+
+    label = _resolve_profile_label("needs_review", lens_meta)
+    return "needs_review", "moderate", label
+
+
+_BAND_ORDER: tuple[BandName, ...] = (
+    "broken",
+    "weak",
+    "developing",
+    "strong",
+    "excellent",
+)
+
+
+class _RuleContext:
+    __slots__ = (
+        "broken_count",
+        "weak_count",
+        "developing_count",
+        "strong_count",
+        "excellent_count",
+        "strong_or_better_count",
+        "avg",
+    )
+
+    def __init__(
+        self,
+        *,
+        broken_count: int,
+        weak_count: int,
+        developing_count: int,
+        strong_count: int,
+        excellent_count: int,
+        strong_or_better_count: int,
+        avg: float,
+    ) -> None:
+        self.broken_count = broken_count
+        self.weak_count = weak_count
+        self.developing_count = developing_count
+        self.strong_count = strong_count
+        self.excellent_count = excellent_count
+        self.strong_or_better_count = strong_or_better_count
+        self.avg = avg
+
+
+class _ProfileRule:
+    __slots__ = ("shape", "tone", "matches")
+
+    def __init__(
+        self,
+        shape: ProfileShape,
+        tone: Tone,
+        matches: Callable[[_RuleContext], bool],
+    ) -> None:
+        self.shape = shape
+        self.tone = tone
+        self.matches = matches
+
+
+_PROFILE_RULES: tuple[_ProfileRule, ...] = (
+    # Rule 1 — two+ broken lenses, or an average so low that no lens is
+    # salvageable. The average clause requires < 35 *and* at least one
+    # broken lens, so a site with three uniform 44s (no broken lens) is
+    # not framed as catastrophic "can't be parsed" — it falls through to
+    # the material_risk/needs_review rules instead.
+    _ProfileRule(
+        "high_invisibility",
+        "critical",
+        lambda c: c.broken_count >= 2 or (c.avg < 35 and c.broken_count >= 1),
+    ),
+    # Rule 2a — broken lens, avg < 65
+    _ProfileRule(
+        "critical_failure", "critical", lambda c: c.broken_count == 1 and c.avg < 65
+    ),
+    # Rule 2b — broken lens, avg >= 65
+    _ProfileRule(
+        "broken_in_strong_profile",
+        "serious",
+        lambda c: c.broken_count == 1 and c.avg >= 65,
+    ),
+    # Rule 3
+    _ProfileRule(
+        "material_risk", "serious", lambda c: c.weak_count + c.broken_count >= 2
+    ),
+    # Rule 4
+    _ProfileRule(
+        "broad_exposure",
+        "serious",
+        lambda c: c.weak_count + c.broken_count == 1 and c.developing_count >= 1,
+    ),
+    # Rule 5
+    _ProfileRule(
+        "single_exposure",
+        "moderate",
+        lambda c: c.weak_count + c.broken_count == 1,
+    ),
+    # Rule 6
+    _ProfileRule("partial_exposure", "moderate", lambda c: c.developing_count >= 2),
+    # Rule 7
+    _ProfileRule(
+        "developing_with_strong",
+        "limited",
+        lambda c: c.developing_count == 1 and c.strong_or_better_count >= 2,
+    ),
+    # Rule 8
+    _ProfileRule("highly_readable", "positive", lambda c: c.excellent_count == 3),
+    # Rule 9
+    _ProfileRule("strong_profile", "positive", lambda c: c.strong_or_better_count == 3),
+    # Rule 10 — fallback handled in _classify_profile
+)
 
 
 # ---------------------------------------------------------------------------
@@ -419,29 +571,7 @@ def interpret_profile(
         "GEO": geo_score,
         "AAX": aax_score,
     }
-    bands: dict[LensName, BandName] = {}
-    for lens, score in scores.items():
-        bands[lens] = _band_for(score)
-
-    # Band counts
-    band_counts: dict[BandName, int] = {
-        "broken": 0,
-        "weak": 0,
-        "developing": 0,
-        "strong": 0,
-        "excellent": 0,
-    }
-    for band in bands.values():
-        band_counts[band] += 1
-
-    broken_count = band_counts["broken"]
-    weak_count = band_counts["weak"]
-    developing_count = band_counts["developing"]
-    strong_count = band_counts["strong"]
-    excellent_count = band_counts["excellent"]
-    strong_or_better_count = strong_count + excellent_count
-
-    avg = sum(scores.values()) / 3.0
+    bands: dict[LensName, BandName] = _compute_bands(scores)
 
     # Weakest and strongest lenses
     weakest_lens: LensName = min(scores, key=lambda k: scores[k])
@@ -450,82 +580,14 @@ def interpret_profile(
     # Lens metadata
     lens_meta = _LENS_META[weakest_lens]
 
+    avg = sum(scores.values()) / 3.0
+
     # ------------------------------------------------------------------
     # Profile shape decision table (first match wins)
     # ------------------------------------------------------------------
-    profile_shape: ProfileShape
-    tone: Tone
-    profile_label: str
-
-    # Rule 1 — two+ broken lenses, or an average so low that no lens is
-    # salvageable. The average clause requires < 35 *and* at least one
-    # broken lens, so a site with three uniform 44s (no broken lens) is
-    # not framed as catastrophic "can't be parsed" — it falls through to
-    # the material_risk/needs_review rules instead.
-    if broken_count >= 2 or (avg < 35 and broken_count >= 1):
-        profile_shape = "high_invisibility"
-        tone = "critical"
-        profile_label = _PROFILE_LABELS["high_invisibility"]
-
-    # Rule 2a — broken lens, avg < 65
-    elif broken_count == 1 and avg < 65:
-        profile_shape = "critical_failure"
-        tone = "critical"
-        profile_label = _resolve_profile_label("critical_failure", lens_meta)
-
-    # Rule 2b — broken lens, avg >= 65
-    elif broken_count == 1 and avg >= 65:
-        profile_shape = "broken_in_strong_profile"
-        tone = "serious"
-        profile_label = _resolve_profile_label("broken_in_strong_profile", lens_meta)
-
-    # Rule 3
-    elif weak_count + broken_count >= 2:
-        profile_shape = "material_risk"
-        tone = "serious"
-        profile_label = _PROFILE_LABELS["material_risk"]
-
-    # Rule 4
-    elif weak_count + broken_count == 1 and developing_count >= 1:
-        profile_shape = "broad_exposure"
-        tone = "serious"
-        profile_label = _resolve_profile_label("broad_exposure", lens_meta)
-
-    # Rule 5
-    elif weak_count + broken_count == 1:
-        profile_shape = "single_exposure"
-        tone = "moderate"
-        profile_label = _resolve_profile_label("single_exposure", lens_meta)
-
-    # Rule 6
-    elif developing_count >= 2:
-        profile_shape = "partial_exposure"
-        tone = "moderate"
-        profile_label = _PROFILE_LABELS["partial_exposure"]
-
-    # Rule 7
-    elif developing_count == 1 and strong_or_better_count >= 2:
-        profile_shape = "developing_with_strong"
-        tone = "limited"
-        profile_label = _resolve_profile_label("developing_with_strong", lens_meta)
-
-    # Rule 8
-    elif excellent_count == 3:
-        profile_shape = "highly_readable"
-        tone = "positive"
-        profile_label = _PROFILE_LABELS["highly_readable"]
-
-    # Rule 9
-    elif strong_or_better_count == 3:
-        profile_shape = "strong_profile"
-        tone = "positive"
-        profile_label = _PROFILE_LABELS["strong_profile"]
-
-    # Rule 10 — fallback
-    else:
-        profile_shape = "needs_review"
-        tone = "moderate"
-        profile_label = _PROFILE_LABELS["needs_review"]
+    profile_shape, tone, profile_label = _classify_profile(
+        bands, scores, avg, lens_meta
+    )
 
     # ------------------------------------------------------------------
     # Headline
@@ -542,7 +604,7 @@ def interpret_profile(
     # ------------------------------------------------------------------
     lens_details: dict[str, dict] = {}
     for lens in ("AEO", "GEO", "AAX"):
-        band = bands[lens]  # type: ignore[assignment]
+        band: BandName = bands[lens]
         label = band.capitalize()
         lens_details[lens] = {
             "band_label": label,

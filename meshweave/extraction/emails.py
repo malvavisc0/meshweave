@@ -26,33 +26,48 @@ def is_valid_email(email: str) -> bool:
     local, domain = email.split("@", 1)
     if not local or not domain or "." not in domain:
         return False
-    if len(local) < 2:
-        return False
-    if local[0] in ".-" or local[-1] in ".-" or ".." in local:
-        return False
-    if domain[0] in ".-" or domain[-1] in ".-" or ".." in domain:
-        return False
     parts = domain.split(".")
-    if any(len(p) < 2 for p in parts[-2:]):
+    if _invalid_local(local):
         return False
+    if _invalid_domain(parts):
+        return False
+    return True
+
+
+def _invalid_local(local: str) -> bool:
+    """True when the local part violates a structural rule."""
+    if len(local) < 2:
+        return True
+    if local[0] in ".-" or local[-1] in ".-" or ".." in local:
+        return True
     # Reject purely numeric local parts (phone numbers, WhatsApp JIDs, etc.)
     if local.isdigit():
-        return False
+        return True
+    return False
+
+
+def _invalid_domain(parts: list[str]) -> bool:
+    """True when the domain violates a structural rule."""
+    domain = ".".join(parts)
+    if domain[0] in ".-" or domain[-1] in ".-" or ".." in domain:
+        return True
+    if any(len(p) < 2 for p in parts[-2:]):
+        return True
     # Reject IP-address domains (e.g. resource@192.168.1.210.when)
     # A valid domain TLD must not be purely numeric.
     if parts[-1].isdigit():
-        return False
+        return True
     # Reject domains embedding an IP address (4+ consecutive numeric segments)
     for i in range(len(parts) - 3):
         if all(parts[i + j].isdigit() for j in range(4)):
-            return False
+            return True
     # Reject domains with implausibly long TLDs
     if len(parts[-1]) > 8:
-        return False
+        return True
     # Reject blocked domains
     if domain in BLOCKED_DOMAINS or ".".join(parts[-2:]) in BLOCKED_DOMAINS:
-        return False
-    return True
+        return True
+    return False
 
 
 def _deobfuscate_text(text: str) -> str:

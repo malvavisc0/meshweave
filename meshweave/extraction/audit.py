@@ -26,6 +26,21 @@ def _canonical_key(url: str) -> tuple[str, str]:
     return host, path
 
 
+def _gather_pages(
+    markdowns: dict[str, dict[str, Any]],
+    start_page_meta: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Pages to audit: the optional start page plus each markdowns entry."""
+    all_pages: dict[str, dict[str, Any]] = {}
+    if start_page_meta:
+        all_pages["(start)"] = start_page_meta
+    for url, data in markdowns.items():
+        page = data.get("page", {})
+        if page:
+            all_pages[url] = page
+    return all_pages
+
+
 def audit_meta_uniqueness(
     markdowns: dict[str, dict[str, Any]],
     start_page_meta: dict[str, Any] | None = None,
@@ -39,13 +54,7 @@ def audit_meta_uniqueness(
     og_descs: dict[str, list[str]] = {}
     canonical_issues: list[dict[str, str]] = []
 
-    all_pages: dict[str, dict[str, Any]] = {}
-    if start_page_meta:
-        all_pages["(start)"] = start_page_meta
-    for url, data in markdowns.items():
-        page = data.get("page", {})
-        if page:
-            all_pages[url] = page
+    all_pages = _gather_pages(markdowns, start_page_meta)
 
     for url, page in all_pages.items():
         og = page.get("og", {})
@@ -121,31 +130,15 @@ def _extract_orgs_recursive(
     return results
 
 
-def audit_entity_consistency(
-    markdowns: dict[str, dict[str, Any]],
-    start_page_meta: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Check Organization schema consistency across all pages.
-
-    Extracts name, description, and sameAs from Organization
-    JSON-LD across all crawled pages and flags inconsistencies.
-    Recursively traverses nested JSON-LD objects to find
-    Organization schemas inside ``provider``, ``publisher``,
-    ``about``, ``parentOrganization``, etc.
-    """
+def _collect_org_fields(
+    all_pages: dict[str, dict[str, Any]],
+) -> tuple[list[str], list[str], list[str]]:
+    """Collect Organization names, descriptions, and sameAs values."""
     names: list[str] = []
     descriptions: list[str] = []
     same_as_all: list[str] = []
 
-    all_pages: dict[str, dict[str, Any]] = {}
-    if start_page_meta:
-        all_pages["(start)"] = start_page_meta
-    for url, data in markdowns.items():
-        page = data.get("page", {})
-        if page:
-            all_pages[url] = page
-
-    for url, page in all_pages.items():
+    for page in all_pages.values():
         for item in page.get("jsonld", []):
             orgs = _extract_orgs_recursive(item)
             for org in orgs:
@@ -158,6 +151,24 @@ def audit_entity_consistency(
                 for sa in org.get("sameAs", []):
                     if sa and sa not in same_as_all:
                         same_as_all.append(sa)
+
+    return names, descriptions, same_as_all
+
+
+def audit_entity_consistency(
+    markdowns: dict[str, dict[str, Any]],
+    start_page_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Check Organization schema consistency across all pages.
+
+    Extracts name, description, and sameAs from Organization
+    JSON-LD across all crawled pages and flags inconsistencies.
+    Recursively traverses nested JSON-LD objects to find
+    Organization schemas inside ``provider``, ``publisher``,
+    ``about``, ``parentOrganization``, etc.
+    """
+    all_pages = _gather_pages(markdowns, start_page_meta)
+    names, descriptions, same_as_all = _collect_org_fields(all_pages)
 
     name_counts = Counter(names)
     desc_counts = Counter(descriptions)
@@ -183,13 +194,7 @@ def audit_schema_coverage(
     pages_without_schema = 0
     schema_types_per_page: dict[str, list[str]] = {}
 
-    all_pages: dict[str, dict[str, Any]] = {}
-    if start_page_meta:
-        all_pages["(start)"] = start_page_meta
-    for url, data in markdowns.items():
-        page = data.get("page", {})
-        if page:
-            all_pages[url] = page
+    all_pages = _gather_pages(markdowns, start_page_meta)
 
     for url, page in all_pages.items():
         jsonld = page.get("jsonld", [])

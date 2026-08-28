@@ -286,6 +286,34 @@ async def get_rendered_html(
         except Exception as e:
             metrics.errors.append(f"Cache read: {e}")
 
+    return await _render_page(
+        url=url,
+        session=session,
+        wait_until=wait_until,
+        progressive_scroll=progressive_scroll,
+        timeout_ms=timeout_ms,
+        metrics=metrics,
+        cache_dir=cache_dir,
+        cp=cp,
+        return_metrics=return_metrics,
+        start=start,
+    )
+
+
+async def _render_page(
+    *,
+    url: str,
+    session: BrowserSession,
+    wait_until: Literal["load", "domcontentloaded", "networkidle"],
+    progressive_scroll: bool,
+    timeout_ms: int,
+    metrics: RenderMetrics,
+    cache_dir: str | None,
+    cp: Path | None,
+    return_metrics: bool,
+    start: float,
+) -> str | tuple[str, RenderMetrics]:
+    """Render a URL via the CDP session, collecting metrics and caching."""
     await session.ensure_connected()
     ctx = session.context
     page = await ctx.new_page()

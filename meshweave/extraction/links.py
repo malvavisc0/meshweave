@@ -51,39 +51,15 @@ def classify_links(
             continue
         total += 1
 
-        raw = str(href).strip()
-        # Remove query/fragment
-        parts = urlsplit(urljoin(base_url, raw))
-        absu = urlunsplit(
-            (
-                parts.scheme.lower(),
-                (parts.netloc or "").lower(),
-                parts.path or "/",
-                "",
-                "",
-            )
+        _classify_link(
+            href,
+            base_url,
+            base_domain,
+            ignored_domains,
+            seen,
+            internal,
+            external,
         )
-        link_domain = normalize_domain(parts.netloc or "")
-
-        if base_domain and link_domain == base_domain:
-            path = parts.path or "/"
-            if not path.startswith("/"):
-                path = "/" + path
-            if len(path) > 1 and path.endswith("/"):
-                path = path[:-1]
-            if path == "/" or should_ignore_path(path):
-                continue
-            key = ("int", path)
-            if key not in seen:
-                seen.add(key)
-                internal.append(path)
-        else:
-            if is_ignored_domain(link_domain, ignored_domains):
-                continue
-            key = ("ext", absu)
-            if key not in seen:
-                seen.add(key)
-                external.append(absu)
 
     elapsed = (time.perf_counter() - start) * 1000.0
     metrics = {
@@ -95,3 +71,48 @@ def classify_links(
         "parse_time_ms": round(elapsed, 2),
     }
     return internal, external, metrics
+
+
+def _classify_link(
+    href: Any,
+    base_url: str,
+    base_domain: str,
+    ignored_domains: set[str] | None,
+    seen: set[tuple[str, str]],
+    internal: list[str],
+    external: list[str],
+) -> None:
+    """Normalize a link and bucket it as internal or external (deduped)."""
+    raw = str(href).strip()
+    # Remove query/fragment
+    parts = urlsplit(urljoin(base_url, raw))
+    absu = urlunsplit(
+        (
+            parts.scheme.lower(),
+            (parts.netloc or "").lower(),
+            parts.path or "/",
+            "",
+            "",
+        )
+    )
+    link_domain = normalize_domain(parts.netloc or "")
+
+    if base_domain and link_domain == base_domain:
+        path = parts.path or "/"
+        if not path.startswith("/"):
+            path = "/" + path
+        if len(path) > 1 and path.endswith("/"):
+            path = path[:-1]
+        if path == "/" or should_ignore_path(path):
+            return
+        key = ("int", path)
+        if key not in seen:
+            seen.add(key)
+            internal.append(path)
+    else:
+        if is_ignored_domain(link_domain, ignored_domains):
+            return
+        key = ("ext", absu)
+        if key not in seen:
+            seen.add(key)
+            external.append(absu)
