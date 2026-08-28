@@ -106,7 +106,7 @@ def _begin_crawl_transition(
 
 
 def _persist_initial_limits(crawl_id: str, limits: dict[str, Any]) -> None:
-    """Persist resolved limits for the progress API (best-effort)."""
+    """Persist resolved limits for progress tracking (best-effort)."""
     try:
         with get_session() as s:
             r = s.get(Crawl, crawl_id)
@@ -274,7 +274,7 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
     if not row:
         return
 
-    # ── 2. Resolve limits and persist for progress API ───────────
+    # ── 2. Resolve limits and persist for progress tracking ──────
     limits = (
         _limits_from_row(row)
         if start_url

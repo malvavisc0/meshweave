@@ -69,7 +69,7 @@ def enable_langfuse() -> bool:
         from langfuse import get_client
         from pydantic_ai import Agent
     except ImportError as exc:
-        logger.debug(
+        logger.warning(
             "Skipping Langfuse tracing: %s (install the missing package to enable it)",
             exc,
         )

@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 
+{% block head_extra %}
+{% if in_progress %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+{% endblock %}
+
 {% block content %}
 {# Detect partial scoring: scoring completed but score_snapshot is missing #}
 {% set _is_partial = (status == "succeeded" and not score_snapshot) %}
@@ -46,35 +52,29 @@ else 'n/a') ~
 
 <div class="container container-wide analysis-result-page">
 
-  {% if status in ["pending", "running"] or aax_pending %}
-  <p>Status: {{ status }}. {% if aax_pending %}Analyzing...{% else %}Processing...{% endif %}</p>
+  {% if in_progress %}
+  <p>Status: {{ status|title }}. {% if aax_pending %}Analyzing...{% else %}Processing...{% endif %}</p>
 
-  <div id="progress-panel" class="panel mt-1 mb-2" role="status" aria-live="polite">
+  <div class="panel mt-1 mb-2" role="status" aria-live="polite">
     <div class="small">
       <strong>Progress:</strong>
-      <span id="progress-status">{{ status }}</span>
-      <span>•</span>
-      <span id="progress-visited">0</span>
+      <span>{{ progress.visited }}</span>
       <span>/</span>
-      <span id="progress-total">?</span>
+      <span>{{ progress.total if progress.total else '?' }}</span>
       <span>pages</span>
       <span>•</span>
-      <span id="progress-elapsed">0s</span>
-      <span>•</span>
-      <span>ETA:</span>
-      <span id="progress-eta">—</span>
-      <span class="small ml-1" id="progress-budget"></span>
+      <span>{{ progress.elapsed }}</span>
     </div>
     <div class="progress">
-      <div id="progress-bar" class="progress-bar"></div>
+      <div class="progress-bar" style="width: {{ progress.pct }}%"></div>
     </div>
     <div class="small mt-1">
       <strong>Found so far:</strong>
-      <span>Emails:</span> <span id="progress-emails">0</span>
+      <span>Emails:</span> <span>{{ progress.emails }}</span>
       <span>•</span>
-      <span>Internal links:</span> <span id="progress-links-int">0</span>
+      <span>Internal links:</span> <span>{{ progress.links_int }}</span>
       <span>•</span>
-      <span>External domains:</span> <span id="progress-domains-ext">0</span>
+      <span>External domains:</span> <span>{{ progress.domains_ext }}</span>
     </div>
   </div>
 
@@ -932,6 +932,14 @@ else 'n/a') ~
 
 {% block scripts %}
 <script id="analysis-data" type="application/json">
+{% if in_progress %}
+{{ {
+  'crawl_id': id if id else '',
+  'user_id': user_id if user_id else '',
+  'public_key': key if key else '',
+  'logged_in': request.state.current_user and True or False
+} | tojson }}
+{% else %}
 {{ {
   'base_domain': summary.metrics.extraction.base_domain if summary and summary.metrics and summary.metrics.extraction else '',
   'emails_unique': payload.emails.unique if payload and payload.emails and payload.emails.unique else [],
@@ -944,14 +952,13 @@ else 'n/a') ~
   'crawl_id': id if id else '',
   'user_id': user_id if user_id else '',
   'public_key': key if key else '',
-  'status': status if status else '',
   'logged_in': request.state.current_user and True or False,
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
   'ownerless': ownerless|default(false),
-  'score_snapshot': score_snapshot|default(none),
-  'aax_pending': aax_pending|default(false)
+  'score_snapshot': score_snapshot|default(none)
 } | tojson }}
+{% endif %}
 </script>
 <script src="/static/js/result-analysis.js"></script>
 <script src="/static/js/marked.min.js"></script>

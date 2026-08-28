@@ -1,23 +1,13 @@
+"""Progress computation and stale-job finalization for the analysis page."""
+
 import os
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Request
-
 from webapp.db import get_session
 from webapp.models import Crawl
-from webapp.utils.auth import require_ownership
+from webapp.utils.config import _env_bool
 from webapp.utils.metrics import stale_finalize_attempts, stale_finalize_finished
-from webapp.utils.scoring import aax_pending
-
-router = APIRouter()
-
-# --- Stale finalization helpers ---
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    v = str(os.getenv(name, "1" if default else "0")).strip().lower()
-    return v in ("1", "true", "yes", "on")
 
 
 def _int_env(name: str, default: int) -> int:
@@ -177,73 +167,17 @@ def _compute_elapsed(row: Crawl, now: datetime, limits: dict[str, Any]) -> int |
     return elapsed_ms
 
 
-def _estimate_remaining(
-    row: Crawl,
-    limits: dict[str, Any],
-    visited_pages: int,
-    elapsed_ms: int | None,
-) -> tuple[int | None, int | None, int | None]:
-    # Estimate remaining time for site crawls
-    est_remaining_ms = None
-    time_budget_ms_val = None
-    time_budget_remaining_ms = None
+def _time_budget_ms(row: Crawl, limits: dict[str, Any]) -> int | None:
+    # Time budget for site crawls, with env default fallback (enables staleness checks)
+    if not row.crawl_params:
+        return None
     try:
-        if bool(row.crawl_params):
-            # ensure integer max_pages
-            total = None
-            v_total = limits.get("max_pages") if isinstance(limits, dict) else None
-            try:
-                total = int(v_total) if v_total is not None else None
-            except Exception:
-                total = None
-            done = int(visited_pages or 0)
-            if elapsed_ms is not None and total and total > 0 and done > 0:
-                avg = float(elapsed_ms) / float(done)
-                rem_pages = max(0, total - done)
-                est_remaining_ms = int(avg * rem_pages)
-            # time budget info if available
-            v_budget = (
-                limits.get("time_budget_ms") if isinstance(limits, dict) else None
-            )
-            try:
-                time_budget_ms_val = int(v_budget) if v_budget is not None else None
-            except Exception:
-                time_budget_ms_val = None
-            if time_budget_ms_val is not None and elapsed_ms is not None:
-                try:
-                    time_budget_remaining_ms = max(
-                        0, int(time_budget_ms_val) - int(elapsed_ms)
-                    )
-                except Exception:
-                    time_budget_remaining_ms = None
-    except Exception:
-        est_remaining_ms = None
-        time_budget_remaining_ms = None
-    return est_remaining_ms, time_budget_ms_val, time_budget_remaining_ms
-
-
-def _apply_site_budget_default(
-    row: Crawl,
-    elapsed_ms: int | None,
-    time_budget_ms_val: int | None,
-    time_budget_remaining_ms: int | None,
-) -> tuple[int | None, int | None]:
-    # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
-    if bool(row.crawl_params) and time_budget_ms_val is None:
-        try:
-            time_budget_ms_val = int(
-                os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000")
-            )
-        except Exception:
-            time_budget_ms_val = 600000
-        if elapsed_ms is not None and time_budget_remaining_ms is None:
-            try:
-                time_budget_remaining_ms = max(
-                    0, int(time_budget_ms_val) - int(elapsed_ms)
-                )
-            except Exception:
-                time_budget_remaining_ms = None
-    return time_budget_ms_val, time_budget_remaining_ms
+        v = limits.get("time_budget_ms") if isinstance(limits, dict) else None
+        if v is not None:
+            return int(v)
+    except TypeError, ValueError:
+        pass
+    return _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600000)
 
 
 def _check_stale(
@@ -310,110 +244,50 @@ def _progress_counters(row: Crawl) -> tuple[int, int, int]:
     return emails_so_far, links_internal_so_far, external_domains_so_far
 
 
-@router.get("/api/progress/{crawl_id}")
-async def api_progress(request: Request, crawl_id: str):
-    """Return lightweight progress info for a private crawl (owner only).
+def _fmt_elapsed(ms: int | None) -> str:
+    if not ms or ms < 0:
+        return "0s"
+    s = ms // 1000
+    if s < 60:
+        return f"{s}s"
+    return f"{s // 60}m {s % 60}s"
 
-    Args:
-        request (Request): Incoming request (used for ownership check).
-        crawl_id (str): UUID of the crawl.
 
-    Returns:
-        dict: {
-          "id": str,
-          "status": str,
-          "scope": "page"|"site",
-          "visited_pages": int,
-          "limits": {...} | {},
-          "elapsed_ms": int | None,
-          "est_remaining_ms": int | None,
-          "time_budget_ms": int | None,
-          "time_budget_remaining_ms": int | None,
-          "last_updated": ISO timestamp
-        }
+def progress_view(row: Crawl, finalize: bool = True) -> tuple[Crawl, dict[str, Any]]:
+    """Finalize a stale running row and build progress panel values for SSR.
+
+    Pass finalize=False for non-owner renders so unauthenticated viewers
+    cannot trigger the stale-finalize DB write.
+
+    Returns the (possibly refreshed) row and a dict with visited, total,
+    elapsed, pct, emails, links_int, and domains_ext.
     """
-    row = await require_ownership(request, crawl_id)
     now = datetime.now(UTC)
-
-    visited_pages = _count_visited_pages(row)
     limits = _build_limits(row)
     elapsed_ms = _compute_elapsed(row, now, limits)
-    est_remaining_ms, time_budget_ms_val, time_budget_remaining_ms = (
-        _estimate_remaining(row, limits, visited_pages, elapsed_ms)
-    )
-    time_budget_ms_val, time_budget_remaining_ms = _apply_site_budget_default(
-        row, elapsed_ms, time_budget_ms_val, time_budget_remaining_ms
-    )
-    row = _maybe_finalize_stale(row, elapsed_ms, time_budget_ms_val)
-    emails_so_far, links_internal_so_far, external_domains_so_far = _progress_counters(
-        row
-    )
 
-    return {
-        "id": row.id,
-        "status": row.status,
-        "scope": "site" if row.crawl_params else "page",
-        "visited_pages": visited_pages,
-        "limits": limits,
-        "elapsed_ms": elapsed_ms,
-        "est_remaining_ms": est_remaining_ms,
-        "time_budget_ms": time_budget_ms_val,
-        "time_budget_remaining_ms": time_budget_remaining_ms,
-        "last_updated": (row.updated_at or now).isoformat(),
-        # incremental counters for UI consistency
-        "emails_so_far": emails_so_far,
-        "links_internal_so_far": links_internal_so_far,
-        "external_domains_so_far": external_domains_so_far,
-        "aax_pending": aax_pending(row),
-    }
+    if finalize and str(row.status or "").lower() == "running":
+        budget_ms = _time_budget_ms(row, limits)
+        row = _maybe_finalize_stale(row, elapsed_ms, budget_ms)
+        # Recompute after possible finalization/refresh
+        limits = _build_limits(row)
+        elapsed_ms = _compute_elapsed(row, now, limits)
 
+    visited = _count_visited_pages(row)
+    emails, links_int, domains_ext = _progress_counters(row)
+    total = limits.get("max_pages") if isinstance(limits, dict) else None
+    try:
+        total = int(total) if total else None
+    except TypeError, ValueError:
+        total = None
+    pct = min(100, round(visited / total * 100)) if total else 0
 
-@router.get("/api/progress/public/{key}")
-async def api_progress_public(key: str):
-    """Return read-only progress info for a public crawl by short key.
-
-    No authentication required; only available for visibility='public' rows.
-    """
-    with get_session() as s:
-        row = (
-            s.query(Crawl)
-            .filter(Crawl.key == key, Crawl.visibility == "public")
-            .one_or_none()
-        )
-        if not row:
-            # Hide existence when key invalid or not public
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=404, detail="Not found")
-
-    now = datetime.now(UTC)
-
-    visited_pages = _count_visited_pages(row)
-    limits = _build_limits(row)
-    elapsed_ms = _compute_elapsed(row, now, limits)
-    est_remaining_ms, time_budget_ms_val, time_budget_remaining_ms = (
-        _estimate_remaining(row, limits, visited_pages, elapsed_ms)
-    )
-    time_budget_ms_val, time_budget_remaining_ms = _apply_site_budget_default(
-        row, elapsed_ms, time_budget_ms_val, time_budget_remaining_ms
-    )
-    row = _maybe_finalize_stale(row, elapsed_ms, time_budget_ms_val)
-    emails_so_far, links_internal_so_far, external_domains_so_far = _progress_counters(
-        row
-    )
-
-    return {
-        "status": row.status,
-        "scope": "site" if row.crawl_params else "page",
-        "visited_pages": visited_pages,
-        "limits": limits,
-        "elapsed_ms": elapsed_ms,
-        "est_remaining_ms": est_remaining_ms,
-        "time_budget_ms": time_budget_ms_val,
-        "time_budget_remaining_ms": time_budget_remaining_ms,
-        "last_updated": (row.updated_at or now).isoformat(),
-        "emails_so_far": emails_so_far,
-        "links_internal_so_far": links_internal_so_far,
-        "external_domains_so_far": external_domains_so_far,
-        "aax_pending": aax_pending(row),
+    return row, {
+        "visited": visited,
+        "total": total,
+        "elapsed": _fmt_elapsed(elapsed_ms),
+        "pct": pct,
+        "emails": emails,
+        "links_int": links_int,
+        "domains_ext": domains_ext,
     }

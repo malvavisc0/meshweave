@@ -25,7 +25,6 @@ from webapp.routers import (
     jobs,
     legal,
     products,
-    progress,
     prospects,
     prospects_page,
     scores,
@@ -237,7 +236,6 @@ def create_app() -> FastAPI:
     app.include_router(legal.router)
     app.include_router(submissions.router)
     app.include_router(analysis.router)
-    app.include_router(progress.router)
     app.include_router(jobs.router)
     app.include_router(all_public.router)
     # Pages: Products management page

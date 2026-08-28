@@ -874,75 +874,6 @@
         } catch (_) { }
     })();
 
-    function fmtMs(ms) {
-        if (!ms || ms < 0) return '0s';
-        var s = Math.floor(ms / 1000);
-        if (s < 60) return s + 's';
-        var m = Math.floor(s / 60), r = s % 60;
-        return m + 'm ' + r + 's';
-    }
-    var __progressTimer = null;
-    function startProgressPolling(crawlId) {
-        if (!crawlId) return;
-        function tick() {
-            fetch('/api/progress/' + encodeURIComponent(crawlId), { credentials: 'same-origin' })
-                .then(function (r) {
-                    if (!r.ok) { throw { status: r.status }; }
-                    return r.json();
-                })
-                .then(function (j) {
-                    try {
-                        var v = Number(j.visited_pages || 0), lim = (j.limits && Number(j.limits.max_pages)) || null;
-                        var st = (String(j.status || '').toLowerCase());
-                        // Status + counters
-                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = String(j.status || '');
-                        var pv = document.getElementById('progress-visited'); if (pv) pv.textContent = String(v);
-                        var pt = document.getElementById('progress-total'); if (pt) pt.textContent = lim ? String(lim) : '?';
-                        var pel = document.getElementById('progress-elapsed'); if (pel) pel.textContent = fmtMs(Number(j.elapsed_ms || 0));
-                        // ETA and budget
-                        var etaEl = document.getElementById('progress-eta');
-                        if (etaEl) {
-                            var etaMs = (j.est_remaining_ms == null ? null : Number(j.est_remaining_ms));
-                            etaEl.textContent = (etaMs != null && !Number.isNaN(etaMs)) ? fmtMs(etaMs) : '—';
-                        }
-                        var budEl = document.getElementById('progress-budget');
-                        var rem = (j.time_budget_remaining_ms == null ? null : Number(j.time_budget_remaining_ms));
-                        if (budEl) budEl.textContent = (rem != null && !Number.isNaN(rem)) ? ('Budget left: ' + fmtMs(rem)) : '';
-                        // Found-so-far counters (best-effort)
-                        try {
-                            var el;
-                            el = document.getElementById('progress-emails'); if (el) el.textContent = String(j.emails_so_far || 0);
-                            el = document.getElementById('progress-links-int'); if (el) el.textContent = String(j.links_internal_so_far || 0);
-                            el = document.getElementById('progress-domains-ext'); if (el) el.textContent = String(j.external_domains_so_far || 0);
-                        } catch (_) { }
-                        // Progress bar
-                        var pct = 0;
-                        if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v / lim) * 100)));
-                        var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct + '%';
-                        // AAX still running: keep polling, show finalizing state
-                        if (j.aax_pending) {
-                            if (ps) ps.textContent = 'analyzing…';
-                            return;
-                        }
-                        // Stop on terminal states once AAX is done
-                        if (st !== 'running' && st !== 'pending') {
-                            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                            setTimeout(function () { location.reload(); }, 800);
-                        }
-                    } catch (e) { }
-                })
-                .catch(function (_err) {
-                    try {
-                        if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = 'unavailable';
-                    } catch (_) { }
-                    setTimeout(function () { location.reload(); }, 1500);
-                });
-        }
-        tick();
-        __progressTimer = setInterval(tick, 2000);
-    }
-
     /* Claim eligibility UI */
     function setupClaimEligibility() {
         try {
@@ -976,69 +907,6 @@
             btn.addEventListener('click', claimAnalysis);
             var timer = setInterval(function () { if (update()) { try { clearInterval(timer); } catch (_) { } } }, 1000);
         } catch (_) { }
-    }
-
-    /* Public progress polling by short key */
-    function startPublicProgressPolling(pubKey) {
-        if (!pubKey) return;
-        function tick() {
-            fetch('/api/progress/public/' + encodeURIComponent(pubKey))
-                .then(function (r) {
-                    if (!r.ok) { throw { status: r.status }; }
-                    return r.json();
-                })
-                .then(function (j) {
-                    try {
-                        var v = Number(j.visited_pages || 0), lim = (j.limits && Number(j.limits.max_pages)) || null;
-                        var st = (String(j.status || '').toLowerCase());
-                        // Status + counters
-                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = String(j.status || '');
-                        var pv = document.getElementById('progress-visited'); if (pv) pv.textContent = String(v);
-                        var pt = document.getElementById('progress-total'); if (pt) pt.textContent = lim ? String(lim) : '?';
-                        var pel = document.getElementById('progress-elapsed'); if (pel) pel.textContent = fmtMs(Number(j.elapsed_ms || 0));
-                        // ETA and budget
-                        var etaEl = document.getElementById('progress-eta');
-                        if (etaEl) {
-                            var etaMs = (j.est_remaining_ms == null ? null : Number(j.est_remaining_ms));
-                            etaEl.textContent = (etaMs != null && !Number.isNaN(etaMs)) ? fmtMs(etaMs) : '—';
-                        }
-                        var budEl = document.getElementById('progress-budget');
-                        var rem = (j.time_budget_remaining_ms == null ? null : Number(j.time_budget_remaining_ms));
-                        if (budEl) budEl.textContent = (rem != null && !Number.isNaN(rem)) ? ('Budget left: ' + fmtMs(rem)) : '';
-                        // Found-so-far counters (best-effort)
-                        try {
-                            var el;
-                            el = document.getElementById('progress-emails'); if (el) el.textContent = String(j.emails_so_far || 0);
-                            el = document.getElementById('progress-links-int'); if (el) el.textContent = String(j.links_internal_so_far || 0);
-                            el = document.getElementById('progress-domains-ext'); if (el) el.textContent = String(j.external_domains_so_far || 0);
-                        } catch (_) { }
-                        // Progress bar
-                        var pct = 0;
-                        if (lim && lim > 0) pct = Math.max(0, Math.min(100, Math.round((v / lim) * 100)));
-                        var bar = document.getElementById('progress-bar'); if (bar) bar.style.width = pct + '%';
-                        // AAX still running: keep polling, show finalizing state
-                        if (j.aax_pending) {
-                            if (ps) ps.textContent = 'analyzing…';
-                            return;
-                        }
-                        // Stop on terminal states once AAX is done
-                        if (st !== 'running' && st !== 'pending') {
-                            if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                            setTimeout(function () { location.reload(); }, 800);
-                        }
-                    } catch (e) { }
-                })
-                .catch(function (err) {
-                    try {
-                        if (__progressTimer) { clearInterval(__progressTimer); __progressTimer = null; }
-                        var ps = document.getElementById('progress-status'); if (ps) ps.textContent = 'unavailable';
-                    } catch (_) { }
-                    // Single refresh to avoid loops; SSR will render final state or 404
-                    setTimeout(function () { location.reload(); }, 1500);
-                });
-        }
-        tick();
-        __progressTimer = setInterval(tick, 2000);
     }
 
     // Utilities
@@ -1098,19 +966,6 @@
                     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             };
-        } catch (_) { }
-
-        // Start progress polling (prefer public when available to work for anonymous viewers and non-owners)
-        try {
-            var _pubKey = __ctx.public_key || '';
-            var _cid = __ctx.crawl_id || '';
-            var _st = String(__ctx.status || '').toLowerCase();
-            var _aaxPending = __ctx.aax_pending || false;
-            if (_pubKey && (_st === 'pending' || _st === 'running' || _aaxPending)) {
-                startPublicProgressPolling(_pubKey);
-            } else if (_cid && (_st === 'pending' || _st === 'running' || _aaxPending)) {
-                startProgressPolling(_cid);
-            }
         } catch (_) { }
 
         // Bind broken scoping functions globally (window scope) to activate inline onclick handlers

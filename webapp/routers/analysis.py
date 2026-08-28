@@ -14,6 +14,7 @@ from webapp.infra import templates
 from webapp.models import Crawl
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
+from webapp.utils.progress import progress_view
 from webapp.utils.reasons import friendly_reason
 from webapp.utils.scoring import (
     PRIORITY_NUMERIC,
@@ -352,6 +353,19 @@ def _set_session_cookie(
 share_toggle_limits: dict[str, list[float]] = {}
 
 
+def _progress_for(row: Crawl, finalize: bool) -> tuple[Crawl, dict | None, bool]:
+    """Build SSR progress for in-flight crawls.
+
+    Returns (row, progress_or_None, aax_pending_value). finalize should be
+    False for non-owner renders so viewers cannot trigger stale finalization.
+    """
+    aax = aax_pending(row)
+    if str(row.status or "").lower() in ("pending", "running") or aax:
+        row, progress = progress_view(row, finalize=finalize)
+        return row, progress, aax
+    return row, None, aax
+
+
 @router.get("/analysis/shared/{share_key}", response_class=HTMLResponse)
 async def view_shared_analysis(request: Request, share_key: str):
     """View private analysis via shareable link."""
@@ -365,6 +379,8 @@ async def view_shared_analysis(request: Request, share_key: str):
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
 
+    # Shared viewers are not owners: never trigger stale finalization
+    row, progress, aax = _progress_for(row, finalize=False)
     payload: dict | None = row.payload_json
 
     # Similar to public view, but with Unlisted badge and no claim
@@ -398,9 +414,9 @@ async def view_shared_analysis(request: Request, share_key: str):
     abs_page_url = _abs_url(request, f"/analysis/shared/{share_key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
-    summary = build_summary(row, payload)
-
-    _ss_shared = _build_score_snapshot_context(row)
+    in_progress = progress is not None
+    summary = None if in_progress else build_summary(row, payload)
+    _ss_shared = None if in_progress else _build_score_snapshot_context(row)
 
     resp = templates.TemplateResponse(
         request,
@@ -444,7 +460,9 @@ async def view_shared_analysis(request: Request, share_key: str):
             "score_snapshot": _ss_shared,
             "sorted_recommendations": _sorted_recommendations(_ss_shared),
             "factor_extremes": _build_factor_extremes(_ss_shared),
-            "aax_pending": aax_pending(row),
+            "aax_pending": aax,
+            "in_progress": in_progress,
+            "progress": progress,
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -482,6 +500,8 @@ async def view_analysis(request: Request, ref: str):
             else:
                 row = await require_ownership(request, ref)
 
+        row, progress, aax = _progress_for(row, finalize=True)
+        in_progress = progress is not None
         payload: dict | None = row.payload_json
         title_from_payload, desc_from_payload = _seo_title_desc(payload)
         site_name = os.getenv("SITE_NAME", "MeshWeave")
@@ -494,13 +514,23 @@ async def view_analysis(request: Request, ref: str):
         meta_description = _meta_description(desc_from_payload, payload)
         abs_page_url = _abs_url(request, f"/analysis/{row.id}")
         og_image_url = os.getenv("OG_IMAGE_URL") or None
-        counts = _json_ld_count(payload)
         # JSON-LD: CreativeWork (LLM-first)
-        json_ld = _structured_data(
-            str(row.id), row.domain, abs_page_url, row.updated_at, row.status, counts
-        )
-        summary = build_summary(row, payload)
-        reason_stopped_label = _reason_stopped_label(payload)
+        if in_progress:
+            json_ld = None
+            summary = None
+            reason_stopped_label = ""
+        else:
+            counts = _json_ld_count(payload)
+            json_ld = _structured_data(
+                str(row.id),
+                row.domain,
+                abs_page_url,
+                row.updated_at,
+                row.status,
+                counts,
+            )
+            summary = build_summary(row, payload)
+            reason_stopped_label = _reason_stopped_label(payload)
         api_url = f"/api/analysis/private/{row.id}"
         abs_api_url = _abs_url(request, api_url)
 
@@ -515,7 +545,7 @@ async def view_analysis(request: Request, ref: str):
         csrf_token, cookie_name, session_id, new_session = _csrf(request)
         is_owner, current_user, user_id = _owner_state(request, row)
 
-        _ss_private = _build_score_snapshot_context(row)
+        _ss_private = None if in_progress else _build_score_snapshot_context(row)
         resp = templates.TemplateResponse(
             request,
             "result.html",
@@ -557,7 +587,9 @@ async def view_analysis(request: Request, ref: str):
                 "score_snapshot": _ss_private,
                 "sorted_recommendations": _sorted_recommendations(_ss_private),
                 "factor_extremes": _build_factor_extremes(_ss_private),
-                "aax_pending": aax_pending(row),
+                "aax_pending": aax,
+                "in_progress": in_progress,
+                "progress": progress,
             },
         )
         # Prevent indexing of private results
@@ -577,6 +609,9 @@ async def view_analysis(request: Request, ref: str):
         raise HTTPException(status_code=404, detail="Not found")
     row = row_result
 
+    # Public viewers are not owners: never trigger stale finalization
+    row, progress, aax = _progress_for(row, finalize=False)
+    in_progress = progress is not None
     payload = row.payload_json
     title_from_payload, desc_from_payload = _seo_title_desc(payload)
     site_name = os.getenv("SITE_NAME", "MeshWeave")
@@ -590,13 +625,18 @@ async def view_analysis(request: Request, ref: str):
     abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
-    # JSON-LD: CreativeWork (LLM-first)
-    counts = _json_ld_count(payload)
-    json_ld = _structured_data(
-        str(row.key), row.domain, abs_page_url, row.updated_at, row.status, counts
-    )
-    summary = build_summary(row, payload)
-    reason_stopped_label = _reason_stopped_label(payload)
+    if in_progress:
+        json_ld = None
+        summary = None
+        reason_stopped_label = ""
+    else:
+        # JSON-LD: CreativeWork (LLM-first)
+        counts = _json_ld_count(payload)
+        json_ld = _structured_data(
+            str(row.key), row.domain, abs_page_url, row.updated_at, row.status, counts
+        )
+        summary = build_summary(row, payload)
+        reason_stopped_label = _reason_stopped_label(payload)
 
     # CSV/summary endpoints
     api_summary_url = f"/api/analysis/public/{row.key}/summary"
@@ -619,36 +659,37 @@ async def view_analysis(request: Request, ref: str):
     )
     ownerless = getattr(row, "user_id", None) is None
 
-    # Cooldown for refresh (public domain root)
-    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    now = datetime.now(UTC)
+    # Cooldown for refresh (public domain root); irrelevant mid-crawl
     can_refresh = False
     refresh_eta = ""
-    with get_session() as s:
-        public_root = (
-            s.query(Crawl)
-            .filter(
-                Crawl.domain == row.domain,
-                Crawl.visibility == "public",
-                Crawl.path == "/",
-                Crawl.query == "",
-            )
-            .first()
-        )
-        if public_root:
-            next_refresh_eligible = public_root.updated_at + timedelta(
-                minutes=refresh_min_age_minutes
-            )
-            can_refresh = now >= next_refresh_eligible
-            if not can_refresh:
-                refresh_eta = (
-                    f"{int((next_refresh_eligible - now).total_seconds() / 60)}m"
+    if not in_progress:
+        refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+        now = datetime.now(UTC)
+        with get_session() as s:
+            public_root = (
+                s.query(Crawl)
+                .filter(
+                    Crawl.domain == row.domain,
+                    Crawl.visibility == "public",
+                    Crawl.path == "/",
+                    Crawl.query == "",
                 )
+                .first()
+            )
+            if public_root:
+                next_refresh_eligible = public_root.updated_at + timedelta(
+                    minutes=refresh_min_age_minutes
+                )
+                can_refresh = now >= next_refresh_eligible
+                if not can_refresh:
+                    refresh_eta = (
+                        f"{int((next_refresh_eligible - now).total_seconds() / 60)}m"
+                    )
 
     # Ownership/permissions (public view)
     is_owner, current_user, user_id = _owner_state(request, row)
 
-    _ss_public = _build_score_snapshot_context(row)
+    _ss_public = None if in_progress else _build_score_snapshot_context(row)
     resp = templates.TemplateResponse(
         request,
         "result.html",
@@ -695,7 +736,9 @@ async def view_analysis(request: Request, ref: str):
             "score_snapshot": _ss_public,
             "sorted_recommendations": _sorted_recommendations(_ss_public),
             "factor_extremes": _build_factor_extremes(_ss_public),
-            "aax_pending": aax_pending(row),
+            "aax_pending": aax,
+            "in_progress": in_progress,
+            "progress": progress,
         },
     )
     _set_session_cookie(resp, new_session, session_id, cookie_name)
