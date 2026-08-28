@@ -288,7 +288,6 @@ webapp/
     scoring.html       # Scoring methodology page
     dashboard.html     # Dashboard page
     result.html        # Analysis result page
-    domain_index.html  # Per-domain history page
     contact.html       # Contact page
     products.html      # Products page (auth-gated)
     prospects.html     # Prospects page (auth-gated)

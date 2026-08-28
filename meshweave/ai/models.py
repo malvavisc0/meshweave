@@ -113,8 +113,6 @@ class ContactabilityResult(BaseModel):
     has_contact_page: bool = False
     has_contact_point_schema: bool = False
     has_social_links: bool = False
-    has_generic_email: bool = False
-    has_phone: bool = False
     email_count: int = 0
     penalties: list[str] = Field(default_factory=list)
 
