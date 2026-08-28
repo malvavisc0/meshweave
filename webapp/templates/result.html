@@ -46,8 +46,8 @@ else 'n/a') ~
 
 <div class="container container-wide analysis-result-page">
 
-  {% if status in ["pending", "running"] %}
-  <p>Status: {{ status }}. Processing...</p>
+  {% if status in ["pending", "running"] or aax_pending %}
+  <p>Status: {{ status }}. {% if aax_pending %}Analyzing...{% else %}Processing...{% endif %}</p>
 
   <div id="progress-panel" class="panel mt-1 mb-2" role="status" aria-live="polite">
     <div class="small">
