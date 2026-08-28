@@ -116,7 +116,7 @@ async def _run_aax(crawl_id: str, payload: dict[str, Any]) -> None:
 
         await run_aax_for_crawl(crawl_id, payload=payload)
     except Exception:
-        pass
+        logger.exception("AAX analysis failed for crawl %s", crawl_id)
 
 
 async def run_crawl_task(

@@ -341,13 +341,14 @@ def _enqueue_aax(crawl_id: str, payload: dict[str, Any]) -> None:
 
         from webapp.services.scoring import run_aax_for_crawl
 
-        loop = asyncio.get_running_loop()
-        loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
-    except RuntimeError:
-        # No running event loop — skip AAX (will be triggered on next access)
-        pass
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
+        except RuntimeError:
+            # No running event loop — run synchronously in a new loop
+            asyncio.run(run_aax_for_crawl(crawl_id, payload=payload))
     except Exception:
-        pass
+        logger.exception("Failed to enqueue AAX for crawl %s", crawl_id)
 
 
 def _finish_task(
