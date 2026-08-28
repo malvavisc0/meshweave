@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import joinedload
 
 from webapp.db import get_session
@@ -85,6 +85,266 @@ def _build_factor_extremes(ss: dict | None) -> dict:
         "geo": _factor_extremes(sd.get("geo", {}).get("factors", {})),
         "aax": _factor_extremes(sd.get("aax", {}).get("factors", {})),
     }
+
+
+def _seo_title_desc(payload: dict | None) -> tuple[str, str]:
+    """Extract (title_from_payload, desc_from_payload) from the page payload."""
+    title_from_payload = ""
+    desc_from_payload = ""
+    try:
+        if payload:
+            pg = payload.get("page") or {}
+            title_from_payload = (pg.get("title") or "").strip()
+            desc_from_payload = (pg.get("description") or "").strip()
+    except Exception:
+        pass
+    return title_from_payload, desc_from_payload
+
+
+def _payload_scope(payload: dict | None, row: Crawl) -> str:
+    """Compute the effective scope value used for the SEO page title."""
+    scope_val = ""
+    try:
+        if isinstance(payload, dict):
+            scope_val = str(payload.get("scope") or "").strip().lower()
+    except Exception:
+        scope_val = ""
+    if not scope_val:
+        scope_val = str(getattr(row, "scope", "") or "").strip().lower()
+    return scope_val
+
+
+def _external_count(payload: dict, external_links_count: int) -> int:
+    """Apply the extraction reported external count (link count, not page count)."""
+    try:
+        if payload.get("metrics") and payload["metrics"].get("extraction"):
+            ext = payload["metrics"]["extraction"]
+            # Do not use internal_count for content_pages_count (it's link count, not page count)
+            if ext.get("external_count") is not None:
+                external_links_count = int(ext.get("external_count") or 0)
+    except Exception:
+        pass
+    return external_links_count
+
+
+def _link_counts(payload: dict, internal: int, external: int) -> tuple[int, int]:
+    """Count internal/external link lists, keeping the larger external count."""
+    try:
+        if payload.get("links"):
+            if isinstance(payload["links"].get("internal"), list):
+                internal = len(payload["links"]["internal"])
+            if isinstance(payload["links"].get("external"), list):
+                external = max(external, len(payload["links"]["external"]))
+    except Exception:
+        pass
+    return internal, external
+
+
+def _emails_count(payload: dict, emails_count: int) -> int:
+    """Set the email count from the payload counts when present."""
+    try:
+        if payload.get("emails") and payload["emails"].get("counts"):
+            emails_count = int(payload["emails"]["counts"].get("total_unique") or 0)
+    except Exception:
+        pass
+    return emails_count
+
+
+def _content_pages_count(payload: dict, content_pages_count: int) -> int:
+    """Count content pages from pages list or summary visited_count."""
+    try:
+        if isinstance(payload.get("pages"), list):
+            content_pages_count = len(payload["pages"])
+        elif (
+            isinstance(payload.get("summary"), dict)
+            and payload["summary"].get("visited_count") is not None
+        ):
+            content_pages_count = int(payload["summary"]["visited_count"] or 0)
+    except Exception:
+        pass
+    return content_pages_count
+
+
+def _json_ld_count(payload: dict | None) -> dict:
+    """Derive content/email/link counts from the payload for JSON-LD."""
+    if not payload:
+        return {
+            "content_pages_count": 0,
+            "emails_count": 0,
+            "internal_links_count": 0,
+            "external_links_count": 0,
+        }
+    external_links_count = _external_count(payload, 0)
+    internal_links_count, external_links_count = _link_counts(
+        payload, 0, external_links_count
+    )
+    emails_count = _emails_count(payload, 0)
+    content_pages_count = _content_pages_count(payload, 0)
+    return {
+        "content_pages_count": content_pages_count,
+        "emails_count": emails_count,
+        "internal_links_count": internal_links_count,
+        "external_links_count": external_links_count,
+    }
+
+
+def _page_title(
+    scope_val: str,
+    domain_val: str,
+    path_val: str,
+    title_from_payload: str,
+    site_name: str,
+) -> str:
+    """Build the SEO-friendly page title for the given scope."""
+    if scope_val == "site":
+        return f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
+    path_or_title = title_from_payload or path_val
+    return f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
+
+
+def _meta_description(desc_from_payload: str, payload: dict | None) -> str:
+    """Build the truncated meta description for the page."""
+    meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
+        "markdown", ""
+    )
+    if meta_description and len(meta_description) > 300:
+        meta_description = meta_description[:297] + "..."
+    return meta_description
+
+
+def _structured_data(
+    identifier: str,
+    domain: str,
+    abs_page_url: str,
+    updated_at: datetime | None,
+    status: str | None,
+    counts: dict,
+) -> str:
+    """Build the JSON-LD CreativeWork payload (with fallback)."""
+    try:
+        return json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "MeshWeave Analysis",
+                "identifier": identifier,
+                "about": (domain or "").strip(),
+                "url": abs_page_url,
+                "dateModified": (updated_at or datetime.now(UTC)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "creativeWorkStatus": (status or "").title(),
+                "measurementTechnique": [
+                    "web-crawl",
+                    "markdown-extraction",
+                    "link-analysis",
+                    "email-detection",
+                ],
+                "isAccessibleForFree": True,
+                "keywords": [
+                    "markdown",
+                    "link map",
+                    "email intelligence",
+                    "ai summary",
+                ],
+                "additionalProperty": [
+                    {
+                        "@type": "PropertyValue",
+                        "name": "content_pages_count",
+                        "value": str(counts["content_pages_count"]),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "emails_count",
+                        "value": str(counts["emails_count"]),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "internal_links_count",
+                        "value": str(counts["internal_links_count"]),
+                    },
+                    {
+                        "@type": "PropertyValue",
+                        "name": "external_links_count",
+                        "value": str(counts["external_links_count"]),
+                    },
+                ],
+            }
+        )
+    except Exception:
+        return json.dumps(
+            {
+                "@context": "https://schema.org",
+                "@type": "CreativeWork",
+                "name": "MeshWeave Analysis",
+                "identifier": identifier,
+                "about": (domain or "").strip(),
+                "url": abs_page_url,
+            }
+        )
+
+
+def _reason_stopped_label(payload: dict | None) -> str:
+    """Build the friendly reason-stopped label for the template."""
+    return (
+        friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
+        if payload and payload.get("summary")
+        else ""
+    )
+
+
+def _cooldown(updated_at: datetime, min_age_minutes: int) -> tuple[bool, str]:
+    """Return (can_proceed, eta_label) based on the row's update cooldown."""
+    now = datetime.now(UTC)
+    next_eligible = updated_at + timedelta(minutes=min_age_minutes)
+    can_proceed = now >= next_eligible
+    eta = (
+        f"{int((next_eligible - now).total_seconds() / 60)}m" if not can_proceed else ""
+    )
+    return can_proceed, eta
+
+
+def _owner_state(request: Request, row: Crawl) -> tuple:
+    """Return (is_owner, current_user, user_id_string)."""
+    current_user = getattr(request.state, "current_user", None)
+    is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
+    return is_owner, current_user, (current_user.id if current_user else "")
+
+
+def _csrf(request: Request) -> tuple:
+    """Return (csrf_token, cookie_name, session_id, new_session).
+
+    Generates a fresh session id when CSRF is enabled and none is present.
+    """
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    session_id = request.cookies.get(cookie_name)
+    new_session = False
+    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
+        session_id = str(uuid.uuid4())
+        new_session = True
+    csrf_token = (
+        _make_csrf_token(session_id)
+        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
+        else ""
+    )
+    return csrf_token, cookie_name, session_id, new_session
+
+
+def _set_session_cookie(
+    resp: Response, new_session: bool, session_id: str | None, cookie_name: str
+) -> None:
+    """Persist the generated session cookie when a new one was created."""
+    if new_session and session_id:
+        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
+        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
+        resp.set_cookie(
+            key=cookie_name,
+            value=str(session_id),
+            max_age=session_ttl,
+            httponly=True,
+            samesite="lax",
+            secure=cookie_secure,
+        )
 
 
 # Simple in-memory rate limiter for share toggle (max 5 per hour per user)
@@ -221,201 +481,37 @@ async def view_analysis(request: Request, ref: str):
                 row = await require_ownership(request, ref)
 
         payload: dict | None = row.payload_json
-
-        # Compute SEO/meta and summary for private view
-        title_from_payload = ""
-        desc_from_payload = ""
-        try:
-            if payload:
-                pg = payload.get("page") or {}
-                title_from_payload = (pg.get("title") or "").strip()
-                desc_from_payload = (pg.get("description") or "").strip()
-        except Exception:
-            pass
-
-        # Site branding
+        title_from_payload, desc_from_payload = _seo_title_desc(payload)
         site_name = os.getenv("SITE_NAME", "MeshWeave")
-
-        # Build SEO-friendly page title
-        try:
-            if isinstance(payload, dict):
-                scope_val = str(payload.get("scope") or "").strip().lower()
-            else:
-                scope_val = ""
-        except Exception:
-            scope_val = ""
-        if not scope_val:
-            scope_val = str(getattr(row, "scope", "") or "").strip().lower()
+        scope_val = _payload_scope(payload, row)
         domain_val = (row.domain or "").strip()
         path_val = (row.path or "").strip() or "/"
-        if scope_val == "site":
-            page_title = (
-                f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
-            )
-        else:
-            # Page scope: prefer page.title, else use path
-            path_or_title = title_from_payload or path_val
-            page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
-
-        meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
-            "markdown", ""
+        page_title = _page_title(
+            scope_val, domain_val, path_val, title_from_payload, site_name
         )
-        # Safe summary (simple heuristic to keep short)
-        if meta_description and len(meta_description) > 300:
-            meta_description = meta_description[:297] + "..."
-
+        meta_description = _meta_description(desc_from_payload, payload)
         abs_page_url = _abs_url(request, f"/analysis/{row.id}")
         og_image_url = os.getenv("OG_IMAGE_URL") or None
-
+        counts = _json_ld_count(payload)
         # JSON-LD: CreativeWork (LLM-first)
-        try:
-            # Derive counts from payload when available
-            content_pages_count = 0
-            emails_count = 0
-            internal_links_count = 0
-            external_links_count = 0
-            if payload:
-                try:
-                    if payload.get("metrics") and payload["metrics"].get("extraction"):
-                        ext = payload["metrics"]["extraction"]
-                        # Do not use internal_count for content_pages_count (it's link count, not page count)
-                        if ext.get("external_count") is not None:
-                            external_links_count = int(ext.get("external_count") or 0)
-                except Exception:
-                    pass
-                try:
-                    if payload.get("links"):
-                        if isinstance(payload["links"].get("internal"), list):
-                            internal_links_count = len(payload["links"]["internal"])
-                        if isinstance(payload["links"].get("external"), list):
-                            external_links_count = max(
-                                external_links_count, len(payload["links"]["external"])
-                            )
-                except Exception:
-                    pass
-                try:
-                    if payload.get("emails") and payload["emails"].get("counts"):
-                        emails_count = int(
-                            payload["emails"]["counts"].get("total_unique") or 0
-                        )
-                except Exception:
-                    pass
-                try:
-                    if isinstance(payload.get("pages"), list):
-                        content_pages_count = len(payload["pages"])
-                    elif (
-                        isinstance(payload.get("summary"), dict)
-                        and payload["summary"].get("visited_count") is not None
-                    ):
-                        content_pages_count = int(
-                            payload["summary"]["visited_count"] or 0
-                        )
-                except Exception:
-                    pass
-            json_ld = json.dumps(
-                {
-                    "@context": "https://schema.org",
-                    "@type": "CreativeWork",
-                    "name": "MeshWeave Analysis",
-                    "identifier": str(row.id),
-                    "about": (row.domain or "").strip(),
-                    "url": abs_page_url,
-                    "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
-                        "%Y-%m-%dT%H:%M:%SZ"
-                    ),
-                    "creativeWorkStatus": (row.status or "").title(),
-                    "measurementTechnique": [
-                        "web-crawl",
-                        "markdown-extraction",
-                        "link-analysis",
-                        "email-detection",
-                    ],
-                    "isAccessibleForFree": True,
-                    "keywords": [
-                        "markdown",
-                        "link map",
-                        "email intelligence",
-                        "ai summary",
-                    ],
-                    "additionalProperty": [
-                        {
-                            "@type": "PropertyValue",
-                            "name": "content_pages_count",
-                            "value": str(content_pages_count),
-                        },
-                        {
-                            "@type": "PropertyValue",
-                            "name": "emails_count",
-                            "value": str(emails_count),
-                        },
-                        {
-                            "@type": "PropertyValue",
-                            "name": "internal_links_count",
-                            "value": str(internal_links_count),
-                        },
-                        {
-                            "@type": "PropertyValue",
-                            "name": "external_links_count",
-                            "value": str(external_links_count),
-                        },
-                    ],
-                }
-            )
-        except Exception:
-            json_ld = json.dumps(
-                {
-                    "@context": "https://schema.org",
-                    "@type": "CreativeWork",
-                    "name": "MeshWeave Analysis",
-                    "identifier": str(row.id),
-                    "about": (row.domain or "").strip(),
-                    "url": abs_page_url,
-                }
-            )
-
-        summary = build_summary(row, payload)
-
-        reason_stopped_label = (
-            friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
-            if payload and payload.get("summary")
-            else ""
+        json_ld = _structured_data(
+            str(row.id), row.domain, abs_page_url, row.updated_at, row.status, counts
         )
-
+        summary = build_summary(row, payload)
+        reason_stopped_label = _reason_stopped_label(payload)
         api_url = f"/api/analysis/private/{row.id}"
         abs_api_url = _abs_url(request, api_url)
 
-        # Compute ownership/permissions for UI gating
-        current_user = getattr(request.state, "current_user", None)
-        is_owner = bool(
-            current_user and getattr(row, "user_id", None) == current_user.id
-        )
-        str(getattr(row, "status", "") or "").lower()
         # Cooldown for retry
         refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-        now = datetime.now(UTC)
-        next_retry_eligible = row.updated_at + timedelta(
-            minutes=refresh_min_age_minutes
+        can_retry_cooldown, retry_eta = _cooldown(
+            row.updated_at, refresh_min_age_minutes
         )
-        can_retry_cooldown = now >= next_retry_eligible
         can_retry = (row.status != "running") and can_retry_cooldown
-        retry_eta = (
-            f"{int((next_retry_eligible - now).total_seconds() / 60)}m"
-            if not can_retry_cooldown
-            else ""
-        )
 
         # CSRF token for retry form (generate new session if missing and CSRF is enabled)
-        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-        session_id = request.cookies.get(cookie_name)
-        new_session = False
-        if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
-            session_id = str(uuid.uuid4())
-            new_session = True
-        csrf_token = (
-            _make_csrf_token(session_id)
-            if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
-            else ""
-        )
+        csrf_token, cookie_name, session_id, new_session = _csrf(request)
+        is_owner, current_user, user_id = _owner_state(request, row)
 
         _ss_private = _build_score_snapshot_context(row)
         resp = templates.TemplateResponse(
@@ -440,7 +536,7 @@ async def view_analysis(request: Request, ref: str):
                 "csrf_token": csrf_token,
                 # Ownership / gating
                 "is_owner": is_owner,
-                "user_id": (current_user.id if current_user else ""),
+                "user_id": user_id,
                 "can_view_leads": is_owner,
                 # SEO/Sharing
                 "page_title": page_title,
@@ -463,19 +559,7 @@ async def view_analysis(request: Request, ref: str):
         )
         # Prevent indexing of private results
         resp.headers["X-Robots-Tag"] = "noindex"
-
-        # Set session cookie if newly created for CSRF
-        if new_session and session_id:
-            cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-            session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
-            resp.set_cookie(
-                key=cookie_name,
-                value=str(session_id),
-                max_age=session_ttl,
-                httponly=True,
-                samesite="lax",
-                secure=cookie_secure,
-            )
+        _set_session_cookie(resp, new_session, session_id, cookie_name)
         return resp
 
     # Public by short key
@@ -491,160 +575,25 @@ async def view_analysis(request: Request, ref: str):
     row = row_result
 
     payload = row.payload_json
-
-    # SEO/meta computation
-    title_from_payload = ""
-    desc_from_payload = ""
-    try:
-        if payload:
-            pg = payload.get("page") or {}
-            title_from_payload = (pg.get("title") or "").strip()
-            desc_from_payload = (pg.get("description") or "").strip()
-    except Exception:
-        pass
-
-    # Site branding first
+    title_from_payload, desc_from_payload = _seo_title_desc(payload)
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-
-    # Build SEO-friendly page title for public view
-    try:
-        if isinstance(payload, dict):
-            scope_val = str(payload.get("scope") or "").strip().lower()
-        else:
-            scope_val = ""
-    except Exception:
-        scope_val = ""
-    if not scope_val:
-        scope_val = str(getattr(row, "scope", "") or "").strip().lower()
+    scope_val = _payload_scope(payload, row)
     domain_val = (row.domain or "").strip()
     path_val = (row.path or "").strip() or "/"
-    if scope_val == "site":
-        page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
-    else:
-        # Page scope: prefer page.title, else use path
-        path_or_title = title_from_payload or path_val
-        page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
-
-    meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
-        "markdown", ""
+    page_title = _page_title(
+        scope_val, domain_val, path_val, title_from_payload, site_name
     )
-    if meta_description and len(meta_description) > 300:
-        meta_description = meta_description[:297] + "..."
-
+    meta_description = _meta_description(desc_from_payload, payload)
     abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
     # JSON-LD: CreativeWork (LLM-first)
-    try:
-        # Derive counts from payload when available
-        content_pages_count = 0
-        emails_count = 0
-        internal_links_count = 0
-        external_links_count = 0
-        if payload:
-            try:
-                if payload.get("metrics") and payload["metrics"].get("extraction"):
-                    ext = payload["metrics"]["extraction"]
-                    # Do not use internal_count for content_pages_count (it's link count, not page count)
-                    if ext.get("external_count") is not None:
-                        external_links_count = int(ext.get("external_count") or 0)
-            except Exception:
-                pass
-            try:
-                if payload.get("links"):
-                    if isinstance(payload["links"].get("internal"), list):
-                        internal_links_count = len(payload["links"]["internal"])
-                    if isinstance(payload["links"].get("external"), list):
-                        external_links_count = max(
-                            external_links_count, len(payload["links"]["external"])
-                        )
-            except Exception:
-                pass
-            try:
-                if payload.get("emails") and payload["emails"].get("counts"):
-                    emails_count = int(
-                        payload["emails"]["counts"].get("total_unique") or 0
-                    )
-            except Exception:
-                pass
-            try:
-                if isinstance(payload.get("pages"), list):
-                    content_pages_count = len(payload["pages"])
-                elif (
-                    isinstance(payload.get("summary"), dict)
-                    and payload["summary"].get("visited_count") is not None
-                ):
-                    content_pages_count = int(payload["summary"]["visited_count"] or 0)
-            except Exception:
-                pass
-        json_ld = json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": str(row.key),
-                "about": (row.domain or "").strip(),
-                "url": abs_page_url,
-                "dateModified": (row.updated_at or datetime.now(UTC)).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
-                "creativeWorkStatus": (row.status or "").title(),
-                "measurementTechnique": [
-                    "web-crawl",
-                    "markdown-extraction",
-                    "link-analysis",
-                    "email-detection",
-                ],
-                "isAccessibleForFree": True,
-                "keywords": [
-                    "markdown",
-                    "link map",
-                    "email intelligence",
-                    "ai summary",
-                ],
-                "additionalProperty": [
-                    {
-                        "@type": "PropertyValue",
-                        "name": "content_pages_count",
-                        "value": str(content_pages_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "emails_count",
-                        "value": str(emails_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "internal_links_count",
-                        "value": str(internal_links_count),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "external_links_count",
-                        "value": str(external_links_count),
-                    },
-                ],
-            }
-        )
-    except Exception:
-        json_ld = json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": str(row.key),
-                "about": (row.domain or "").strip(),
-                "url": abs_page_url,
-            }
-        )
-
-    summary = build_summary(row, payload)
-
-    reason_stopped_label = (
-        friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
-        if payload and payload.get("summary")
-        else ""
+    counts = _json_ld_count(payload)
+    json_ld = _structured_data(
+        str(row.key), row.domain, abs_page_url, row.updated_at, row.status, counts
     )
+    summary = build_summary(row, payload)
+    reason_stopped_label = _reason_stopped_label(payload)
 
     # CSV/summary endpoints
     api_summary_url = f"/api/analysis/public/{row.key}/summary"
@@ -655,17 +604,7 @@ async def view_analysis(request: Request, ref: str):
     abs_api_url = _abs_url(request, api_url)
 
     # CSRF token for refresh form (generate new session if missing and CSRF is enabled)
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name)
-    new_session = False
-    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
-        session_id = str(uuid.uuid4())
-        new_session = True
-    csrf_token = (
-        _make_csrf_token(session_id)
-        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
-        else ""
-    )
+    csrf_token, cookie_name, session_id, new_session = _csrf(request)
 
     # Claim eligibility inputs for public view (used by client-side countdown/UI)
     try:
@@ -675,7 +614,6 @@ async def view_analysis(request: Request, ref: str):
     created_at_iso = (row.created_at or datetime.now(UTC)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-
     ownerless = getattr(row, "user_id", None) is None
 
     # Cooldown for refresh (public domain root)
@@ -705,8 +643,7 @@ async def view_analysis(request: Request, ref: str):
                 )
 
     # Ownership/permissions (public view)
-    current_user = getattr(request.state, "current_user", None)
-    is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
+    is_owner, current_user, user_id = _owner_state(request, row)
 
     _ss_public = _build_score_snapshot_context(row)
     resp = templates.TemplateResponse(
@@ -735,7 +672,7 @@ async def view_analysis(request: Request, ref: str):
             "csrf_token": csrf_token,
             # Ownership / gating
             "is_owner": is_owner,
-            "user_id": (current_user.id if current_user else ""),
+            "user_id": user_id,
             # Provide private id to owners for chat scoping
             "id": row.id,
             # SEO/Sharing
@@ -757,18 +694,7 @@ async def view_analysis(request: Request, ref: str):
             "factor_extremes": _build_factor_extremes(_ss_public),
         },
     )
-    # Set session cookie if newly created for CSRF
-    if new_session and session_id:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
-        resp.set_cookie(
-            key=cookie_name,
-            value=str(session_id),
-            max_age=session_ttl,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
+    _set_session_cookie(resp, new_session, session_id, cookie_name)
 
     # Prevent indexing of non-succeeded public pages
     if row.status != "succeeded":

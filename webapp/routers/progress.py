@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Request
 
@@ -121,31 +122,7 @@ def finalize_stale_job(crawl_id: str) -> str:
         return "err"
 
 
-@router.get("/api/progress/{crawl_id}")
-async def api_progress(request: Request, crawl_id: str):
-    """Return lightweight progress info for a private crawl (owner only).
-
-    Args:
-        request (Request): Incoming request (used for ownership check).
-        crawl_id (str): UUID of the crawl.
-
-    Returns:
-        dict: {
-          "id": str,
-          "status": str,
-          "scope": "page"|"site",
-          "visited_pages": int,
-          "limits": {...} | {},
-          "elapsed_ms": int | None,
-          "est_remaining_ms": int | None,
-          "time_budget_ms": int | None,
-          "time_budget_remaining_ms": int | None,
-          "last_updated": ISO timestamp
-        }
-    """
-    row = await require_ownership(request, crawl_id)
-    now = datetime.now(UTC)
-
+def _count_visited_pages(row: Crawl) -> int:
     # Count visited pages from payload_json (CrawlLink table removed)
     visited_pages = 0
     try:
@@ -153,7 +130,10 @@ async def api_progress(request: Request, crawl_id: str):
         visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
     except Exception:
         visited_pages = 0
+    return visited_pages
 
+
+def _build_limits(row: Crawl) -> dict[str, Any]:
     # Limits (for site crawls)
     limits = {}
     if bool(row.crawl_params):
@@ -171,7 +151,10 @@ async def api_progress(request: Request, crawl_id: str):
                 )
             except Exception:
                 limits["max_pages"] = 200
+    return limits
 
+
+def _compute_elapsed(row: Crawl, now: datetime, limits: dict[str, Any]) -> int | None:
     # Elapsed: prefer started_at_ms from crawl_params; fallback to updated_at heuristic
     elapsed_ms = None
     try:
@@ -179,7 +162,9 @@ async def api_progress(request: Request, crawl_id: str):
         started_ms = None
         if bool(row.crawl_params):
             try:
-                started_ms = int((limits or {}).get("started_at_ms"))  # type: ignore[arg-type]
+                raw_started = (limits or {}).get("started_at_ms")
+                if raw_started is not None:
+                    started_ms = int(raw_started)
             except Exception:
                 started_ms = None
         if started_ms is not None:
@@ -188,7 +173,15 @@ async def api_progress(request: Request, crawl_id: str):
             elapsed_ms = int((now - row.updated_at).total_seconds() * 1000)
     except Exception:
         elapsed_ms = None
+    return elapsed_ms
 
+
+def _estimate_remaining(
+    row: Crawl,
+    limits: dict[str, Any],
+    visited_pages: int,
+    elapsed_ms: int | None,
+) -> tuple[int | None, int | None, int | None]:
     # Estimate remaining time for site crawls
     est_remaining_ms = None
     time_budget_ms_val = None
@@ -225,7 +218,15 @@ async def api_progress(request: Request, crawl_id: str):
     except Exception:
         est_remaining_ms = None
         time_budget_remaining_ms = None
+    return est_remaining_ms, time_budget_ms_val, time_budget_remaining_ms
 
+
+def _apply_site_budget_default(
+    row: Crawl,
+    elapsed_ms: int | None,
+    time_budget_ms_val: int | None,
+    time_budget_remaining_ms: int | None,
+) -> tuple[int | None, int | None]:
     # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
     if bool(row.crawl_params) and time_budget_ms_val is None:
         try:
@@ -241,23 +242,35 @@ async def api_progress(request: Request, crawl_id: str):
                 )
             except Exception:
                 time_budget_remaining_ms = None
+    return time_budget_ms_val, time_budget_remaining_ms
 
+
+def _check_stale(
+    row: Crawl, elapsed_ms: int | None, time_budget_ms_val: int | None
+) -> tuple[bool, str]:
+    scope = "site" if row.crawl_params else "page"
+    stale = False
+    if scope == "site":
+        grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
+        if (elapsed_ms is not None) and (time_budget_ms_val is not None):
+            stale = int(elapsed_ms) > int(time_budget_ms_val) + int(grace_ms)
+    else:
+        page_max_ms = _int_env("PAGE_STALE_FINALIZE_MAX_MS", 600000)
+        if elapsed_ms is not None:
+            stale = int(elapsed_ms) > int(page_max_ms)
+    return stale, scope
+
+
+def _maybe_finalize_stale(
+    row: Crawl, elapsed_ms: int | None, time_budget_ms_val: int | None
+) -> Crawl:
     # Auto-finalize stale running jobs (if enabled)
     try:
         if (
             _env_bool("STALE_FINALIZE_ENABLED", True)
             and str(row.status or "").lower() == "running"
         ):
-            scope = "site" if row.crawl_params else "page"
-            stale = False
-            if scope == "site":
-                grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
-                if (elapsed_ms is not None) and (time_budget_ms_val is not None):
-                    stale = int(elapsed_ms) > int(time_budget_ms_val) + int(grace_ms)
-            else:
-                page_max_ms = _int_env("PAGE_STALE_FINALIZE_MAX_MS", 600000)
-                if elapsed_ms is not None:
-                    stale = int(elapsed_ms) > int(page_max_ms)
+            stale, scope = _check_stale(row, elapsed_ms, time_budget_ms_val)
             if stale:
                 try:
                     stale_finalize_attempts.labels(scope=scope).inc()
@@ -277,7 +290,10 @@ async def api_progress(request: Request, crawl_id: str):
                         row = r2
     except Exception:
         pass
+    return row
 
+
+def _progress_counters(row: Crawl) -> tuple[int, int, int]:
     # Incremental counters from payload_json (CrawlLink/CrawlEmail removed)
     emails_so_far = 0
     links_internal_so_far = 0
@@ -290,6 +306,47 @@ async def api_progress(request: Request, crawl_id: str):
             external_domains_so_far = len((_cp.get("links") or {}).get("external", []))
     except Exception:
         pass
+    return emails_so_far, links_internal_so_far, external_domains_so_far
+
+
+@router.get("/api/progress/{crawl_id}")
+async def api_progress(request: Request, crawl_id: str):
+    """Return lightweight progress info for a private crawl (owner only).
+
+    Args:
+        request (Request): Incoming request (used for ownership check).
+        crawl_id (str): UUID of the crawl.
+
+    Returns:
+        dict: {
+          "id": str,
+          "status": str,
+          "scope": "page"|"site",
+          "visited_pages": int,
+          "limits": {...} | {},
+          "elapsed_ms": int | None,
+          "est_remaining_ms": int | None,
+          "time_budget_ms": int | None,
+          "time_budget_remaining_ms": int | None,
+          "last_updated": ISO timestamp
+        }
+    """
+    row = await require_ownership(request, crawl_id)
+    now = datetime.now(UTC)
+
+    visited_pages = _count_visited_pages(row)
+    limits = _build_limits(row)
+    elapsed_ms = _compute_elapsed(row, now, limits)
+    est_remaining_ms, time_budget_ms_val, time_budget_remaining_ms = (
+        _estimate_remaining(row, limits, visited_pages, elapsed_ms)
+    )
+    time_budget_ms_val, time_budget_remaining_ms = _apply_site_budget_default(
+        row, elapsed_ms, time_budget_ms_val, time_budget_remaining_ms
+    )
+    row = _maybe_finalize_stale(row, elapsed_ms, time_budget_ms_val)
+    emails_so_far, links_internal_so_far, external_domains_so_far = _progress_counters(
+        row
+    )
 
     return {
         "id": row.id,
@@ -329,146 +386,19 @@ async def api_progress_public(key: str):
 
     now = datetime.now(UTC)
 
-    # Count visited pages from payload_json (CrawlLink table removed)
-    visited_pages = 0
-    try:
-        _p = row.payload_json or {}
-        visited_pages = len(_p.get("pages", [])) if isinstance(_p, dict) else 0
-    except Exception:
-        visited_pages = 0
-
-    # Limits (for site crawls)
-    limits = {}
-    if bool(row.crawl_params):
-        try:
-            limits = row.crawl_params or {}
-        except Exception:
-            limits = {}
-        if not isinstance(limits, dict):
-            limits = {}
-        if ("max_pages" not in limits) or (not limits.get("max_pages")):
-            try:
-                limits["max_pages"] = int(
-                    os.getenv("AUTH_SITE_MAX_PAGES_DEFAULT", "200")
-                )
-            except Exception:
-                limits["max_pages"] = 200
-
-    # Elapsed: prefer started_at_ms from crawl_params; fallback to updated_at heuristic
-    elapsed_ms = None
-    try:
-        now_ms = int(now.timestamp() * 1000)
-        started_ms = None
-        if bool(row.crawl_params):
-            try:
-                started_ms = int((limits or {}).get("started_at_ms"))  # type: ignore[arg-type]
-            except Exception:
-                started_ms = None
-        if started_ms is not None:
-            elapsed_ms = max(0, now_ms - started_ms)
-        elif (row.status or "").lower() == "running" and row.updated_at:
-            elapsed_ms = int((now - row.updated_at).total_seconds() * 1000)
-    except Exception:
-        elapsed_ms = None
-
-    # Estimate remaining time for site crawls
-    est_remaining_ms = None
-    time_budget_ms_val = None
-    time_budget_remaining_ms = None
-    try:
-        if bool(row.crawl_params):
-            total = None
-            v_total = limits.get("max_pages") if isinstance(limits, dict) else None
-            try:
-                total = int(v_total) if v_total is not None else None
-            except Exception:
-                total = None
-            done = int(visited_pages or 0)
-            if elapsed_ms is not None and total and total > 0 and done > 0:
-                avg = float(elapsed_ms) / float(done)
-                rem_pages = max(0, total - done)
-                est_remaining_ms = int(avg * rem_pages)
-            v_budget = (
-                limits.get("time_budget_ms") if isinstance(limits, dict) else None
-            )
-            try:
-                time_budget_ms_val = int(v_budget) if v_budget is not None else None
-            except Exception:
-                time_budget_ms_val = None
-            if time_budget_ms_val is not None and elapsed_ms is not None:
-                try:
-                    time_budget_remaining_ms = max(
-                        0, int(time_budget_ms_val) - int(elapsed_ms)
-                    )
-                except Exception:
-                    time_budget_remaining_ms = None
-    except Exception:
-        est_remaining_ms = None
-        time_budget_remaining_ms = None
-
-    # Fallback for site time budget if not yet persisted (enables staleness checks + UI budget)
-    if bool(row.crawl_params) and time_budget_ms_val is None:
-        try:
-            time_budget_ms_val = int(
-                os.getenv("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", "600000")
-            )
-        except Exception:
-            time_budget_ms_val = 600000
-        if elapsed_ms is not None and time_budget_remaining_ms is None:
-            try:
-                time_budget_remaining_ms = max(
-                    0, int(time_budget_ms_val) - int(elapsed_ms)
-                )
-            except Exception:
-                time_budget_remaining_ms = None
-
-    # Auto-finalize stale running jobs (if enabled)
-    try:
-        if (
-            _env_bool("STALE_FINALIZE_ENABLED", True)
-            and str(row.status or "").lower() == "running"
-        ):
-            scope = "site" if row.crawl_params else "page"
-            stale = False
-            if scope == "site":
-                grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)
-                if (elapsed_ms is not None) and (time_budget_ms_val is not None):
-                    stale = int(elapsed_ms) > int(time_budget_ms_val) + int(grace_ms)
-            else:
-                page_max_ms = _int_env("PAGE_STALE_FINALIZE_MAX_MS", 600000)
-                if elapsed_ms is not None:
-                    stale = int(elapsed_ms) > int(page_max_ms)
-            if stale:
-                try:
-                    stale_finalize_attempts.labels(scope=scope).inc()
-                except Exception:
-                    pass
-                outcome = finalize_stale_job(row.id)
-                try:
-                    stale_finalize_finished.labels(
-                        scope=scope, outcome=str(outcome)
-                    ).inc()
-                except Exception:
-                    pass
-                with get_session() as s:
-                    r2 = s.get(Crawl, row.id)
-                    if r2:
-                        row = r2
-    except Exception:
-        pass
-
-    # Incremental counters from payload_json (CrawlLink/CrawlEmail removed)
-    emails_so_far = 0
-    links_internal_so_far = 0
-    external_domains_so_far = 0
-    try:
-        _cp = row.payload_json or {}
-        if isinstance(_cp, dict):
-            emails_so_far = len((_cp.get("emails") or {}).get("unique", []))
-            links_internal_so_far = len((_cp.get("links") or {}).get("internal", []))
-            external_domains_so_far = len((_cp.get("links") or {}).get("external", []))
-    except Exception:
-        pass
+    visited_pages = _count_visited_pages(row)
+    limits = _build_limits(row)
+    elapsed_ms = _compute_elapsed(row, now, limits)
+    est_remaining_ms, time_budget_ms_val, time_budget_remaining_ms = (
+        _estimate_remaining(row, limits, visited_pages, elapsed_ms)
+    )
+    time_budget_ms_val, time_budget_remaining_ms = _apply_site_budget_default(
+        row, elapsed_ms, time_budget_ms_val, time_budget_remaining_ms
+    )
+    row = _maybe_finalize_stale(row, elapsed_ms, time_budget_ms_val)
+    emails_so_far, links_internal_so_far, external_domains_so_far = _progress_counters(
+        row
+    )
 
     return {
         "status": row.status,

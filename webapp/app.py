@@ -207,7 +207,7 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application instance.
     """
-    app = FastAPI(title="MeshWeave", lifespan=lifespan)  # type: ignore[arg-type]
+    app = FastAPI(title="MeshWeave", lifespan=lifespan)
 
     # Middleware: attach per-request ID
     app.add_middleware(RequestIDMiddleware)
@@ -217,180 +217,8 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=512)
 
     # Exception handlers (sanitized responses + audit logs)
-    async def _handle_validation_error(request: Request, exc: Exception):
-        """Return sanitized 422 response for validation errors.
-
-        Args:
-            request (Request): Incoming request.
-            exc (Exception): Validation exception.
-
-        Returns:
-            JSONResponse: 422 with generic detail.
-        """
-        try:
-            log_audit(
-                "request_validation_error", request=request, level=logging.WARNING
-            )
-        except Exception:
-            pass
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": "Invalid request"},
-        )
-
-    async def _handle_unexpected_error(request: Request, exc: Exception):
-        """Return sanitized 500 response for unexpected exceptions.
-
-        Args:
-            request (Request): Incoming request.
-            exc (Exception): Unhandled exception.
-
-        Returns:
-            JSONResponse or PlainTextResponse: JSON for /api/* paths; plain text otherwise.
-        """
-        try:
-            log_audit("unhandled_exception", request=request, level=logging.ERROR)
-            logging.getLogger("audit").exception("unhandled_exception")
-        except Exception:
-            pass
-        is_api = str(request.url.path).startswith("/api")
-        if is_api:
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"detail": "Internal Server Error"},
-            )
-        # Non-API: render HTML template
-        site_name = os.getenv("SITE_NAME", "MeshWeave")
-        og_image_url = os.getenv("OG_IMAGE_URL") or None
-        page_title = f"Server Error — {site_name}"
-        meta_description = "An unexpected error occurred."
-        abs_page_url = str(request.url)
-        resp = templates.TemplateResponse(
-            request,
-            "500.html",
-            {
-                "site_name": site_name,
-                "page_title": page_title,
-                "meta_description": meta_description,
-                "abs_page_url": abs_page_url,
-                "og_image_url": og_image_url,
-            },
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-        resp.headers["X-Robots-Tag"] = "noindex"
-        return resp
-
     app.add_exception_handler(RequestValidationError, _handle_validation_error)
     app.add_exception_handler(Exception, _handle_unexpected_error)
-
-    # Custom HTTP exception handler (404 -> HTML page or JSON; others -> simple JSON/text)
-    async def _handle_http_exception(request: Request, exc: Exception):
-        """Handle HTTP errors with HTML/JSON responses and custom 404 page.
-
-        Args:
-            request (Request): Incoming request.
-            exc (Exception): The caught Starlette HTTP exception.
-
-        Returns:
-            Response: JSON or PlainTextResponse for API/non-API, or templated 404 page.
-        """
-        if (
-            isinstance(exc, StarletteHTTPException)
-            and exc.status_code == status.HTTP_404_NOT_FOUND
-        ):
-            is_api = str(request.url.path).startswith("/api")
-            if is_api:
-                return JSONResponse(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    content={"detail": "Not Found"},
-                )
-            site_name = os.getenv("SITE_NAME", "MeshWeave")
-            og_image_url = os.getenv("OG_IMAGE_URL") or None
-            page_title = f"Page Not Found — {site_name}"
-            meta_description = "The page you requested was not found."
-            abs_page_url = str(request.url)
-            resp = templates.TemplateResponse(
-                request,
-                "404.html",
-                {
-                    "site_name": site_name,
-                    "page_title": page_title,
-                    "meta_description": meta_description,
-                    "abs_page_url": abs_page_url,
-                    "og_image_url": og_image_url,
-                },
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
-            resp.headers["X-Robots-Tag"] = "noindex"
-            return resp
-
-        # Fallback behavior for other HTTP errors
-        if isinstance(exc, StarletteHTTPException):
-            is_api = str(request.url.path).startswith("/api")
-            status_code = exc.status_code
-            detail = exc.detail or (
-                "Unauthorized"
-                if status_code == status.HTTP_401_UNAUTHORIZED
-                else (
-                    "Forbidden" if status_code == status.HTTP_403_FORBIDDEN else "Error"
-                )
-            )
-            if is_api:
-                return JSONResponse(
-                    status_code=status_code,
-                    content={"detail": detail},
-                )
-            # Non-API: render templates for 401/403; fallback to plain text for others
-            if status_code == status.HTTP_401_UNAUTHORIZED:
-                site_name = os.getenv("SITE_NAME", "MeshWeave")
-                og_image_url = os.getenv("OG_IMAGE_URL") or None
-                page_title = f"Sign in required — {site_name}"
-                meta_description = "You need to sign in to access this page."
-                abs_page_url = str(request.url)
-                resp = templates.TemplateResponse(
-                    request,
-                    "401.html",
-                    {
-                        "site_name": site_name,
-                        "page_title": page_title,
-                        "meta_description": meta_description,
-                        "abs_page_url": abs_page_url,
-                        "og_image_url": og_image_url,
-                    },
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                )
-                resp.headers["X-Robots-Tag"] = "noindex"
-                return resp
-            if status_code == status.HTTP_403_FORBIDDEN:
-                site_name = os.getenv("SITE_NAME", "MeshWeave")
-                og_image_url = os.getenv("OG_IMAGE_URL") or None
-                page_title = f"Access denied — {site_name}"
-                meta_description = "You don't have permission to access this page."
-                abs_page_url = str(request.url)
-                resp = templates.TemplateResponse(
-                    request,
-                    "403.html",
-                    {
-                        "site_name": site_name,
-                        "page_title": page_title,
-                        "meta_description": meta_description,
-                        "abs_page_url": abs_page_url,
-                        "og_image_url": og_image_url,
-                    },
-                    status_code=status.HTTP_403_FORBIDDEN,
-                )
-                resp.headers["X-Robots-Tag"] = "noindex"
-                return resp
-            return PlainTextResponse(
-                status_code=status_code,
-                content=str(detail),
-            )
-        # Should not happen for non-HTTP exceptions here, but return generic error
-        return PlainTextResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content="Internal Server Error",
-        )
-
     app.add_exception_handler(StarletteHTTPException, _handle_http_exception)
 
     # Mount static files
@@ -424,7 +252,31 @@ def create_app() -> FastAPI:
     # API router remains last
     app.include_router(api.router)
 
-    # Expose footer links and version as Jinja globals
+    _setup_template_globals()
+    _setup_csp_middleware(app, _telemetry_enabled(), _telemetry_url())
+
+    return app
+
+
+def _telemetry_enabled() -> bool:
+    """Whether telemetry is enabled via config."""
+    try:
+        _enabled = get_telemetry_config()[2]
+    except Exception:
+        return False
+    return _enabled
+
+
+def _telemetry_url() -> str:
+    """The telemetry script URL, or empty string."""
+    try:
+        return get_telemetry_config()[0] or ""
+    except Exception:
+        return ""
+
+
+def _setup_template_globals() -> None:
+    """Expose footer links and version as Jinja globals."""
     try:
         _telemetry_url, _telemetry_site, _telemetry_enabled = get_telemetry_config()
         templates.env.globals.update(
@@ -454,17 +306,23 @@ def create_app() -> FastAPI:
         # If templates are not initialized for some reason, do not crash app startup
         pass
 
-    # Baseline Content Security Policy (scaffold)
-    # Controlled by WEBAPP_ENABLE_CSP=true and optional WEBAPP_CSP override.
-    # Note: Current templates use inline scripts; default includes 'unsafe-inline' to avoid breakage.
-    # Tighten to nonced CSP in a subsequent phase.
-    # When telemetry is enabled, its script origin is added to the default
-    # policy's script-src/connect-src (not needed when WEBAPP_CSP overrides).
+
+def _setup_csp_middleware(
+    app: FastAPI, telemetry_enabled: bool, telemetry_url: str
+) -> None:
+    """Attach the baseline Content Security Policy middleware.
+
+    Controlled by WEBAPP_ENABLE_CSP=true and optional WEBAPP_CSP override.
+    Note: Current templates use inline scripts; default includes 'unsafe-inline' to avoid breakage.
+    Tighten to nonced CSP in a subsequent phase.
+    When telemetry is enabled, its script origin is added to the default
+    policy's script-src/connect-src (not needed when WEBAPP_CSP overrides).
+    """
     _telemetry_origin = ""
-    if _telemetry_enabled and _telemetry_url:
+    if telemetry_enabled and telemetry_url:
         from urllib.parse import urlsplit
 
-        _parts = urlsplit(_telemetry_url)
+        _parts = urlsplit(telemetry_url)
         if _parts.scheme and _parts.netloc:
             _telemetry_origin = f"{_parts.scheme}://{_parts.netloc}"
 
@@ -495,4 +353,184 @@ def create_app() -> FastAPI:
             pass
         return resp
 
-    return app
+
+async def _handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
+    """Return sanitized 422 response for validation errors.
+
+    Args:
+        request (Request): Incoming request.
+        exc (Exception): Validation exception.
+
+    Returns:
+        JSONResponse: 422 with generic detail.
+    """
+    try:
+        log_audit("request_validation_error", request=request, level=logging.WARNING)
+    except Exception:
+        pass
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "Invalid request"},
+    )
+
+
+async def _handle_unexpected_error(request: Request, exc: Exception):
+    """Return sanitized 500 response for unexpected exceptions.
+
+    Args:
+        request (Request): Incoming request.
+        exc (Exception): Unhandled exception.
+
+    Returns:
+        JSONResponse or PlainTextResponse: JSON for /api/* paths; plain text otherwise.
+    """
+    try:
+        log_audit("unhandled_exception", request=request, level=logging.ERROR)
+        logging.getLogger("audit").exception("unhandled_exception")
+    except Exception:
+        pass
+    is_api = str(request.url.path).startswith("/api")
+    if is_api:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Internal Server Error"},
+        )
+    page_title, meta_description, abs_page_url = _error_context(
+        request, "Server Error", "An unexpected error occurred."
+    )
+    resp = templates.TemplateResponse(
+        request,
+        "500.html",
+        {
+            "site_name": os.getenv("SITE_NAME", "MeshWeave"),
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": os.getenv("OG_IMAGE_URL") or None,
+        },
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+async def _handle_http_exception(request: Request, exc: Exception):
+    """Handle HTTP errors with HTML/JSON responses and custom 404 page.
+
+    Args:
+        request (Request): Incoming request.
+        exc (Exception): The caught Starlette HTTP exception.
+
+    Returns:
+        Response: JSON or PlainTextResponse for API/non-API, or templated 404 page.
+    """
+    if (
+        isinstance(exc, StarletteHTTPException)
+        and exc.status_code == status.HTTP_404_NOT_FOUND
+    ):
+        if str(request.url.path).startswith("/api"):
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": "Not Found"},
+            )
+        return _http_error_response(
+            request,
+            "404.html",
+            status.HTTP_404_NOT_FOUND,
+            "Page Not Found",
+            "The page you requested was not found.",
+        )
+
+    # Fallback behavior for other HTTP errors
+    if isinstance(exc, StarletteHTTPException):
+        is_api = str(request.url.path).startswith("/api")
+        status_code = exc.status_code
+        detail = exc.detail or _http_error_default_detail(status_code)
+        if is_api:
+            return JSONResponse(
+                status_code=status_code,
+                content={"detail": detail},
+            )
+        template = _http_error_template(status_code)
+        if template is not None:
+            return _http_error_response(
+                request,
+                template,
+                status_code,
+                detail,
+                _http_error_description(status_code),
+            )
+        return PlainTextResponse(
+            status_code=status_code,
+            content=str(detail),
+        )
+    # Should not happen for non-HTTP exceptions here, but return generic error
+    return PlainTextResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content="Internal Server Error",
+    )
+
+
+def _error_context(
+    request: Request, page_title: str, meta_description: str
+) -> tuple[str, str, str]:
+    """Return (page_title, meta_description, abs_page_url) for an error template."""
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    title = f"{page_title} — {site_name}"
+    return title, meta_description, str(request.url)
+
+
+def _http_error_default_detail(status_code: int) -> str:
+    """Default detail text for common HTTP error status codes."""
+    if status_code == status.HTTP_401_UNAUTHORIZED:
+        return "Unauthorized"
+    if status_code == status.HTTP_403_FORBIDDEN:
+        return "Forbidden"
+    return "Error"
+
+
+def _http_error_template(status_code: int) -> str | None:
+    """Name template for an HTTP status, or None for plain-text fallback."""
+    if status_code == status.HTTP_404_NOT_FOUND:
+        return "404.html"
+    if status_code == status.HTTP_401_UNAUTHORIZED:
+        return "401.html"
+    if status_code == status.HTTP_403_FORBIDDEN:
+        return "403.html"
+    return None
+
+
+def _http_error_description(status_code: int) -> str:
+    """Meta description for a rendered HTTP error template."""
+    if status_code == status.HTTP_401_UNAUTHORIZED:
+        return "You need to sign in to access this page."
+    if status_code == status.HTTP_403_FORBIDDEN:
+        return "You don't have permission to access this page."
+    return ""
+
+
+def _http_error_response(
+    request: Request,
+    template: str,
+    status_code: int,
+    headline: str,
+    meta_description: str,
+):
+    """Render an SEO HTML error page with noindex header."""
+    page_title, meta_description, abs_page_url = _error_context(
+        request, headline, meta_description
+    )
+    resp = templates.TemplateResponse(
+        request,
+        template,
+        {
+            "site_name": os.getenv("SITE_NAME", "MeshWeave"),
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": os.getenv("OG_IMAGE_URL") or None,
+        },
+        status_code=status_code,
+    )
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp

@@ -44,6 +44,184 @@ def _get_rating_label(score: float | None) -> str | None:
     return "Weak"
 
 
+def _serialize_job_row(r, snapshot_map: dict | None = None) -> dict:
+    """Serialize a Crawl row into the flat job dict used by tables/APIs."""
+    aax_score = _extract_aax_score(snapshot_map.get(r.id) if snapshot_map else None)
+    return {
+        "id": r.id,
+        "scope": "site" if r.crawl_params else "page",
+        "domain": r.domain,
+        "path": r.path,
+        "query": r.query,
+        "canonical_url": r.canonical_url,
+        "visibility": r.visibility,
+        "status": r.status,
+        "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
+        "aeo_score": r.aeo_score,
+        "geo_score": r.geo_score,
+        "aax_score": aax_score,
+        "aeo_rating": r.aeo_rating,
+        "geo_rating": r.geo_rating,
+    }
+
+
+def _load_snapshot_map(s, crawl_ids: list) -> dict:
+    """Map crawl_id to ScoreSnapshot for the given crawl ids."""
+    snapshots = (
+        s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id.in_(crawl_ids)).all()
+    )
+    return {ss.crawl_id: ss for ss in snapshots}
+
+
+def _build_site_card(domain: str, crawls: list, snapshot_map: dict) -> dict:
+    """Build the per-domain site card for the dashboard."""
+    crawls.sort(key=lambda c: c.updated_at or datetime.min, reverse=True)
+    latest = crawls[0]
+    latest_ss = snapshot_map.get(latest.id)
+
+    aax_score = _extract_aax_score(latest_ss)
+    aax_rating = None
+    if latest_ss and latest_ss.score_json:
+        aax_data = latest_ss.score_json.get("aax", {})
+        aax_rating = aax_data.get("rating") or _get_rating_label(aax_score)
+
+    aeo_delta, geo_delta, aax_delta = _compute_deltas(
+        crawls, latest, latest_ss, snapshot_map, aax_score
+    )
+    history = _build_history(crawls, snapshot_map)
+    recommendations = _build_recommendations(latest_ss)
+    share_url, share_disabled = _build_share(latest)
+    aeo_rating = latest.aeo_rating or _get_rating_label(latest.aeo_score)
+    geo_rating = latest.geo_rating or _get_rating_label(latest.geo_score)
+
+    return {
+        "domain": domain,
+        "latest_id": latest.id,
+        "latest_url": latest.canonical_url,
+        "latest_status": latest.status,
+        "latest_error": latest.error,
+        "updated_at": (latest.updated_at or datetime.now(UTC)).isoformat(),
+        "analysis_count": len(crawls),
+        "aeo_score": latest.aeo_score,
+        "geo_score": latest.geo_score,
+        "aax_score": aax_score,
+        "aeo_rating": aeo_rating,
+        "geo_rating": geo_rating,
+        "aax_rating": aax_rating,
+        "aeo_delta": aeo_delta,
+        "geo_delta": geo_delta,
+        "aax_delta": aax_delta,
+        "history": history,
+        "recommendations": recommendations,
+        "share_url": share_url,
+        "share_disabled": share_disabled,
+        "visibility": latest.visibility,
+    }
+
+
+def _compute_deltas(crawls, latest, latest_ss, snapshot_map, aax_score) -> tuple:
+    """Compare the latest succeeded crawl against the previous one."""
+    aeo_delta = None
+    geo_delta = None
+    aax_delta = None
+    succeeded_crawls = [c for c in crawls if c.status == "succeeded"]
+    if len(succeeded_crawls) >= 2:
+        prev = succeeded_crawls[1]
+        if latest.aeo_score is not None and prev.aeo_score is not None:
+            aeo_delta = round(latest.aeo_score - prev.aeo_score, 1)
+        if latest.geo_score is not None and prev.geo_score is not None:
+            geo_delta = round(latest.geo_score - prev.geo_score, 1)
+        prev_ss = snapshot_map.get(prev.id)
+        if latest_ss and latest_ss.score_json and prev_ss and prev_ss.score_json:
+            prev_aax = prev_ss.score_json.get("aax", {}).get("composite")
+            if aax_score is not None and prev_aax is not None:
+                aax_delta = round(float(aax_score) - float(prev_aax), 1)
+    return aeo_delta, geo_delta, aax_delta
+
+
+def _build_history(crawls, snapshot_map) -> list:
+    """Score history of all succeeded crawls, oldest first."""
+    history = []
+    for c in reversed([cr for cr in crawls if cr.status == "succeeded"]):
+        c_aax = None
+        c_ss = snapshot_map.get(c.id)
+        if c_ss and c_ss.score_json:
+            c_aax = c_ss.score_json.get("aax", {}).get("composite")
+        history.append(
+            {
+                "id": c.id,
+                "aeo": c.aeo_score,
+                "geo": c.geo_score,
+                "aax": c_aax,
+                "date": (c.updated_at or datetime.now(UTC)).isoformat(),
+            }
+        )
+    return history
+
+
+def _build_recommendations(latest_ss) -> list:
+    """Top recommendations (by priority) from the latest analysis."""
+    if not (latest_ss and latest_ss.score_json):
+        return []
+    recs = latest_ss.score_json.get("recommendations", [])
+    priority_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
+    recs.sort(key=lambda r: priority_order.get(r.get("priority", "").lower(), 99))
+    out = []
+    for rec in recs[:3]:
+        out.append(
+            {
+                "priority": rec.get("priority", "info"),
+                "title": rec.get("title", ""),
+                "impact": rec.get("impact", ""),
+            }
+        )
+    return out
+
+
+def _build_share(latest) -> tuple[str | None, bool]:
+    """Build the share URL and whether it is disabled for a crawl."""
+    if latest.visibility == "public" and latest.key:
+        return f"/analysis/{latest.key}", False
+    if getattr(latest, "share_key", None):
+        return f"/analysis/share/{latest.share_key}", False
+    return None, True
+
+
+def _summarize_sites(sites: list) -> dict:
+    """Compute the dashboard summary strip counts."""
+    return {
+        "domains_tracked": len(sites),
+        "improved": sum(
+            1 for s in sites if (s["aeo_delta"] or 0) > 0 or (s["geo_delta"] or 0) > 0
+        ),
+        "declined": sum(
+            1 for s in sites if (s["aeo_delta"] or 0) < 0 or (s["geo_delta"] or 0) < 0
+        ),
+        "need_baseline": sum(1 for s in sites if s["analysis_count"] < 2),
+        "running": sum(1 for s in sites if s["latest_status"] == "running"),
+        "failed": sum(1 for s in sites if s["latest_status"] == "failed"),
+    }
+
+
+def _attention_list(sites: list) -> list:
+    """Rank sites needing attention: decline > failed > no baseline."""
+    return sorted(
+        [
+            s
+            for s in sites
+            if s["latest_status"] == "failed"
+            or s["analysis_count"] < 2
+            or (s["geo_delta"] is not None and s["geo_delta"] < -5)
+        ],
+        key=lambda s: (
+            s["latest_status"] == "failed",
+            (s["geo_delta"] or 0) < -5,
+            s["analysis_count"] < 2,
+        ),
+        reverse=True,
+    )[:5]
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def my_jobs(
     request: Request,
@@ -67,182 +245,30 @@ async def my_jobs(
             .limit(500)
             .all()
         )
-
-        # Fetch ScoreSnapshots for these crawls
         crawl_ids = [r.id for r in rows_db]
-        snapshots = (
-            s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id.in_(crawl_ids)).all()
-        )
-        snapshot_map = {ss.crawl_id: ss for ss in snapshots}
+        snapshot_map = _load_snapshot_map(s, crawl_ids)
 
     # Build flat items list (for "All Analyses" table) with scores
-    items = []
-    for r in rows_db[:page_size]:
-        ss = snapshot_map.get(r.id)
-        aax_score = _extract_aax_score(ss)
-        items.append(
-            {
-                "id": r.id,
-                "scope": "site" if r.crawl_params else "page",
-                "domain": r.domain,
-                "path": r.path,
-                "query": r.query,
-                "canonical_url": r.canonical_url,
-                "visibility": r.visibility,
-                "status": r.status,
-                "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
-                "aeo_score": r.aeo_score,
-                "geo_score": r.geo_score,
-                "aax_score": aax_score,
-                "aeo_rating": r.aeo_rating,
-                "geo_rating": r.geo_rating,
-            }
-        )
+    items = [_serialize_job_row(r, snapshot_map) for r in rows_db[:page_size]]
 
     # Group by domain for "My Sites" section
     domain_groups: dict[str, list] = {}
     for r in rows_db:
-        if r.domain not in domain_groups:
-            domain_groups[r.domain] = []
-        domain_groups[r.domain].append(r)
+        domain_groups.setdefault(r.domain, []).append(r)
 
-    sites = []
-    for domain, crawls in domain_groups.items():
-        crawls.sort(key=lambda c: c.updated_at or datetime.min, reverse=True)
-
-        latest = crawls[0]
-        latest_ss = snapshot_map.get(latest.id)
-
-        # Extract AAX from ScoreSnapshot
-        aax_score = _extract_aax_score(latest_ss)
-        aax_rating = None
-        if latest_ss and latest_ss.score_json:
-            aax_data = latest_ss.score_json.get("aax", {})
-            aax_rating = aax_data.get("rating") or _get_rating_label(aax_score)
-
-        # Compute trends (compare with previous succeeded crawl)
-        aeo_delta = None
-        geo_delta = None
-        aax_delta = None
-        succeeded_crawls = [c for c in crawls if c.status == "succeeded"]
-        if len(succeeded_crawls) >= 2:
-            prev = succeeded_crawls[1]
-            if latest.aeo_score is not None and prev.aeo_score is not None:
-                aeo_delta = round(latest.aeo_score - prev.aeo_score, 1)
-            if latest.geo_score is not None and prev.geo_score is not None:
-                geo_delta = round(latest.geo_score - prev.geo_score, 1)
-            prev_ss = snapshot_map.get(prev.id)
-            if latest_ss and latest_ss.score_json and prev_ss and prev_ss.score_json:
-                prev_aax = prev_ss.score_json.get("aax", {}).get("composite")
-                if aax_score is not None and prev_aax is not None:
-                    aax_delta = round(float(aax_score) - float(prev_aax), 1)
-
-        # Score history (all succeeded crawls, oldest first)
-        history = []
-        for c in reversed(succeeded_crawls):
-            c_aax = None
-            c_ss = snapshot_map.get(c.id)
-            if c_ss and c_ss.score_json:
-                c_aax = c_ss.score_json.get("aax", {}).get("composite")
-            history.append(
-                {
-                    "id": c.id,
-                    "aeo": c.aeo_score,
-                    "geo": c.geo_score,
-                    "aax": c_aax,
-                    "date": (c.updated_at or datetime.now(UTC)).isoformat(),
-                }
-            )
-
-        # Top recommendations from latest analysis
-        recommendations = []
-        if latest_ss and latest_ss.score_json:
-            recs = latest_ss.score_json.get("recommendations", [])
-            priority_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
-            recs.sort(
-                key=lambda r: priority_order.get(r.get("priority", "").lower(), 99)
-            )
-            for rec in recs[:3]:
-                recommendations.append(
-                    {
-                        "priority": rec.get("priority", "info"),
-                        "title": rec.get("title", ""),
-                        "impact": rec.get("impact", ""),
-                    }
-                )
-
-        # Build share URL based on visibility
-        share_url = None
-        share_disabled = False
-        if latest.visibility == "public" and latest.key:
-            share_url = f"/analysis/{latest.key}"
-        elif getattr(latest, "share_key", None):
-            share_url = f"/analysis/share/{latest.share_key}"
-        else:
-            share_disabled = True
-
-        aeo_rating = latest.aeo_rating or _get_rating_label(latest.aeo_score)
-        geo_rating = latest.geo_rating or _get_rating_label(latest.geo_score)
-
-        sites.append(
-            {
-                "domain": domain,
-                "latest_id": latest.id,
-                "latest_url": latest.canonical_url,
-                "latest_status": latest.status,
-                "latest_error": latest.error,
-                "updated_at": (latest.updated_at or datetime.now(UTC)).isoformat(),
-                "analysis_count": len(crawls),
-                "aeo_score": latest.aeo_score,
-                "geo_score": latest.geo_score,
-                "aax_score": aax_score,
-                "aeo_rating": aeo_rating,
-                "geo_rating": geo_rating,
-                "aax_rating": aax_rating,
-                "aeo_delta": aeo_delta,
-                "geo_delta": geo_delta,
-                "aax_delta": aax_delta,
-                "history": history,
-                "recommendations": recommendations,
-                "share_url": share_url,
-                "share_disabled": share_disabled,
-                "visibility": latest.visibility,
-            }
-        )
+    sites = [
+        _build_site_card(domain, crawls, snapshot_map)
+        for domain, crawls in domain_groups.items()
+    ]
 
     # Sort sites by most recent analysis
     sites.sort(key=lambda s: s["updated_at"], reverse=True)
 
     # Compute summary counts for the summary strip
-    summary = {
-        "domains_tracked": len(sites),
-        "improved": sum(
-            1 for s in sites if (s["aeo_delta"] or 0) > 0 or (s["geo_delta"] or 0) > 0
-        ),
-        "declined": sum(
-            1 for s in sites if (s["aeo_delta"] or 0) < 0 or (s["geo_delta"] or 0) < 0
-        ),
-        "need_baseline": sum(1 for s in sites if s["analysis_count"] < 2),
-        "running": sum(1 for s in sites if s["latest_status"] == "running"),
-        "failed": sum(1 for s in sites if s["latest_status"] == "failed"),
-    }
+    summary = _summarize_sites(sites)
 
     # Compute attention list (ranked: decline > failed > no baseline)
-    attention = sorted(
-        [
-            s
-            for s in sites
-            if s["latest_status"] == "failed"
-            or s["analysis_count"] < 2
-            or (s["geo_delta"] is not None and s["geo_delta"] < -5)
-        ],
-        key=lambda s: (
-            s["latest_status"] == "failed",
-            (s["geo_delta"] or 0) < -5,
-            s["analysis_count"] < 2,
-        ),
-        reverse=True,
-    )[:5]
+    attention = _attention_list(sites)
 
     # Build activity feed from items
     activity = [
@@ -460,22 +486,7 @@ async def api_my_jobs(
     limit = max(1, min(100, limit))
     sort = (sort or "updated_desc").lower()
 
-    # Parse cursor
-    cur_ts = None
-    cur_id = None
-    if cursor:
-        try:
-            ts_s, pid = str(cursor).split("|", 1)
-            from datetime import datetime as _dt
-
-            cur_ts = _dt.fromisoformat(ts_s)
-            # If tz-naive, assume UTC
-            if not getattr(cur_ts, "tzinfo", None):
-                cur_ts = cur_ts.replace(tzinfo=UTC)
-            cur_id = pid
-        except Exception:
-            cur_ts = None
-            cur_id = None
+    cur_ts, cur_id = _parse_jobs_cursor(cursor)
 
     items: list[dict] = []
     next_cursor: str | None = None
@@ -505,36 +516,11 @@ async def api_my_jobs(
 
         rows = qry.limit(limit + 1).all()
 
-        # Fetch snapshots for score data
         crawl_ids_api = [r.id for r in rows[: limit + 1]]
-        snaps_api = (
-            s.query(ScoreSnapshot)
-            .filter(ScoreSnapshot.crawl_id.in_(crawl_ids_api))
-            .all()
-        )
-        snap_api_map = {ss.crawl_id: ss for ss in snaps_api}
+        snap_api_map = _load_snapshot_map(s, crawl_ids_api)
 
         for r in rows[:limit]:
-            ss = snap_api_map.get(r.id)
-            aax_score = _extract_aax_score(ss)
-            items.append(
-                {
-                    "id": r.id,
-                    "scope": "site" if r.crawl_params else "page",
-                    "domain": r.domain,
-                    "path": r.path,
-                    "query": r.query,
-                    "canonical_url": r.canonical_url,
-                    "visibility": r.visibility,
-                    "status": r.status,
-                    "updated_at": (r.updated_at or datetime.now(UTC)).isoformat(),
-                    "aeo_score": r.aeo_score,
-                    "geo_score": r.geo_score,
-                    "aax_score": aax_score,
-                    "aeo_rating": r.aeo_rating,
-                    "geo_rating": r.geo_rating,
-                }
-            )
+            items.append(_serialize_job_row(r, snap_api_map))
 
         if len(rows) > limit:
             last = rows[limit - 1]
@@ -546,6 +532,23 @@ async def api_my_jobs(
                 next_cursor = None
 
     return {"items": items, "next_cursor": next_cursor}
+
+
+def _parse_jobs_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
+    """Parse an "iso_ts|id" keyset cursor for jobs pagination."""
+    if not cursor:
+        return None, None
+    try:
+        ts_s, pid = str(cursor).split("|", 1)
+        from datetime import datetime as _dt
+
+        cur_ts = _dt.fromisoformat(ts_s)
+        # If tz-naive, assume UTC
+        if not getattr(cur_ts, "tzinfo", None):
+            cur_ts = cur_ts.replace(tzinfo=UTC)
+        return cur_ts, pid
+    except Exception:
+        return None, None
 
 
 @router.post("/api/my/jobs/bulk")
@@ -587,46 +590,52 @@ async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
     retried = 0
     now = datetime.now(UTC)
     for row in rows:
-        # Only retry when not running
-        if (row.status or "").lower() == "running":
-            continue
-
-        # Enforce quotas per job retry
-        try:
-            enforce_concurrent_jobs_limit(user.id)
-            if bool(row.crawl_params):
-                enforce_daily_site_crawl_limit(user.id)
-        except HTTPException:
-            # Skip this job if quota prevents retry
-            continue
-
-        # Reset state and schedule
-        with get_session() as s:
-            db_row = s.get(Crawl, row.id)
-            if not db_row:
-                continue
-            # Recheck running status in DB to avoid races
-            if (db_row.status or "").lower() == "running":
-                continue
-            db_row.status = "pending"
-            db_row.payload_json = None
-            db_row.error = None
-            try:
-                if hasattr(db_row, "error_json"):
-                    setattr(db_row, "error_json", None)
-            except Exception:
-                pass
-            db_row.updated_at = now
-
-        # Schedule background task with force_refresh=True
-        try:
-            if bool(row.crawl_params):
-                background_tasks.add_task(run_site_crawl_task, row.id, True)
-            else:
-                background_tasks.add_task(run_crawl_task, row.id, True, user_id=user.id)
+        if _retry_job(user, row, now, background_tasks):
             retried += 1
-        except Exception:
-            # Skip scheduling failures for individual jobs
-            pass
 
     return {"ok": True, "retried": retried}
+
+
+def _retry_job(user, row, now: datetime, background_tasks) -> bool:
+    """Retry a single owned job (respecting quotas/status); True if scheduled."""
+    # Only retry when not running
+    if (row.status or "").lower() == "running":
+        return False
+
+    # Enforce quotas per job retry
+    try:
+        enforce_concurrent_jobs_limit(user.id)
+        if bool(row.crawl_params):
+            enforce_daily_site_crawl_limit(user.id)
+    except HTTPException:
+        # Skip this job if quota prevents retry
+        return False
+
+    # Reset state and schedule
+    with get_session() as s:
+        db_row = s.get(Crawl, row.id)
+        if not db_row:
+            return False
+        # Recheck running status in DB to avoid races
+        if (db_row.status or "").lower() == "running":
+            return False
+        db_row.status = "pending"
+        db_row.payload_json = None
+        db_row.error = None
+        try:
+            if hasattr(db_row, "error_json"):
+                setattr(db_row, "error_json", None)
+        except Exception:
+            pass
+        db_row.updated_at = now
+
+    # Schedule background task with force_refresh=True
+    try:
+        if bool(row.crawl_params):
+            background_tasks.add_task(run_site_crawl_task, row.id, True)
+        else:
+            background_tasks.add_task(run_crawl_task, row.id, True, user_id=user.id)
+        return True
+    except Exception:
+        # Skip scheduling failures for individual jobs
+        return False

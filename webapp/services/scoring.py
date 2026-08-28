@@ -145,24 +145,9 @@ async def run_aax_for_crawl(
     """
     from meshweave.ai.analyses import run_aax_analysis
 
-    # Load payload if not provided; also resolve the crawl's owner so LLM
-    # traces can be attributed to the user who requested the analysis.
-    user_id: str | None = None
-    with get_session() as s:
-        row = s.get(Crawl, crawl_id)
-        if row:
-            user_id = row.user_id
-        if payload is None:
-            if not row:
-                return None
-            raw = row.payload_json or {}
-            if isinstance(raw, str):
-                try:
-                    payload = json.loads(raw)
-                except json.JSONDecodeError:
-                    payload = {}
-            else:
-                payload = raw
+    payload, user_id = _load_payload_for_aax(crawl_id, payload)
+    if payload is None:
+        return None
 
     # Run AAX analysis
     try:
@@ -182,64 +167,127 @@ async def run_aax_for_crawl(
     aax_score_json = compute_aax_score(aax_result)
 
     # Persist to DB — ScoreSnapshot and payload_json
-    with get_session() as s:
-        snap = s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id == crawl_id).first()
-        if snap:
-            existing = snap.ai_analysis_json or {}
-            existing["aax"] = aax_result
-            snap.ai_analysis_json = existing
-            flag_modified(snap, "ai_analysis_json")
-
-            if aax_score_json and snap.score_json:
-                snap.score_json["aax"] = aax_score_json
-
-                # Re-generate recommendations now that AAX is available
-                try:
-                    from meshweave.scoring.engine import compute_scores
-                    from meshweave.scoring.recommendations import (
-                        generate_recommendations,
-                    )
-
-                    base = compute_scores(payload or {})
-                    aeo_f = base.get("aeo", {}).get("factors", {})
-                    geo_f = base.get("geo", {}).get("factors", {})
-                    all_recs = generate_recommendations(
-                        aeo_f,
-                        geo_f,
-                        payload=payload,
-                        aax_factors=aax_score_json.get("factors"),
-                        contactability=aax_result.get("contactability"),
-                    )
-                    snap.score_json["recommendations"] = all_recs
-                except Exception:
-                    logger.debug(
-                        "Failed to re-generate AAX recommendations",
-                        exc_info=True,
-                    )
-
-                flag_modified(snap, "score_json")
-
-        # Inject AAX into payload_json so the API returns it
-        row = s.get(Crawl, crawl_id)
-        if row and row.payload_json:
-            try:
-                p = (
-                    row.payload_json or {}
-                    if isinstance(row.payload_json, str)
-                    else row.payload_json
-                )
-                if isinstance(p, dict):
-                    p["aax"] = aax_result
-                    if aax_score_json:
-                        scores = p.get("scores") or {}
-                        scores["aax"] = aax_score_json
-                        p["scores"] = scores
-                    row.payload_json = p
-                    flag_modified(row, "payload_json")
-            except json.JSONDecodeError, TypeError:
-                pass
+    _apply_aax_to_score_snapshot(crawl_id, aax_result, aax_score_json, payload)
+    _inject_aax_into_payload_json(crawl_id, aax_result, aax_score_json)
 
     return aax_score_json
+
+
+def _load_payload_for_aax(
+    crawl_id: str,
+    payload: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Load the AAX payload and resolve the crawl owner.
+
+    Args:
+        crawl_id: The Crawl row ID.
+        payload: Pre-loaded crawl payload. If None, loads from DB.
+
+    Returns:
+        The (payload, user_id) pair. Returns (None, None) when the crawl
+        row is missing and no payload was provided.
+    """
+    # Load payload if not provided; also resolve the crawl's owner so LLM
+    # traces can be attributed to the user who requested the analysis.
+    with get_session() as s:
+        row = s.get(Crawl, crawl_id)
+        user_id = row.user_id if row else None
+        if payload is None:
+            if not row:
+                return None, None
+            raw = row.payload_json or {}
+            if isinstance(raw, str):
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    payload = {}
+            else:
+                payload = raw
+    return payload, user_id
+
+
+def _apply_aax_to_score_snapshot(
+    crawl_id: str,
+    aax_result: dict[str, Any],
+    aax_score_json: dict[str, Any] | None,
+    payload: dict[str, Any] | None,
+) -> None:
+    """Persist AAX results into the ScoreSnapshot on the crawl."""
+    with get_session() as s:
+        snap = s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id == crawl_id).first()
+        if not snap:
+            return
+        existing = snap.ai_analysis_json or {}
+        existing["aax"] = aax_result
+        snap.ai_analysis_json = existing
+        flag_modified(snap, "ai_analysis_json")
+
+        if aax_score_json and snap.score_json:
+            snap.score_json["aax"] = aax_score_json
+
+            # Re-generate recommendations now that AAX is available
+            try:
+                _regenerate_aax_recommendations(
+                    snap, payload, aax_result, aax_score_json
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to re-generate AAX recommendations",
+                    exc_info=True,
+                )
+
+            flag_modified(snap, "score_json")
+
+
+def _regenerate_aax_recommendations(
+    snap: ScoreSnapshot,
+    payload: dict[str, Any] | None,
+    aax_result: dict[str, Any],
+    aax_score_json: dict[str, Any],
+) -> None:
+    """Re-generate recommendations with AAX factors and store them."""
+    from meshweave.scoring.engine import compute_scores
+    from meshweave.scoring.recommendations import generate_recommendations
+
+    base = compute_scores(payload or {})
+    aeo_f = base.get("aeo", {}).get("factors", {})
+    geo_f = base.get("geo", {}).get("factors", {})
+    all_recs = generate_recommendations(
+        aeo_f,
+        geo_f,
+        payload=payload,
+        aax_factors=aax_score_json.get("factors"),
+        contactability=aax_result.get("contactability"),
+    )
+    snap.score_json["recommendations"] = all_recs
+
+
+def _inject_aax_into_payload_json(
+    crawl_id: str,
+    aax_result: dict[str, Any],
+    aax_score_json: dict[str, Any] | None,
+) -> None:
+    """Inject AAX into payload_json so the API returns it."""
+    with get_session() as s:
+        row = s.get(Crawl, crawl_id)
+        if not row or not row.payload_json:
+            return
+        try:
+            p = (
+                row.payload_json or {}
+                if isinstance(row.payload_json, str)
+                else row.payload_json
+            )
+            if isinstance(p, dict):
+                p["aax"] = aax_result
+                if aax_score_json:
+                    scores = p.get("scores") or {}
+                    scores["aax"] = aax_score_json
+                    p["scores"] = scores
+                row.payload_json = p
+                flag_modified(row, "payload_json")
+        except json.JSONDecodeError, TypeError:
+            pass
 
 
 def update_manual_inputs(crawl_id: str, inputs: dict[str, float]) -> dict[str, Any]:

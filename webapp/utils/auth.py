@@ -458,33 +458,7 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
         sid_cookie = get_auth_cookie_value(request)
 
         if sid_cookie:
-            now = datetime.now(UTC)
-            # Load and validate session
-            with get_session() as s:
-                sess = (
-                    s.query(AuthSession)
-                    .filter(AuthSession.session_id == sid_cookie)
-                    .one_or_none()
-                )
-                if sess:
-                    if sess.expires_at and now >= sess.expires_at:
-                        # Delete expired session
-                        s.query(AuthSession).filter(AuthSession.id == sess.id).delete()
-                        expired = True
-                    else:
-                        # Reduce write frequency: only slide if last_activity is older than 60s
-                        try:
-                            if (
-                                not getattr(sess, "last_activity", None)
-                                or (now - sess.last_activity).total_seconds() >= 60
-                            ):
-                                slide_session_expiry(sess)
-                                slid = True
-                        except Exception:
-                            # On any failure, skip sliding to avoid cascading errors
-                            pass
-                        # Always fetch user for template access
-                        user = s.get(User, sess.user_id)
+            user, slid, expired = _load_session(sid_cookie)
 
         # Expose current_user to request.state for templates
         try:
@@ -507,3 +481,43 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 pass
 
         return response
+
+
+def _load_session(sid_cookie: str) -> tuple[User | None, bool, bool]:
+    """Load and validate the auth session for a cookie value.
+
+    Returns:
+        Tuple: (user, slid, expired) where user may be None, slid indicates
+        whether the session expiry was refreshed, and expired indicates the
+        session was deleted.
+    """
+    now = datetime.now(UTC)
+    user = None
+    slid = False
+    expired = False
+    with get_session() as s:
+        sess = (
+            s.query(AuthSession)
+            .filter(AuthSession.session_id == sid_cookie)
+            .one_or_none()
+        )
+        if sess:
+            if sess.expires_at and now >= sess.expires_at:
+                # Delete expired session
+                s.query(AuthSession).filter(AuthSession.id == sess.id).delete()
+                expired = True
+            else:
+                # Reduce write frequency: only slide if last_activity is older than 60s
+                try:
+                    if (
+                        not getattr(sess, "last_activity", None)
+                        or (now - sess.last_activity).total_seconds() >= 60
+                    ):
+                        slide_session_expiry(sess)
+                        slid = True
+                except Exception:
+                    # On any failure, skip sliding to avoid cascading errors
+                    pass
+                # Always fetch user for template access
+                user = s.get(User, sess.user_id)
+    return user, slid, expired

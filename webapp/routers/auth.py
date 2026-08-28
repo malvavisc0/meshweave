@@ -10,7 +10,7 @@ from sqlalchemy import func
 from starlette import status
 
 from webapp.db import get_session
-from webapp.models import OAuthState, User
+from webapp.models import AuthSession, OAuthState, User
 from webapp.utils.auth import (
     create_auth_session,
     get_auth_cookie_value,
@@ -269,42 +269,17 @@ async def login(request: Request, provider: str = "google", next: str | None = N
     return resp
 
 
-@router.get("/auth/callback")
-async def auth_callback(
-    request: Request,
-    state: str | None = None,
-    code: str | None = None,
-    error: str | None = None,
-):
-    """Handle OAuth redirect, validate state, exchange code, upsert user, and set auth cookie.
+def _auth_failure_redirect() -> RedirectResponse:
+    """Generic OAuth failure redirect that does not leak provider details."""
+    try:
+        auth_attempts.labels("google", "failure").inc()
+    except Exception:
+        pass
+    return RedirectResponse(url="/?error=1", status_code=status.HTTP_303_SEE_OTHER)
 
-    Args:
-        request (Request): Incoming request containing cookies and query params.
-        state (Optional[str]): Opaque state value returned by the provider.
-        code (Optional[str]): Authorization code returned by the provider.
-        error (Optional[str]): Provider error indicator, if any.
 
-    Returns:
-        RedirectResponse: 303 redirect to the next_path or home on success; to "/" with
-        error indicator on failure.
-
-    Raises:
-        HTTPException: 400 for invalid or expired state or when required parameters are missing.
-    """
-    if error:
-        # Generic failure; do not leak provider details
-        try:
-            auth_attempts.labels("google", "failure").inc()
-        except Exception:
-            pass
-        return RedirectResponse(url="/?error=1", status_code=status.HTTP_303_SEE_OTHER)
-
-    if not state or not code:
-        raise HTTPException(status_code=400, detail="Invalid OAuth response")
-
-    # Validate server-side state; single-use
-    sid = request.cookies.get(_sid_cookie_name()) or ""
-    oauth_row = None
+def _validate_oauth_state(state: str, sid: str) -> tuple[str | None, OAuthState]:
+    """Validate and consume a single-use OAuth state, returning (next_path, row)."""
     with get_session() as s:
         row = (
             s.query(OAuthState)
@@ -317,16 +292,17 @@ async def auth_callback(
         expires_at = row.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
-        oauth_row = row
         next_path_val = row.next_path
         s.delete(row)
 
     if datetime.now(UTC) > expires_at:
         # State was already deleted above; commit happened on clean exit
         raise HTTPException(status_code=400, detail="State expired")
+    return next_path_val, row
 
-    # Exchange code for tokens
-    redirect_uri = _build_redirect_uri(request)
+
+async def _exchange_google_code(code: str, redirect_uri: str) -> dict | None:
+    """Exchange the auth code for verified Google user info, or None on failure."""
     async with httpx.AsyncClient(timeout=15) as client:
         token_resp = await client.post(
             GOOGLE_TOKEN_URL,
@@ -340,66 +316,37 @@ async def auth_callback(
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if token_resp.status_code != 200:
-            try:
-                auth_attempts.labels("google", "failure").inc()
-            except Exception:
-                pass
-            return RedirectResponse(
-                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
-            )
+            return None
         tok = token_resp.json()
         access_token = tok.get("access_token")
         if not access_token:
-            try:
-                auth_attempts.labels("google", "failure").inc()
-            except Exception:
-                pass
-            return RedirectResponse(
-                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
-            )
+            return None
 
-        # Fetch userinfo
         ui_resp = await client.get(
             GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
         )
         if ui_resp.status_code != 200:
-            try:
-                auth_attempts.labels("google", "failure").inc()
-            except Exception:
-                pass
-            return RedirectResponse(
-                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
-            )
-        ui = ui_resp.json()
-        sub = (ui.get("sub") or "").strip()
-        email = (ui.get("email") or "").strip().lower()
-        email_verified = bool(ui.get("email_verified"))
-        name = (ui.get("name") or "").strip() or None
-        picture = (ui.get("picture") or "").strip() or None
+            return None
+        data = ui_resp.json()
+        return data if isinstance(data, dict) else None
 
-    if not sub or not email or not email_verified:
-        try:
-            auth_attempts.labels("google", "failure").inc()
-        except Exception:
-            pass
-        return RedirectResponse(url="/?error=1", status_code=status.HTTP_303_SEE_OTHER)
 
+def _google_user_allowed(email: str) -> bool:
+    """Whether the OAuth email is allowed by the configured domain whitelist."""
     domains = _allowed_domains()
-    if domains:
-        try:
-            domain = email.split("@", 1)[1]
-        except Exception:
-            domain = ""
-        if domain.lower() not in domains:
-            try:
-                auth_attempts.labels("google", "failure").inc()
-            except Exception:
-                pass
-            return RedirectResponse(
-                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
-            )
+    if not domains:
+        return True
+    try:
+        domain = email.split("@", 1)[1]
+    except Exception:
+        domain = ""
+    return domain.lower() in domains
 
-    # Upsert user by (provider, provider_id=sub)
+
+def _upsert_google_user(
+    email: str, sub: str, name, picture
+) -> tuple[User, AuthSession] | None:
+    """Upsert the Google user and create an auth session, or None on failure."""
     with get_session() as s:
         user = (
             s.query(User)
@@ -440,15 +387,68 @@ async def auth_callback(
             s.commit()
         except Exception:
             # If commit fails, redirect with error
-            return RedirectResponse(
-                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
-            )
+            return None
         try:
             sess = create_auth_session(user.id)
         except HTTPException:
-            return RedirectResponse(
-                url="/?error=1", status_code=status.HTTP_303_SEE_OTHER
-            )
+            return None
+        return user, sess
+
+
+@router.get("/auth/callback")
+async def auth_callback(
+    request: Request,
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
+):
+    """Handle OAuth redirect, validate state, exchange code, upsert user, and set auth cookie.
+
+    Args:
+        request (Request): Incoming request containing cookies and query params.
+        state (Optional[str]): Opaque state value returned by the provider.
+        code (Optional[str]): Authorization code returned by the provider.
+        error (Optional[str]): Provider error indicator, if any.
+
+    Returns:
+        RedirectResponse: 303 redirect to the next_path or home on success; to "/" with
+        error indicator on failure.
+
+    Raises:
+        HTTPException: 400 for invalid or expired state or when required parameters are missing.
+    """
+    if error:
+        return _auth_failure_redirect()
+
+    if not state or not code:
+        raise HTTPException(status_code=400, detail="Invalid OAuth response")
+
+    # Validate server-side state; single-use
+    sid = request.cookies.get(_sid_cookie_name()) or ""
+    next_path_val, oauth_row = _validate_oauth_state(state, sid)
+
+    # Exchange code for tokens
+    redirect_uri = _build_redirect_uri(request)
+    ui = await _exchange_google_code(code, redirect_uri)
+    if not ui:
+        return _auth_failure_redirect()
+
+    sub = (ui.get("sub") or "").strip()
+    email = (ui.get("email") or "").strip().lower()
+    email_verified = bool(ui.get("email_verified"))
+    name = (ui.get("name") or "").strip() or None
+    picture = (ui.get("picture") or "").strip() or None
+
+    if not sub or not email or not email_verified:
+        return _auth_failure_redirect()
+
+    if not _google_user_allowed(email):
+        return _auth_failure_redirect()
+
+    upsert = _upsert_google_user(email, sub, name, picture)
+    if upsert is None:
+        return _auth_failure_redirect()
+    user, sess = upsert
 
     # Redirect to requested path; set auth cookie
     next_path = sanitize_next(next_path_val if oauth_row else None)

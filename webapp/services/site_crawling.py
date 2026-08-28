@@ -78,21 +78,14 @@ def _limits_from_row(row: Crawl) -> dict[str, int]:
     return lim
 
 
-async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
-    """Background task: site crawl via meshweave.core.crawl().
-
-    Transitions the Crawl row through pending → running →
-    succeeded/failed/cancelled, delegates actual crawling to the
-    unified core, and stores the resulting payload_json.
-    """
-    now = datetime.now(UTC)
-    started_overall = time.monotonic()
-
-    # ── 1. Transition to running ─────────────────────────────────
+def _begin_crawl_transition(
+    crawl_id: str, now: datetime
+) -> tuple[str | None, Crawl | None]:
+    """Transition a pending/failed/succeeded crawl to running."""
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if not row:
-            return
+            return None, None
         start_url = row.url
         updated = (
             s.query(Crawl)
@@ -108,19 +101,12 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             )
         )
         if updated == 0:
-            return
+            return None, None
+    return start_url, row
 
-    # ── 2. Resolve limits and persist for progress API ───────────
-    limits = (
-        _limits_from_row(row)
-        if start_url
-        else {
-            "max_pages": 1,
-            "max_depth": 0,
-            "time_budget_ms": 600_000,
-        }
-    )
-    limits["started_at_ms"] = int(time.time() * 1000)
+
+def _persist_initial_limits(crawl_id: str, limits: dict[str, Any]) -> None:
+    """Persist resolved limits for the progress API (best-effort)."""
     try:
         with get_session() as s:
             r = s.get(Crawl, crawl_id)
@@ -130,21 +116,22 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
     except Exception:
         pass
 
-    time_budget_s = max(1.0, float(limits["time_budget_ms"]) / 1000.0)
-    max_depth = limits["max_depth"]
 
-    # ── 3. Domain whitelist for url_filter ───────────────────────
-    allowed_domain: str | None = None
-    if start_url:
-        try:
-            parts = urlsplit(start_url)
-            allowed_domain = normalize_domain(parts.netloc or "")
-        except Exception:
-            pass
+def _resolve_allowed_domain(start_url: str | None) -> str | None:
+    """Resolve the whitelisted domain for the url_filter."""
+    if not start_url:
+        return None
+    try:
+        parts = urlsplit(start_url)
+        return normalize_domain(parts.netloc or "")
+    except Exception:
+        return None
+
+
+def _build_url_filter(allowed_domain: str | None):
+    """Build a url_filter rejecting URLs outside the allowed domain."""
 
     def _url_filter(u: str) -> bool:
-        """Reject URLs outside the allowed domain or on
-        ignore lists."""
         try:
             p = urlsplit(u)
             dom = normalize_domain(p.netloc or "")
@@ -156,11 +143,15 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             return False
         return True
 
-    # ── 4. Callbacks for heartbeats and cancellation ─────────────
-    started_monotonic = time.monotonic()
+    return _url_filter
+
+
+def _build_should_continue(
+    crawl_id: str, time_budget_s: float, started_monotonic: float
+):
+    """Build the cancellation/time-budget callback."""
 
     async def _should_continue() -> bool:
-        """Check cancellation and time budget."""
         if (time.monotonic() - started_monotonic) > time_budget_s:
             return False
         try:
@@ -173,8 +164,13 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         except Exception:
             return False
 
+    return _should_continue
+
+
+def _build_on_page(crawl_id: str):
+    """Build the heartbeat callback touching updated_at per page."""
+
     async def _on_page(url: str, data: dict[str, Any]) -> None:
-        """Heartbeat: touch updated_at after each page."""
         try:
             with get_session() as s:
                 r = s.get(Crawl, crawl_id)
@@ -183,14 +179,27 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         except Exception:
             pass
 
-    # ── 5. Run the unified crawl ────────────────────────────────
+    return _on_page
+
+
+async def _run_crawl(
+    crawl_id: str,
+    start_url: str | None,
+    limits: dict[str, Any],
+    max_depth: int,
+    force_refresh: bool,
+    on_page: Any,
+    should_continue: Any,
+    url_filter: Any,
+) -> dict[str, Any] | None:
+    """Run the unified crawl, returning None on failure."""
     try:
         log_audit("site_crawl_started", crawl_id=crawl_id)
     except Exception:
         pass
 
     try:
-        payload = await core_crawl(
+        return await core_crawl(
             url=start_url or "",
             crawl_max_pages=limits["max_pages"],
             max_depth=max_depth,
@@ -198,15 +207,23 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
             deobfuscate_emails=True,
             per_page_timeout=30.0,
             disable_cache=force_refresh,
-            on_page_crawled=_on_page,
-            should_continue=_should_continue,
-            url_filter=_url_filter,
+            on_page_crawled=on_page,
+            should_continue=should_continue,
+            url_filter=url_filter,
         )
     except Exception as e:
         _finish_task(crawl_id, "failed", error=str(e))
-        return
+        return None
 
-    # ── 6. Determine final status ───────────────────────────────
+
+def _dispatch_finish(
+    crawl_id: str,
+    payload: dict[str, Any],
+    started_monotonic: float,
+    time_budget_s: float,
+    started_overall: float,
+) -> None:
+    """Pick succeeded/cancelled/failed based on outcome and budget."""
     stop_reason = payload.get("summary", {}).get("reason_stopped", "queue_empty")
     timed_out = (time.monotonic() - started_monotonic) > time_budget_s
     elapsed = max(0.0, time.monotonic() - started_overall)
@@ -242,6 +259,97 @@ async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> Non
         )
 
 
+async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
+    """Background task: site crawl via meshweave.core.crawl().
+
+    Transitions the Crawl row through pending → running →
+    succeeded/failed/cancelled, delegates actual crawling to the
+    unified core, and stores the resulting payload_json.
+    """
+    now = datetime.now(UTC)
+    started_overall = time.monotonic()
+
+    # ── 1. Transition to running ─────────────────────────────────
+    start_url, row = _begin_crawl_transition(crawl_id, now)
+    if not row:
+        return
+
+    # ── 2. Resolve limits and persist for progress API ───────────
+    limits = (
+        _limits_from_row(row)
+        if start_url
+        else {
+            "max_pages": 1,
+            "max_depth": 0,
+            "time_budget_ms": 600_000,
+        }
+    )
+    limits["started_at_ms"] = int(time.time() * 1000)
+    _persist_initial_limits(crawl_id, limits)
+
+    time_budget_s = max(1.0, float(limits["time_budget_ms"]) / 1000.0)
+    max_depth = limits["max_depth"]
+
+    # ── 3. Domain whitelist for url_filter ───────────────────────
+    allowed_domain = _resolve_allowed_domain(start_url)
+    url_filter = _build_url_filter(allowed_domain)
+
+    # ── 4. Callbacks for heartbeats and cancellation ─────────────
+    started_monotonic = time.monotonic()
+    should_continue = _build_should_continue(crawl_id, time_budget_s, started_monotonic)
+    on_page = _build_on_page(crawl_id)
+
+    # ── 5. Run the unified crawl ────────────────────────────────
+    payload = await _run_crawl(
+        crawl_id,
+        start_url,
+        limits,
+        max_depth,
+        force_refresh,
+        on_page,
+        should_continue,
+        url_filter,
+    )
+    if payload is None:
+        return
+
+    # ── 6. Determine final status ───────────────────────────────
+    _dispatch_finish(
+        crawl_id,
+        payload,
+        started_monotonic,
+        time_budget_s,
+        started_overall,
+    )
+
+
+def _score_crawl(payload: dict[str, Any], crawl_id: str) -> None:
+    """Compute AEO/GEO scores and include them in payload_json."""
+    try:
+        from webapp.services.scoring import score_crawl
+
+        score_json = score_crawl(crawl_id, payload=payload)
+        payload["scores"] = score_json
+    except Exception:
+        logger.exception("score_crawl failed for crawl %s", crawl_id)
+
+
+def _enqueue_aax(crawl_id: str, payload: dict[str, Any]) -> None:
+    """Schedule AAX analysis (async, best-effort)."""
+    try:
+        import asyncio
+
+        from webapp.services.scoring import run_aax_for_crawl
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
+    except RuntimeError:
+        # No running event loop — skip AAX (will be triggered on next access)
+        pass
+    except Exception:
+        pass
+
+
 def _finish_task(
     crawl_id: str,
     status: str,
@@ -255,13 +363,7 @@ def _finish_task(
     """Write final status/payload to DB and emit observability."""
     # Compute AEO/GEO scores before writing so they're included in payload_json
     if status == "succeeded" and payload is not None:
-        try:
-            from webapp.services.scoring import score_crawl
-
-            score_json = score_crawl(crawl_id, payload=payload)
-            payload["scores"] = score_json
-        except Exception:
-            logger.exception("score_crawl failed for crawl %s", crawl_id)
+        _score_crawl(payload, crawl_id)
 
     try:
         with get_session() as s:
@@ -278,18 +380,7 @@ def _finish_task(
 
     # Run AAX analysis (async, best-effort) — will update payload_json when done
     if status == "succeeded" and payload is not None:
-        try:
-            import asyncio
-
-            from webapp.services.scoring import run_aax_for_crawl
-
-            loop = asyncio.get_running_loop()
-            loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
-        except RuntimeError:
-            # No running event loop — skip AAX (will be triggered on next access)
-            pass
-        except Exception:
-            pass
+        _enqueue_aax(crawl_id, payload)
 
     if audit_event:
         try:

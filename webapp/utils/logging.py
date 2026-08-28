@@ -44,7 +44,7 @@ class JsonFormatter(logging.Formatter):
             "error_code",
         ):
             if hasattr(record, attr):
-                base[attr] = getattr(record, attr)  # type: ignore[attr-defined]
+                base[attr] = getattr(record, attr)
 
         # If record has an 'extra' dict, merge it
         extra = getattr(record, "extra", None)
@@ -56,7 +56,9 @@ class JsonFormatter(logging.Formatter):
 
         # Stack trace on errors if present
         if record.exc_info:
-            base["exc"] = "".join(traceback.format_exception(*record.exc_info))  # type: ignore[arg-type]
+            exc = record.exc_info[1] if record.exc_info else None
+            if exc is not None:
+                base["exc"] = "".join(traceback.format_exception(exc))
 
         return json.dumps(base, ensure_ascii=False)
 
