@@ -26,8 +26,8 @@ except Exception:
 
         return _Ctx()
 
-    fake_async_api.TimeoutError = _FakeTimeoutError  # type: ignore
-    fake_async_api.async_playwright = _fake_async_playwright  # type: ignore
+    setattr(fake_async_api, "TimeoutError", _FakeTimeoutError)
+    setattr(fake_async_api, "async_playwright", _fake_async_playwright)
 
     sys.modules["playwright"] = types.ModuleType("playwright")
     sys.modules["playwright.async_api"] = fake_async_api

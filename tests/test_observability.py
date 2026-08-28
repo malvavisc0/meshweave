@@ -40,15 +40,15 @@ def _fake_langfuse_module(client: _FakeLangfuseClient) -> types.ModuleType:
     ``propagate_attributes`` call received.
     """
     module = types.ModuleType("langfuse")
-    module.get_client = lambda: client  # type: ignore[attr-defined]
+    setattr(module, "get_client", lambda: client)
     calls: list[dict] = []
 
     def _propagate_attributes(**kwargs):
         calls.append(kwargs)
         return nullcontext()
 
-    module.propagate_attributes = _propagate_attributes  # type: ignore[attr-defined]
-    module.propagation_calls = calls  # type: ignore[attr-defined]
+    setattr(module, "propagate_attributes", _propagate_attributes)
+    setattr(module, "propagation_calls", calls)
     return module
 
 
