@@ -28,6 +28,7 @@ def aax_pending(crawl: Any) -> bool:
         aax = (snap.ai_analysis_json or {}).get("aax") or {}
         return aax.get("status") != "completed"
 
+
 # Mapping of factor keys to human-readable display names
 FACTOR_DISPLAY_NAMES = {
     "schema": "Schema Implementation",
