@@ -17,6 +17,7 @@ from webapp.utils.config import _env_bool
 from webapp.utils.reasons import friendly_reason
 from webapp.utils.scoring import (
     PRIORITY_NUMERIC,
+    aax_pending,
 )
 from webapp.utils.scoring import (
     build_score_snapshot_context as _build_score_snapshot_context,
@@ -443,6 +444,7 @@ async def view_shared_analysis(request: Request, share_key: str):
             "score_snapshot": _ss_shared,
             "sorted_recommendations": _sorted_recommendations(_ss_shared),
             "factor_extremes": _build_factor_extremes(_ss_shared),
+            "aax_pending": aax_pending(row),
         },
     )
     resp.headers["X-Robots-Tag"] = "noindex"
@@ -555,6 +557,7 @@ async def view_analysis(request: Request, ref: str):
                 "score_snapshot": _ss_private,
                 "sorted_recommendations": _sorted_recommendations(_ss_private),
                 "factor_extremes": _build_factor_extremes(_ss_private),
+                "aax_pending": aax_pending(row),
             },
         )
         # Prevent indexing of private results
@@ -692,6 +695,7 @@ async def view_analysis(request: Request, ref: str):
             "score_snapshot": _ss_public,
             "sorted_recommendations": _sorted_recommendations(_ss_public),
             "factor_extremes": _build_factor_extremes(_ss_public),
+            "aax_pending": aax_pending(row),
         },
     )
     _set_session_cookie(resp, new_session, session_id, cookie_name)

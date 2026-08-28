@@ -949,7 +949,8 @@ else 'n/a') ~
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
   'ownerless': ownerless|default(false),
-  'score_snapshot': score_snapshot|default(none)
+  'score_snapshot': score_snapshot|default(none),
+  'aax_pending': aax_pending|default(false)
 } | tojson }}
 </script>
 <script src="/static/js/result-analysis.js"></script>

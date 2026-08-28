@@ -1105,9 +1105,10 @@
             var _pubKey = __ctx.public_key || '';
             var _cid = __ctx.crawl_id || '';
             var _st = String(__ctx.status || '').toLowerCase();
-            if (_pubKey && (_st === 'pending' || _st === 'running')) {
+            var _aaxPending = __ctx.aax_pending || false;
+            if (_pubKey && (_st === 'pending' || _st === 'running' || _aaxPending)) {
                 startPublicProgressPolling(_pubKey);
-            } else if (_cid && (_st === 'pending' || _st === 'running')) {
+            } else if (_cid && (_st === 'pending' || _st === 'running' || _aaxPending)) {
                 startProgressPolling(_cid);
             }
         } catch (_) { }
