@@ -19,43 +19,6 @@
     </div>
   </header>
 
-  <!-- What these reports measure -->
-  <section class="prose-section" aria-label="What these reports measure">
-    <h2>What these reports measure</h2>
-    <p>Every MeshWeave analysis scores a website across three risk lenses. Each lens answers a different question
-      about how AI systems treat your site, and each is scored 0-100 from automated checks across your crawled
-      pages.</p>
-    <table class="table">
-      <caption class="sr-only">The three MeshWeave risk lenses</caption>
-      <thead>
-        <tr>
-          <th scope="col">Lens</th>
-          <th scope="col">Question it answers</th>
-          <th scope="col">What it checks</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>AEO</strong> — Answer Engine Optimization</td>
-          <td>Can AI extract clean answers from your pages?</td>
-          <td>Schema coverage, heading hierarchy, content structure, freshness</td>
-        </tr>
-        <tr>
-          <td><strong>GEO</strong> — Generative Engine Optimization</td>
-          <td>Does AI see enough trust signals to recommend you?</td>
-          <td>Entity consistency, E-E-A-T signals, crawl access, content depth</td>
-        </tr>
-        <tr>
-          <td><strong>AAX</strong> — AI Agent Experience</td>
-          <td>Can an AI agent complete tasks on your site?</td>
-          <td>Homepage comprehension, contactability, llms.txt, metadata</td>
-        </tr>
-      </tbody>
-    </table>
-    <p>Each report also lists prioritized recommendations — the specific fixes that move each lens score fastest.
-      See the <a href="/methodology">full methodology</a> for factor weights and rating bands.</p>
-  </section>
-
   <!-- Filters -->
   <form method="get" action="/browse" class="filter-bar filter-bar--dashboard"
     onsubmit="try{trackEvent('all_filter_apply');}catch(_){ }">
@@ -137,34 +100,8 @@
   <div class="empty-state">
     <h3>No analyses found</h3>
     <p>Try adjusting your filters or <a href="/">submit a new URL</a> to start a new analysis.</p>
-    <div class="cta-benefits-wrap">
-      <ul class="cta-benefits">
-        <li>Run a free analysis from the <a href="/">homepage</a> — no sign-up needed</li>
-        <li>Learn how scores are computed on the <a href="/methodology">methodology page</a></li>
-        <li>Understand the three risk lenses: AEO, GEO, and AAX</li>
-      </ul>
-    </div>
   </div>
   {% endif %}
-
-  <!-- How to read a report -->
-  <section class="prose-section" aria-label="How to read a report">
-    <h2>How to read a report</h2>
-    <p>Every analysis follows the same shape, whether it was run five minutes ago or five months ago.</p>
-    <ul class="structured-list">
-      <li><strong>Lens scores</strong> — AEO, GEO, and AAX composites with rating bands from
-        <em>Poor/Invisible/Opaque</em> to <em>Excellent/Dominant/Fluent</em>.</li>
-      <li><strong>Factor breakdown</strong> — each lens is a weighted average of measurable factors
-        (schema coverage, crawl access, E-E-A-T signals, …), so you can see exactly which signal
-        is holding a score back.</li>
-      <li><strong>Interpretation</strong> — a plain-language diagnosis of the score profile and which
-        lens to fix first.</li>
-      <li><strong>Recommendations</strong> — prioritized fixes with estimated impact, sorted by
-        what moves the composite fastest.</li>
-    </ul>
-    <p>Reports also flag what a free scan cannot measure — citation frequency, query-match relevance,
-      and capture rate require real-world data, and the report says so rather than guessing.</p>
-  </section>
 
 </div>
 {% endblock %}

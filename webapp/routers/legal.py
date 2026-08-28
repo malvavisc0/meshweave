@@ -141,12 +141,6 @@ async def contact(request: Request):
                 "mainEntity": [
                     {
                         "@type": "ContactPoint",
-                        "contactType": "sales",
-                        "email": "sales@meshweaveai.com",
-                        "availableLanguage": "English",
-                    },
-                    {
-                        "@type": "ContactPoint",
                         "contactType": "customer support",
                         "email": contact_email,
                         "availableLanguage": "English",
