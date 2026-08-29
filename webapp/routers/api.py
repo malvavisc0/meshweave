@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from io import StringIO
 from typing import cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -16,13 +16,13 @@ from webapp.models import Crawl, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.metrics import (
-    homepage_advanced_toggle_clicks,
     homepage_signin_cta_clicks,
     metrics_body,
     metrics_content_type,
-    result_share_clicks,
 )
+from webapp.utils.reasons import public_error_label
 from webapp.utils.scoring import build_score_snapshot_context
+from webapp.utils.security import verify_request_csrf
 from webapp.utils.times import ensure_utc
 from webapp.utils.url import _get_base_url
 
@@ -149,8 +149,12 @@ async def api_public_by_key(request: Request, key: str):
 async def api_private(request: Request, crawl_id: str):
     """Private API for a crawl addressed by UUID.
 
-    If the crawl is not yet succeeded, returns a 202 with status information; otherwise
-    returns the stored payload and sets noindex.
+    Unauthenticated requests get 401 (auth is checked before the row is
+    looked up). An authenticated non-owner gets 404 — not 403 — so that the
+    existence of a private UUID is not revealed.
+
+    If the crawl is not yet succeeded, returns a 202 with status information;
+    otherwise returns the stored payload and sets noindex.
 
     Args:
         crawl_id (str): UUID of the crawl.
@@ -158,7 +162,12 @@ async def api_private(request: Request, crawl_id: str):
     Returns:
         JSONResponse: JSON payload or status info.
     """
-    await require_ownership(request, crawl_id)
+    try:
+        await require_ownership(request, crawl_id)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise HTTPException(status_code=404, detail="Not found")
+        raise
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
     if not row:
@@ -433,7 +442,7 @@ async def api_public_summary(request: Request, key: str):
 
 
 @router.post("/api/claim/public/{key}")
-async def claim_public(request: Request, key: str):
+async def claim_public(request: Request, key: str, csrf_token: str | None = Form(None)):
     """Claim a public anonymous analysis by short key when eligible.
 
     Preconditions:
@@ -442,6 +451,7 @@ async def claim_public(request: Request, key: str):
       - created_at <= now - CLAIM_PUBLIC_MIN_AGE_HOURS (default 24)
     Concurrency-safety: single UPDATE with conditions; 409 when already claimed.
     """
+    verify_request_csrf(request, csrf_token)
     user = await require_auth(request)
 
     try:
@@ -517,6 +527,12 @@ async def api_status(request: Request, crawl_id: str):
     if row.visibility != "public" and not is_owner:
         raise HTTPException(status_code=404, detail="Not found")
 
+    # Raw error text is owner-only; non-owners get a fixed public label.
+    if is_owner:
+        error_value: str | None = row.error
+    else:
+        error_value = public_error_label(row.error) if row.error else None
+
     base = _get_base_url(request)
     if row.visibility == "public" and getattr(row, "key", None):
         report_url = f"{base}/analysis/{row.key}"
@@ -529,7 +545,7 @@ async def api_status(request: Request, crawl_id: str):
         "path": row.path,
         "query": row.query,
         "status": row.status,
-        "error": row.error,
+        "error": error_value,
         "updated_at": (row.updated_at or datetime.now(UTC)).isoformat(),
         "report_url": report_url,
     }
@@ -578,32 +594,18 @@ async def metrics():
 
 
 @router.get("/api/track")
-async def track_get(event: str = "", action: str = "", type: str = ""):
+async def track_get(event: str = ""):
     """Lightweight tracking endpoint (GET) for client beacons."""
-    try:
-        if event == "advanced_toggle" and action in ("open", "close"):
-            homepage_advanced_toggle_clicks.labels(action=action).inc()
-        elif event == "signin_click":
-            homepage_signin_cta_clicks.inc()
-        elif event == "share_click" and type in ("copy", "link", "other"):
-            result_share_clicks.labels(type=type).inc()
-    except Exception:
-        pass
+    if event == "signin_click":
+        homepage_signin_cta_clicks.inc()
     return {"ok": True}
 
 
 @router.post("/api/track")
-async def track_post(event: str = "", action: str = "", type: str = ""):
+async def track_post(event: str = ""):
     """Lightweight tracking endpoint (POST) for client beacons."""
-    try:
-        if event == "advanced_toggle" and action in ("open", "close"):
-            homepage_advanced_toggle_clicks.labels(action=action).inc()
-        elif event == "signin_click":
-            homepage_signin_cta_clicks.inc()
-        elif event == "share_click" and type in ("copy", "link", "other"):
-            result_share_clicks.labels(type=type).inc()
-    except Exception:
-        pass
+    if event == "signin_click":
+        homepage_signin_cta_clicks.inc()
     return {"ok": True}
 
 
