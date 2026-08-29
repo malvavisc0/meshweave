@@ -94,4 +94,15 @@
     }, true);
   } catch (_){}
 
+  // Confirmation guard for destructive forms (data-confirm="Message")
+  try {
+    document.addEventListener('submit', function(e){
+      var form = e.target;
+      if (!form || !form.getAttribute || !form.hasAttribute('data-confirm')) return;
+      if (!window.confirm(form.getAttribute('data-confirm') || 'Are you sure?')) {
+        e.preventDefault();
+      }
+    }, true);
+  } catch (_){}
+
 })();

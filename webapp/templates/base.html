@@ -54,12 +54,13 @@
 </head>
 
 <body>
+  <a class="skip-link" href="#main">Skip to main content</a>
   <nav class="topnav" role="navigation" aria-label="Primary">
     {% set __path = request.url.path %}
     <div class="nav-left">
       <a href="/" class="brandmark" aria-label="MeshWeave home">
         <span class="brandmark-badge" aria-hidden="true">
-          <img src="/static/spider-robot-head.png" alt="Logo" class="brandmark-logo">
+          <img src="/static/spider-robot-head.png" alt="" class="brandmark-logo">
         </span>
       </a>
       <a href="/" {% if __path=='/' %}aria-current="page" {% endif %}>Home</a>

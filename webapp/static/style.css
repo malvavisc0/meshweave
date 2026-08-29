@@ -237,6 +237,11 @@ nav.topnav {
   font: var(--font-body-sm);
   font-size: 15px;
   letter-spacing: 0.16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+nav.topnav a {
+  touch-action: manipulation;
 }
 
 .topnav .nav-left,
@@ -393,6 +398,7 @@ button,
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   min-height: 44px;
   /* Touch target */
+  touch-action: manipulation;
 }
 
 button:hover,
@@ -738,6 +744,31 @@ label {
 :focus-visible {
   outline: var(--elevation-focus-ring);
   outline-offset: 0;
+}
+
+/* Skip link — visible only when focused via keyboard */
+.skip-link {
+  position: absolute;
+  top: var(--space-xs);
+  left: var(--space-xs);
+  z-index: 1000;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast, #fff);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* In-page anchor targets land below the sticky topnav */
+.lens-breakdown-section,
+#score-breakdown,
+.result-section[id],
+#main {
+  scroll-margin-top: calc(var(--component-topnav-height) + var(--space-sm));
 }
 
 /* Screen-reader only utility */
@@ -2051,6 +2082,7 @@ p.card-meta {
   font-weight: 600;
   text-align: right;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .factor-score-missing {
@@ -2485,6 +2517,7 @@ p.card-meta {
   padding: var(--space-xs) var(--space-sm);
   border-bottom: 1px solid var(--color-hairline);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .page-stats-table tr:hover td {
@@ -4208,6 +4241,7 @@ p.card-meta {
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .score-strip-sub {
