@@ -54,6 +54,19 @@ def _counts_from_payload(row: Crawl) -> tuple[int, int]:
         return 0, 0
 
 
+def _first_page_title(payload: dict) -> str:
+    """Title of the first page in a site-scope payload."""
+    pages = payload.get("pages") or []
+    if pages and isinstance(pages, list) and len(pages) > 0:
+        return (pages[0].get("page") or {}).get("title") or ""
+    return ""
+
+
+def _page_title_from_payload(payload: dict) -> str:
+    """Title of the page object in a page-scope payload."""
+    return (payload.get("page") or {}).get("title") or ""
+
+
 def _row_title(row: Crawl) -> str:
     """Title from the crawl payload, site or page scope."""
     title = ""
@@ -61,11 +74,9 @@ def _row_title(row: Crawl) -> str:
         if row.payload_json:
             payload = row.payload_json or {}
             if bool(row.crawl_params):
-                pages = payload.get("pages") or []
-                if pages and isinstance(pages, list) and len(pages) > 0:
-                    title = (pages[0].get("page") or {}).get("title") or ""
+                title = _first_page_title(payload)
             else:
-                title = (payload.get("page") or {}).get("title") or ""
+                title = _page_title_from_payload(payload)
     except Exception:
         title = ""
     return title
@@ -102,14 +113,16 @@ def _time_fields(row: Crawl) -> tuple[str, str, bool]:
     return updated_iso, updated_relative, bool(is_new)
 
 
-def _summary_snippet(row: Crawl) -> tuple[str, str]:
-    """Return (summary_snippet, scope) for a row, site scope only."""
+def _scope_of(row: Crawl) -> str:
+    """Return the row scope ("site" or "page")."""
     try:
-        scope_val = "site" if row.crawl_params else "page"
+        return "site" if row.crawl_params else "page"
     except Exception:
-        scope_val = "page"
-    if scope_val != "site":
-        return "", scope_val
+        return "page"
+
+
+def _site_description_fields(row: Crawl) -> tuple[str, str]:
+    """Return (description, og_description) from a site-scope payload."""
     desc = ""
     og_desc = ""
     try:
@@ -120,15 +133,29 @@ def _summary_snippet(row: Crawl) -> tuple[str, str]:
             og_desc = ((pg.get("og") or {}).get("description") or "").strip()
     except Exception:
         pass
+    return desc, og_desc
+
+
+def _site_snippet(row: Crawl, desc: str, og_desc: str) -> str:
+    """First-sentence snippet from description, og:description, or markdown."""
     if desc:
-        return _first_sentence(desc, 160), scope_val
+        return _first_sentence(desc, 160)
     if og_desc:
-        return _first_sentence(og_desc, 160), scope_val
+        return _first_sentence(og_desc, 160)
     try:
         md = (row.payload_json or {}).get("markdown") or ""
     except Exception:
         md = ""
-    return _first_sentence(md, 160), scope_val
+    return _first_sentence(md, 160)
+
+
+def _summary_snippet(row: Crawl) -> tuple[str, str]:
+    """Return (summary_snippet, scope) for a row, site scope only."""
+    scope_val = _scope_of(row)
+    if scope_val != "site":
+        return "", scope_val
+    desc, og_desc = _site_description_fields(row)
+    return _site_snippet(row, desc, og_desc), scope_val
 
 
 def _scores_of(row: Crawl) -> tuple[Any, Any]:
@@ -257,21 +284,8 @@ def _normalize_direction(dir: str | None) -> str:
     return direction if direction in ("next", "prev") else "next"
 
 
-def _aggregate_items(
-    s: Session,
-    dom: str | None,
-    st: str | None,
-    has_emails: bool,
-    srt: str,
-    page_size: int,
-) -> tuple[list[dict], bool, bool]:
-    """Build card items via aggregation ordering (non-recent, non-cursor)."""
-    q = _base_results_query(s, dom, st)
-    rows_db_raw = q.options(joinedload(Crawl.score_snapshot)).limit(500).all()
-
-    row_counts = [(_counts_from_payload(r), r) for r in rows_db_raw]
-    if has_emails:
-        row_counts = [(c, r) for c, r in row_counts if c[0] > 0]
+def _sort_row_counts(row_counts: list, srt: str) -> None:
+    """Sort (counts, row) pairs in place for the requested aggregation."""
     if srt == "emails":
         row_counts.sort(
             key=lambda x: (
@@ -293,18 +307,32 @@ def _aggregate_items(
             )
         )
 
+
+def _aggregate_items(
+    s: Session,
+    dom: str | None,
+    st: str | None,
+    has_emails: bool,
+    srt: str,
+    page_size: int,
+) -> tuple[list[dict], bool, bool]:
+    """Build card items via aggregation ordering (non-recent, non-cursor)."""
+    q = _base_results_query(s, dom, st)
+    rows_db_raw = q.options(joinedload(Crawl.score_snapshot)).limit(500).all()
+
+    row_counts = [(_counts_from_payload(r), r) for r in rows_db_raw]
+    if has_emails:
+        row_counts = [(c, r) for c, r in row_counts if c[0] > 0]
+    _sort_row_counts(row_counts, srt)
+
     rows_db = [(r, ec, pc) for (ec, pc), r in row_counts[:page_size]]
     items = [_serialize_cell(r, ec, pc) for r, ec, pc in rows_db]
     # Aggregation branch omits keyset prev/next
     return items, False, False
 
 
-def _recent_page_rows(
-    s: Session, dom, st, has_emails, cursor_ts, cursor_id, direction, page_size
-):
-    """Query recent crawl rows with keyset pagination and count maps."""
-    q = _base_results_query(s, dom, st)
-
+def _apply_cursor_filters(q, cursor_ts, cursor_id, direction: str):
+    """Apply keyset cursor filters and ordering to the recent query."""
     if cursor_ts and cursor_id:
         if direction == "next":
             # Older than cursor (order DESC)
@@ -326,11 +354,11 @@ def _recent_page_rows(
             q = q.order_by(Crawl.updated_at.asc(), Crawl.id.asc())
     else:
         q = q.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+    return q
 
-    rows_db_recent = (
-        q.options(joinedload(Crawl.score_snapshot)).limit(page_size + 1).all()
-    )
 
+def _recent_count_maps(rows_db_recent: list) -> tuple[dict, dict]:
+    """Build email/page count maps keyed by crawl id from payload rows."""
     email_counts_map: dict[int, int] = {}
     page_counts_map: dict[int, int] = {}
     for r in rows_db_recent:
@@ -346,6 +374,21 @@ def _recent_page_rows(
         except Exception:
             email_counts_map[r.id] = 0
             page_counts_map[r.id] = 0
+    return email_counts_map, page_counts_map
+
+
+def _recent_page_rows(
+    s: Session, dom, st, has_emails, cursor_ts, cursor_id, direction, page_size
+):
+    """Query recent crawl rows with keyset pagination and count maps."""
+    q = _base_results_query(s, dom, st)
+    q = _apply_cursor_filters(q, cursor_ts, cursor_id, direction)
+
+    rows_db_recent = (
+        q.options(joinedload(Crawl.score_snapshot)).limit(page_size + 1).all()
+    )
+
+    email_counts_map, page_counts_map = _recent_count_maps(rows_db_recent)
 
     return rows_db_recent, email_counts_map, page_counts_map
 
@@ -379,6 +422,46 @@ def _recent_items(
     return items, prev_url, next_url, has_prev, has_next
 
 
+def _nav_endpoint_rows(
+    rows: list[Crawl], cursor_ts, cursor_id, direction: str
+) -> tuple[Crawl, Crawl]:
+    """Return (first, last) rows for cursor construction, reversing prev pages."""
+    rows_for_nav = list(rows)
+    if cursor_ts and cursor_id and direction == "prev":
+        rows_for_nav = list(reversed(rows_for_nav))
+    return rows_for_nav[0], rows_for_nav[-1]
+
+
+def _nav_urls(
+    base_params: dict,
+    cursor_ts,
+    cursor_id,
+    direction: str,
+    first: Crawl,
+    last: Crawl,
+    more: bool,
+) -> tuple[str | None, str | None, bool, bool]:
+    """Compute the prev/next cursor URLs for the current page position."""
+    prev_url = None
+    next_url = None
+    has_prev = False
+    has_next = False
+
+    if not (cursor_ts and cursor_id):
+        if more:
+            next_url, has_next = _with_cursor(base_params, "next", last)
+    elif direction == "next":
+        prev_url, has_prev = _with_cursor(base_params, "prev", first)
+        if more:
+            next_url, has_next = _with_cursor(base_params, "next", last)
+    else:
+        next_url, has_next = _with_cursor(base_params, "next", last)
+        if more:
+            prev_url, has_prev = _with_cursor(base_params, "prev", first)
+
+    return prev_url, next_url, has_prev, has_next
+
+
 def _recent_nav(
     dom: str | None,
     st: str | None,
@@ -395,26 +478,14 @@ def _recent_nav(
     next_url = None
     has_prev = False
     has_next = False
+    if not rows:
+        return prev_url, next_url, has_prev, has_next
+
     base_params = _nav_base_params(dom, st, has_emails, page_size)
-
-    if rows:
-        rows_for_nav = list(rows)
-        if cursor_ts and cursor_id and direction == "prev":
-            rows_for_nav = list(reversed(rows_for_nav))
-        first = rows_for_nav[0]
-        last = rows_for_nav[-1]
-
-        if not (cursor_ts and cursor_id):
-            if more:
-                next_url, has_next = _with_cursor(base_params, "next", last)
-        elif direction == "next":
-            prev_url, has_prev = _with_cursor(base_params, "prev", first)
-            if more:
-                next_url, has_next = _with_cursor(base_params, "next", last)
-        else:
-            next_url, has_next = _with_cursor(base_params, "next", last)
-            if more:
-                prev_url, has_prev = _with_cursor(base_params, "prev", first)
+    first, last = _nav_endpoint_rows(rows, cursor_ts, cursor_id, direction)
+    prev_url, next_url, has_prev, has_next = _nav_urls(
+        base_params, cursor_ts, cursor_id, direction, first, last, more
+    )
 
     return prev_url, next_url, has_prev, has_next
 
@@ -512,6 +583,19 @@ def _items_json_ld(items: list[dict], dom: str | None, request: Request) -> str 
         return None
 
 
+def _canonical_browse_path(dom: str | None, st: str | None) -> str:
+    """Canonical /browse path retaining only the domain/status filters."""
+    canonical_params = {}
+    if dom:
+        canonical_params["domain"] = dom
+    if st:
+        canonical_params["status"] = st
+    canonical_path = "/browse"
+    if canonical_params:
+        canonical_path = canonical_path + "?" + urlencode(canonical_params)
+    return canonical_path
+
+
 @router.get("/browse", response_class=HTMLResponse)
 async def view_all(
     request: Request,
@@ -564,14 +648,7 @@ async def view_all(
     meta_description = _meta_description_text(dom, st)
 
     # Canonical: keep domain/status only; exclude cursor/page_size/sort/has_emails
-    canonical_params = {}
-    if dom:
-        canonical_params["domain"] = dom
-    if st:
-        canonical_params["status"] = st
-    canonical_path = "/browse"
-    if canonical_params:
-        canonical_path = canonical_path + "?" + urlencode(canonical_params)
+    canonical_path = _canonical_browse_path(dom, st)
     abs_page_url = _abs_url(request, canonical_path)
 
     og_image_url = os.getenv("OG_IMAGE_URL") or None

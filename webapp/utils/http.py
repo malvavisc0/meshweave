@@ -1,4 +1,5 @@
 from fastapi import Request
+from starlette.datastructures import Headers
 
 
 def _normalize_ip(ip: str) -> str:
@@ -14,6 +15,48 @@ def _normalize_ip(ip: str) -> str:
     if ip.startswith("::ffff:"):
         return ip[len("::ffff:") :]
     return ip
+
+
+def _forwarded_for_ip(headers: Headers) -> str:
+    """Extract the first X-Forwarded-For entry, if any.
+
+    Args:
+        headers (Headers): Request headers mapping.
+
+    Returns:
+        str: The first X-Forwarded-For IP, or empty string when absent.
+    """
+    xff = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return ""
+
+
+def _real_ip_header(headers: Headers) -> str:
+    """Read the X-Real-IP header, if any.
+
+    Args:
+        headers (Headers): Request headers mapping.
+
+    Returns:
+        str: The X-Real-IP value, or empty string when absent.
+    """
+    return headers.get("x-real-ip") or headers.get("X-Real-IP") or ""
+
+
+def _client_host(request: Request) -> str:
+    """Read the connection client host, if any.
+
+    Args:
+        request (Request): Incoming request.
+
+    Returns:
+        str: The client host, or empty string when unavailable.
+    """
+    # Starlette provides client as (host, port)
+    client = getattr(request, "client", None)
+    host: str | None = getattr(client, "host", None) if client else None
+    return host or ""
 
 
 def _client_ip_from_request(request: Request, trust_proxy: bool) -> str:
@@ -33,16 +76,11 @@ def _client_ip_from_request(request: Request, trust_proxy: bool) -> str:
     ip = ""
     try:
         if trust_proxy:
-            xff = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
-            if xff:
-                ip = xff.split(",")[0].strip()
+            ip = _forwarded_for_ip(headers)
         if not ip:
-            ip = headers.get("x-real-ip") or headers.get("X-Real-IP") or ""
+            ip = _real_ip_header(headers)
         if not ip:
-            # Starlette provides client as (host, port)
-            client = getattr(request, "client", None)
-            if client and getattr(client, "host", None):
-                ip = client.host
+            ip = _client_host(request)
     except Exception:
         pass
     return _normalize_ip(ip)

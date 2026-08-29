@@ -343,6 +343,46 @@ def _google_user_allowed(email: str) -> bool:
     return domain.lower() in domains
 
 
+def _new_google_user(email: str, sub: str, name, picture) -> User:
+    """Build a new Google user row.
+
+    Args:
+        email: Verified Google email address.
+        sub: Google-provided subject identifier.
+        name: Display name (optional).
+        picture: Avatar URL (optional).
+
+    Returns:
+        User: Unsaved new user row.
+    """
+    return User(
+        id=str(uuid.uuid4()),
+        provider="google",
+        provider_id=sub,
+        email=email,
+        name=name,
+        avatar_url=picture,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+
+def _refresh_google_user_fields(user: User, email: str, name, picture) -> None:
+    """Update mutable profile fields on an existing Google user."""
+    changed = False
+    if email and user.email != email:
+        user.email = email
+        changed = True
+    if name and user.name != name:
+        user.name = name
+        changed = True
+    if picture and user.avatar_url != picture:
+        user.avatar_url = picture
+        changed = True
+    if changed:
+        user.updated_at = datetime.now(UTC)
+
+
 def _upsert_google_user(
     email: str, sub: str, name, picture
 ) -> tuple[User, AuthSession] | None:
@@ -354,32 +394,12 @@ def _upsert_google_user(
             .one_or_none()
         )
         if not user:
-            user = User(
-                id=str(uuid.uuid4()),
-                provider="google",
-                provider_id=sub,
-                email=email,
-                name=name,
-                avatar_url=picture,
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
-            )
+            user = _new_google_user(email, sub, name, picture)
             s.add(user)
             s.flush()
         else:
             # Update mutable fields
-            changed = False
-            if email and user.email != email:
-                user.email = email
-                changed = True
-            if name and user.name != name:
-                user.name = name
-                changed = True
-            if picture and user.avatar_url != picture:
-                user.avatar_url = picture
-                changed = True
-            if changed:
-                user.updated_at = datetime.now(UTC)
+            _refresh_google_user_fields(user, email, name, picture)
 
         # Create auth session (enforces concurrent limit)
         # Commit user upsert before creating session in a separate DB transaction
@@ -393,6 +413,42 @@ def _upsert_google_user(
         except HTTPException:
             return None
         return user, sess
+
+
+def _validated_google_profile(
+    ui: dict,
+) -> tuple[str, str, str | None, str | None] | None:
+    """Extract and validate Google profile fields from user info.
+
+    Args:
+        ui: Verified Google userinfo payload.
+
+    Returns:
+        Optional[tuple]: (sub, email, name, picture), or None when unusable.
+    """
+    sub = (ui.get("sub") or "").strip()
+    email = (ui.get("email") or "").strip().lower()
+    email_verified = bool(ui.get("email_verified"))
+    name = (ui.get("name") or "").strip() or None
+    picture = (ui.get("picture") or "").strip() or None
+    if not sub or not email or not email_verified:
+        return None
+    return sub, email, name, picture
+
+
+def _auth_success_redirect(
+    next_path_val: str | None, oauth_row: OAuthState, sess: AuthSession
+) -> RedirectResponse:
+    """Build the post-login redirect response with the auth cookie set."""
+    # Redirect to requested path; set auth cookie
+    next_path = sanitize_next(next_path_val if oauth_row else None)
+    resp = RedirectResponse(url=next_path or "/", status_code=status.HTTP_303_SEE_OTHER)
+    set_auth_cookie(resp, sess.session_id)
+    try:
+        auth_attempts.labels("google", "success").inc()
+    except Exception:
+        pass
+    return resp
 
 
 @router.get("/auth/callback")
@@ -430,17 +486,11 @@ async def auth_callback(
     # Exchange code for tokens
     redirect_uri = _build_redirect_uri(request)
     ui = await _exchange_google_code(code, redirect_uri)
-    if not ui:
-        return _auth_failure_redirect()
 
-    sub = (ui.get("sub") or "").strip()
-    email = (ui.get("email") or "").strip().lower()
-    email_verified = bool(ui.get("email_verified"))
-    name = (ui.get("name") or "").strip() or None
-    picture = (ui.get("picture") or "").strip() or None
-
-    if not sub or not email or not email_verified:
+    profile = _validated_google_profile(ui) if ui else None
+    if profile is None:
         return _auth_failure_redirect()
+    sub, email, name, picture = profile
 
     if not _google_user_allowed(email):
         return _auth_failure_redirect()
@@ -450,15 +500,7 @@ async def auth_callback(
         return _auth_failure_redirect()
     user, sess = upsert
 
-    # Redirect to requested path; set auth cookie
-    next_path = sanitize_next(next_path_val if oauth_row else None)
-    resp = RedirectResponse(url=next_path or "/", status_code=status.HTTP_303_SEE_OTHER)
-    set_auth_cookie(resp, sess.session_id)
-    try:
-        auth_attempts.labels("google", "success").inc()
-    except Exception:
-        pass
-    return resp
+    return _auth_success_redirect(next_path_val, oauth_row, sess)
 
 
 @router.post("/logout")

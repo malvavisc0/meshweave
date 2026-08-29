@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException, Request, Response
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -13,6 +14,7 @@ from webapp.db import get_session
 from webapp.models import AuthSession, Crawl, User
 from webapp.utils.config import _env_bool
 from webapp.utils.metrics import active_sessions
+from webapp.utils.times import ensure_utc
 
 
 # -----------------------------
@@ -208,7 +210,7 @@ async def get_current_user(request: Request) -> User | None:
             return None
         # Basic expiration check
         if sess.expires_at and isinstance(sess.expires_at, datetime):
-            if now >= sess.expires_at:
+            if now >= ensure_utc(sess.expires_at):
                 return None
         user: User | None = s.get(User, sess.user_id)
         return user
@@ -285,6 +287,125 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _begin_immediate_if_sqlite(s: Session) -> None:
+    """Acquire a pre-emptive write lock on SQLite (best-effort).
+
+    Args:
+        s (Session): Active database session.
+
+    Returns:
+        None
+    """
+    try:
+        bind = getattr(s, "bind", None)
+        if bind is not None and getattr(bind, "dialect", None) is not None:
+            if bind.dialect.name == "sqlite":
+                s.execute(text("BEGIN IMMEDIATE"))
+    except Exception:
+        # If lock acquisition fails, proceed; SQLite often serializes writes implicitly
+        pass
+
+
+def _enforce_session_limit(s: Session, user_id: str, now: datetime) -> None:
+    """Raise 429 when the user already has too many active sessions.
+
+    Args:
+        s (Session): Active database session.
+        user_id (str): UUID of the user to check.
+        now (datetime): Current UTC time for expiry comparison.
+
+    Returns:
+        None
+
+    Raises:
+        HTTPException: 429 when the concurrent session limit is reached.
+    """
+    active_count = (
+        s.query(AuthSession)
+        .filter(AuthSession.user_id == user_id, AuthSession.expires_at > now)
+        .count()
+    )
+    if active_count >= _max_user_sessions():
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many active sessions",
+        )
+
+
+def _build_auth_session(
+    user_id: str, now: datetime, ttl: int, abs_max: int
+) -> AuthSession:
+    """Build a new AuthSession row with sliding and absolute expiry.
+
+    Args:
+        user_id (str): UUID of the session's user.
+        now (datetime): Current UTC time.
+        ttl (int): Sliding TTL in seconds.
+        abs_max (int): Absolute maximum lifetime in seconds.
+
+    Returns:
+        AuthSession: The new, unsaved auth session row.
+    """
+    return AuthSession(
+        id=secrets.token_urlsafe(16),
+        user_id=user_id,
+        session_id=secrets.token_urlsafe(32),
+        created_at=now,
+        last_activity=now,
+        expires_at=now + timedelta(seconds=min(ttl, abs_max)),
+    )
+
+
+def _attempt_create_auth_session(user_id: str) -> AuthSession:
+    """Run one attempt to create an auth session in a write-locked transaction.
+
+    Args:
+        user_id (str): UUID of the user to create a session for.
+
+    Returns:
+        AuthSession: The newly created auth session row.
+
+    Raises:
+        HTTPException: 429 when the concurrent session limit is reached.
+    """
+    now = _now()
+    ttl = _auth_ttl_seconds()
+    abs_max = _auth_abs_max_seconds()
+    with get_session() as s:
+        # Acquire a pre-emptive write lock only on SQLite
+        _begin_immediate_if_sqlite(s)
+
+        # Enforce concurrent sessions atomically within this transaction
+        _enforce_session_limit(s, user_id, now)
+
+        sess = _build_auth_session(user_id, now, ttl, abs_max)
+        s.add(sess)
+        s.flush()
+        try:
+            active_sessions.inc()
+        except Exception:
+            pass
+        return sess
+
+
+def _is_retryable_lock_error(
+    e: OperationalError, attempt: int, total_attempts: int
+) -> bool:
+    """Whether an OperationalError is transient SQLite contention worth retrying.
+
+    Args:
+        e (OperationalError): The raised database error.
+        attempt (int): Zero-based index of the failed attempt.
+        total_attempts (int): Total number of attempts planned.
+
+    Returns:
+        bool: True when the error looks transient and attempts remain.
+    """
+    msg = str(e).lower()
+    transient = "database is locked" in msg or "database is busy" in msg
+    return transient and attempt < total_attempts - 1
+
+
 def create_auth_session(user_id: str) -> AuthSession:
     """Create a new auth session for a user, enforcing concurrent session limits.
 
@@ -305,57 +426,12 @@ def create_auth_session(user_id: str) -> AuthSession:
     last_exc: Exception | None = None
 
     for i, delay in enumerate(delays):
-        now = _now()
-        ttl = _auth_ttl_seconds()
-        abs_max = _auth_abs_max_seconds()
         try:
-            with get_session() as s:
-                # Acquire a pre-emptive write lock only on SQLite
-                try:
-                    bind = getattr(s, "bind", None)
-                    if bind is not None and getattr(bind, "dialect", None) is not None:
-                        if bind.dialect.name == "sqlite":
-                            s.execute(text("BEGIN IMMEDIATE"))
-                except Exception:
-                    # If lock acquisition fails, proceed; SQLite often serializes writes implicitly
-                    pass
-
-                # Enforce concurrent sessions atomically within this transaction
-                active_count = (
-                    s.query(AuthSession)
-                    .filter(
-                        AuthSession.user_id == user_id, AuthSession.expires_at > now
-                    )
-                    .count()
-                )
-                if active_count >= _max_user_sessions():
-                    raise HTTPException(
-                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                        detail="Too many active sessions",
-                    )
-
-                sess = AuthSession(
-                    id=secrets.token_urlsafe(16),
-                    user_id=user_id,
-                    session_id=secrets.token_urlsafe(32),
-                    created_at=now,
-                    last_activity=now,
-                    expires_at=now + timedelta(seconds=min(ttl, abs_max)),
-                )
-                s.add(sess)
-                s.flush()
-                try:
-                    active_sessions.inc()
-                except Exception:
-                    pass
-                return sess
+            return _attempt_create_auth_session(user_id)
         except OperationalError as e:
             # Retry on transient SQLite write contention
             last_exc = e
-            msg = str(e).lower()
-            if ("database is locked" in msg or "database is busy" in msg) and i < len(
-                delays
-            ) - 1:
+            if _is_retryable_lock_error(e, i, len(delays)):
                 time.sleep(delay)
                 continue
             raise
@@ -502,7 +578,7 @@ def _load_session(sid_cookie: str) -> tuple[User | None, bool, bool]:
             .one_or_none()
         )
         if sess:
-            if sess.expires_at and now >= sess.expires_at:
+            if sess.expires_at and now >= ensure_utc(sess.expires_at):
                 # Delete expired session
                 s.query(AuthSession).filter(AuthSession.id == sess.id).delete()
                 expired = True
@@ -511,7 +587,7 @@ def _load_session(sid_cookie: str) -> tuple[User | None, bool, bool]:
                 try:
                     if (
                         not getattr(sess, "last_activity", None)
-                        or (now - sess.last_activity).total_seconds() >= 60
+                        or (now - ensure_utc(sess.last_activity)).total_seconds() >= 60
                     ):
                         slide_session_expiry(sess)
                         slid = True

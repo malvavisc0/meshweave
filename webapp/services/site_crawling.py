@@ -344,6 +344,65 @@ def _enqueue_aax(crawl_id: str, payload: dict[str, Any]) -> None:
     loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
 
 
+def _persist_task_result(
+    crawl_id: str,
+    status: str,
+    error: str | None,
+    payload: dict[str, Any] | None,
+) -> bool:
+    """Write the final status and payload to the Crawl row (best-effort).
+
+    Args:
+        crawl_id: The Crawl row ID.
+        status: Final status to write.
+        error: Error message to write, if any.
+        payload: Final payload to persist, if any.
+
+    Returns:
+        True when post-write steps should continue; False when the
+        crawl row is missing.
+    """
+    try:
+        with get_session() as s:
+            r = s.get(Crawl, crawl_id)
+            if not r:
+                return False
+            r.status = status
+            r.error = error
+            r.updated_at = datetime.now(UTC)
+            if payload is not None:
+                r.payload_json = payload
+    except Exception:
+        pass
+    return True
+
+
+def _emit_task_observability(
+    crawl_id: str,
+    audit_event: str,
+    metric_status: str,
+    elapsed: float,
+) -> None:
+    """Emit the audit log event and job duration metric (best-effort).
+
+    Args:
+        crawl_id: The Crawl row ID.
+        audit_event: Audit event name; empty to skip.
+        metric_status: Metric status label; empty to skip.
+        elapsed: Elapsed seconds to observe.
+    """
+    if audit_event:
+        try:
+            log_audit(audit_event, crawl_id=crawl_id)
+        except Exception:
+            pass
+    if metric_status:
+        try:
+            job_duration.labels("site", metric_status).observe(elapsed)
+        except Exception:
+            pass
+
+
 def _finish_task(
     crawl_id: str,
     status: str,
@@ -359,30 +418,11 @@ def _finish_task(
     if status == "succeeded" and payload is not None:
         _score_crawl(payload, crawl_id)
 
-    try:
-        with get_session() as s:
-            r = s.get(Crawl, crawl_id)
-            if not r:
-                return
-            r.status = status
-            r.error = error
-            r.updated_at = datetime.now(UTC)
-            if payload is not None:
-                r.payload_json = payload
-    except Exception:
-        pass
+    if not _persist_task_result(crawl_id, status, error, payload):
+        return
 
     # Run AAX analysis (async, best-effort) — will update payload_json when done
     if status == "succeeded" and payload is not None:
         _enqueue_aax(crawl_id, payload)
 
-    if audit_event:
-        try:
-            log_audit(audit_event, crawl_id=crawl_id)
-        except Exception:
-            pass
-    if metric_status:
-        try:
-            job_duration.labels("site", metric_status).observe(elapsed)
-        except Exception:
-            pass
+    _emit_task_observability(crawl_id, audit_event, metric_status, elapsed)

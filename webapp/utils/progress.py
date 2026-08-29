@@ -4,10 +4,13 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.utils.config import _env_bool
 from webapp.utils.metrics import stale_finalize_attempts, stale_finalize_finished
+from webapp.utils.times import ensure_utc
 
 
 def _int_env(name: str, default: int) -> int:
@@ -32,85 +35,134 @@ def finalize_stale_job(crawl_id: str) -> str:
             if str(getattr(row, "status", "")).lower() != "running":
                 return "noop"
 
-            # Extract links/emails from existing payload_json or build minimal
-            existing_payload = {}
-            try:
-                existing_payload = row.payload_json or {}
-            except Exception:
-                existing_payload = {}
-            if not isinstance(existing_payload, dict):
-                existing_payload = {}
-
-            internal = sorted(existing_payload.get("links", {}).get("internal", []))
-            external = sorted(existing_payload.get("links", {}).get("external", []))
-            visited_pages_count = len(existing_payload.get("pages", []))
-
-            emails_unique = sorted(existing_payload.get("emails", {}).get("unique", []))
-            emails_by_url = existing_payload.get("emails", {}).get("by_url", {})
-            sources = existing_payload.get("emails", {}).get("sources", [])
-            total_mentions = (
-                existing_payload.get("emails", {})
-                .get("counts", {})
-                .get("total_mentions", 0)
-            )
-
-            # Limits (best-effort)
-            try:
-                limits = row.crawl_params or {}
-            except Exception:
-                limits = {}
-
-            payload = {
-                "scope": str(getattr(row, "scope", "") or "page"),
-                "start_url": row.url,
-                "limits": limits or {},
-                "domain": row.domain,
-                "canonical_url": row.canonical_url,
-                "links": {
-                    "internal": internal,
-                    "external": external,
-                },
-                "metrics": {
-                    "extraction": {
-                        "base_domain": row.domain,
-                        "internal_count": len(internal),
-                        "external_count": len(external),
-                    }
-                },
-                "emails": {
-                    "unique": emails_unique,
-                    "by_url": emails_by_url,
-                    "sources": sources,
-                    "counts": {
-                        "total_unique": len(emails_unique),
-                        "total_mentions": int(total_mentions),
-                    },
-                },
-                "pages": [],
-                "summary": {
-                    "visited_count": int(visited_pages_count),
-                    "reason_stopped": "stale_finalize",
-                },
-            }
+            payload = _stale_finalize_payload(row)
 
             # Attempt optimistic finalize (avoid racing a live worker)
-            now = datetime.now(UTC)
-            updated = (
-                s.query(Crawl)
-                .filter(Crawl.id == crawl_id, Crawl.status == "running")
-                .update(
-                    {
-                        "status": "succeeded",
-                        "error": "finalized_stale",
-                        "payload_json": payload,
-                        "updated_at": now,
-                    },
-                    synchronize_session=False,
-                )
-            )
-            return "ok" if updated == 1 else "race"
+            return _finalize_running_crawl(s, crawl_id, payload)
     except Exception:
         return "err"
+
+
+def _existing_payload(row: Crawl) -> dict[str, Any]:
+    """Read a crawl row's payload_json as a dict.
+
+    Args:
+        row (Crawl): The crawl row to read.
+
+    Returns:
+        dict: The payload dict, or an empty dict when missing or invalid.
+    """
+    existing_payload: dict[str, Any] = {}
+    try:
+        existing_payload = row.payload_json or {}
+    except Exception:
+        existing_payload = {}
+    if not isinstance(existing_payload, dict):
+        existing_payload = {}
+    return existing_payload
+
+
+def _row_limits(row: Crawl) -> dict[str, Any]:
+    """Read a crawl row's crawl_params (best-effort).
+
+    Args:
+        row (Crawl): The crawl row to read.
+
+    Returns:
+        dict: The crawl params dict, or an empty dict on failure.
+    """
+    try:
+        limits = row.crawl_params or {}
+    except Exception:
+        limits = {}
+    return limits
+
+
+def _stale_finalize_payload(row: Crawl) -> dict[str, Any]:
+    """Synthesize a minimal payload from a running crawl's persisted row.
+
+    Args:
+        row (Crawl): The running crawl row.
+
+    Returns:
+        dict: A minimal payload dict for stale finalization.
+    """
+    # Extract links/emails from existing payload_json or build minimal
+    existing_payload = _existing_payload(row)
+    internal = sorted(existing_payload.get("links", {}).get("internal", []))
+    external = sorted(existing_payload.get("links", {}).get("external", []))
+    visited_pages_count = len(existing_payload.get("pages", []))
+
+    emails_unique = sorted(existing_payload.get("emails", {}).get("unique", []))
+    emails_by_url = existing_payload.get("emails", {}).get("by_url", {})
+    sources = existing_payload.get("emails", {}).get("sources", [])
+    total_mentions = (
+        existing_payload.get("emails", {}).get("counts", {}).get("total_mentions", 0)
+    )
+
+    # Limits (best-effort)
+    limits = _row_limits(row)
+
+    return {
+        "scope": str(getattr(row, "scope", "") or "page"),
+        "start_url": row.url,
+        "limits": limits or {},
+        "domain": row.domain,
+        "canonical_url": row.canonical_url,
+        "links": {
+            "internal": internal,
+            "external": external,
+        },
+        "metrics": {
+            "extraction": {
+                "base_domain": row.domain,
+                "internal_count": len(internal),
+                "external_count": len(external),
+            }
+        },
+        "emails": {
+            "unique": emails_unique,
+            "by_url": emails_by_url,
+            "sources": sources,
+            "counts": {
+                "total_unique": len(emails_unique),
+                "total_mentions": int(total_mentions),
+            },
+        },
+        "pages": [],
+        "summary": {
+            "visited_count": int(visited_pages_count),
+            "reason_stopped": "stale_finalize",
+        },
+    }
+
+
+def _finalize_running_crawl(s: Session, crawl_id: str, payload: dict[str, Any]) -> str:
+    """Optimistically flip a still-running crawl to succeeded with a payload.
+
+    Args:
+        s (Session): Active database session.
+        crawl_id (str): The crawl row ID.
+        payload (dict): The synthesized payload to persist.
+
+    Returns:
+        str: "ok" when exactly one row was updated, else "race".
+    """
+    now = datetime.now(UTC)
+    updated = (
+        s.query(Crawl)
+        .filter(Crawl.id == crawl_id, Crawl.status == "running")
+        .update(
+            {
+                "status": "succeeded",
+                "error": "finalized_stale",
+                "payload_json": payload,
+                "updated_at": now,
+            },
+            synchronize_session=False,
+        )
+    )
+    return "ok" if updated == 1 else "race"
 
 
 def _count_visited_pages(row: Crawl) -> int:
@@ -161,7 +213,7 @@ def _compute_elapsed(row: Crawl, now: datetime, limits: dict[str, Any]) -> int |
         if started_ms is not None:
             elapsed_ms = max(0, now_ms - started_ms)
         elif (row.status or "").lower() == "running" and row.updated_at:
-            elapsed_ms = int((now - row.updated_at).total_seconds() * 1000)
+            elapsed_ms = int((now - ensure_utc(row.updated_at)).total_seconds() * 1000)
     except Exception:
         elapsed_ms = None
     return elapsed_ms
@@ -175,7 +227,9 @@ def _time_budget_ms(row: Crawl, limits: dict[str, Any]) -> int | None:
         v = limits.get("time_budget_ms") if isinstance(limits, dict) else None
         if v is not None:
             return int(v)
-    except TypeError, ValueError:
+    except TypeError:
+        pass
+    except ValueError:
         pass
     return _int_env("AUTH_SITE_TIME_BUDGET_MS_DEFAULT", 600000)
 
@@ -278,7 +332,9 @@ def progress_view(row: Crawl, finalize: bool = True) -> tuple[Crawl, dict[str, A
     total = limits.get("max_pages") if isinstance(limits, dict) else None
     try:
         total = int(total) if total else None
-    except TypeError, ValueError:
+    except TypeError:
+        total = None
+    except ValueError:
         total = None
     pct = min(100, round(visited / total * 100)) if total else 0
 

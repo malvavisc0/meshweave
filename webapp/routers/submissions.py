@@ -20,6 +20,7 @@ from webapp.utils.quotas import (
     enforce_daily_site_crawl_limit,
 )
 from webapp.utils.security import _hash_ip, _verify_csrf_token
+from webapp.utils.times import ensure_utc
 from webapp.utils.url import canonicalize_url
 from webapp.utils.visibility import resolve_page_visibility, resolve_site_visibility
 
@@ -59,9 +60,8 @@ def _cleanup_old_crawls(session, domain: str, visibility: str) -> None:
         session.delete(old)
 
 
-def _normalize_domain_field(domain: str | None) -> str:
-    """Strip/validate the site mode domain field; raises 400 if invalid."""
-    dom = (domain or "").strip().lower()
+def _domain_from_url_field(dom: str) -> str:
+    """Extract the netloc when the domain field carries a full URL."""
     if dom.startswith("http://") or dom.startswith("https://"):
         try:
             from urllib.parse import urlsplit
@@ -69,11 +69,27 @@ def _normalize_domain_field(domain: str | None) -> str:
             dom = (urlsplit(dom).netloc or "").lower()
         except Exception:
             pass
-    if dom.startswith("www."):
-        dom = dom[4:]
+    return dom
+
+
+def _require_valid_domain(dom: str) -> str:
+    """Validate the normalized domain; raises 400 when invalid.
+
+    Raises:
+        HTTPException: 400 when the domain is missing or malformed.
+    """
     if not dom or "." not in dom or any(c.isspace() for c in dom):
         raise HTTPException(status_code=400, detail="Invalid domain")
     return dom
+
+
+def _normalize_domain_field(domain: str | None) -> str:
+    """Strip/validate the site mode domain field; raises 400 if invalid."""
+    dom = (domain or "").strip().lower()
+    dom = _domain_from_url_field(dom)
+    if dom.startswith("www."):
+        dom = dom[4:]
+    return _require_valid_domain(dom)
 
 
 def _site_start_url(dom: str, url: str | None) -> str:
@@ -150,6 +166,35 @@ def _row_can_update(user, existing) -> bool:
     return can_update
 
 
+def _collected_cookies(request: Request, cfg: dict) -> dict:
+    """Collect request cookies (excluding the session cookie) when enabled."""
+    cookies_obj = {}
+    try:
+        if cfg["log_cookies"] and getattr(request, "cookies", None):
+            for k, v in request.cookies.items():
+                if k == cfg["cookie_name"]:
+                    continue
+                cookies_obj[k] = v
+    except Exception:
+        cookies_obj = {}
+    return cookies_obj
+
+
+def _status_at_submit(crawl_id) -> str:
+    """Read the crawl's current status for the submission record."""
+    status_at_submit = "pending"
+    with get_session() as s2:
+        status_row = s2.get(Crawl, crawl_id)
+        if status_row and status_row.status:
+            status_at_submit = status_row.status
+    return status_at_submit
+
+
+def _request_header(request: Request, name: str) -> str | None:
+    """Return a request header value, or None when absent."""
+    return request.headers.get(name) or None
+
+
 def _logs_single_page(
     s,
     request: Request,
@@ -168,21 +213,9 @@ def _logs_single_page(
 
     headers_subset = _collect_headers_subset(request) if cfg["log_headers"] else None
 
-    cookies_obj = {}
-    try:
-        if cfg["log_cookies"] and getattr(request, "cookies", None):
-            for k, v in request.cookies.items():
-                if k == cfg["cookie_name"]:
-                    continue
-                cookies_obj[k] = v
-    except Exception:
-        cookies_obj = {}
+    cookies_obj = _collected_cookies(request, cfg)
 
-    status_at_submit = "pending"
-    with get_session() as s2:
-        status_row = s2.get(Crawl, crawl_id)
-        if status_row and status_row.status:
-            status_at_submit = status_row.status
+    status_at_submit = _status_at_submit(crawl_id)
 
     s.add(
         Submission(
@@ -194,13 +227,13 @@ def _logs_single_page(
             status_at_submit=status_at_submit,
             client_ip=raw_client_ip if raw_client_ip else None,
             client_ip_hash=(client_ip_hash if cfg["mask_ip"] else None),
-            forwarded_for=(request.headers.get("x-forwarded-for") or None),
-            x_real_ip=(request.headers.get("x-real-ip") or None),
-            user_agent=(request.headers.get("user-agent") or None),
-            accept_language=(request.headers.get("accept-language") or None),
-            referer=(request.headers.get("referer") or None),
-            origin=(request.headers.get("origin") or None),
-            host=(request.headers.get("host") or None),
+            forwarded_for=_request_header(request, "x-forwarded-for"),
+            x_real_ip=_request_header(request, "x-real-ip"),
+            user_agent=_request_header(request, "user-agent"),
+            accept_language=_request_header(request, "accept-language"),
+            referer=_request_header(request, "referer"),
+            origin=_request_header(request, "origin"),
+            host=_request_header(request, "host"),
             session_id=(request.cookies.get(cfg["cookie_name"]) or None),
             headers_json=(json.dumps(headers_subset) if headers_subset else None),
             cookies_json=(json.dumps(cookies_obj) if cookies_obj else None),
@@ -275,6 +308,16 @@ async def submit(
     )
 
 
+def _site_submit_redirect(user, crawl_id, visibility: str, key) -> RedirectResponse:
+    """Build the redirect response for a site submission."""
+    if user and getattr(user, "id", None):
+        return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
+    if visibility == "public" and key:
+        return RedirectResponse(url=f"/analysis/{key}", status_code=303)
+    suffix = "&private=1" if visibility == "private" else ""
+    return RedirectResponse(url=f"/?submitted={crawl_id}{suffix}", status_code=303)
+
+
 async def _submit_site(
     request,
     background_tasks,
@@ -328,65 +371,59 @@ async def _submit_site(
         pass
 
     # Redirect:
-    if user and getattr(user, "id", None):
-        return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
-    elif visibility == "public" and key:
-        return RedirectResponse(url=f"/analysis/{key}", status_code=303)
-    else:
-        suffix = "&private=1" if visibility == "private" else ""
-        return RedirectResponse(url=f"/?submitted={crawl_id}{suffix}", status_code=303)
+    return _site_submit_redirect(user, crawl_id, visibility, key)
 
 
-def _upsert_site_crawl_row(s, user, dom, start_url, visibility, lim_req, key, now):
-    """Create/retire the site crawl row, returning the new crawl id."""
-    existing = (
-        s.query(Crawl)
-        .filter(
-            Crawl.visibility == visibility,
-            Crawl.domain == dom,
-            Crawl.path == "/",
-            Crawl.query == "",
-            Crawl.is_latest == True,  # noqa: E712
-        )
-        .one_or_none()
+def _replace_site_crawl(
+    s, existing, dom: str, start_url: str, visibility, lim_req, now
+):
+    """Retire the existing latest site crawl and insert its replacement.
+
+    Returns:
+        tuple: (new crawl id, carried-over public key).
+    """
+    existing.is_latest = False
+    old_key = getattr(existing, "key", None)
+    old_share_key = getattr(existing, "share_key", None)
+    existing.key = None
+    existing.share_key = None
+    row = Crawl(
+        url=start_url,
+        domain=dom,
+        path="/",
+        query="",
+        canonical_url=start_url,
+        key=old_key,
+        share_key=old_share_key,
+        visibility=visibility,
+        status="pending",
+        payload_json=None,
+        error=None,
+        user_id=existing.user_id,
+        crawl_params=lim_req or {},
+        is_latest=True,
+        created_at=now,
+        updated_at=now,
     )
-    if existing and _row_can_update(user, existing):
-        existing.is_latest = False
-        old_key = getattr(existing, "key", None)
-        old_share_key = getattr(existing, "share_key", None)
-        existing.key = None
-        existing.share_key = None
-        if visibility == "public":
-            key = old_key
-        row = Crawl(
-            url=start_url,
-            domain=dom,
-            path="/",
-            query="",
-            canonical_url=start_url,
-            key=old_key,
-            share_key=old_share_key,
-            visibility=visibility,
-            status="pending",
-            payload_json=None,
-            error=None,
-            user_id=existing.user_id,
-            crawl_params=lim_req or {},
-            is_latest=True,
-            created_at=now,
-            updated_at=now,
-        )
-        s.add(row)
-        s.flush()
-        crawl_id = row.id
-        try:
-            _cleanup_old_crawls(s, dom, visibility)
-        except Exception:
-            pass
-        s.commit()
-        return crawl_id, old_key
+    s.add(row)
+    s.flush()
+    crawl_id = row.id
+    try:
+        _cleanup_old_crawls(s, dom, visibility)
+    except Exception:
+        pass
+    s.commit()
+    return crawl_id, old_key
 
-    # New row (no mutable existing row)
+
+def _create_site_crawl(
+    s, user, dom: str, start_url: str, visibility, lim_req, key, now
+):
+    """Insert a fresh site crawl row (no mutable existing row).
+
+    Returns:
+        tuple: (new crawl id, effective public key).
+    """
     generated_key = None
     if visibility == "public":
         generated_key = _generate_public_key(s)
@@ -412,6 +449,102 @@ def _upsert_site_crawl_row(s, user, dom, start_url, visibility, lim_req, key, no
     return crawl_id, (key if key else generated_key)
 
 
+def _upsert_site_crawl_row(s, user, dom, start_url, visibility, lim_req, key, now):
+    """Create/retire the site crawl row, returning the new crawl id."""
+    existing = (
+        s.query(Crawl)
+        .filter(
+            Crawl.visibility == visibility,
+            Crawl.domain == dom,
+            Crawl.path == "/",
+            Crawl.query == "",
+            Crawl.is_latest == True,  # noqa: E712
+        )
+        .one_or_none()
+    )
+    if existing and _row_can_update(user, existing):
+        return _replace_site_crawl(
+            s, existing, dom, start_url, visibility, lim_req, now
+        )
+    # New row (no mutable existing row)
+    return _create_site_crawl(s, user, dom, start_url, visibility, lim_req, key, now)
+
+
+def _require_page_url(uval: str) -> str:
+    """Validate the submitted page URL; raises 400 when invalid.
+
+    Raises:
+        HTTPException: 400 when the URL does not start with http(s)://.
+    """
+    if not (uval.startswith("http://") or uval.startswith("https://")):
+        raise HTTPException(
+            status_code=400, detail="Invalid URL. Must start with http(s)://"
+        )
+    return uval
+
+
+def _track_homepage_submit(user, is_public: bool) -> None:
+    """Increment the homepage Analyze submission metric (page mode)."""
+    try:
+        homepage_analyze_submits.labels(
+            authed="true" if user else "false",
+            public="true" if is_public else "false",
+        ).inc()
+    except Exception:
+        pass
+
+
+def _page_submission_ip_fields(request: Request) -> dict:
+    """Compute client IP fields for submission logging."""
+    trust_proxy = _env_bool("WEBAPP_TRUST_PROXY", False)
+    mask_ip = _env_bool("WEBAPP_MASK_IP", False)
+    ip_salt = os.getenv("IP_HASH_SALT", "")
+    client_ip = _client_ip_from_request(request, trust_proxy=trust_proxy)
+    client_ip_hash = _hash_ip(client_ip, ip_salt) if (client_ip and mask_ip) else None
+    raw_client_ip = None if mask_ip else (client_ip or None)
+    return {
+        "client_ip": client_ip,
+        "client_ip_hash": client_ip_hash,
+        "raw_client_ip": raw_client_ip,
+    }
+
+
+def _maybe_log_submission(
+    request: Request,
+    crawl_id,
+    dom,
+    uval,
+    is_public: bool,
+    force_refresh: bool,
+) -> None:
+    """Persist submission metadata when request logging is enabled."""
+    if not _env_bool("WEBAPP_LOG_REQUESTS", True):
+        return
+    ip_fields_holder = _page_submission_ip_fields(request)
+    with get_session() as s:
+        _logs_single_page(
+            s,
+            request,
+            crawl_id,
+            dom,
+            uval,
+            is_public,
+            force_refresh,
+            ip_fields_holder,
+        )
+
+
+def _page_submit_redirect(crawl_id, key_val, user, is_public: bool) -> RedirectResponse:
+    """Build the redirect response for a page submission."""
+    if is_public:
+        if not key_val:
+            raise HTTPException(status_code=500, detail="Key generation failed")
+        return RedirectResponse(url=f"/analysis/{key_val}", status_code=303)
+    if user and getattr(user, "id", None):
+        return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
+    return RedirectResponse(url=f"/?submitted={crawl_id}&private=1", status_code=303)
+
+
 async def _submit_page(
     request,
     background_tasks,
@@ -423,10 +556,7 @@ async def _submit_page(
     """Handle the page-scope analysis submission branch."""
     # Normalize URL
     uval = (url or "").strip()
-    if not (uval.startswith("http://") or uval.startswith("https://")):
-        raise HTTPException(
-            status_code=400, detail="Invalid URL. Must start with http(s)://"
-        )
+    _require_page_url(uval)
 
     user = getattr(request.state, "current_user", None)
     is_public = resolve_page_visibility(bool(user), public)
@@ -435,13 +565,7 @@ async def _submit_page(
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
 
     # Metrics: count homepage Analyze submissions (page mode)
-    try:
-        homepage_analyze_submits.labels(
-            authed="true" if user else "false",
-            public="true" if is_public else "false",
-        ).inc()
-    except Exception:
-        pass
+    _track_homepage_submit(user, is_public)
 
     now = datetime.now(UTC)
 
@@ -454,7 +578,6 @@ async def _submit_page(
     _enforce_rate_limit(request, now)
 
     visibility = "public" if is_public else "private"
-    force_refresh = False
 
     # Upsert behavior for page
     upsert = _upsert_page_crawl(
@@ -483,44 +606,10 @@ async def _submit_page(
     _schedule_page_crawl(background_tasks, crawl_id, is_public, user, force_refresh)
 
     # Capture submission metadata (configurable)
-    if _env_bool("WEBAPP_LOG_REQUESTS", True):
-        trust_proxy = _env_bool("WEBAPP_TRUST_PROXY", False)
-        mask_ip = _env_bool("WEBAPP_MASK_IP", False)
-        ip_salt = os.getenv("IP_HASH_SALT", "")
-        client_ip = _client_ip_from_request(request, trust_proxy=trust_proxy)
-        client_ip_hash = (
-            _hash_ip(client_ip, ip_salt) if (client_ip and mask_ip) else None
-        )
-        raw_client_ip = None if mask_ip else (client_ip or None)
-        with get_session() as s:
-            _logs_single_page(
-                s,
-                request,
-                crawl_id,
-                dom,
-                uval,
-                is_public,
-                force_refresh,
-                {
-                    "client_ip": client_ip,
-                    "client_ip_hash": client_ip_hash,
-                    "raw_client_ip": raw_client_ip,
-                },
-            )
+    _maybe_log_submission(request, crawl_id, dom, uval, is_public, force_refresh)
 
     # Build redirect response and rotate session
-    if is_public:
-        if not key_val:
-            raise HTTPException(status_code=500, detail="Key generation failed")
-        resp = RedirectResponse(url=f"/analysis/{key_val}", status_code=303)
-    else:
-        if user and getattr(user, "id", None):
-            resp = RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
-        else:
-            resp = RedirectResponse(
-                url=f"/?submitted={crawl_id}&private=1", status_code=303
-            )
-
+    resp = _page_submit_redirect(crawl_id, key_val, user, is_public)
     _rotate_session_cookie(resp)
     return resp
 
@@ -612,6 +701,211 @@ def _enforce_rate_limit(request: Request, now: datetime) -> None:
         pass
 
 
+def _find_latest_crawl(s, visibility, dom, path, query):
+    """Load the latest crawl row for the given visibility/domain/path/query."""
+    return (
+        s.query(Crawl)
+        .filter(
+            Crawl.visibility == visibility,
+            Crawl.domain == dom,
+            Crawl.path == path,
+            Crawl.query == query,
+            Crawl.is_latest == True,  # noqa: E712
+        )
+        .one_or_none()
+    )
+
+
+def _cooldown_result(return_to) -> dict:
+    """Result dict for a refresh blocked by the cooldown window."""
+    return {
+        "crawl_id": None,
+        "key": None,
+        "force_refresh": False,
+        "cooldown_redirect": _cooldown_response(return_to),
+    }
+
+
+def _retire_existing(s, existing) -> tuple:
+    """Mark the existing latest crawl non-latest and clear its keys.
+
+    Returns:
+        tuple: (old_key, old_share_key) carried over from the retired row.
+    """
+    existing.is_latest = False
+    old_key = getattr(existing, "key", None)
+    old_share_key = getattr(existing, "share_key", None)
+    existing.key = None
+    existing.share_key = None
+    return old_key, old_share_key
+
+
+def _cleanup_old_rows(s, dom: str, visibility: str) -> None:
+    """Delete old crawls for the domain, ignoring failures."""
+    try:
+        _cleanup_old_crawls(s, dom, visibility)
+    except Exception:
+        pass
+
+
+def _replace_public_crawl(s, existing, dom: str, now) -> dict:
+    """Retire the public domain-root crawl and insert a replacement row."""
+    start_url = f"https://{dom}/"
+    old_key, old_share_key = _retire_existing(s, existing)
+    row = Crawl(
+        url=start_url,
+        domain=dom,
+        path="/",
+        query="",
+        canonical_url=start_url,
+        key=old_key,
+        share_key=old_share_key,
+        visibility="public",
+        status="pending",
+        payload_json=None,
+        error=None,
+        created_at=now,
+        updated_at=now,
+        is_latest=True,
+    )
+    s.add(row)
+    s.flush()
+    crawl_id = row.id
+    key_val = old_key
+    _cleanup_old_rows(s, dom, "public")
+    s.commit()
+    return {
+        "crawl_id": crawl_id,
+        "key": key_val,
+        "force_refresh": True,
+        "cooldown_redirect": None,
+    }
+
+
+def _new_public_crawl(s, dom: str, now) -> dict:
+    """Insert a fresh public domain-root crawl row with a generated key."""
+    start_url = f"https://{dom}/"
+    key_try = _generate_public_key(s)
+    row = Crawl(
+        url=start_url,
+        domain=dom,
+        path="/",
+        query="",
+        canonical_url=start_url,
+        key=key_try,
+        visibility="public",
+        status="pending",
+        payload_json=None,
+        error=None,
+        created_at=now,
+        updated_at=now,
+    )
+    s.add(row)
+    s.flush()
+    crawl_id = row.id
+    return {
+        "crawl_id": crawl_id,
+        "key": row.key,
+        "force_refresh": False,
+        "cooldown_redirect": None,
+    }
+
+
+def _upsert_public_page_crawl(s, dom: str, now, return_to) -> dict:
+    """Create or replace the public domain-root crawl row.
+
+    Returns a dict with crawl_id, key, force_refresh, and optional
+    cooldown_redirect used when a refresh falls within the cooldown window.
+    """
+    existing = _find_latest_crawl(s, "public", dom, "/", "")
+    if not existing:
+        return _new_public_crawl(s, dom, now)
+    if _now_refreshing(s, existing, now):
+        return _cooldown_result(return_to)
+    return _replace_public_crawl(s, existing, dom, now)
+
+
+def _replace_private_crawl(s, existing, uval, dom, path, query, canon_url, now) -> dict:
+    """Retire the owned private crawl and insert a replacement row."""
+    old_key, old_share_key = _retire_existing(s, existing)
+    row = Crawl(
+        url=uval,
+        domain=dom,
+        path=path,
+        query=query,
+        canonical_url=canon_url,
+        key=old_key,
+        share_key=old_share_key,
+        visibility="private",
+        status="pending",
+        payload_json=None,
+        error=None,
+        user_id=existing.user_id,
+        created_at=now,
+        updated_at=now,
+        is_latest=True,
+    )
+    s.add(row)
+    s.flush()
+    crawl_id = row.id
+    _cleanup_old_rows(s, dom, "private")
+    s.commit()
+    return {
+        "crawl_id": crawl_id,
+        "key": None,
+        "force_refresh": True,
+        "cooldown_redirect": None,
+    }
+
+
+def _new_private_crawl(s, user, uval, dom, path, query, canon_url, now) -> dict:
+    """Insert a fresh private crawl row for the submitter."""
+    row = Crawl(
+        url=uval,
+        domain=dom,
+        path=path,
+        query=query,
+        canonical_url=canon_url,
+        key=None,
+        visibility="private",
+        status="pending",
+        payload_json=None,
+        error=None,
+        user_id=(getattr(user, "id", None) if user else None),
+        created_at=now,
+        updated_at=now,
+    )
+    s.add(row)
+    s.flush()
+    crawl_id = row.id
+    return {
+        "crawl_id": crawl_id,
+        "key": None,
+        "force_refresh": False,
+        "cooldown_redirect": None,
+    }
+
+
+def _upsert_private_page_crawl(
+    s, user, uval, dom, path, query, canon_url, now, return_to
+) -> dict:
+    """Create or replace the private crawl row.
+
+    Returns a dict with crawl_id, key, force_refresh, and optional
+    cooldown_redirect used when a refresh falls within the cooldown window.
+    """
+    existing = _find_latest_crawl(s, "private", dom, path, query)
+    if not existing:
+        return _new_private_crawl(s, user, uval, dom, path, query, canon_url, now)
+    if _now_refreshing(s, existing, now):
+        return _cooldown_result(return_to)
+    if _row_can_update(user, existing):
+        return _replace_private_crawl(
+            s, existing, uval, dom, path, query, canon_url, now
+        )
+    return _new_private_crawl(s, user, uval, dom, path, query, canon_url, now)
+
+
 def _upsert_page_crawl(
     request,
     user,
@@ -630,200 +924,12 @@ def _upsert_page_crawl(
     Returns a dict with crawl_id, key, force_refresh, and optional
     cooldown_redirect used when a refresh falls within the cooldown window.
     """
-    force_refresh = False
     with get_session() as s:
-        key_val: str | None = None
-
         if is_public:
-            start_url = f"https://{dom}/"
-            existing = (
-                s.query(Crawl)
-                .filter(
-                    Crawl.visibility == "public",
-                    Crawl.domain == dom,
-                    Crawl.path == "/",
-                    Crawl.query == "",
-                    Crawl.is_latest == True,  # noqa: E712
-                )
-                .one_or_none()
-            )
-            if existing:
-                if _now_refreshing(s, existing, now):
-                    return {
-                        "crawl_id": None,
-                        "key": None,
-                        "force_refresh": False,
-                        "cooldown_redirect": _cooldown_response(return_to),
-                    }
-                existing.is_latest = False
-                old_key = getattr(existing, "key", None)
-                old_share_key = getattr(existing, "share_key", None)
-                existing.key = None
-                existing.share_key = None
-                row = Crawl(
-                    url=start_url,
-                    domain=dom,
-                    path="/",
-                    query="",
-                    canonical_url=start_url,
-                    key=old_key,
-                    share_key=old_share_key,
-                    visibility="public",
-                    status="pending",
-                    payload_json=None,
-                    error=None,
-                    created_at=now,
-                    updated_at=now,
-                    is_latest=True,
-                )
-                s.add(row)
-                s.flush()
-                crawl_id = row.id
-                key_val = old_key
-                force_refresh = True
-                try:
-                    _cleanup_old_crawls(s, dom, "public")
-                except Exception:
-                    pass
-                s.commit()
-                return {
-                    "crawl_id": crawl_id,
-                    "key": key_val,
-                    "force_refresh": force_refresh,
-                    "cooldown_redirect": None,
-                }
-            else:
-                key_try = _generate_public_key(s)
-                row = Crawl(
-                    url=start_url,
-                    domain=dom,
-                    path="/",
-                    query="",
-                    canonical_url=start_url,
-                    key=key_try,
-                    visibility="public",
-                    status="pending",
-                    payload_json=None,
-                    error=None,
-                    created_at=now,
-                    updated_at=now,
-                )
-                s.add(row)
-                s.flush()
-                crawl_id = row.id
-                return {
-                    "crawl_id": crawl_id,
-                    "key": row.key,
-                    "force_refresh": False,
-                    "cooldown_redirect": None,
-                }
-
-        existing = (
-            s.query(Crawl)
-            .filter(
-                Crawl.visibility == "private",
-                Crawl.domain == dom,
-                Crawl.path == path,
-                Crawl.query == query,
-                Crawl.is_latest == True,  # noqa: E712
-            )
-            .one_or_none()
+            return _upsert_public_page_crawl(s, dom, now, return_to)
+        return _upsert_private_page_crawl(
+            s, user, uval, dom, path, query, canon_url, now, return_to
         )
-        if existing:
-            if _now_refreshing(s, existing, now):
-                return {
-                    "crawl_id": None,
-                    "key": None,
-                    "force_refresh": False,
-                    "cooldown_redirect": _cooldown_response(return_to),
-                }
-            if _row_can_update(user, existing):
-                existing.is_latest = False
-                old_key = getattr(existing, "key", None)
-                old_share_key = getattr(existing, "share_key", None)
-                existing.key = None
-                existing.share_key = None
-                row = Crawl(
-                    url=uval,
-                    domain=dom,
-                    path=path,
-                    query=query,
-                    canonical_url=canon_url,
-                    key=old_key,
-                    share_key=old_share_key,
-                    visibility="private",
-                    status="pending",
-                    payload_json=None,
-                    error=None,
-                    user_id=existing.user_id,
-                    created_at=now,
-                    updated_at=now,
-                    is_latest=True,
-                )
-                s.add(row)
-                s.flush()
-                crawl_id = row.id
-                force_refresh = True
-                try:
-                    _cleanup_old_crawls(s, dom, "private")
-                except Exception:
-                    pass
-                s.commit()
-                return {
-                    "crawl_id": crawl_id,
-                    "key": None,
-                    "force_refresh": force_refresh,
-                    "cooldown_redirect": None,
-                }
-            row = Crawl(
-                url=uval,
-                domain=dom,
-                path=path,
-                query=query,
-                canonical_url=canon_url,
-                key=None,
-                visibility="private",
-                status="pending",
-                payload_json=None,
-                error=None,
-                user_id=(getattr(user, "id", None) if user else None),
-                created_at=now,
-                updated_at=now,
-            )
-            s.add(row)
-            s.flush()
-            crawl_id = row.id
-            return {
-                "crawl_id": crawl_id,
-                "key": None,
-                "force_refresh": False,
-                "cooldown_redirect": None,
-            }
-        else:
-            row = Crawl(
-                url=uval,
-                domain=dom,
-                path=path,
-                query=query,
-                canonical_url=canon_url,
-                key=None,
-                visibility="private",
-                status="pending",
-                payload_json=None,
-                error=None,
-                user_id=(getattr(user, "id", None) if user else None),
-                created_at=now,
-                updated_at=now,
-            )
-            s.add(row)
-            s.flush()
-            crawl_id = row.id
-            return {
-                "crawl_id": crawl_id,
-                "key": None,
-                "force_refresh": False,
-                "cooldown_redirect": None,
-            }
 
 
 def _cooldown_response(return_to: str | None) -> RedirectResponse:
@@ -834,7 +940,9 @@ def _cooldown_response(return_to: str | None) -> RedirectResponse:
 def _now_refreshing(s, existing, now) -> bool:
     """True when a refresh is within the cooldown window (redirect handled by caller)."""
     refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    if now - existing.updated_at < timedelta(minutes=refresh_min_age_minutes):
+    if now - ensure_utc(existing.updated_at) < timedelta(
+        minutes=refresh_min_age_minutes
+    ):
         return True
     return False
 

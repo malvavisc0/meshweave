@@ -1,5 +1,7 @@
 """AEO/GEO score API router."""
 
+import contextlib
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -59,6 +61,54 @@ async def get_scores(request: Request, crawl_id: str):
     )
 
 
+def _validated_manual_inputs(data: dict) -> dict[str, float]:
+    """Extract valid manual score inputs from the request body.
+
+    Args:
+        data: Parsed JSON body.
+
+    Returns:
+        dict: Mapping of valid input keys to float values in [0, 100].
+    """
+    valid_keys = {"capture_rate", "query_match", "voice_rate", "citation"}
+    inputs: dict[str, float] = {}
+    for key in valid_keys:
+        if key in data and data[key] is not None:
+            with contextlib.suppress(ValueError, TypeError):
+                val = float(data[key])
+                if 0 <= val <= 100:
+                    inputs[key] = val
+    return inputs
+
+
+def _recomputed_scores_response(
+    crawl_id: str, row: Crawl, score_json: dict
+) -> JSONResponse:
+    """Build the recomputed-scores JSON response.
+
+    Args:
+        crawl_id: Crawl identifier.
+        row: Crawl row carrying the score snapshot.
+        score_json: Recomputed score JSON payload.
+
+    Returns:
+        JSONResponse: Response with recomputed scores and metadata.
+    """
+    score_data = _build_score_data_for_template(score_json)
+    return JSONResponse(
+        content={
+            "crawl_id": crawl_id,
+            "aeo_score": score_json.get("aeo", {}).get("composite"),
+            "geo_score": score_json.get("geo", {}).get("composite"),
+            "aeo_rating": row.score_snapshot.aeo_rating if row.score_snapshot else None,
+            "geo_rating": row.score_snapshot.geo_rating if row.score_snapshot else None,
+            "score_data": score_data,
+            "manual_input_fields": _build_manual_input_fields(score_json),
+            "has_manual_missing": _has_manual_missing(score_json),
+        }
+    )
+
+
 @router.post("/api/scores/{crawl_id}/inputs")
 async def update_manual_inputs(request: Request, crawl_id: str):
     """Accept manual score inputs and recompute scores."""
@@ -71,16 +121,7 @@ async def update_manual_inputs(request: Request, crawl_id: str):
         data = {}
 
     # Validate inputs
-    valid_keys = {"capture_rate", "query_match", "voice_rate", "citation"}
-    inputs: dict[str, float] = {}
-    for key in valid_keys:
-        if key in data and data[key] is not None:
-            try:
-                val = float(data[key])
-                if 0 <= val <= 100:
-                    inputs[key] = val
-            except ValueError, TypeError:
-                pass
+    inputs = _validated_manual_inputs(data)
 
     if not inputs:
         raise HTTPException(status_code=400, detail="No valid inputs provided")
@@ -96,20 +137,7 @@ async def update_manual_inputs(request: Request, crawl_id: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    score_data = _build_score_data_for_template(score_json)
-
-    return JSONResponse(
-        content={
-            "crawl_id": crawl_id,
-            "aeo_score": score_json.get("aeo", {}).get("composite"),
-            "geo_score": score_json.get("geo", {}).get("composite"),
-            "aeo_rating": row.score_snapshot.aeo_rating if row.score_snapshot else None,
-            "geo_rating": row.score_snapshot.geo_rating if row.score_snapshot else None,
-            "score_data": score_data,
-            "manual_input_fields": _build_manual_input_fields(score_json),
-            "has_manual_missing": _has_manual_missing(score_json),
-        }
-    )
+    return _recomputed_scores_response(crawl_id, row, score_json)
 
 
 @router.get("/api/scores/domain/{domain}")

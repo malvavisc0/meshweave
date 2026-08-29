@@ -50,14 +50,7 @@ def score_crawl(
 
         # Load payload from DB if not provided
         if payload is None:
-            raw = row.payload_json or {}
-            if isinstance(raw, str):
-                try:
-                    payload = json.loads(raw)
-                except json.JSONDecodeError:
-                    payload = {}
-            else:
-                payload = raw
+            payload = _payload_from_row(row)
 
     # Compute scores
     score_json = compute_scores(payload, manual_inputs=manual_inputs)
@@ -67,27 +60,94 @@ def score_crawl(
     geo_r = geo_rating(geo_composite)
 
     # Re-generate recommendations with AAX factors if AAX is in the payload
-    if payload and payload.get("aax"):
-        aax_result = payload.get("aax")
-        if aax_result and aax_result.get("status") == "completed":
-            from meshweave.scoring.engine import compute_aax_score
-
-            aax_score_dict = compute_aax_score(aax_result)
-            if aax_score_dict:
-                from meshweave.scoring.recommendations import generate_recommendations
-
-                aeo_factors = score_json.get("aeo", {}).get("factors", {})
-                geo_factors = score_json.get("geo", {}).get("factors", {})
-                all_recommendations = generate_recommendations(
-                    aeo_factors,
-                    geo_factors,
-                    payload=payload,
-                    aax_factors=aax_score_dict.get("factors"),
-                    contactability=aax_result.get("contactability"),
-                )
-                score_json["recommendations"] = all_recommendations
+    if payload:
+        _apply_aax_recommendations(score_json, payload)
 
     # Persist to DB
+    _persist_scores(
+        crawl_id,
+        score_json,
+        aeo_composite,
+        geo_composite,
+        aeo_r,
+        geo_r,
+        manual_inputs,
+    )
+
+    return score_json
+
+
+def _payload_from_row(row: Crawl) -> dict[str, Any]:
+    """Load the crawl payload from a row's payload_json column.
+
+    Args:
+        row: The Crawl row to read from.
+
+    Returns:
+        The parsed payload; an empty dict when missing or invalid.
+    """
+    raw = row.payload_json or {}
+    if not isinstance(raw, str):
+        return raw
+    try:
+        payload: dict[str, Any] = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return payload
+
+
+def _apply_aax_recommendations(
+    score_json: dict[str, Any], payload: dict[str, Any]
+) -> None:
+    """Re-generate recommendations with AAX factors when AAX completed.
+
+    Args:
+        score_json: The score_json dict to update in place.
+        payload: The crawl payload possibly containing AAX results.
+    """
+    aax_result = payload.get("aax")
+    if not aax_result or aax_result.get("status") != "completed":
+        return
+    aax_score_dict = compute_aax_score(aax_result)
+    if not aax_score_dict:
+        return
+    from meshweave.scoring.recommendations import generate_recommendations
+
+    aeo_factors = score_json.get("aeo", {}).get("factors", {})
+    geo_factors = score_json.get("geo", {}).get("factors", {})
+    all_recommendations = generate_recommendations(
+        aeo_factors,
+        geo_factors,
+        payload=payload,
+        aax_factors=aax_score_dict.get("factors"),
+        contactability=aax_result.get("contactability"),
+    )
+    score_json["recommendations"] = all_recommendations
+
+
+def _persist_scores(
+    crawl_id: str,
+    score_json: dict[str, Any],
+    aeo_composite: Any,
+    geo_composite: Any,
+    aeo_r: str | None,
+    geo_r: str | None,
+    manual_inputs: dict[str, float] | None,
+) -> None:
+    """Persist computed scores to the Crawl row and ScoreSnapshot.
+
+    Args:
+        crawl_id: The Crawl row ID.
+        score_json: The full score_json dict from the scoring engine.
+        aeo_composite: The AEO composite score.
+        geo_composite: The GEO composite score.
+        aeo_r: The AEO rating label.
+        geo_r: The GEO rating label.
+        manual_inputs: Manual inputs passed to score_crawl, if any.
+
+    Raises:
+        ValueError: If the crawl row disappeared during scoring.
+    """
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if not row:
@@ -121,8 +181,6 @@ def score_crawl(
                 has_manual_input=bool(manual_inputs),
             )
             s.add(snap)
-
-    return score_json
 
 
 async def run_aax_for_crawl(
@@ -286,7 +344,9 @@ def _inject_aax_into_payload_json(
                     p["scores"] = scores
                 row.payload_json = p
                 flag_modified(row, "payload_json")
-        except json.JSONDecodeError, TypeError:
+        except json.JSONDecodeError:
+            pass
+        except TypeError:
             pass
 
 

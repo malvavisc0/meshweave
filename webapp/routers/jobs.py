@@ -19,6 +19,7 @@ from webapp.utils.quotas import (
     enforce_daily_site_crawl_limit,
 )
 from webapp.utils.security import _make_csrf_token, _verify_csrf_token
+from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
@@ -119,6 +120,23 @@ def _build_site_card(domain: str, crawls: list, snapshot_map: dict) -> dict:
     }
 
 
+def _score_delta(cur: float | None, prev: float | None) -> float | None:
+    """Round the difference between two scores, or None if either is missing."""
+    if cur is not None and prev is not None:
+        return round(cur - prev, 1)
+    return None
+
+
+def _aax_delta(latest_ss, prev, snapshot_map: dict, aax_score) -> float | None:
+    """Compute the AAX composite delta against the previous snapshot."""
+    prev_ss = snapshot_map.get(prev.id)
+    if latest_ss and latest_ss.score_json and prev_ss and prev_ss.score_json:
+        prev_aax = prev_ss.score_json.get("aax", {}).get("composite")
+        if aax_score is not None and prev_aax is not None:
+            return round(float(aax_score) - float(prev_aax), 1)
+    return None
+
+
 def _compute_deltas(crawls, latest, latest_ss, snapshot_map, aax_score) -> tuple:
     """Compare the latest succeeded crawl against the previous one."""
     aeo_delta = None
@@ -127,15 +145,9 @@ def _compute_deltas(crawls, latest, latest_ss, snapshot_map, aax_score) -> tuple
     succeeded_crawls = [c for c in crawls if c.status == "succeeded"]
     if len(succeeded_crawls) >= 2:
         prev = succeeded_crawls[1]
-        if latest.aeo_score is not None and prev.aeo_score is not None:
-            aeo_delta = round(latest.aeo_score - prev.aeo_score, 1)
-        if latest.geo_score is not None and prev.geo_score is not None:
-            geo_delta = round(latest.geo_score - prev.geo_score, 1)
-        prev_ss = snapshot_map.get(prev.id)
-        if latest_ss and latest_ss.score_json and prev_ss and prev_ss.score_json:
-            prev_aax = prev_ss.score_json.get("aax", {}).get("composite")
-            if aax_score is not None and prev_aax is not None:
-                aax_delta = round(float(aax_score) - float(prev_aax), 1)
+        aeo_delta = _score_delta(latest.aeo_score, prev.aeo_score)
+        geo_delta = _score_delta(latest.geo_score, prev.geo_score)
+        aax_delta = _aax_delta(latest_ss, prev, snapshot_map, aax_score)
     return aeo_delta, geo_delta, aax_delta
 
 
@@ -187,19 +199,34 @@ def _build_share(latest) -> tuple[str | None, bool]:
     return None, True
 
 
+def _delta_moved(s: dict, positive: bool) -> bool:
+    """Whether a site's aeo/geo delta moved in the given direction."""
+    aeo = s["aeo_delta"] or 0
+    geo = s["geo_delta"] or 0
+    if positive:
+        return aeo > 0 or geo > 0
+    return aeo < 0 or geo < 0
+
+
+def _count_delta_sites(sites: list, positive: bool) -> int:
+    """Count sites whose aeo/geo delta moved in the given direction."""
+    return sum(1 for s in sites if _delta_moved(s, positive))
+
+
+def _status_count(sites: list, status: str) -> int:
+    """Count sites whose latest crawl has the given status."""
+    return sum(1 for s in sites if s["latest_status"] == status)
+
+
 def _summarize_sites(sites: list) -> dict:
     """Compute the dashboard summary strip counts."""
     return {
         "domains_tracked": len(sites),
-        "improved": sum(
-            1 for s in sites if (s["aeo_delta"] or 0) > 0 or (s["geo_delta"] or 0) > 0
-        ),
-        "declined": sum(
-            1 for s in sites if (s["aeo_delta"] or 0) < 0 or (s["geo_delta"] or 0) < 0
-        ),
+        "improved": _count_delta_sites(sites, positive=True),
+        "declined": _count_delta_sites(sites, positive=False),
         "need_baseline": sum(1 for s in sites if s["analysis_count"] < 2),
-        "running": sum(1 for s in sites if s["latest_status"] == "running"),
-        "failed": sum(1 for s in sites if s["latest_status"] == "failed"),
+        "running": _status_count(sites, "running"),
+        "failed": _status_count(sites, "failed"),
     }
 
 
@@ -222,35 +249,32 @@ def _attention_list(sites: list) -> list:
     )[:5]
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
-async def my_jobs(
-    request: Request,
-    page_size: int = 25,
-):
-    """List current user's jobs with pagination (newest first)."""
-    user = await require_auth(request)
-
+def _normalize_dashboard_page_size(page_size) -> int:
+    """Coerce the dashboard page_size to one of {25, 50, 100}."""
     try:
         page_size = int(page_size)
     except Exception:
         page_size = 25
-    if page_size not in (25, 50, 100):
-        page_size = 25
+    return page_size if page_size in (25, 50, 100) else 25
 
+
+def _load_user_crawls(user_id) -> tuple[list, dict]:
+    """Load the user's crawl rows and their score snapshot map."""
     with get_session() as s:
         rows_db: list[Any] = (
             s.query(Crawl)
-            .filter(Crawl.user_id == user.id)
+            .filter(Crawl.user_id == user_id)
             .order_by(Crawl.updated_at.desc(), Crawl.id.desc())
             .limit(500)
             .all()
         )
         crawl_ids = [r.id for r in rows_db]
         snapshot_map = _load_snapshot_map(s, crawl_ids)
+    return rows_db, snapshot_map
 
-    # Build flat items list (for "All Analyses" table) with scores
-    items = [_serialize_job_row(r, snapshot_map) for r in rows_db[:page_size]]
 
+def _grouped_site_cards(rows_db: list, snapshot_map: dict) -> tuple[list, dict]:
+    """Group crawls by domain and build the sorted site card list."""
     # Group by domain for "My Sites" section
     domain_groups: dict[str, list] = {}
     for r in rows_db:
@@ -263,24 +287,20 @@ async def my_jobs(
 
     # Sort sites by most recent analysis
     sites.sort(key=lambda s: s["updated_at"], reverse=True)
+    return sites, domain_groups
 
-    # Compute summary counts for the summary strip
-    summary = _summarize_sites(sites)
 
-    # Compute attention list (ranked: decline > failed > no baseline)
-    attention = _attention_list(sites)
-
-    # Build activity feed from items
-    activity = [
+def _dashboard_activity(items: list) -> list:
+    """Build the activity feed from the latest serialized items."""
+    return [
         i
         for i in items[:10]
         if i["status"] in ("running", "pending", "failed", "succeeded")
     ][:5]
 
-    site_name = os.getenv("SITE_NAME", "MeshWeave")
-    page_title = f"Dashboard — {site_name}"
-    meta_description = "Your recent crawls."
 
+def _dashboard_csrf(request: Request) -> tuple[str, bool, str | None, str]:
+    """Return (csrf_token, new_session, session_id, cookie_name) for the dashboard."""
     # CSRF token for retry forms on this page
     cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
     session_id = request.cookies.get(cookie_name)
@@ -293,6 +313,40 @@ async def my_jobs(
         if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
         else ""
     )
+    return csrf_token, new_session, session_id, cookie_name
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def my_jobs(
+    request: Request,
+    page_size: int = 25,
+):
+    """List current user's jobs with pagination (newest first)."""
+    user = await require_auth(request)
+
+    page_size = _normalize_dashboard_page_size(page_size)
+
+    rows_db, snapshot_map = _load_user_crawls(user.id)
+
+    # Build flat items list (for "All Analyses" table) with scores
+    items = [_serialize_job_row(r, snapshot_map) for r in rows_db[:page_size]]
+
+    sites, domain_groups = _grouped_site_cards(rows_db, snapshot_map)
+
+    # Compute summary counts for the summary strip
+    summary = _summarize_sites(sites)
+
+    # Compute attention list (ranked: decline > failed > no baseline)
+    attention = _attention_list(sites)
+
+    # Build activity feed from items
+    activity = _dashboard_activity(items)
+
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    page_title = f"Dashboard — {site_name}"
+    meta_description = "Your recent crawls."
+
+    csrf_token, new_session, session_id, cookie_name = _dashboard_csrf(request)
 
     resp = templates.TemplateResponse(
         request,
@@ -399,6 +453,69 @@ async def cancel_crawl(
     )
 
 
+def _verify_csrf_or_raise(request: Request, csrf_token: str | None) -> None:
+    """Validate the CSRF token when enabled; raises 403 on failure."""
+    if not _env_bool("WEBAPP_CSRF_ENABLED", False):
+        return
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    session_id = request.cookies.get(cookie_name) or ""
+    max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
+    if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
+        raise HTTPException(status_code=403, detail="CSRF validation failed")
+
+
+def _enforce_retry_cooldown(row) -> None:
+    """Raise 429 when the retry cooldown has not elapsed for a crawl."""
+    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+    now = datetime.now(UTC)
+    if now - ensure_utc(row.updated_at) < timedelta(minutes=refresh_min_age_minutes):
+        raise HTTPException(status_code=429, detail="Retry not available yet")
+
+
+def _reset_job_row(row_id, now: datetime, require_idle: bool) -> bool:
+    """Reset a crawl row to pending for retry; False when not resettable.
+
+    When require_idle is True, a row currently marked running in the DB is
+    not reset (race-safe recheck used by bulk retries).
+    """
+    with get_session() as s:
+        db_row = s.get(Crawl, row_id)
+        if not db_row:
+            return False
+        if require_idle and (db_row.status or "").lower() == "running":
+            return False
+        db_row.status = "pending"
+        db_row.payload_json = None
+        db_row.error = None
+        try:
+            if hasattr(db_row, "error_json"):
+                setattr(db_row, "error_json", None)
+        except Exception:
+            pass
+        db_row.updated_at = now
+    return True
+
+
+def _schedule_retry_task(user, row, background_tasks) -> None:
+    """Schedule the retry background task with force_refresh=True."""
+    if bool(row.crawl_params):
+        background_tasks.add_task(run_site_crawl_task, row.id, True)
+    else:
+        background_tasks.add_task(run_crawl_task, row.id, True, user_id=user.id)
+
+
+def _retry_quota_ok(user, row) -> bool:
+    """Enforce per-retry quotas; False when a quota blocks the retry."""
+    try:
+        enforce_concurrent_jobs_limit(user.id)
+        if bool(row.crawl_params):
+            enforce_daily_site_crawl_limit(user.id)
+    except HTTPException:
+        # Skip this job if quota prevents retry
+        return False
+    return True
+
+
 @router.post("/retry/{crawl_id}")
 async def retry_crawl(
     request: Request,
@@ -408,22 +525,14 @@ async def retry_crawl(
 ):
     """Retry a crawl (owner only) when not running."""
     # CSRF validation
-    if _env_bool("WEBAPP_CSRF_ENABLED", False):
-        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-        session_id = request.cookies.get(cookie_name) or ""
-        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-        if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-            raise HTTPException(status_code=403, detail="CSRF validation failed")
+    _verify_csrf_or_raise(request, csrf_token)
 
     # Auth + owner
     user = await require_auth(request)
     row = await require_ownership(request, crawl_id)
 
     # Enforce cooldown
-    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    now = datetime.now(UTC)
-    if now - row.updated_at < timedelta(minutes=refresh_min_age_minutes):
-        raise HTTPException(status_code=429, detail="Retry not available yet")
+    _enforce_retry_cooldown(row)
 
     if row.status == "running":
         raise HTTPException(status_code=400, detail="Job is already running")
@@ -435,29 +544,63 @@ async def retry_crawl(
 
     # Reset and schedule
     now = datetime.now(UTC)
-    with get_session() as s:
-        db_row = s.get(Crawl, crawl_id)
-        if not db_row:
-            raise HTTPException(status_code=404, detail="Not found")
-        db_row.status = "pending"
-        db_row.payload_json = None
-        db_row.error = None
-        try:
-            if hasattr(db_row, "error_json"):
-                setattr(db_row, "error_json", None)
-        except Exception:
-            pass
-        db_row.updated_at = now
-
-    # Schedule task with force_refresh=True
-    if bool(row.crawl_params):
-        background_tasks.add_task(run_site_crawl_task, crawl_id, True)
-    else:
-        background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
+    if not _reset_job_row(crawl_id, now, require_idle=False):
+        raise HTTPException(status_code=404, detail="Not found")
+    _schedule_retry_task(user, row, background_tasks)
 
     return RedirectResponse(
         url=f"/dashboard?notice=retried&job={crawl_id}", status_code=303
     )
+
+
+def _my_jobs_query(s, user_id, status: str | None, q: str | None, cur_ts, cur_id):
+    """Build the filtered, ordered jobs query with the keyset cursor applied."""
+    qry = s.query(Crawl).filter(Crawl.user_id == user_id)
+
+    if status:
+        qry = qry.filter(func.lower(Crawl.status) == status.strip().lower())
+
+    if q:
+        like = f"%{q.strip().lower()}%"
+        qry = qry.filter(
+            func.lower(Crawl.domain).like(like)
+            | func.lower(Crawl.canonical_url).like(like)
+        )
+
+    # Sorting: updated_at desc, id desc
+    qry = qry.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
+
+    # Keyset cursor
+    if cur_ts and cur_id:
+        qry = qry.filter(
+            (Crawl.updated_at < cur_ts)
+            | ((Crawl.updated_at == cur_ts) & (Crawl.id < cur_id))
+        )
+
+    return qry
+
+
+def _jobs_next_cursor(rows: list, limit: int) -> str | None:
+    """Build the next-page cursor from the last row on the current page."""
+    if len(rows) <= limit:
+        return None
+    last = rows[limit - 1]
+    try:
+        return f"{(last.updated_at or datetime.now(UTC)).isoformat()}|{last.id}"
+    except Exception:
+        return None
+
+
+def _my_jobs_page(s, user, limit: int, qry) -> tuple[list[dict], str | None]:
+    """Serialize one page of job rows and build the next-page cursor."""
+    rows = qry.limit(limit + 1).all()
+
+    crawl_ids_api = [r.id for r in rows[: limit + 1]]
+    snap_api_map = _load_snapshot_map(s, crawl_ids_api)
+
+    items: list[dict] = [_serialize_job_row(r, snap_api_map) for r in rows[:limit]]
+    next_cursor = _jobs_next_cursor(rows, limit)
+    return items, next_cursor
 
 
 @router.get("/api/my/jobs")
@@ -488,48 +631,9 @@ async def api_my_jobs(
 
     cur_ts, cur_id = _parse_jobs_cursor(cursor)
 
-    items: list[dict] = []
-    next_cursor: str | None = None
-
     with get_session() as s:
-        qry = s.query(Crawl).filter(Crawl.user_id == user.id)
-
-        if status:
-            qry = qry.filter(func.lower(Crawl.status) == status.strip().lower())
-
-        if q:
-            like = f"%{q.strip().lower()}%"
-            qry = qry.filter(
-                func.lower(Crawl.domain).like(like)
-                | func.lower(Crawl.canonical_url).like(like)
-            )
-
-        # Sorting: updated_at desc, id desc
-        qry = qry.order_by(Crawl.updated_at.desc(), Crawl.id.desc())
-
-        # Keyset cursor
-        if cur_ts and cur_id:
-            qry = qry.filter(
-                (Crawl.updated_at < cur_ts)
-                | ((Crawl.updated_at == cur_ts) & (Crawl.id < cur_id))
-            )
-
-        rows = qry.limit(limit + 1).all()
-
-        crawl_ids_api = [r.id for r in rows[: limit + 1]]
-        snap_api_map = _load_snapshot_map(s, crawl_ids_api)
-
-        for r in rows[:limit]:
-            items.append(_serialize_job_row(r, snap_api_map))
-
-        if len(rows) > limit:
-            last = rows[limit - 1]
-            try:
-                next_cursor = (
-                    f"{(last.updated_at or datetime.now(UTC)).isoformat()}|{last.id}"
-                )
-            except Exception:
-                next_cursor = None
+        qry = _my_jobs_query(s, user.id, status, q, cur_ts, cur_id)
+        items, next_cursor = _my_jobs_page(s, user, limit, qry)
 
     return {"items": items, "next_cursor": next_cursor}
 
@@ -551,6 +655,32 @@ def _parse_jobs_cursor(cursor: str | None) -> tuple[datetime | None, str | None]
         return None, None
 
 
+async def _bulk_retry_request(request: Request) -> tuple[str, list[str]]:
+    """Parse the bulk operation name and id list from the request body."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    operation = (body.get("operation") or "").strip().lower()
+    ids = body.get("ids") or []
+    if not isinstance(ids, list):
+        ids = []
+    ids = [str(x) for x in ids if isinstance(x, (str,))]
+    return operation, ids
+
+
+def _owned_crawls_by_ids(user, ids: list[str]) -> list:
+    """Load crawl rows owned by the user among the given ids."""
+    with get_session() as s:
+        return (
+            s.query(Crawl)
+            .filter(Crawl.user_id == user.id)
+            .filter(Crawl.id.in_(ids))
+            .all()
+        )
+
+
 @router.post("/api/my/jobs/bulk")
 async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
     """Perform bulk operations on jobs owned by the current user.
@@ -562,30 +692,14 @@ async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
       { "ok": true, "retried": int }
     """
     user = await require_auth(request)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-
-    operation = (body.get("operation") or "").strip().lower()
-    ids = body.get("ids") or []
-    if not isinstance(ids, list):
-        ids = []
-    ids = [str(x) for x in ids if isinstance(x, (str,))]
+    operation, ids = await _bulk_retry_request(request)
 
     if operation not in ("retry",):
         raise HTTPException(status_code=400, detail="unsupported_operation")
     if not ids:
         return {"ok": True, "retried": 0}
 
-    # Load rows owned by user
-    with get_session() as s:
-        rows = (
-            s.query(Crawl)
-            .filter(Crawl.user_id == user.id)
-            .filter(Crawl.id.in_(ids))
-            .all()
-        )
+    rows = _owned_crawls_by_ids(user, ids)
 
     retried = 0
     now = datetime.now(UTC)
@@ -603,39 +717,17 @@ def _retry_job(user, row, now: datetime, background_tasks) -> bool:
         return False
 
     # Enforce quotas per job retry
-    try:
-        enforce_concurrent_jobs_limit(user.id)
-        if bool(row.crawl_params):
-            enforce_daily_site_crawl_limit(user.id)
-    except HTTPException:
-        # Skip this job if quota prevents retry
+    if not _retry_quota_ok(user, row):
         return False
 
     # Reset state and schedule
-    with get_session() as s:
-        db_row = s.get(Crawl, row.id)
-        if not db_row:
-            return False
-        # Recheck running status in DB to avoid races
-        if (db_row.status or "").lower() == "running":
-            return False
-        db_row.status = "pending"
-        db_row.payload_json = None
-        db_row.error = None
-        try:
-            if hasattr(db_row, "error_json"):
-                setattr(db_row, "error_json", None)
-        except Exception:
-            pass
-        db_row.updated_at = now
+    if not _reset_job_row(row.id, now, require_idle=True):
+        return False
 
     # Schedule background task with force_refresh=True
     try:
-        if bool(row.crawl_params):
-            background_tasks.add_task(run_site_crawl_task, row.id, True)
-        else:
-            background_tasks.add_task(run_crawl_task, row.id, True, user_id=user.id)
-        return True
+        _schedule_retry_task(user, row, background_tasks)
     except Exception:
         # Skip scheduling failures for individual jobs
         return False
+    return True

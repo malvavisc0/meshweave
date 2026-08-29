@@ -159,26 +159,36 @@ def _count_runs_per_domain(rows: list[Crawl]) -> Counter[str]:
     return domain_run_counts
 
 
+def _meta_from_page(pg: dict) -> tuple[str, str, str]:
+    """Extract (title, description, og_desc) fields from a page dict."""
+    title = (pg.get("title") or "").strip()
+    description = (pg.get("description") or "").strip()
+    og_desc = ((pg.get("og") or {}).get("description") or "").strip()
+    return title, description, og_desc
+
+
+def _meta_page_source(payload: dict, crawl_params: Any) -> dict | None:
+    """Locate the page dict holding meta fields, or None when absent."""
+    if crawl_params:
+        # For site crawls, title from first page
+        pages = payload.get("pages") or []
+        if pages and isinstance(pages, list) and len(pages) > 0:
+            return pages[0].get("page") or {}
+        return None
+    # For page crawls
+    return payload.get("page") or {}
+
+
 def _extract_meta(payload: Any, crawl_params: Any) -> tuple[str, str, str]:
+    """Extract (title, description, og_desc) from a crawl payload."""
     title = ""
     description = ""
     og_desc = ""
     try:
         if isinstance(payload, dict):
-            if crawl_params:
-                # For site crawls, title from first page
-                pages = payload.get("pages") or []
-                if pages and isinstance(pages, list) and len(pages) > 0:
-                    pg = pages[0].get("page") or {}
-                    title = (pg.get("title") or "").strip()
-                    description = (pg.get("description") or "").strip()
-                    og_desc = ((pg.get("og") or {}).get("description") or "").strip()
-            else:
-                # For page crawls
-                pg = payload.get("page") or {}
-                title = (pg.get("title") or "").strip()
-                description = (pg.get("description") or "").strip()
-                og_desc = ((pg.get("og") or {}).get("description") or "").strip()
+            pg = _meta_page_source(payload, crawl_params)
+            if pg is not None:
+                title, description, og_desc = _meta_from_page(pg)
     except Exception:
         pass
     return title, description, og_desc
@@ -296,7 +306,58 @@ def _serialize_row(
     }
 
 
+def _latest_by_domain(public_crawls: list) -> dict[str, tuple]:
+    """Group public crawl tuples by domain, keeping the latest per domain."""
+    latest_by_domain: dict[str, tuple] = {}
+    for dom, pj, cp, ua in public_crawls:
+        if dom not in latest_by_domain or (
+            ua and ua > (latest_by_domain[dom][2] or datetime.min)
+        ):
+            latest_by_domain[dom] = (pj, cp, ua)
+    return latest_by_domain
+
+
+def _crawl_page_count(pj: Any, cp: Any) -> int:
+    """Count pages for one crawl payload (site: len(pages); page: 1)."""
+    try:
+        p = (
+            pj
+            if isinstance(pj, dict)
+            else (json.loads(pj) if isinstance(pj, str) else {})
+        )
+        if not isinstance(p, dict):
+            return 0
+        # Pages count: site crawls have a "pages" array,
+        # page crawls evaluate 1 page
+        if cp:  # site crawl
+            pages_list = p.get("pages") or []
+            return len(pages_list) if isinstance(pages_list, list) else 0
+        return 1  # page crawl
+    except Exception:
+        return 0
+
+
+def _count_public_pages(db: Session, base_filters: list) -> int:
+    """Count pages across the latest succeeded public run per domain."""
+    public_crawls = (
+        db.query(
+            Crawl.domain,
+            Crawl.payload_json,
+            Crawl.crawl_params,
+            Crawl.updated_at,
+        )
+        .filter(*base_filters)
+        .all()
+    )
+    pages_total = 0
+    # Group by domain, keep only the latest per domain
+    for pj, cp, _ua in _latest_by_domain(public_crawls).values():
+        pages_total += _crawl_page_count(pj, cp)
+    return pages_total
+
+
 def _compute_community_metrics(db: Session) -> dict | None:
+    """Compute lifetime community metrics, or None on failure."""
     # Base filter mirrors /browse: public, anonymous, listed, keyed, succeeded
     _base = [
         Crawl.visibility == "public",
@@ -319,43 +380,7 @@ def _compute_community_metrics(db: Session) -> dict | None:
         # Compute community metrics from payload_json
         # Deduplicate by domain: only count pages from the latest
         # succeeded run per domain to avoid double-counting
-        pages_total = 0
-        public_crawls = (
-            db.query(
-                Crawl.domain,
-                Crawl.payload_json,
-                Crawl.crawl_params,
-                Crawl.updated_at,
-            )
-            .filter(*_base)
-            .all()
-        )
-        # Group by domain, keep only the latest per domain
-        latest_by_domain: dict[str, tuple] = {}
-        for dom, pj, cp, ua in public_crawls:
-            if dom not in latest_by_domain or (
-                ua and ua > (latest_by_domain[dom][2] or datetime.min)
-            ):
-                latest_by_domain[dom] = (pj, cp, ua)
-        for pj, cp, _ua in latest_by_domain.values():
-            try:
-                p = (
-                    pj
-                    if isinstance(pj, dict)
-                    else (json.loads(pj) if isinstance(pj, str) else {})
-                )
-                if not isinstance(p, dict):
-                    continue
-                # Pages count: site crawls have a "pages" array,
-                # page crawls evaluate 1 page
-                if cp:  # site crawl
-                    pages_list = p.get("pages") or []
-                    if isinstance(pages_list, list):
-                        pages_total += len(pages_list)
-                else:  # page crawl
-                    pages_total += 1
-            except Exception:
-                pass
+        pages_total = _count_public_pages(db, _base)
         return {
             "analyses_total": int(analyses_total),
             "domains_total": int(domains_total),

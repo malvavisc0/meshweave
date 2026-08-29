@@ -33,6 +33,28 @@ class JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
         }
         # Attach standard extras if present
+        self._attach_standard_extras(base, record)
+        # If record has an 'extra' dict, merge it
+        self._merge_extra_dict(base, record)
+        # Stack trace on errors if present
+        exc_text = self._exc_text(record)
+        if exc_text is not None:
+            base["exc"] = exc_text
+        return json.dumps(base, ensure_ascii=False)
+
+    @staticmethod
+    def _attach_standard_extras(
+        base: dict[str, Any], record: logging.LogRecord
+    ) -> None:
+        """Attach standard extra attributes when present on the record.
+
+        Args:
+            base (dict): Output dict under construction.
+            record (logging.LogRecord): The log record being formatted.
+
+        Returns:
+            None
+        """
         for attr in (
             "request_id",
             "path",
@@ -46,21 +68,41 @@ class JsonFormatter(logging.Formatter):
             if hasattr(record, attr):
                 base[attr] = getattr(record, attr)
 
-        # If record has an 'extra' dict, merge it
+    @staticmethod
+    def _merge_extra_dict(base: dict[str, Any], record: logging.LogRecord) -> None:
+        """Merge the record's 'extra' dict without overriding core keys.
+
+        Args:
+            base (dict): Output dict under construction.
+            record (logging.LogRecord): The log record being formatted.
+
+        Returns:
+            None
+        """
         extra = getattr(record, "extra", None)
-        if isinstance(extra, dict):
-            # prevent overriding core keys unless explicit
-            for k, v in extra.items():
-                if k not in base or k in ("event", "error_code"):
-                    base[k] = v
+        if not isinstance(extra, dict):
+            return
+        # prevent overriding core keys unless explicit
+        for k, v in extra.items():
+            if k not in base or k in ("event", "error_code"):
+                base[k] = v
 
-        # Stack trace on errors if present
-        if record.exc_info:
-            exc = record.exc_info[1] if record.exc_info else None
-            if exc is not None:
-                base["exc"] = "".join(traceback.format_exception(exc))
+    @staticmethod
+    def _exc_text(record: logging.LogRecord) -> str | None:
+        """Format the record's exception traceback, if any.
 
-        return json.dumps(base, ensure_ascii=False)
+        Args:
+            record (logging.LogRecord): The log record being formatted.
+
+        Returns:
+            Optional[str]: The formatted traceback, or None when absent.
+        """
+        if not record.exc_info:
+            return None
+        exc = record.exc_info[1]
+        if exc is None:
+            return None
+        return "".join(traceback.format_exception(exc))
 
 
 def init_logging(level: str = DEFAULT_LOG_LEVEL) -> None:
