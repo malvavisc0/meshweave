@@ -270,7 +270,7 @@ _LENS_META: dict[LensName, dict[str, str]] = {
         "exposure": "answer structure",
         "failure": "answers fall apart",
         "critical_label": "no answers to find",
-        "primary_exposure": "won't get quoted",
+        "primary_exposure": "Lower likelihood of being quoted",
         "fix_priority": "Structured answers",
     },
     "GEO": {
@@ -278,16 +278,16 @@ _LENS_META: dict[LensName, dict[str, str]] = {
         "exposure": "trust signals",
         "failure": "invisible to recommenders",
         "critical_label": "trust factor too low",
-        "primary_exposure": "won't show in AI results",
+        "primary_exposure": "Lower likelihood of appearing in AI results",
         "fix_priority": "Entity + trust signals",
     },
     "AAX": {
-        "gap": "agents get lost here",
+        "gap": "Next-step signals need work",
         "exposure": "agent experience",
-        "failure": "agents can't navigate",
-        "critical_label": "agents hit a wall",
-        "primary_exposure": "agents bounce before buying",
-        "fix_priority": "Navigation + action paths",
+        "failure": "Next-step signals are weak",
+        "critical_label": "Agent experience is weak",
+        "primary_exposure": "AI systems may struggle to identify a credible next step",
+        "fix_priority": "Offer, content, and next-step signals",
     },
 }
 
@@ -347,33 +347,33 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
         ),
         "GEO": (
             "When people ask AI agents for recommendations, "
-            "this brand won't show up. Missing entity data, authority signals, and social proof."
+            "this brand is unlikely to surface. Missing entity data, authority signals, and social proof."
         ),
         "AAX": (
-            "AI agents land here and get stuck. They can't figure out the offer, "
-            "find next steps, or complete tasks. Missed sales opportunities."
+            "AI systems land here but struggle with the offer and next steps. "
+            "Lower likelihood of a credible next step."
         ),
     },
     # Rule 2b — lens-specific
     "broken_in_strong_profile": {
         "AEO": (
-            "AI agents can navigate and trust signals are decent, but answers fall apart. "
+            "Trust signals are decent, but answer structure falls apart. "
             "The content gets ignored in AI responses."
         ),
         "GEO": (
-            "Answers work and agents can navigate, but AI agents don't see enough "
-            "authority or trust signals to recommend the brand. Competitors with clearer "
+            "Answers work, but AI agents don't see enough trust or "
+            "authority signals to recommend the brand. Competitors with clearer "
             "entity data will get picked instead."
         ),
         "AAX": (
-            "Answers and trust are solid, but agents hit friction. "
-            "If they can't finish the journey, agent-mediated buyers drop off before converting."
+            "Answer and trust signals are solid, but recommendation signals need attention. "
+            "Lower likelihood of a credible next step."
         ),
     },
     # Rule 3 — no lens variant
     "material_risk": (
         "AI grabs fragments but can't see the whole story. "
-        "Key content, trust signals, or navigation paths are missing in multiple places."
+        "Key content, trust signals, or next-step signals are missing in multiple places."
     ),
     # Rule 4 — lens-specific
     "broad_exposure": {
@@ -386,22 +386,22 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
             "AI doesn't have enough reason to recommend this brand over alternatives."
         ),
         "AAX": (
-            "Agents face friction here and another area isn't ready. "
-            "Agent-mediated buyers are unlikely to complete their journey here."
+            "Friction appears here and another area isn't ready. "
+            "Lower likelihood of a credible next step."
         ),
     },
     # Rule 5 — lens-specific
     "single_exposure": {
         "AEO": (
-            "Trust and navigation are good. But fix answers and everything improves fast."
+            "Trust signals are strong. But fix answers and everything improves fast."
         ),
         "GEO": (
-            "Answers work and AI agents could navigate them, but don't see enough "
-            "trust signals to recommend the brand. Entity data, author info, and social proof need work."
+            "Answers work, but AI systems don't see enough trust signals to "
+            "recommend the brand. Entity data, author info, and social proof need work."
         ),
         "AAX": (
-            "Answers and trust work, but agents struggle to complete tasks. "
-            "Navigation, CTAs, or action paths need to be clearer for agents to follow through."
+            "Answer and trust signals work, but the offer and next-step signals are "
+            "unclear. AI systems may struggle to identify a credible next step."
         ),
     },
     # Rule 6 — no lens variant
@@ -412,16 +412,16 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
     # Rule 7 — lens-specific
     "developing_with_strong": {
         "AEO": (
-            "Trust and navigation are strong. Answer structure is the only area holding this site back."
+            "Trust signals are strong. Answer structure is the only area holding this site back."
         ),
         "GEO": (
-            "Answers work and AI agents can navigate well. Trust signals need strengthening for AI recommendations."
+            "Answers work. Trust signals need strengthening for AI recommendations."
         ),
         "AAX": ("Answers and trust are solid. Agent experience needs clearer paths."),
     },
     # Rule 8 — no lens variant
     "highly_readable": (
-        "AI reads the content well. Citations, recommendations, and navigation all pass automated checks. "
+        "AI reads the content well. Citations, recommendations, and signals look strong. "
         "Run self-verification to be sure."
     ),
     # Rule 9 — no lens variant

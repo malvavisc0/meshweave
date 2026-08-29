@@ -153,22 +153,24 @@ templates.env.globals["rating_class"] = rating_class
 templates.env.filters["rating_class"] = rating_class
 
 
-def _score_fill_class(score):
-    """Return CSS BEM modifier class for score bar fill based on numeric score."""
+def _width_class(value):
+    """Return a bucketed width utility class (w-0..w-100) for a 0-100 value.
+
+    Clamps to [0, 100], rounds to whole percentages, and maps missing,
+    non-numeric, or NaN values to ``w-0`` so bars render empty without an
+    inline ``style`` attribute.
+    """
     try:
-        s = float(score)
-    except TypeError:
-        return ""
-    except ValueError:
-        return ""
-    if s >= 80:
-        return "score-bar-fill--good"
-    if s >= 60:
-        return "score-bar-fill--ok"
-    return "score-bar-fill--low"
+        s = float(value)
+    except TypeError, ValueError:
+        return "w-0"
+    if s != s or s in (float("inf"), float("-inf")):
+        return "w-0"
+    n = int(round(max(0.0, min(100.0, s))))
+    return f"w-{max(0, min(100, n))}"
 
 
-templates.env.filters["score_fill_class"] = _score_fill_class
+templates.env.filters["width_class"] = _width_class
 
 
 def mount_static(app: FastAPI) -> None:

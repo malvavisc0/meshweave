@@ -10,8 +10,8 @@
 {# Detect partial scoring: scoring completed but score_snapshot is missing #}
 {% set _is_partial = (status == "succeeded" and not score_snapshot) %}
 
-{% macro funnel_cta(domain, interp, score_snapshot, total_recs=0) %}
-{% if request.state.current_user %}
+{% macro funnel_cta(viewer_role, domain, interp, score_snapshot, total_recs=0) %}
+{% if viewer_role == 'owner' %}
 {% set _subject = ('Expert audit for ' ~ (domain or 'my site')) | urlencode %}
 {% set _body = (
 'Diagnosis: ' ~ (interp.headline if interp else '') ~
@@ -26,19 +26,46 @@ else 'n/a') ~
 'I would like an expert audit and a prioritized roadmap.'
 ) | urlencode %}
 <div class="report-cta report-cta--authed result-bottom-cta">
-  <h2>{{ interp.headline if interp else 'Your site is losing ground in AI-mediated discovery' }}</h2>
-  <p>These are the automated signals. The fixes that move revenue depend on
-    your stack and content. Let’s walk through your prioritized roadmap.</p>
+  <h2>{{ interp.headline if interp else 'Your report is ready' }}</h2>
+  <p>Review the signals behind each score and the recommended next steps.</p>
   <div class="report-cta-actions">
     <a class="btn btn-expert-email"
       href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ _subject }}&body={{ _body }}">Talk to an Expert &#128172;</a>
   </div>
 </div>
+{% elif viewer_role == 'ownerless_public' %}
+<div class="report-cta result-bottom-cta">
+  <h2>Claim this analysis</h2>
+  <p>This public analysis is unclaimed. Claim it to save it to your account and
+    unlock the complete report.</p>
+  {% if claim_eligible %}
+  <div class="report-cta-actions">
+    <form method="post" action="/api/claim/public/{{ key }}" class="inline-block" data-claim-form>
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <button type="submit" class="btn btn-primary">Claim this analysis</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="small mt-1">Claimable after {{ claim_min_hours }} hours. Available in {{ claim_eta }}.</p>
+  {% endif %}
+</div>
+{% elif viewer_role == 'public_non_owner' %}
+<div class="report-cta result-bottom-cta">
+  <h2>This is a public preview</h2>
+  <p>The complete report is available to the account that created this analysis.
+    Start a new analysis for your own site.</p>
+  <div class="report-cta-actions">
+    <a class="btn btn-primary" href="/">Analyze my site</a>
+  </div>
+</div>
 {% else %}
-<div class="report-cta">
-  <h2>Sign in to see how to fix the issues</h2>
-  <p>We found{% if total_recs and total_recs > 0 %} {{ total_recs }} issue{{ 's' if total_recs != 1 }}{% else %}
-    issues{% endif %} to address. See the recommended fix for each one.</p>
+<div class="report-cta result-bottom-cta">
+  <h2>{% if ownerless %}Sign in to claim this analysis{% else %}Sign in to see the full report{% endif %}</h2>
+  <p>{% if ownerless %}This preview shows the headline scores and highest-priority
+    signals. Sign in or create an account to claim this analysis and unlock the
+    complete report.{% else %}This is a public preview of another site's analysis.
+    Sign in to view complete reports for analyses you own, or start a new analysis
+    for your own site.{% endif %}</p>
   <div class="report-cta-actions">
     <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or canonical_url or '/' }}">Sign in with Google</a>
   </div>
@@ -63,7 +90,7 @@ else 'n/a') ~
     </div>
     <div class="progress" role="progressbar" aria-label="Crawl progress" aria-valuemin="0" aria-valuemax="100"
       aria-valuenow="{{ progress.pct }}">
-      <div class="progress-bar" style="width: {{ progress.pct }}%"></div>
+      <div class="progress-bar {{ progress.pct | width_class }}"></div>
     </div>
     <div class="small mt-1">
       <strong>Found so far:</strong>
@@ -75,7 +102,7 @@ else 'n/a') ~
     </div>
   </div>
 
-  {% if status == "running" and request.state.current_user and id %}
+  {% if viewer_role == 'owner' and status == "running" %}
   <div class="actions" role="toolbar" aria-label="Job Controls">
     <form method="post" action="/cancel/{{ id }}" class="inline-block" data-confirm="Cancel this analysis?">
       {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
@@ -186,17 +213,16 @@ else 'n/a') ~
   {% if score_snapshot and score_snapshot.score_data %}
   <div class="score-strip" role="group" aria-label="Lens scores at a glance">
     <a href="#lens-aax" class="score-strip-pill {{ score_snapshot.aax_rating_class }}"
-      aria-label="AAX score: {% if score_snapshot.aax_score is not none %}{{ score_snapshot.aax_score | round(0) | int }}{% else %}not available{% endif %}. Agent journey.">
+      aria-label="AAX score: {% if score_snapshot.aax_score is not none %}{{ score_snapshot.aax_score | round(0) | int }}{% else %}not available{% endif %}. AI Agent Experience.">
       <span class="score-strip-label">AAX:</span>
       {% if score_snapshot.aax_score is not none %}
       <span class="score-strip-value">{{ score_snapshot.aax_score | round(0) | int }}</span>
-      <span class="score-strip-sub">Agent journey</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill"
-          style="--score-strip-score: {{ score_snapshot.aax_score or 0 }};"></span></span>
+      <span class="score-strip-sub">AI Agent Experience</span>
+      <span class="score-strip-bar"><span class="score-strip-bar-fill {{ score_snapshot.aax_score | width_class }}"></span></span>
       {% else %}
       <span class="score-strip-value">—</span>
       <span class="score-strip-sub">No score</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill" style="--score-strip-score: 0;"></span></span>
+      <span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
       {% endif %}
     </a>
     <a href="#lens-aeo" class="score-strip-pill {{ score_snapshot.aeo_rating_class }}"
@@ -205,12 +231,11 @@ else 'n/a') ~
       {% if score_snapshot.aeo_score is not none %}
       <span class="score-strip-value">{{ score_snapshot.aeo_score | round(0) | int }}</span>
       <span class="score-strip-sub">Quotability</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill"
-          style="--score-strip-score: {{ score_snapshot.aeo_score or 0 }};"></span></span>
+      <span class="score-strip-bar"><span class="score-strip-bar-fill {{ score_snapshot.aeo_score | width_class }}"></span></span>
       {% else %}
       <span class="score-strip-value">—</span>
       <span class="score-strip-sub">No score</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill" style="--score-strip-score: 0;"></span></span>
+      <span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
       {% endif %}
     </a>
     <a href="#lens-geo" class="score-strip-pill {{ score_snapshot.geo_rating_class }}"
@@ -219,12 +244,11 @@ else 'n/a') ~
       {% if score_snapshot.geo_score is not none %}
       <span class="score-strip-value">{{ score_snapshot.geo_score | round(0) | int }}</span>
       <span class="score-strip-sub">Recommendability</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill"
-          style="--score-strip-score: {{ score_snapshot.geo_score or 0 }};"></span></span>
+      <span class="score-strip-bar"><span class="score-strip-bar-fill {{ score_snapshot.geo_score | width_class }}"></span></span>
       {% else %}
       <span class="score-strip-value">—</span>
       <span class="score-strip-sub">No score</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill" style="--score-strip-score: 0;"></span></span>
+      <span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
       {% endif %}
     </a>
     <a href="#score-breakdown" class="score-strip-pill score-strip-pill--findings"
@@ -244,9 +268,9 @@ else 'n/a') ~
       <div class="lens-def-row">
         <dt><span class="gauge-pillar gauge-pillar--aax">AAX</span></dt>
         <dd>
-          <span class="lens-def-name">Agent Accessibility Experience</span>
-          <span class="lens-def-note">Measures whether AI agents can understand your offer and complete the journey —
-            reading your pages, parsing the structure, and finding a credible next step without getting stuck.</span>
+          <span class="lens-def-name">AI Agent Experience</span>
+          <span class="lens-def-note">Measures whether AI systems can identify the offer, understand the content,
+            evaluate credibility, and find a credible next step — reading your pages and parsing the structure.</span>
         </dd>
       </div>
       <div class="lens-def-row">
@@ -304,7 +328,7 @@ else 'n/a') ~
     {% if score_snapshot and score_snapshot.score_data %}
     {% set _grouped_recs = group_recommendations_by_pillar(sorted_recommendations) %}
     {% set interp = score_snapshot.interpretation if score_snapshot.interpretation else none %}
-    {% if request.state.current_user %}
+    {% if viewer_role == 'owner' %}
     <section id="score-breakdown" class="panel result-section score-breakdown" role="region"
       aria-label="Score Breakdown">
       <div class="score-breakdown-head">
@@ -328,7 +352,7 @@ else 'n/a') ~
           {% else %}
           <span class="lens-breakdown-score">—</span>
           {% endif %}
-          <h3>Can agents complete the journey?</h3>
+          <h3>Can AI systems understand the site?</h3>
           <p>{% if score_snapshot.aax_score is not none and interp and interp.lens_details and interp.lens_details.AAX
             %}{{ interp.lens_details.AAX.meaning }}{% else %}Measures whether automated agents can identify the offer
             and
@@ -353,7 +377,7 @@ else 'n/a') ~
               %}
               <div class="factor-row-foot">
                 <div class="factor-bar">
-                  <div class="factor-bar-fill" style="--factor-score: {{ factor.score or 0 }};"></div>
+                  <div class="factor-bar-fill {{ factor.score | width_class }}"></div>
                 </div>
               </div>
             </li>
@@ -453,7 +477,7 @@ else 'n/a') ~
               %}
               <div class="factor-row-foot">
                 <div class="factor-bar">
-                  <div class="factor-bar-fill" style="--factor-score: {{ factor.score or 0 }};"></div>
+                  <div class="factor-bar-fill {{ factor.score | width_class }}"></div>
                 </div>
               </div>
             </li>
@@ -549,7 +573,7 @@ else 'n/a') ~
               %}
               <div class="factor-row-foot">
                 <div class="factor-bar">
-                  <div class="factor-bar-fill" style="--factor-score: {{ factor.score or 0 }};"></div>
+                  <div class="factor-bar-fill {{ factor.score | width_class }}"></div>
                 </div>
               </div>
             </li>
@@ -615,26 +639,26 @@ else 'n/a') ~
 
     </section>
 
-    {{ funnel_cta(domain, interp, score_snapshot, _total_recs) }}
+    {{ funnel_cta(viewer_role, domain, interp, score_snapshot, _total_recs) }}
     {% else %}
-    {{ funnel_cta(domain, interp, score_snapshot, _total_recs) }}
+    {{ funnel_cta(viewer_role, domain, interp, score_snapshot, _total_recs) }}
     {% endif %}
     {% elif _is_partial %}
-    {{ funnel_cta(domain, none, none) }}
+    {{ funnel_cta(viewer_role, domain, none, none) }}
     {% endif %}
 
     {# ================================================================
     OWNER SECTIONS — additional depth behind ownership gate
     ================================================================ #}
-    {% if is_owner %}
+    {% if viewer_role == 'owner' %}
 
     {# --- AI Agent Usability Review (owner-only) --- #}
     {% if score_snapshot and score_snapshot.aax_analysis %}
     {% set aax = score_snapshot.aax_analysis %}
     <section class="panel result-section" role="region" aria-label="AI Agent Usability Review">
       <h2>AI Agent Usability Review</h2>
-      <p class="small">Tomorrow's buyer can be an AI agent. This section shows whether an agent can understand the
-        offer, detect the next step, and avoid abandoning the task.</p>
+      <p class="small">This section shows whether AI systems can identify the offer, understand the content, and
+        find a credible next step.</p>
 
       {% if aax.homepage_comprehension %}
       {% set hc = aax.homepage_comprehension %}
@@ -868,7 +892,7 @@ else 'n/a') ~
     </section>
     {% endif %}
 
-    {% endif %}{# end is_owner #}
+    {% endif %}{# end viewer_role == owner #}
 
     {# --- Methodology footer (FROZEN) --- #}
     {% if score_snapshot and score_snapshot.interpretation %}
@@ -921,16 +945,17 @@ else 'n/a') ~
 {% block scripts %}
 <script id="analysis-data" type="application/json">
 {% if in_progress %}
-{{ {
-  'logged_in': request.state.current_user and True or False
-} | tojson }}
+{{ { 'role': viewer_role } | tojson }}
+{% elif viewer_role == 'owner' %}
+{{ { 'role': 'owner', 'id': id } | tojson }}
 {% else %}
 {{ {
+  'role': viewer_role,
   'public_key': key if key else '',
-  'logged_in': request.state.current_user and True or False,
+  'ownerless': ownerless|default(false),
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
-  'ownerless': ownerless|default(false)
+  'claim_eligible': claim_eligible|default(false)
 } | tojson }}
 {% endif %}
 </script>
@@ -941,6 +966,17 @@ else 'n/a') ~
       img.addEventListener('error', function () {
         var media = img.closest('.result-hero-media');
         if (media) media.style.display = 'none';
+      });
+    }
+    var claim = document.querySelector('[data-claim-form]');
+    if (claim) {
+      claim.addEventListener('submit', function (e) {
+        e.preventDefault();
+        fetch(claim.action, { method: 'POST', body: new FormData(claim) })
+          .then(function (resp) {
+            if (resp.ok) window.location.reload();
+          })
+          .catch(function () {});
       });
     }
   })();

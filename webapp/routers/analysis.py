@@ -325,11 +325,22 @@ def _email_source_map(payload: dict | None) -> dict[str, str]:
     return mapping
 
 
-def _owner_state(request: Request, row: Crawl) -> tuple:
-    """Return (is_owner, current_user, user_id_string)."""
-    current_user = getattr(request.state, "current_user", None)
-    is_owner = bool(current_user and getattr(row, "user_id", None) == current_user.id)
-    return is_owner, current_user, (current_user.id if current_user else "")
+def _compute_viewer_role(current_user, row: Crawl) -> str:
+    """Return the explicit viewer role for the result template.
+
+    One of: owner | ownerless_public | public_non_owner | anonymous_public.
+    Ownership is derived from the row's user_id, never inferred from the
+    presence of a logged-in user alone.
+    """
+    if current_user and getattr(row, "user_id", None) == current_user.id:
+        return "owner"
+    if current_user is None:
+        return "anonymous_public"
+    return (
+        "ownerless_public"
+        if getattr(row, "user_id", None) is None
+        else "public_non_owner"
+    )
 
 
 def _csrf(request: Request) -> tuple:
@@ -412,6 +423,28 @@ def _claim_min_hours() -> int:
         return 24
 
 
+def _claim_state(row: Crawl, min_hours: int) -> tuple[bool, str]:
+    """Return (eligible, eta_label) for claiming an ownerless public row.
+
+    A row is claimable when it has no owner and its created_at is at least
+    min_hours in the past. eta_label is empty when eligible.
+    """
+    if getattr(row, "user_id", None) is not None:
+        return False, ""
+    created = getattr(row, "created_at", None)
+    if created is None:
+        return False, ""
+    created = ensure_utc(created)
+    eligible = created + timedelta(hours=min_hours) <= datetime.now(UTC)
+    if eligible:
+        return True, ""
+    remaining = int(
+        (created + timedelta(hours=min_hours) - datetime.now(UTC)).total_seconds()
+        / 3600
+    )
+    return False, f"{max(0, remaining)}h"
+
+
 def _public_refresh_state(row: Crawl, in_progress: bool) -> tuple[bool, str]:
     """Compute (can_refresh, refresh_eta) against the public domain-root cooldown."""
     # Cooldown for refresh (public domain root); irrelevant mid-crawl
@@ -486,7 +519,6 @@ async def _render_private_view(request: Request, ref: str) -> Response:
 
     # CSRF token for retry form (generate new session if missing and CSRF is enabled)
     csrf_token, cookie_name, session_id, new_session = _csrf(request)
-    is_owner, current_user, user_id = _owner_state(request, row)
 
     _ss_private = None if in_progress else _build_score_snapshot_context(row)
     resp = templates.TemplateResponse(
@@ -509,8 +541,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
             "retry_eta": retry_eta,
             "csrf_token": csrf_token,
             # Ownership / gating
-            "is_owner": is_owner,
-            "user_id": user_id,
+            "viewer_role": "owner",
             "email_source_map": _email_source_map(payload),
             # SEO/Sharing
             "page_title": page_title,
@@ -585,8 +616,10 @@ async def _render_public_view(request: Request, ref: str) -> Response:
 
     can_refresh, refresh_eta = _public_refresh_state(row, in_progress)
 
-    # Ownership/permissions (public view)
-    is_owner, current_user, user_id = _owner_state(request, row)
+    # Compute the explicit viewer role from the row's owner, not auth alone.
+    current_user = getattr(request.state, "current_user", None)
+    viewer_role = _compute_viewer_role(current_user, row)
+    claim_eligible, claim_eta = _claim_state(row, claim_min_hours)
 
     _ss_public = None if in_progress else _build_score_snapshot_context(row)
     resp = templates.TemplateResponse(
@@ -608,8 +641,9 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "reason_stopped_label": reason_stopped_label,
             "csrf_token": csrf_token,
             # Ownership / gating
-            "is_owner": is_owner,
-            "user_id": user_id,
+            "viewer_role": viewer_role,
+            "claim_eligible": claim_eligible,
+            "claim_eta": claim_eta,
             "email_source_map": _email_source_map(payload),
             # Provide private id to owners for chat scoping
             "id": row.id,
