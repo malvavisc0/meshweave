@@ -36,16 +36,6 @@
         filter();
     }
 
-    function initScoreBars() {
-        var fills = document.querySelectorAll('.score-line-bar-fill[data-score-width]');
-        fills.forEach(function (fill) {
-            var value = Number(fill.getAttribute('data-score-width') || 0);
-            if (!Number.isFinite(value)) value = 0;
-            value = Math.max(0, Math.min(100, value));
-            fill.style.setProperty('--score-width', value);
-        });
-    }
-
     // ── Status polling for running/pending cards (§19.4) ──
     var _pollTimer = null;
     var _pollDeadline = null;
@@ -125,7 +115,6 @@
     // ── Init ──
     function initDashboard() {
         initDomainFilter();
-        initScoreBars();
         startPolling();
     }
 

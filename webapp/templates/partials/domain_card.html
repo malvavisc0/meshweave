@@ -70,8 +70,6 @@
     ] %}
     {% if score is not none %}
     {% set bar_class = 'metric-aeo' if metric_key == 'aeo' else 'metric-geo' if metric_key == 'geo' else 'metric-aax' %}
-    {% set score_width = score|round(1) %}
-    {% if score_width > 100 %}{% set score_width = 100 %}{% endif %}
     <div class="score-line {{ bar_class }}">
         <div class="score-line-top">
             <span class="score-line-label">{{ metric_key|upper }}</span>
@@ -86,7 +84,7 @@
             </div>
         </div>
         <div class="score-line-bar" aria-hidden="true">
-            <span class="score-line-bar-fill" data-score-width="{{ score_width }}"></span>
+            <span class="score-line-bar-fill {{ score | width_class }}"></span>
         </div>
         <div class="score-line-bottom">
             <span class="score-line-note">

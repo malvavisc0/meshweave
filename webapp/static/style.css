@@ -3634,7 +3634,7 @@ p.card-meta {
 .score-line-bar-fill {
   display: block;
   height: 100%;
-  width: calc(var(--score-width, 0) * 1%);
+  width: 0%;
   border-radius: inherit;
   background: var(--color-primary);
 }
