@@ -318,7 +318,7 @@ async def _generate_aax_summary_task(
         cd_data = await _await_or_none(cd_task)
         hc_dict = _as_dict(hc_data)
         cd_dict = _as_dict(cd_data)
-        p, s = aax_summary_prompt(domain, hc_dict, cd_dict)
+        p, s = aax_summary_prompt(hc_dict, cd_dict)
 
         summary_result = await run_structured_test(AAXSummaryResult, p, s)
         return summary_result.summary

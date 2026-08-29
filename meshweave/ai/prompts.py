@@ -229,7 +229,6 @@ Respond in this JSON format:
 
 
 def aax_summary_prompt(
-    domain: str,
     homepage_comprehension: dict | None = None,
     content_delta: dict | None = None,
 ) -> tuple[str, str]:
@@ -262,29 +261,30 @@ def aax_summary_prompt(
             f"Coherence: {cd.get('coherence', 'unknown')}."
         )
 
-    user = f"""You are an AI diagnostics agent evaluating https://{domain}/.
-
-Homepage comprehension data:
-{hc_text}
-
-Content analysis data:
-{cd_text}
+    user = f"""Based on the provided data, diagnose and evaluate the following.
 
 Write EXACTLY ONE sentence (under 30 words) that describes how well
 AI agents can understand and recommend this website. Be specific —
 mention what the site does and who it's for. Do NOT wrap your summary
 in quotation marks.
 
-Example good outputs:
-- AI agents can clearly identify this site as a zero-trust access
-  platform for IT teams and would confidently recommend it.
-- AI agents struggle to understand this site's purpose due to sparse
-  content and missing structured data.
-
 Respond in this JSON format:
 {{
   "summary": "your one-sentence verdict here"
-}}"""
+}}
+
+Homepage comprehension data:
+
+<data>
+{hc_text}
+</data>
+
+Content analysis data:
+
+<data>
+{cd_text}
+</data>
+"""
     return user, SYSTEM_BASE
 
 
