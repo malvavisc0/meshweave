@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from webapp.db import get_session
 from webapp.models import Crawl, Product
@@ -21,7 +22,9 @@ from webapp.utils.metrics import (
     metrics_content_type,
     result_share_clicks,
 )
-from webapp.utils.url import _get_base_url, normalize_domain
+from webapp.utils.scoring import build_score_snapshot_context
+from webapp.utils.times import ensure_utc
+from webapp.utils.url import _get_base_url
 
 router = APIRouter()
 
@@ -37,67 +40,109 @@ def _build_status_info(row: Crawl) -> dict:
     }
 
 
-def _scrub_emails_recursive(obj):
-    """Recursively remove email-shaped keys from dicts/lists in place."""
-    try:
-        if isinstance(obj, dict):
-            for kk in list(obj.keys()):
-                lk = str(kk).lower()
-                if lk in ("emails", "emails_unique", "emails_by_url", "email"):
-                    obj.pop(kk, None)
-                    continue
-                _scrub_emails_recursive(obj.get(kk))
-        elif isinstance(obj, list):
-            for it in obj:
-                _scrub_emails_recursive(it)
-    except Exception:
-        return
+def _preview_page(payload: dict) -> dict:
+    """Return a minimal {title, description} page object from a payload.
+
+    Site-scope payloads have no top-level ``page``; fall back to the first entry
+    of ``pages`` when present.
+    """
+    page = payload.get("page") or {}
+    if not page:
+        pages = payload.get("pages") or []
+        if isinstance(pages, list) and pages and isinstance(pages[0], dict):
+            page = pages[0].get("page") or {}
+    return {
+        "title": (page.get("title") or "").strip(),
+        "description": (page.get("description") or "").strip(),
+    }
 
 
-def _scrub_public_payload(request: Request, payload: dict) -> dict:
-    """Scrub email addresses from a payload for non-authenticated requests."""
-    try:
-        current_user = getattr(request.state, "current_user", None)
+def _preview_counts(payload: dict) -> dict:
+    """Return deliberately selected high-level counts from a payload."""
+    pages = payload.get("pages")
+    pages_count = (
+        len(pages) if isinstance(pages, list) else (1 if payload.get("page") else 0)
+    )
+    emails = (payload.get("emails") or {}).get("counts") or {}
+    links = payload.get("links") or {}
+    return {
+        "pages": pages_count,
+        "emails": int(emails.get("total_unique") or 0),
+        "internal_links": len(links.get("internal") or []),
+        "external_links": len(links.get("external") or []),
+    }
 
-        if not current_user:
-            em = payload.get("emails") or {}
-            preserved = {
-                "counts": em.get("counts") or {},
-                "unique_count": len(em.get("unique") or []),
-            }
-            # Scrub everything else recursively
-            for kk in list(payload.keys()):
-                if kk == "emails":
-                    continue
-                _scrub_emails_recursive(payload.get(kk))
-            payload["emails"] = preserved
-    except Exception:
-        try:
-            payload.pop("emails", None)
-        except Exception:
-            pass
-    return payload
+
+def _build_public_preview(row: Crawl) -> dict:
+    """Build the curated public-preview object for a succeeded public crawl.
+
+    Returns a brand-new dict built strictly from an allowlist of fields. It never
+    returns the stored ``payload_json`` wholesale and never includes raw emails,
+    email sources, full page objects, recommendation guidance, or the score
+    snapshot.
+    """
+    payload = row.payload_json or {}
+    ss = build_score_snapshot_context(row)
+
+    scores: dict[str, dict[str, object]] = {}
+    if ss is not None:
+        for key, score_key, rating_key in (
+            ("aeo", "aeo_score", "aeo_rating"),
+            ("geo", "geo_score", "geo_rating"),
+            ("aax", "aax_score", "aax_rating"),
+        ):
+            value = ss.get(score_key)
+            if value is not None:
+                scores[key] = {"composite": value, "rating": ss.get(rating_key)}
+
+    risk_summary: dict[str, str | None] = {}
+    finding_count = 0
+    if ss is not None:
+        interp = ss.get("interpretation") or {}
+        risk_summary = {
+            "profile_label": interp.get("profile_label"),
+            "headline": interp.get("headline"),
+            "diagnosis": interp.get("diagnosis"),
+        }
+        finding_count = len(ss.get("recommendations") or [])
+
+    return {
+        "domain": row.domain,
+        "path": row.path,
+        "canonical_url": row.canonical_url,
+        "status": row.status,
+        "page": _preview_page(payload),
+        "scores": scores,
+        "risk_summary": risk_summary,
+        "finding_count": finding_count,
+        "counts": _preview_counts(payload),
+    }
 
 
 @router.get("/api/analysis/public/{key}")
 async def api_public_by_key(request: Request, key: str):
     """Public API for a crawl addressed by short key.
 
-    If the crawl is not yet succeeded, returns a 202 with status information; otherwise
-    returns the stored payload.
+    Returns a curated public preview for every requester (authenticated or not).
+    The preview is built from an explicit allowlist and never includes the stored
+    payload, raw emails, page bodies, recommendation guidance, or the score
+    snapshot. Owners with richer needs use the ownership-protected private API.
 
-    When the requester is not authenticated, email data is scrubbed (no addresses returned).
+    If the crawl is not yet succeeded, returns a 202 with status information.
     """
-    row = _load_public_row_by_key_or_404(key)
-
-    if row.status != "succeeded" or not row.payload_json:
-        return JSONResponse(content=_build_status_info(row), status_code=202)
-
-    payload = row.payload_json or {}
-
-    payload = _scrub_public_payload(request, payload)
-
-    return JSONResponse(content=payload)
+    with get_session() as s:
+        row = (
+            s.query(Crawl)
+            .options(joinedload(Crawl.score_snapshot))
+            .filter(Crawl.key == key, Crawl.visibility == "public")
+            .one_or_none()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if row.status != "succeeded" or not row.payload_json:
+            return JSONResponse(content=_build_status_info(row), status_code=202)
+        preview = _build_public_preview(row)
+    return JSONResponse(content=preview)
 
 
 @router.get("/api/analysis/private/{crawl_id}")
@@ -357,384 +402,34 @@ async def sitemap_xml(request: Request):
     return Response(content=xml, media_type="application/xml")
 
 
-def _load_public_row_by_key_or_404(key: str) -> Crawl:
-    """Load a public Crawl row by short key or raise 404.
-
-    Args:
-        key (str): Short key that identifies a public crawl.
-
-    Returns:
-        Crawl: ORM row for the public crawl.
-
-    Raises:
-        HTTPException: 404 if not found.
-    """
-    with get_session() as s:
-        row = (
-            s.query(Crawl)
-            .filter(Crawl.key == key, Crawl.visibility == "public")
-            .one_or_none()
-        )
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    return row
-
-
-def _parse_payload_or_500(row: Crawl, key: str = "") -> dict:
-    """Parse and return stored JSON payload or raise 500 on parse errors.
-
-    Args:
-        row (Crawl): Crawl row whose payload_json is parsed.
-        key (str, optional): Optional key for audit logging context. Defaults to "".
-
-    Returns:
-        dict: Parsed JSON payload.
-
-    Raises:
-        HTTPException: 500 Internal Server Error if payload_json is invalid.
-    """
-    return row.payload_json or {}
-
-
 @router.get("/api/analysis/public/{key}/summary")
-async def api_public_summary(key: str):
-    """Computed summary for a public crawl by key.
+async def api_public_summary(request: Request, key: str):
+    """Curated public summary for a crawl addressed by short key.
+
+    Returns the same curated public preview as ``GET /api/analysis/public/{key}``
+    so this endpoint is not a broader public payload path. Returns a 202 with
+    status information when the analysis is not yet succeeded.
 
     Args:
+        request (Request): Incoming request (unused; boundary is the same for all).
         key (str): Short key that identifies the public crawl.
-
-    Returns:
-        JSONResponse: Summary object with render/extraction metrics, links, emails,
-        and SEO deltas when ready; or 202 status information when the analysis is
-        not yet complete.
 
     Raises:
         HTTPException: 404 if the crawl is not found.
     """
-    row = _load_public_row_by_key_or_404(key)
-    if row.status != "succeeded" or not row.payload_json:
-        return JSONResponse(content=_build_status_info(row), status_code=202)
-
-    payload = _parse_payload_or_500(row, key=key)
-
-    pages_arr = payload.get("pages") or []
-    page = payload.get("page") or {}
-    if not page:
-        page = _first_page_page(pages_arr)
-    og = page.get("og") or {}
-    metrics = payload.get("metrics") or {}
-    # Derive render metrics strictly from the first page (home "/")
-    render = _first_page_metrics(pages_arr).get("render") or {}
-    extraction = metrics.get("extraction") or {}
-    links = payload.get("links") or {}
-    emails = payload.get("emails") or {}
-
-    base_domain = (extraction.get("base_domain") or row.domain or "").strip()
-    is_site = (
-        payload.get("scope") or getattr(row, "scope", "") or ""
-    ).strip().lower() == "site"
-
-    summary = _build_summary_payload(
-        row=row,
-        page=page,
-        og=og,
-        render=render,
-        extraction=extraction,
-        links=links,
-        emails=emails,
-        base_domain=base_domain,
-        top_external_domains=_top_external_domains(links),
-        seo_deltas=_seo_deltas(page, og, row),
-    )
-    if is_site:
-        summary = _apply_site_block(summary, row, base_domain)
-    return JSONResponse(content=summary)
-
-
-def _first_page_page(pages_arr) -> dict:
-    """Extract the page object from the first page entry, or an empty dict."""
-    try:
-        if (
-            isinstance(pages_arr, list)
-            and len(pages_arr) > 0
-            and isinstance(pages_arr[0], dict)
-        ):
-            return pages_arr[0].get("page") or {}
-    except Exception:
-        return {}
-    return {}
-
-
-def _first_page_metrics(pages_arr) -> dict:
-    """Extract metrics from the first page entry, or an empty dict."""
-    try:
-        return (
-            (pages_arr[0].get("metrics") or {})
-            if (
-                isinstance(pages_arr, list)
-                and len(pages_arr) > 0
-                and isinstance(pages_arr[0], dict)
-            )
-            else {}
+    with get_session() as s:
+        row = (
+            s.query(Crawl)
+            .options(joinedload(Crawl.score_snapshot))
+            .filter(Crawl.key == key, Crawl.visibility == "public")
+            .one_or_none()
         )
-    except Exception:
-        return {}
-
-
-def _safe_str(v) -> str:
-    """Return a stripped string for v, or an empty string."""
-    try:
-        return (v or "").strip()
-    except Exception:
-        return ""
-
-
-def _top_external_domains(links: dict) -> list:
-    """Count and rank external links by normalized domain, highest first."""
-    top_ext: dict[str, int] = {}
-    for u in links.get("external") or []:
-        dom = normalize_domain(u)
-        if not dom:
-            continue
-        top_ext[dom] = top_ext.get(dom, 0) + 1
-    return [
-        {"domain": d, "count": c}
-        for d, c in sorted(top_ext.items(), key=lambda kv: (-kv[1], kv[0]))
-    ]
-
-
-def _seo_deltas(page: dict, og: dict, row: Crawl) -> dict:
-    """Compute SEO mismatch flags and missing og fields for a summary."""
-    t = _safe_str
-    title_mismatch = t(page.get("title")) != t(og.get("title"))
-    description_mismatch = t(page.get("description")) != t(og.get("description"))
-    canonical_mismatch = t(page.get("canonical")) != t(row.canonical_url)
-    og_missing = []
-    for k in ("title", "description", "image", "url"):
-        if not t(og.get(k)):
-            og_missing.append(k)
-    return {
-        "title_mismatch": title_mismatch,
-        "description_mismatch": description_mismatch,
-        "canonical_mismatch": canonical_mismatch,
-        "og_missing": og_missing,
-    }
-
-
-def _build_summary_payload(
-    *,
-    row,
-    page: dict,
-    og: dict,
-    render: dict,
-    extraction: dict,
-    links: dict,
-    emails: dict,
-    base_domain: str,
-    top_external_domains: list,
-    seo_deltas: dict,
-) -> dict:
-    """Build the full summary dict from extracted payload fields."""
-    return {
-        "status": row.status,
-        "domain": row.domain,
-        "path": row.path,
-        "query": row.query,
-        "canonical_url": row.canonical_url,
-        "page": {
-            "title": page.get("title") or "",
-            "description": page.get("description") or "",
-            "og": {
-                "title": og.get("title") or "",
-                "description": og.get("description") or "",
-                "image": og.get("image") or "",
-                "url": og.get("url") or "",
-            },
-            "canonical": page.get("canonical") or "",
-        },
-        "metrics": {
-            "render": {
-                "final_url": render.get("final_url") or "",
-                "response_status": render.get("response_status"),
-                "network_requests": render.get("network_requests"),
-                "content_length": render.get("content_length"),
-                "load_time_ms": render.get("load_time_ms"),
-                "cache_hit": render.get("cache_hit"),
-            },
-            "extraction": {
-                "base_domain": base_domain,
-                "internal_count": extraction.get("internal_count"),
-                "external_count": extraction.get("external_count"),
-                "total_candidates": extraction.get("total_candidates"),
-                "unique_total": extraction.get("unique_total"),
-                "parse_time_ms": extraction.get("parse_time_ms"),
-            },
-        },
-        "emails": {
-            "counts": (emails.get("counts") or {}),
-            "unique_count": len(emails.get("unique") or []),
-        },
-        "links": {
-            "internal_count": len(links.get("internal") or []),
-            "external_count": len(links.get("external") or []),
-            "top_external_domains": top_external_domains,
-        },
-        "seo_deltas": seo_deltas,
-    }
-
-
-def _apply_site_block(summary: dict, row, base_domain: str) -> dict:
-    """For site-scoped crawls, add the site block and drop the page block."""
-    try:
-        summary["site"] = {
-            "domain": row.domain,
-            "canonical_url": row.canonical_url,
-            "base_domain": base_domain,
-        }
-    except Exception:
-        pass
-    try:
-        summary.pop("page", None)
-    except Exception:
-        pass
-    return summary
-
-
-@router.get("/api/analysis/public/{key}/emails.csv", response_class=PlainTextResponse)
-async def api_public_emails_csv(request: Request, key: str):
-    """Return unique emails for a public crawl as CSV.
-
-    Args:
-        request (Request): Incoming request for auth check.
-        key (str): Short key that identifies the public crawl.
-
-    Returns:
-        Response: text/csv attachment with a single 'email' column.
-    """
-    await require_auth(request)
-    row = _load_public_row_by_key_or_404(key)
-    if row.status != "succeeded" or not row.payload_json:
-        return JSONResponse(
-            content={
-                "status": row.status,
-                "detail": "Analysis not ready",
-            },
-            status_code=202,
-        )
-    payload = _parse_payload_or_500(row, key=key)
-    emails = (payload.get("emails") or {}).get("unique") or []
-    buf = StringIO()
-    w = csv.writer(buf)
-    w.writerow(["email"])
-    for e in emails:
-        w.writerow([e])
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="emails-{key}.csv"'},
-    )
-
-
-@router.get("/api/analysis/public/{key}/links.csv", response_class=PlainTextResponse)
-async def api_public_links_csv(key: str):
-    """Return internal/external links for a public crawl as CSV.
-
-    Args:
-        key (str): Short key that identifies the public crawl.
-
-    Returns:
-        Response: text/csv attachment with columns: url, absolute_url, type, domain.
-    """
-    row = _load_public_row_by_key_or_404(key)
-    if row.status != "succeeded" or not row.payload_json:
-        return JSONResponse(
-            content={
-                "status": row.status,
-                "detail": "Analysis not ready",
-            },
-            status_code=202,
-        )
-    payload = _parse_payload_or_500(row, key=key)
-    metrics = payload.get("metrics") or {}
-    extraction = metrics.get("extraction") or {}
-    base_domain = (extraction.get("base_domain") or row.domain or "").strip()
-    links = payload.get("links") or {}
-    internal = links.get("internal") or []
-    external = links.get("external") or []
-
-    buf = StringIO()
-    w = csv.writer(buf)
-    w.writerow(["url", "absolute_url", "type", "domain"])
-
-    # Internal
-    for u in internal:
-        u = (u or "").strip()
-        if not u:
-            continue
-        path = u if u.startswith("/") else f"/{u}"
-        abs_u = f"https://{base_domain}{path}" if base_domain else path
-        w.writerow([u, abs_u, "internal", base_domain])
-
-    # External
-    for u in external:
-        u = (u or "").strip()
-        if not u:
-            continue
-        dom = normalize_domain(u)
-        w.writerow([u, u, "external", dom])
-
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="links-{key}.csv"'},
-    )
-
-
-@router.get(
-    "/api/analysis/public/{key}/top-external-domains.csv",
-    response_class=PlainTextResponse,
-)
-async def api_public_top_domains_csv(key: str):
-    """Return counts of external link domains for a public crawl as CSV.
-
-    Args:
-        key (str): Short key that identifies the public crawl.
-
-    Returns:
-        Response: text/csv attachment with columns: domain, count.
-    """
-    row = _load_public_row_by_key_or_404(key)
-    if row.status != "succeeded" or not row.payload_json:
-        return JSONResponse(
-            content={
-                "status": row.status,
-                "detail": "Analysis not ready",
-            },
-            status_code=202,
-        )
-    payload = _parse_payload_or_500(row, key=key)
-    links = payload.get("links") or {}
-    external = links.get("external") or []
-    counts: dict[str, int] = {}
-    for u in external:
-        dom = normalize_domain(u)
-        if not dom:
-            continue
-        counts[dom] = counts.get(dom, 0) + 1
-
-    buf = StringIO()
-    w = csv.writer(buf)
-    w.writerow(["domain", "count"])
-    for d, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
-        w.writerow([d, c])
-
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="top-external-domains-{key}.csv"'
-        },
-    )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if row.status != "succeeded" or not row.payload_json:
+            return JSONResponse(content=_build_status_info(row), status_code=202)
+        preview = _build_public_preview(row)
+    return JSONResponse(content=preview)
 
 
 @router.post("/api/claim/public/{key}")
@@ -768,7 +463,7 @@ async def claim_public(request: Request, key: str):
         # Fast checks (informative)
         if getattr(row, "user_id", None):
             return JSONResponse(status_code=409, content={"detail": "already_claimed"})
-        created = getattr(row, "created_at", None) or now
+        created = ensure_utc(getattr(row, "created_at", None) or now)
         if created > cutoff:
             return JSONResponse(status_code=400, content={"detail": "ineligible"})
 
@@ -793,41 +488,54 @@ async def claim_public(request: Request, key: str):
 
 @router.get("/api/status/{crawl_id}")
 async def api_status(request: Request, crawl_id: str):
-    """Return status information for a crawl id.
+    """Limited processing status for a crawl id.
+
+    Public analyses expose limited status to any requester. Private analyses are
+    hidden from unauthenticated and non-owner requesters (404) so that the
+    existence of a private UUID is never revealed. A private owner may see their
+    own status. The short key and report URL of a private row are never returned
+    to a non-owner.
 
     Args:
+        request (Request): Incoming request used for the current user + base URL.
         crawl_id (str): UUID of the crawl.
 
     Returns:
-        JSONResponse: Object with crawl status and metadata.
+        JSONResponse: Object with limited crawl status and metadata.
 
     Raises:
-        HTTPException: 404 if not found.
+        HTTPException: 404 if not found, or if a private row is requested by a
+            non-owner.
     """
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
+
+    current_user = getattr(request.state, "current_user", None)
+    is_owner = bool(current_user and row.user_id and row.user_id == current_user.id)
+    if row.visibility != "public" and not is_owner:
+        raise HTTPException(status_code=404, detail="Not found")
+
     base = _get_base_url(request)
-    report_path = (
-        f"/analysis/{row.key}"
-        if (row.visibility == "public" and getattr(row, "key", None))
-        else f"/analysis/{row.id}"
-    )
-    return JSONResponse(
-        content={
-            "id": row.id,
-            "domain": row.domain,
-            "path": row.path,
-            "query": row.query,
-            "visibility": row.visibility,
-            "status": row.status,
-            "error": row.error,
-            "updated_at": (row.updated_at or datetime.now(UTC)).isoformat(),
-            "key": getattr(row, "key", None),
-            "report_url": f"{base}{report_path}",
-        }
-    )
+    if row.visibility == "public" and getattr(row, "key", None):
+        report_url = f"{base}/analysis/{row.key}"
+    else:
+        report_url = f"{base}/analysis/{row.id}"
+
+    content: dict[str, object] = {
+        "id": row.id,
+        "domain": row.domain,
+        "path": row.path,
+        "query": row.query,
+        "status": row.status,
+        "error": row.error,
+        "updated_at": (row.updated_at or datetime.now(UTC)).isoformat(),
+        "report_url": report_url,
+    }
+    if row.visibility == "public":
+        content["key"] = row.key
+    return JSONResponse(content=content)
 
 
 @router.get("/readyz")
@@ -938,9 +646,37 @@ async def list_products(request: Request):
     return {"items": items}
 
 
-@router.post("/api/products")
-async def create_product(request: Request):
-    user = await require_auth(request)
+def _validate_product_fields(
+    name: str, description: str, website: str, contact_info: str
+) -> None:
+    """Validate required product fields; raises 400 on failure.
+
+    Raises:
+        HTTPException: 400 when a required field is missing or contact_info
+            is malformed.
+    """
+    if not name or not description or not website or not contact_info:
+        raise HTTPException(
+            status_code=400,
+            detail="name, description, website and contact_info are required",
+        )
+    if not re.match(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$", contact_info):
+        raise HTTPException(status_code=400, detail="invalid_contact_info")
+
+
+async def _product_fields(request: Request) -> tuple[str, str, str, str]:
+    """Parse and validate product fields from the request body.
+
+    Args:
+        request (Request): Incoming request with the JSON product payload.
+
+    Returns:
+        tuple: (name, description, website, contact_info).
+
+    Raises:
+        HTTPException: 400 when a required field is missing or contact_info
+            is malformed.
+    """
     try:
         data = await request.json()
     except Exception:
@@ -951,13 +687,15 @@ async def create_product(request: Request):
     website = (data.get("website") or "").strip()
     contact_info = (data.get("contact_info") or "").strip()
 
-    if not name or not description or not website or not contact_info:
-        raise HTTPException(
-            status_code=400,
-            detail="name, description, website and contact_info are required",
-        )
-    if not re.match(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$", contact_info):
-        raise HTTPException(status_code=400, detail="invalid_contact_info")
+    _validate_product_fields(name, description, website, contact_info)
+    return name, description, website, contact_info
+
+
+@router.post("/api/products")
+async def create_product(request: Request):
+    """Create a product for the current user."""
+    user = await require_auth(request)
+    name, description, website, contact_info = await _product_fields(request)
 
     with get_session() as s:
         # Enforce unique per user (by model constraint)
@@ -979,24 +717,9 @@ async def create_product(request: Request):
 
 @router.put("/api/products/{product_id}")
 async def update_product(request: Request, product_id: str):
+    """Update a product owned by the current user."""
     user = await require_auth(request)
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-
-    name = (data.get("name") or "").strip()
-    description = (data.get("description") or "").strip()
-    website = (data.get("website") or "").strip()
-    contact_info = (data.get("contact_info") or "").strip()
-
-    if not name or not description or not website or not contact_info:
-        raise HTTPException(
-            status_code=400,
-            detail="name, description, website and contact_info are required",
-        )
-    if not re.match(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$", contact_info):
-        raise HTTPException(status_code=400, detail="invalid_contact_info")
+    name, description, website, contact_info = await _product_fields(request)
 
     now = datetime.now(UTC)
     with get_session() as s:

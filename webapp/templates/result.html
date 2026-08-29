@@ -28,7 +28,7 @@ else 'n/a') ~
 <div class="report-cta report-cta--authed result-bottom-cta">
   <h2>{{ interp.headline if interp else 'Your site is losing ground in AI-mediated discovery' }}</h2>
   <p>These are the automated signals. The fixes that move revenue depend on
-    your stack and content. Let's walk through your prioritized roadmap.</p>
+    your stack and content. Let’s walk through your prioritized roadmap.</p>
   <div class="report-cta-actions">
     <a class="btn btn-expert-email"
       href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ _subject }}&body={{ _body }}">Talk to an Expert &#128172;</a>
@@ -53,7 +53,7 @@ else 'n/a') ~
 <div class="container container-wide analysis-result-page">
 
   {% if in_progress %}
-  <p>Status: {{ status|title }}. {% if aax_pending %}Running AI Analysis...{% else %}Processing...{% endif %}</p>
+  <p>Status: {{ status|title }}. {% if aax_pending %}Running AI Analysis…{% else %}Processing…{% endif %}</p>
 
   <div class="panel mt-1 mb-2" role="status" aria-live="polite">
     <div class="small">
@@ -65,7 +65,8 @@ else 'n/a') ~
       <span>•</span>
       <span>{{ progress.elapsed }}</span>
     </div>
-    <div class="progress">
+    <div class="progress" role="progressbar" aria-label="Crawl progress" aria-valuemin="0" aria-valuemax="100"
+      aria-valuenow="{{ progress.pct }}">
       <div class="progress-bar" style="width: {{ progress.pct }}%"></div>
     </div>
     <div class="small mt-1">
@@ -80,7 +81,7 @@ else 'n/a') ~
 
   {% if status == "running" and request.state.current_user and id %}
   <div class="actions" role="toolbar" aria-label="Job Controls">
-    <form method="post" action="/cancel/{{ id }}" class="inline-block">
+    <form method="post" action="/cancel/{{ id }}" class="inline-block" data-confirm="Cancel this analysis?">
       {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
       <button type="submit" class="btn btn-danger-soft">Cancel</button>
     </form>
@@ -112,7 +113,7 @@ else 'n/a') ~
       </form>
       {% endif %}
       <a class="btn" href="{{ canonical_url or ('https://' ~ domain ~ (path or '/')) }}" target="_blank"
-        rel="noopener">Open Website</a>
+        rel="noopener">Open Website<span class="sr-only"> (opens in new tab)</span></a>
     </div>
   </div>
   {% elif status == "succeeded" and payload %}
@@ -125,19 +126,8 @@ else 'n/a') ~
   {% set og = (pg.og if pg and pg.og else {}) %}
   {% set _audit = (_payload.audit if _payload and _payload.audit else {}) %}
   {% set _entity = (_audit.entity if _audit and _audit.entity else {}) %}
-  {% set _schema_cov = (_audit.schema_coverage if _audit and _audit.schema_coverage else {}) %}
-  {% set _meta = (_audit.meta if _audit and _audit.meta else {}) %}
-  {% set _canonical_issues = (_meta.canonical_issues if _meta else []) %}
-  {% set _og_missing = (summary.seo_deltas.og_missing if summary and summary.seo_deltas else []) %}
   {% set _sameas = (_entity.same_as if _entity else []) %}
-  {% set _schema_pct = (_schema_cov.coverage_pct if _schema_cov else 0) %}
-  {% set _pages_with_schema = (_schema_cov.pages_with_schema if _schema_cov else 0) %}
-  {% set _total_pages = ((_schema_cov.pages_with_schema + _schema_cov.pages_without_schema) if _schema_cov else
-  (_payload.pages|length if _payload.pages else 0)) %}
   {% set _entity_name = (_entity.name if _entity else '') %}
-  {% set _canonical_present = pg.canonical and true or false %}
-  {% set _og_title_matches = og.title and pg.title and og.title == pg.title %}
-  {% set _og_description_matches = og.description and pg.description and og.description == pg.description %}
 
   {# --- Result Hero: site identity + status + actions --- #}
   <section class="panel result-hero" role="region" aria-label="Analyzed Site">
@@ -145,7 +135,7 @@ else 'n/a') ~
       {% if og.image %}
       <div class="result-hero-media">
         <img src="{{ og.image }}" alt="Site preview for {{ pg.title or domain }}" class="result-hero-image"
-          onerror="this.style.display='none'">
+          width="1200" height="630">
       </div>
       {% endif %}
       <div class="result-hero-content">
@@ -245,7 +235,7 @@ else 'n/a') ~
       aria-label="Findings: {{ _total_recs }}. View all findings.">
       <span class="score-strip-label">Findings:</span>
       <span class="score-strip-value">{{ _total_recs }}</span>
-      <span class="score-strip-sub">View all ↓</span>
+      <span class="score-strip-sub">View all <span aria-hidden="true">↓</span></span>
     </a>
   </div>
   {% endif %}
@@ -729,7 +719,7 @@ else 'n/a') ~
           <span class="{% if llms_txt_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
             {% if llms_txt_data.exists %}Active{% else %}Missing{% endif %}
           </span>
-          <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }} bytes{% endif %}</span>
+          <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }}&nbsp;bytes{% endif %}</span>
         </div>
         <div class="aax-crawler-row">
           <span class="aax-crawler-label">llms-full.txt</span>
@@ -775,22 +765,22 @@ else 'n/a') ~
           {% set pg_img_total = pg_metrics.images_total if pg_metrics.images_total else 0 %}
           {% set pg_img_alt = pg_metrics.images_with_alt if pg_metrics.images_with_alt else 0 %}
           <tr>
-            <td><a href="{{ pg_item.url }}" target="_blank" rel="noopener">{{ pg_item.title or pg_item.url }}</a></td>
+            <td><a href="{{ pg_item.url }}" target="_blank" rel="noopener">{{ pg_item.title or pg_item.url }}<span
+                class="sr-only"> (opens in new tab)</span></a></td>
             <td>{{ pg_metrics.words or 0 }}</td>
             <td>{{ pg_headings.h1_count or 0 }}</td>
             <td>{{ pg_headings.depth or 0 }}</td>
             <td>{{ pg_metrics.lists or 0 }}</td>
             <td>{{ pg_metrics.tables or 0 }}</td>
             <td>{% if pg_item.jsonld and pg_item.jsonld|length > 0 %}<span class="cell-flag cell-flag--yes"
-                aria-label="present"></span>{% else %}<span class="cell-flag cell-flag--no"
-                aria-label="absent"></span>{%
+                role="img" aria-label="present"></span>{% else %}<span class="cell-flag cell-flag--no"
+                role="img" aria-label="absent"></span>{%
               endif %}</td>
             <td>{% if pg_img_total > 0 %}{{ ((pg_img_alt / pg_img_total) * 100) | round }}%{% else %}—{% endif %}</td>
             <td>
               {% if pg_item.jsonld %}
-              {% for ld in pg_item.jsonld %}
-              {% if ld.dateModified %}{{ ld.dateModified }}{% elif ld.datePublished %}{{ ld.datePublished }}{% endif %}
-              {% endfor %}
+              {% set _date = schema_date(pg_item.jsonld) %}
+              {% if _date %}{{ _date }}{% else %}—{% endif %}
               {% else %}—{% endif %}
             </td>
           </tr>
@@ -858,11 +848,16 @@ else 'n/a') ~
               <th>Found On</th>
             </tr>
           </thead>
-          <tbody id="leads-tbody">
+          <tbody>
+          {% for _email in payload.emails.unique %}
+          <tr>
+            <td><code>{{ _email }}</code></td>
+            <td class="small">{{ email_source_map.get(_email, '') }}</td>
+          </tr>
+          {% endfor %}
           </tbody>
         </table>
       </div>
-      <div id="leads-empty" class="small mt-1 hidden" role="status" aria-live="polite">No emails detected yet.</div>
       {% else %}
       <div class="small mt-1">
         {% if payload.emails and payload.emails.counts %}
@@ -920,9 +915,6 @@ else 'n/a') ~
   </script>
     {% endif %}
 
-    <!-- Hidden markdown for download only -->
-    <pre id="markdown-content"
-      class="hidden">{% if payload and (payload.scope or 'page') != 'site' %}{{ payload.markdown }}{% endif %}</pre>
     {% else %}
     <p>No data available.</p>
     {% endif %}
@@ -934,33 +926,27 @@ else 'n/a') ~
 <script id="analysis-data" type="application/json">
 {% if in_progress %}
 {{ {
-  'crawl_id': id if id else '',
-  'user_id': user_id if user_id else '',
-  'public_key': key if key else '',
   'logged_in': request.state.current_user and True or False
 } | tojson }}
 {% else %}
 {{ {
-  'base_domain': summary.metrics.extraction.base_domain if summary and summary.metrics and summary.metrics.extraction else '',
-  'emails_unique': payload.emails.unique if payload and payload.emails and payload.emails.unique else [],
-  'emails_by_url': payload.emails.by_url if payload and payload.emails and payload.emails.by_url else {},
-  'emails_sources': payload.emails.sources if payload and payload.emails and payload.emails.sources else [],
-  'links_internal': payload.links.internal if payload and payload.links and payload.links.internal else [],
-  'links_external': payload.links.external if payload and payload.links and payload.links.external else [],
-  'top_external_domains': summary.links.top_external_domains if summary and summary.links and summary.links.top_external_domains else [],
-  'pages': payload.pages if payload and payload.pages else [],
-  'crawl_id': id if id else '',
-  'user_id': user_id if user_id else '',
   'public_key': key if key else '',
   'logged_in': request.state.current_user and True or False,
   'created_at': created_at|default(''),
   'claim_min_hours': claim_min_hours|default(24),
-  'ownerless': ownerless|default(false),
-  'score_snapshot': score_snapshot|default(none)
+  'ownerless': ownerless|default(false)
 } | tojson }}
 {% endif %}
 </script>
-<script src="/static/js/result-analysis.js"></script>
-<script src="/static/js/marked.min.js"></script>
-<script src="/static/js/dompurify.min.js"></script>
+<script>
+  (function () {
+    var img = document.querySelector('.result-hero-image');
+    if (img) {
+      img.addEventListener('error', function () {
+        var media = img.closest('.result-hero-media');
+        if (media) media.style.display = 'none';
+      });
+    }
+  })();
+</script>
 {% endblock %}

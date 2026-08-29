@@ -24,7 +24,7 @@ from webapp.utils.scoring import (
     build_score_snapshot_context as _build_score_snapshot_context,
 )
 from webapp.utils.security import _make_csrf_token
-from webapp.utils.summary import build_summary
+from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
@@ -204,12 +204,15 @@ def _page_title(
     return f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
 
 
-def _meta_description(desc_from_payload: str, payload: dict | None) -> str:
-    """Build the truncated meta description for the page."""
-    meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
-        "markdown", ""
-    )
-    if meta_description and len(meta_description) > 300:
+def _meta_description(desc_from_payload: str) -> str:
+    """Build the truncated meta description for the page.
+
+    Derived from the page description only. It never falls back to payload
+    markdown: the meta description is embedded in the page head for every
+    viewer, and markdown is not part of the public preview allowlist.
+    """
+    meta_description = (desc_from_payload or "").strip()
+    if len(meta_description) > 300:
         meta_description = meta_description[:297] + "..."
     return meta_description
 
@@ -298,12 +301,30 @@ def _reason_stopped_label(payload: dict | None) -> str:
 def _cooldown(updated_at: datetime, min_age_minutes: int) -> tuple[bool, str]:
     """Return (can_proceed, eta_label) based on the row's update cooldown."""
     now = datetime.now(UTC)
-    next_eligible = updated_at + timedelta(minutes=min_age_minutes)
+    next_eligible = ensure_utc(updated_at) + timedelta(minutes=min_age_minutes)
     can_proceed = now >= next_eligible
     eta = (
         f"{int((next_eligible - now).total_seconds() / 60)}m" if not can_proceed else ""
     )
     return can_proceed, eta
+
+
+def _email_source_map(payload: dict | None) -> dict[str, str]:
+    """Map each detected email to the page URL it was found on.
+
+    Derived from ``payload.emails.by_url`` (``{url: [emails]}``). Used to
+    server-render the owner email table's "Found On" column without any
+    client-side lookups.
+    """
+    mapping: dict[str, str] = {}
+    if not payload:
+        return mapping
+    by_url = (payload.get("emails") or {}).get("by_url") or {}
+    for url, addrs in by_url.items():
+        addresses = addrs if isinstance(addrs, list) else [addrs]
+        for addr in addresses:
+            mapping[str(addr)] = (url or "").strip()
+    return mapping
 
 
 def _owner_state(request: Request, row: Crawl) -> tuple:
@@ -385,37 +406,22 @@ async def view_shared_analysis(request: Request, share_key: str):
 
     # Similar to public view, but with Unlisted badge and no claim
     # Compute SEO/meta
-    title_from_payload = ""
-    desc_from_payload = ""
-    try:
-        if payload:
-            pg = payload.get("page") or {}
-            title_from_payload = (pg.get("title") or "").strip()
-            desc_from_payload = (pg.get("description") or "").strip()
-    except Exception:
-        pass
+    title_from_payload, desc_from_payload = _seo_title_desc(payload)
 
     site_name = os.getenv("SITE_NAME", "MeshWeave")
     scope_val = str(getattr(row, "scope", "") or "").strip().lower()
     domain_val = (row.domain or "").strip()
     path_val = (row.path or "").strip() or "/"
-    if scope_val == "site":
-        page_title = f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
-    else:
-        path_or_title = title_from_payload or path_val
-        page_title = f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
-
-    meta_description = (desc_from_payload or "").strip() or (payload or {}).get(
-        "markdown", ""
+    page_title = _page_title(
+        scope_val, domain_val, path_val, title_from_payload, site_name
     )
-    if meta_description and len(meta_description) > 300:
-        meta_description = meta_description[:297] + "..."
+
+    meta_description = _meta_description(desc_from_payload)
 
     abs_page_url = _abs_url(request, f"/analysis/shared/{share_key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
     in_progress = progress is not None
-    summary = None if in_progress else build_summary(row, payload)
     _ss_shared = None if in_progress else _build_score_snapshot_context(row)
 
     resp = templates.TemplateResponse(
@@ -434,12 +440,7 @@ async def view_shared_analysis(request: Request, share_key: str):
             "payload": payload,
             "api_url": f"/api/analysis/private/{row.id}",
             "abs_api_url": _abs_url(request, f"/api/analysis/private/{row.id}"),
-            "summary": summary,
-            "reason_stopped_label": (
-                friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
-                if payload and payload.get("summary")
-                else ""
-            ),
+            "reason_stopped_label": _reason_stopped_label(payload),
             "csrf_token": "",
             "is_owner": False,  # Shared viewers are not owners
             "user_id": "",
@@ -469,135 +470,168 @@ async def view_shared_analysis(request: Request, share_key: str):
     return resp
 
 
-@router.get("/analysis/{ref}", response_class=HTMLResponse)
-async def view_analysis(request: Request, ref: str):
-    """Unified analysis view.
-
-    If 'ref' is a UUID → private analysis (owner-only, claimable if anonymous).
-    Else treat 'ref' as public short key.
-    """
-    # Try UUID → private
-    is_uuid = False
+def _is_uuid(ref: str) -> bool:
+    """Whether the ref parses as a UUID (private analysis id)."""
     try:
         _ = uuid.UUID(ref)
-        is_uuid = True
+        return True
     except Exception:
-        is_uuid = False
+        return False
 
-    if is_uuid:
-        # Private (owner-only)
-        # If this private job was created anonymously (no owner), allow the first authenticated
-        # user reaching this page to claim ownership. Otherwise, enforce ownership.
-        with get_session() as s:
-            db_row = s.get(Crawl, ref, options=[joinedload(Crawl.score_snapshot)])
-            if not db_row:
-                raise HTTPException(status_code=404, detail="Not found")
-            if not getattr(db_row, "user_id", None):
-                user = await require_auth(request)
-                db_row.user_id = user.id
-                s.flush()
-                row = db_row
-            else:
-                row = await require_ownership(request, ref)
 
-        row, progress, aax = _progress_for(row, finalize=True)
-        in_progress = progress is not None
-        payload: dict | None = row.payload_json
-        title_from_payload, desc_from_payload = _seo_title_desc(payload)
-        site_name = os.getenv("SITE_NAME", "MeshWeave")
-        scope_val = _payload_scope(payload, row)
-        domain_val = (row.domain or "").strip()
-        path_val = (row.path or "").strip() or "/"
-        page_title = _page_title(
-            scope_val, domain_val, path_val, title_from_payload, site_name
-        )
-        meta_description = _meta_description(desc_from_payload, payload)
-        abs_page_url = _abs_url(request, f"/analysis/{row.id}")
-        og_image_url = os.getenv("OG_IMAGE_URL") or None
-        # JSON-LD: CreativeWork (LLM-first)
-        if in_progress:
-            json_ld = None
-            summary = None
-            reason_stopped_label = ""
-        else:
-            counts = _json_ld_count(payload)
-            json_ld = _structured_data(
-                str(row.id),
-                row.domain,
-                abs_page_url,
-                row.updated_at,
-                row.status,
-                counts,
+def _analysis_json_ld(
+    row: Crawl, payload: dict | None, in_progress: bool, abs_page_url: str, identifier
+) -> tuple[str | None, str]:
+    """Return (json_ld, reason_stopped_label) for an analysis render."""
+    if in_progress:
+        return None, ""
+    # JSON-LD: CreativeWork (LLM-first)
+    counts = _json_ld_count(payload)
+    json_ld = _structured_data(
+        identifier, row.domain, abs_page_url, row.updated_at, row.status, counts
+    )
+    return json_ld, _reason_stopped_label(payload)
+
+
+def _claim_min_hours() -> int:
+    """Configured minimum age (hours) before a public analysis can be claimed."""
+    try:
+        return int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
+    except Exception:
+        return 24
+
+
+def _public_refresh_state(row: Crawl, in_progress: bool) -> tuple[bool, str]:
+    """Compute (can_refresh, refresh_eta) against the public domain-root cooldown."""
+    # Cooldown for refresh (public domain root); irrelevant mid-crawl
+    can_refresh = False
+    refresh_eta = ""
+    if in_progress:
+        return can_refresh, refresh_eta
+    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+    now = datetime.now(UTC)
+    with get_session() as s:
+        public_root = (
+            s.query(Crawl)
+            .filter(
+                Crawl.domain == row.domain,
+                Crawl.visibility == "public",
+                Crawl.path == "/",
+                Crawl.query == "",
             )
-            summary = build_summary(row, payload)
-            reason_stopped_label = _reason_stopped_label(payload)
-        api_url = f"/api/analysis/private/{row.id}"
-        abs_api_url = _abs_url(request, api_url)
-
-        # Cooldown for retry
-        refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-        can_retry_cooldown, retry_eta = _cooldown(
-            row.updated_at, refresh_min_age_minutes
+            .first()
         )
-        can_retry = (row.status != "running") and can_retry_cooldown
+    if not public_root:
+        return can_refresh, refresh_eta
+    next_refresh_eligible = ensure_utc(public_root.updated_at) + timedelta(
+        minutes=refresh_min_age_minutes
+    )
+    can_refresh = now >= next_refresh_eligible
+    if not can_refresh:
+        refresh_eta = f"{int((next_refresh_eligible - now).total_seconds() / 60)}m"
+    return can_refresh, refresh_eta
 
-        # CSRF token for retry form (generate new session if missing and CSRF is enabled)
-        csrf_token, cookie_name, session_id, new_session = _csrf(request)
-        is_owner, current_user, user_id = _owner_state(request, row)
 
-        _ss_private = None if in_progress else _build_score_snapshot_context(row)
-        resp = templates.TemplateResponse(
-            request,
-            "result.html",
-            {
-                "id": row.id,
-                "domain": row.domain,
-                "path": row.path,
-                "query": row.query,
-                "canonical_url": row.canonical_url,
-                "visibility": row.visibility,
-                "status": row.status,
-                "error": row.error,
-                "payload": payload,
-                "summary": summary,
-                "reason_stopped_label": reason_stopped_label,
-                "api_url": api_url,
-                "abs_api_url": abs_api_url,
-                "can_retry": can_retry,
-                "retry_eta": retry_eta,
-                "csrf_token": csrf_token,
-                # Ownership / gating
-                "is_owner": is_owner,
-                "user_id": user_id,
-                "can_view_leads": is_owner,
-                # SEO/Sharing
-                "page_title": page_title,
-                "meta_description": meta_description,
-                "abs_page_url": abs_page_url,
-                "og_image_url": og_image_url,
-                "site_name": site_name,
-                "json_ld": json_ld,
-                # Owner toggles
-                "listed": row.listed,
-                "share_url": (
-                    f"/analysis/shared/{row.share_key}" if row.share_key else ""
-                ),
-                "can_refresh": can_retry,
-                "refresh_eta": retry_eta,
-                "score_snapshot": _ss_private,
-                "sorted_recommendations": _sorted_recommendations(_ss_private),
-                "factor_extremes": _build_factor_extremes(_ss_private),
-                "aax_pending": aax,
-                "in_progress": in_progress,
-                "progress": progress,
-            },
-        )
-        # Prevent indexing of private results
-        resp.headers["X-Robots-Tag"] = "noindex"
-        _set_session_cookie(resp, new_session, session_id, cookie_name)
-        return resp
+async def _render_private_view(request: Request, ref: str) -> Response:
+    """Render the owner-only private analysis view.
 
-    # Public by short key
+    If this private job was created anonymously (no owner), allow the first
+    authenticated user reaching the page to claim ownership. Otherwise,
+    enforce ownership.
+    """
+    with get_session() as s:
+        db_row = s.get(Crawl, ref, options=[joinedload(Crawl.score_snapshot)])
+        if not db_row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if not getattr(db_row, "user_id", None):
+            user = await require_auth(request)
+            db_row.user_id = user.id
+            s.flush()
+            row = db_row
+        else:
+            row = await require_ownership(request, ref)
+
+    row, progress, aax = _progress_for(row, finalize=True)
+    in_progress = progress is not None
+    payload: dict | None = row.payload_json
+    title_from_payload, desc_from_payload = _seo_title_desc(payload)
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    scope_val = _payload_scope(payload, row)
+    domain_val = (row.domain or "").strip()
+    path_val = (row.path or "").strip() or "/"
+    page_title = _page_title(
+        scope_val, domain_val, path_val, title_from_payload, site_name
+    )
+    meta_description = _meta_description(desc_from_payload)
+    abs_page_url = _abs_url(request, f"/analysis/{row.id}")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+    json_ld, reason_stopped_label = _analysis_json_ld(
+        row, payload, in_progress, abs_page_url, str(row.id)
+    )
+    api_url = f"/api/analysis/private/{row.id}"
+    abs_api_url = _abs_url(request, api_url)
+
+    # Cooldown for retry
+    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+    can_retry_cooldown, retry_eta = _cooldown(row.updated_at, refresh_min_age_minutes)
+    can_retry = (row.status != "running") and can_retry_cooldown
+
+    # CSRF token for retry form (generate new session if missing and CSRF is enabled)
+    csrf_token, cookie_name, session_id, new_session = _csrf(request)
+    is_owner, current_user, user_id = _owner_state(request, row)
+
+    _ss_private = None if in_progress else _build_score_snapshot_context(row)
+    resp = templates.TemplateResponse(
+        request,
+        "result.html",
+        {
+            "id": row.id,
+            "domain": row.domain,
+            "path": row.path,
+            "query": row.query,
+            "canonical_url": row.canonical_url,
+            "visibility": row.visibility,
+            "status": row.status,
+            "error": row.error,
+            "payload": payload,
+            "reason_stopped_label": reason_stopped_label,
+            "api_url": api_url,
+            "abs_api_url": abs_api_url,
+            "can_retry": can_retry,
+            "retry_eta": retry_eta,
+            "csrf_token": csrf_token,
+            # Ownership / gating
+            "is_owner": is_owner,
+            "user_id": user_id,
+            "email_source_map": _email_source_map(payload),
+            # SEO/Sharing
+            "page_title": page_title,
+            "meta_description": meta_description,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
+            "site_name": site_name,
+            "json_ld": json_ld,
+            # Owner toggles
+            "listed": row.listed,
+            "share_url": f"/analysis/shared/{row.share_key}" if row.share_key else "",
+            "can_refresh": can_retry,
+            "refresh_eta": retry_eta,
+            "score_snapshot": _ss_private,
+            "sorted_recommendations": _sorted_recommendations(_ss_private),
+            "factor_extremes": _build_factor_extremes(_ss_private),
+            "aax_pending": aax,
+            "in_progress": in_progress,
+            "progress": progress,
+        },
+    )
+    # Prevent indexing of private results
+    resp.headers["X-Robots-Tag"] = "noindex"
+    _set_session_cookie(resp, new_session, session_id, cookie_name)
+    return resp
+
+
+async def _render_public_view(request: Request, ref: str) -> Response:
+    """Render the public analysis view addressed by short key."""
     with get_session() as s:
         row_result = (
             s.query(Crawl)
@@ -621,28 +655,14 @@ async def view_analysis(request: Request, ref: str):
     page_title = _page_title(
         scope_val, domain_val, path_val, title_from_payload, site_name
     )
-    meta_description = _meta_description(desc_from_payload, payload)
+    meta_description = _meta_description(desc_from_payload)
     abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
-    if in_progress:
-        json_ld = None
-        summary = None
-        reason_stopped_label = ""
-    else:
-        # JSON-LD: CreativeWork (LLM-first)
-        counts = _json_ld_count(payload)
-        json_ld = _structured_data(
-            str(row.key), row.domain, abs_page_url, row.updated_at, row.status, counts
-        )
-        summary = build_summary(row, payload)
-        reason_stopped_label = _reason_stopped_label(payload)
+    json_ld, reason_stopped_label = _analysis_json_ld(
+        row, payload, in_progress, abs_page_url, str(row.key)
+    )
 
-    # CSV/summary endpoints
-    api_summary_url = f"/api/analysis/public/{row.key}/summary"
-    emails_csv_url = f"/api/analysis/public/{row.key}/emails.csv"
-    links_csv_url = f"/api/analysis/public/{row.key}/links.csv"
-    top_domains_csv_url = f"/api/analysis/public/{row.key}/top-external-domains.csv"
     api_url = f"/api/analysis/public/{row.key}"
     abs_api_url = _abs_url(request, api_url)
 
@@ -650,41 +670,13 @@ async def view_analysis(request: Request, ref: str):
     csrf_token, cookie_name, session_id, new_session = _csrf(request)
 
     # Claim eligibility inputs for public view (used by client-side countdown/UI)
-    try:
-        claim_min_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
-    except Exception:
-        claim_min_hours = 24
+    claim_min_hours = _claim_min_hours()
     created_at_iso = (row.created_at or datetime.now(UTC)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     ownerless = getattr(row, "user_id", None) is None
 
-    # Cooldown for refresh (public domain root); irrelevant mid-crawl
-    can_refresh = False
-    refresh_eta = ""
-    if not in_progress:
-        refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-        now = datetime.now(UTC)
-        with get_session() as s:
-            public_root = (
-                s.query(Crawl)
-                .filter(
-                    Crawl.domain == row.domain,
-                    Crawl.visibility == "public",
-                    Crawl.path == "/",
-                    Crawl.query == "",
-                )
-                .first()
-            )
-            if public_root:
-                next_refresh_eligible = public_root.updated_at + timedelta(
-                    minutes=refresh_min_age_minutes
-                )
-                can_refresh = now >= next_refresh_eligible
-                if not can_refresh:
-                    refresh_eta = (
-                        f"{int((next_refresh_eligible - now).total_seconds() / 60)}m"
-                    )
+    can_refresh, refresh_eta = _public_refresh_state(row, in_progress)
 
     # Ownership/permissions (public view)
     is_owner, current_user, user_id = _owner_state(request, row)
@@ -706,17 +698,12 @@ async def view_analysis(request: Request, ref: str):
             "payload": payload,
             "api_url": api_url,
             "abs_api_url": abs_api_url,
-            # Enriched
-            "summary": summary,
             "reason_stopped_label": reason_stopped_label,
-            "api_summary_url": api_summary_url,
-            "emails_csv_url": emails_csv_url,
-            "links_csv_url": links_csv_url,
-            "top_domains_csv_url": top_domains_csv_url,
             "csrf_token": csrf_token,
             # Ownership / gating
             "is_owner": is_owner,
             "user_id": user_id,
+            "email_source_map": _email_source_map(payload),
             # Provide private id to owners for chat scoping
             "id": row.id,
             # SEO/Sharing
@@ -747,6 +734,21 @@ async def view_analysis(request: Request, ref: str):
     if row.status != "succeeded":
         resp.headers["X-Robots-Tag"] = "noindex"
     return resp
+
+
+@router.get("/analysis/{ref}", response_class=HTMLResponse)
+async def view_analysis(request: Request, ref: str):
+    """Unified analysis view.
+
+    If 'ref' is a UUID → private analysis (owner-only, claimable if anonymous).
+    Else treat 'ref' as public short key.
+    """
+    # Try UUID → private
+    if _is_uuid(ref):
+        return await _render_private_view(request, ref)
+
+    # Public by short key
+    return await _render_public_view(request, ref)
 
 
 @router.post("/analysis/{crawl_id}/set-listed")
