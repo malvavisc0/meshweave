@@ -23,7 +23,7 @@ Every page must feel like part of the same operational product system — not a 
 | `--color-primary` | `#00A36C` | Buttons, active states, focus rings, primary CTAs |
 | `--color-primary-hover` | `#008F5D` | Button hover state |
 | `--color-primary-pressed` | `#007A4E` | Button active/pressed state |
-| `--color-on-primary` | `#FFFFFF` | Text on primary-colored backgrounds |
+| `--color-on-primary` | `#FAFAF8` | Text on primary-colored backgrounds |
 
 ### Text / Ink
 | Token | Value | Usage |
@@ -50,7 +50,7 @@ Every page must feel like part of the same operational product system — not a 
 |---|---|---|
 | `--color-inverse-canvas` | `#0d0e0f` | Navbar background, footer background, hero background |
 | `--color-inverse-surface-1` | `#262626` | Elevated surfaces within dark zones |
-| `--color-inverse-ink` | `#FFFFFF` | Primary text in dark zones |
+| `--color-inverse-ink` | `#FAFAF8` | Primary text in dark zones |
 | `--color-inverse-ink-muted` | `#C6C6C6` | Secondary text in dark zones |
 
 ### Dark Zone Specific
@@ -58,7 +58,7 @@ Every page must feel like part of the same operational product system — not a 
 |---|---|---|
 | `--color-dark-bg` | `#0d0e0f` | Alias for inverse-canvas |
 | `--color-dark-surface` | `#262626` | Alias for inverse-surface-1 |
-| `--color-dark-text` | `#FFFFFF` | Alias for inverse-ink |
+| `--color-dark-text` | `#FAFAF8` | Alias for inverse-ink |
 | `--color-dark-text-muted` | `#9DA5AD` | Muted text in dark zones (navbar links, hero badges) |
 | `--color-dark-border` | `#1E1E1E` | Borders in dark zones (neutral, no blue undertone) |
 
@@ -68,7 +68,8 @@ Every page must feel like part of the same operational product system — not a 
 | `--color-semantic-success` | `#24A148` | Pass states, positive trends, good scores |
 | `--color-semantic-warning` | `#F1C21B` | Warning states, moderate scores |
 | `--color-semantic-error` | `#DA1E28` | Fail states, negative trends, error messages |
-| `--color-semantic-info` | `#00A36C` | Same as primary — informational accents |
+| `--color-semantic-serious` | `#E87D1D` | Elevated but non-error findings |
+| `--color-semantic-caution` | `#B17F2A` | Cautionary findings and indicators |
 
 ### Anti-Patterns
 - **Never** use Material Design palette colors (`#4caf50`, `#ff9800`, `#f44336`) — use semantic tokens instead
@@ -81,9 +82,9 @@ Every page must feel like part of the same operational product system — not a 
 ## Typography
 
 ### Typeface
-- **Primary:** IBM Plex Sans (weights: 300, 400, 600)
+- **Primary:** IBM Plex Sans (weights: 300, 400, 500, 600)
 - **Monospace:** IBM Plex Sans (same family, monospace variant) — used for data values, scores, labels
-- **Source:** Self-hosted WOFF2 files (no external CDN)
+- **Source:** System/local font stack; the stylesheet does not load fonts from an external CDN
 
 ### Type Scale
 | Token | Weight | Size | Line-Height | Usage |
@@ -100,6 +101,7 @@ Every page must feel like part of the same operational product system — not a 
 | `--font-caption` | 400 | 12px | 1.33 | Data labels, stat card keys |
 | `--font-label` | 400 | 12px | 1.33 | Uppercase kickers, form labels |
 | `--font-button` | 400 | 14px | 1.29 | Button text |
+| `--font-eyebrow` | 400 | 14px | 1.29 | Small introductory labels |
 
 ### Rules
 - All headings use **600 weight**

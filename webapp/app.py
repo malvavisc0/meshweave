@@ -163,7 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "true",
         "yes",
         "on",
-    } and os.getenv("WEBAPP_READYZ_REQUIRE_AUTH", "false").strip().lower() in {
+    } and os.getenv("WEBAPP_READINESS_REQUIRE_OAUTH", "false").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -171,7 +171,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     }:
         if not (os.getenv("OAUTH_CLIENT_ID") and os.getenv("OAUTH_CLIENT_SECRET")):
             raise RuntimeError(
-                "OAuth config required but missing OAUTH_CLIENT_ID/SECRET (WEBAPP_READYZ_REQUIRE_AUTH=true)"
+                "OAuth config required but missing OAUTH_CLIENT_ID/SECRET (WEBAPP_READINESS_REQUIRE_OAUTH=true)"
             )
 
     # Start background cleanup tasks

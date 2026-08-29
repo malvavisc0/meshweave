@@ -90,7 +90,7 @@ groups:
           severity: critical
         annotations:
           summary: "Webapp readiness probe failing"
-          description: "Readiness probe failing for over 5 minutes. Check DB connectivity and OAuth config policy (WEBAPP_READYZ_REQUIRE_AUTH)."
+          description: "Readiness probe failing for over 5 minutes. Check DB connectivity and OAuth config policy (WEBAPP_READINESS_REQUIRE_OAUTH)."
 
 
 # Scrape/Probing Notes (example)

@@ -17,10 +17,10 @@ What you get out of the box
 
 Endpoints Summary
 - /metrics: Prometheus exposition (Counter, Gauge, Histogram, etc.)
-- /readyz: Readiness probe (DB connectivity; optionally requires OAuth config when WEBAPP_READYZ_REQUIRE_AUTH=true)
+- /readyz: Readiness probe (DB connectivity; optionally requires OAuth config when WEBAPP_READINESS_REQUIRE_OAUTH=true)
 
 Quick reference: scrape targets and names
-- Target: http://markdownify:8080/metrics (when running via docker-compose on the same network)
+- Target: http://meshweave:8080/metrics (when running via docker-compose on the same network)
 - Target: http://localhost:8080/metrics (when running locally without Compose networking)
 - Example metric names you will see:
   - auth_attempts_total{provider, result}
@@ -53,7 +53,7 @@ global:
   evaluation_interval: 30s
 
 scrape_configs:
-  - job_name: "markdownify"
+  - job_name: "meshweave"
     metrics_path: /metrics
     static_configs:
       - targets: ["localhost:8080"]
@@ -75,10 +75,10 @@ global:
   evaluation_interval: 30s
 
 scrape_configs:
-  - job_name: "markdownify"
+  - job_name: "meshweave"
     metrics_path: /metrics
     static_configs:
-      - targets: ["markdownify:8080"]
+      - targets: ["meshweave:8080"]
 
 rule_files:
   - "/etc/prometheus/alerts.prometheus.yml"
@@ -101,7 +101,7 @@ prometheus:
     - magics
 
 Notes
-- This assumes the existing markdownify service runs on the same docker network (magics) exposing :8080.
+- This assumes the `meshweave` service runs on the same Docker network as Prometheus and exposes `:8080`.
 - Visiting http://localhost:9090 targets the Prometheus UI.
 
 Optional: Add Blackbox Exporter to probe /readyz
@@ -135,10 +135,10 @@ blackbox:
 Update prometheus.yml to add a probe job:
 
 scrape_configs:
-  - job_name: "markdownify"
+  - job_name: "meshweave"
     metrics_path: /metrics
     static_configs:
-      - targets: ["markdownify:8080"]
+      - targets: ["meshweave:8080"]
 
   - job_name: "blackbox-readyz"
     metrics_path: /probe
@@ -146,7 +146,7 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-        - http://markdownify:8080/readyz
+        - http://meshweave:8080/readyz
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -166,16 +166,16 @@ Annotate your Service which fronts the FastAPI app:
 apiVersion: v1
 kind: Service
 metadata:
-  name: markdownify
+  name: meshweave
   labels:
-    app: markdownify
+    app: meshweave
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/path: "/metrics"
     prometheus.io/port: "8080"
 spec:
   selector:
-    app: markdownify
+    app: meshweave
   ports:
     - port: 8080
       targetPort: 8080
@@ -188,13 +188,13 @@ Option B: ServiceMonitor (Prometheus Operator / kube-prometheus-stack)
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: markdownify
+  name: meshweave
   labels:
     release: prometheus  # must match your Prometheus Operator/stack selector
 spec:
   selector:
     matchLabels:
-      app: markdownify
+      app: meshweave
   endpoints:
     - port: http            # must match Service port name
       path: /metrics
@@ -233,7 +233,8 @@ spec:
   namespaceSelector:
     matchNames: ["default"]
 
-Then define a Probe CRD or add static targets to query http://markdownify.default.svc:8080/readyz.
+Then define a Probe CRD or add static targets to query
+`http://meshweave.default.svc:8080/readyz`.
 
 -------------------------------------------------------------------------------
 Alerting rules
@@ -281,7 +282,7 @@ Security considerations
 Operational notes
 -------------------------------------------------------------------------------
 
-- Readiness policy: If WEBAPP_AUTH_ENABLED=true and WEBAPP_READYZ_REQUIRE_AUTH=true, /readyz fails unless OAuth client credentials are set. In non-prod environments, leave WEBAPP_READYZ_REQUIRE_AUTH=false to avoid false negatives.
+- Readiness policy: If WEBAPP_AUTH_ENABLED=true and WEBAPP_READINESS_REQUIRE_OAUTH=true, /readyz fails unless OAuth client credentials are set. In non-prod environments, leave WEBAPP_READINESS_REQUIRE_OAUTH=false to avoid false negatives.
 - The app’s Docker Compose healthcheck already probes /readyz every 30s.
 - No Prometheus is bundled by default; this document provides examples to enable it as needed.
 

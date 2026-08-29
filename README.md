@@ -23,6 +23,11 @@ docker compose up -d
 
 The webapp is available at `http://localhost:8080`.
 
+The local Compose configuration enables authentication and requires Google OAuth
+credentials for the `/readyz` healthcheck. Set `OAUTH_CLIENT_ID` and
+`OAUTH_CLIENT_SECRET` in `.env` before starting the stack. AAX also requires the
+LLM settings; set `AAX_ENABLED=false` if AAX is not configured locally.
+
 ### Local development
 
 Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/):
@@ -129,6 +134,13 @@ FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── LightPanda (CDP brows
 | `FOOTER_CONTACT_EMAIL` | Contact email in footer/legal | `hello@meshweaveai.com` |
 
 See `docker-compose.yaml` for the full set of configuration options.
+
+The webapp defaults to 25 pages and depth 1 for authenticated site crawls, and
+10 pages and depth 1 for anonymous crawls. Limits are capped separately by the
+`AUTH_SITE_*` and `ANON_SITE_*` environment variables in Compose. Successful
+crawls run AAX asynchronously when `AAX_ENABLED=true`; the result page displays
+the crawl result while AAX is pending and adds the AAX score when analysis
+finishes.
 
 ## Development
 

@@ -13,8 +13,8 @@ Together, these lenses help teams find the structural weaknesses that reduce AI 
 ## 1) Service Summary
 
 - **Category:** AI visibility audit service
-- **Core job:** Diagnose how AI systems interpret a website and deliver prioritized, expert-guided recommendations
-- **Primary deliverable:** A structured audit report showing where AI visibility breaks down across extraction, authority, and agent usability — with clear guidance on what to fix first
+- **Core job:** Diagnose how AI systems interpret a website and deliver prioritized recommendations, with optional expert guidance
+- **Primary deliverable:** A structured automated analysis showing where AI visibility breaks down across extraction, authority, and agent usability — with clear guidance on what to fix first; expert-guided review is an optional follow-up
 - **Who we serve:**
   - Marketing and growth teams
   - SEO and content teams
@@ -28,7 +28,7 @@ Traditional analytics and SEO tools do not answer the questions teams now care a
 
 - Can AI systems extract trusted answers from our pages?
 - Can LLMs understand what we do and cite us accurately?
-- Can AI agents navigate our site and complete meaningful tasks?
+- Can AI systems identify a credible next step from our site?
 - Which technical or content issues most reduce AI visibility?
 - What should we fix first to improve citation, recommendation, and discoverability?
 
@@ -76,20 +76,22 @@ What it means for the business:
 
 ### C) AAX — AI Agent Experience
 
-AAX measures how well an AI agent can understand, evaluate, and act on a website.
+AAX measures how well an AI system can understand, evaluate, and recommend a
+website from its crawled content and metadata. It is not an interactive browser
+agent and does not test checkout, form submission, or other transactions.
 
 We evaluate signals including:
 
-- Homepage comprehension
-- Meta optimization
-- Cross-page content understanding
-- `llms.txt` availability
-- Email validation and contactability
+- Homepage comprehension from rendered homepage content
+- Metadata optimization from title, description, Open Graph, Twitter, canonical, and JSON-LD data
+- Cross-page content understanding and coherence
+- `llms.txt` and `llms-full.txt` availability
+- Email validation and heuristic contactability
 
 What it means for the business:
 
-- Low AAX suggests agents may struggle to understand the offer, locate the right information, or complete tasks reliably
-- High AAX suggests the site is easier for agents to interpret and use in agentic workflows
+- Low AAX suggests AI systems may struggle to understand the offer, locate the right information, or identify a credible next step
+- High AAX suggests the site is easier for AI systems to interpret and recommend
 
 ## 4) How the Scores Work
 
@@ -127,29 +129,30 @@ flowchart TD
   A[Free analysis request] --> B[MeshWeave analyzes AI visibility signals]
   B --> C[Compute AEO]
   B --> D[Compute GEO]
-  B --> E[Compute AAX]
+  B --> E[Compute AAX when enabled]
   C --> F[Generate factor breakdowns]
   D --> F
   E --> F
-  F --> G[Expert review and prioritized recommendations]
-  G --> H[Deliver audit report]
-  H --> I[Guided consultation on highest-impact fixes]
+  F --> G[Deliver automated report and prioritized recommendations]
+  G --> H[Optional expert review and guided consultation]
 ```
 
 ## 7) Positioning
 
-MeshWeave is not a traditional SEO tool or a self-service dashboard.
+MeshWeave is not a traditional SEO tool. It provides an automated analysis and
+prioritized findings, with optional expert-guided interpretation.
 
-It is an expert-led AI visibility audit service focused on whether machines can:
+It is an AI visibility analysis service focused on whether machines can:
 
 - crawl the site
 - understand the brand and offering
 - extract useful answers
 - trust the entity signals
 - recommend the business in generative interfaces
-- complete actions as an AI agent
+- identify a credible next step from the site
 
-We do the analysis. We interpret the results. We tell you what to fix and why it matters.
+The product performs the automated analysis and explains what to fix and why it
+matters. Expert review is available when teams need additional interpretation.
 
 ## 8) Core Messaging
 

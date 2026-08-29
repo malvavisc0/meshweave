@@ -89,7 +89,7 @@ services:
       MESHWEAVE_CDP_ENDPOINT: http://lightpanda:9222
       SITE_NAME: MeshWeave
       WEBAPP_AUTH_ENABLED: "true"
-      WEBAPP_READYZ_REQUIRE_AUTH: "true"
+      WEBAPP_READINESS_REQUIRE_OAUTH: "true"
       WEBAPP_AUTH_COOKIE_NAME: auth_sid
       WEBAPP_AUTH_COOKIE_SECURE: "true"
       WEBAPP_AUTH_TTL_SECONDS: "86400"

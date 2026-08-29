@@ -848,9 +848,9 @@ async def readyz():
             status_code=503, content={"ok": False, "reason": "db_unavailable"}
         )
     # Auth config when enabled and explicitly required
-    # Set WEBAPP_READYZ_REQUIRE_AUTH=true to enforce this in environments where OAuth must be ready
+    # Set WEBAPP_READINESS_REQUIRE_OAUTH=true to enforce this in environments where OAuth must be ready
     if _env_bool("WEBAPP_AUTH_ENABLED", True) and _env_bool(
-        "WEBAPP_READYZ_REQUIRE_AUTH", False
+        "WEBAPP_READINESS_REQUIRE_OAUTH", False
     ):
         if not (os.getenv("OAUTH_CLIENT_ID") and os.getenv("OAUTH_CLIENT_SECRET")):
             return JSONResponse(
