@@ -51,7 +51,7 @@
         <p class="site-card-kicker">AI visibility snapshot</p>
         <p class="site-card-summary">
             {% if site.aax_score is not none and site.aeo_score is not none and site.aax_score >= 70 and site.aeo_score
-            < 55 %} Your site is easier for AI to navigate than to cite. {% elif site.geo_score is not none and
+            < 55 %} Your offer and next-step signals are stronger than your answers. {% elif site.geo_score is not none and
                 site.geo_score < 50 %} Your brand visibility in generative discovery is still limited. {% elif
                 site.aeo_score is not none and site.aeo_score < 50 %} Answer engines may struggle to extract citable
                 answers from your pages. {% elif available_scores and (available_scores | min)>= 70 %}
