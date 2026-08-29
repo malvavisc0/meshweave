@@ -11,6 +11,7 @@ services:
     hostname: postgres
     restart: unless-stopped
     environment:
+      TZ: ${TZ:-UTC}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: meshweave
@@ -34,6 +35,7 @@ services:
     container_name: meshweave-alembic
     profiles: [ "migration" ]
     environment:
+      TZ: ${TZ:-UTC}
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/meshweave
     volumes:
       - ./alembic:/app/alembic
@@ -55,6 +57,8 @@ services:
       - 6379
     volumes:
       - ./data/redis:/data
+    environment:
+      TZ: ${TZ:-UTC}
     networks:
       - magics
   lightpanda:
@@ -73,6 +77,8 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+    environment:
+      TZ: ${TZ:-UTC}
     networks:
       - magics
   webapp:
@@ -84,6 +90,7 @@ services:
     hostname: meshweave
     restart: always
     environment:
+      TZ: ${TZ:-UTC}
       SITE_BASE_URL: ${SITE_BASE_URL}
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/meshweave
       FOOTER_REPO_URL: ${FOOTER_REPO_URL}
