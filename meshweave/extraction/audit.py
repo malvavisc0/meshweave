@@ -57,32 +57,12 @@ def audit_meta_uniqueness(
     all_pages = _gather_pages(markdowns, start_page_meta)
 
     for url, page in all_pages.items():
-        og = page.get("og", {})
-        og_t = og.get("title", "").strip()
-        og_d = og.get("description", "").strip()
-        if og_t:
-            og_titles.setdefault(og_t, []).append(url)
-        if og_d:
-            og_descs.setdefault(og_d, []).append(url)
-
-        # Canonical mismatch: the canonical URL points somewhere other than
-        # the page itself. Resolve relative canonicals against the page URL,
-        # then compare normalised (host, path) so cross-domain and host-variant
-        # mismatches are caught — not only last-path-segment changes.
-        canonical = page.get("canonical", "").strip()
-        if canonical and url != "(start)":
-            resolved = urljoin(url, canonical)
-            if _canonical_key(resolved) != _canonical_key(url):
-                canonical_issues.append(
-                    {
-                        "page": url,
-                        "canonical": canonical,
-                    }
-                )
+        _collect_og_values(url, page, og_titles, og_descs)
+        _collect_canonical_issue(url, page, canonical_issues)
 
     # Only report groups with 2+ pages sharing the same value
-    dup_titles = {v: urls for v, urls in og_titles.items() if len(urls) > 1}
-    dup_descs = {v: urls for v, urls in og_descs.items() if len(urls) > 1}
+    dup_titles = _duplicates(og_titles)
+    dup_descs = _duplicates(og_descs)
 
     return {
         "duplicate_og_titles": dup_titles,
@@ -92,6 +72,50 @@ def audit_meta_uniqueness(
         "unique_og_descriptions": len(og_descs),
         "total_pages_checked": len(all_pages),
     }
+
+
+def _collect_og_values(
+    url: str,
+    page: dict[str, Any],
+    og_titles: dict[str, list[str]],
+    og_descs: dict[str, list[str]],
+) -> None:
+    """Record the page URL under its OG title/description when present."""
+    og = page.get("og", {})
+    og_t = og.get("title", "").strip()
+    og_d = og.get("description", "").strip()
+    if og_t:
+        og_titles.setdefault(og_t, []).append(url)
+    if og_d:
+        og_descs.setdefault(og_d, []).append(url)
+
+
+def _collect_canonical_issue(
+    url: str,
+    page: dict[str, Any],
+    canonical_issues: list[dict[str, str]],
+) -> None:
+    """Record a canonical mismatch for the page, when one exists."""
+    canonical = page.get("canonical", "").strip()
+    if not canonical or url == "(start)":
+        return
+    # Canonical mismatch: the canonical URL points somewhere other than
+    # the page itself. Resolve relative canonicals against the page URL,
+    # then compare normalised (host, path) so cross-domain and host-variant
+    # mismatches are caught — not only last-path-segment changes.
+    resolved = urljoin(url, canonical)
+    if _canonical_key(resolved) != _canonical_key(url):
+        canonical_issues.append(
+            {
+                "page": url,
+                "canonical": canonical,
+            }
+        )
+
+
+def _duplicates(values: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Value → URLs map restricted to values shared by 2+ pages."""
+    return {v: urls for v, urls in values.items() if len(urls) > 1}
 
 
 def _extract_orgs_recursive(

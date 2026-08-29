@@ -67,31 +67,55 @@ def _get_homepage_markdown(payload: dict) -> str:
     md_dict = payload.get("markdowns") or {}
     domain = payload.get("domain") or ""
 
-    # Try short keys first
+    md = _markdown_from_short_key(md_dict)
+    if md:
+        return md
+
+    md = _markdown_from_domain_key(md_dict, domain)
+    if md:
+        return md
+
+    return _first_markdown(md_dict)
+
+
+def _markdown_from_short_key(md_dict: dict) -> str:
+    """Homepage markdown stored under a short key ("", "/", "homepage")."""
     for key in ("", "/", "homepage"):
         if key in md_dict:
             md = (md_dict[key].get("markdown") or "").strip()
             if md:
                 return md
-
-    # Try full URL keys matching the domain root
-    if domain:
-        for url, data in md_dict.items():
-            # Match https://domain/ or https://domain or http://domain/
-            url_stripped = url.rstrip("/")
-            if url_stripped in (
-                f"https://{domain}",
-                f"http://{domain}",
-                f"https://www.{domain}",
-                f"http://www.{domain}",
-                domain,
-            ):
-                md = (data.get("markdown") or "").strip()
-                if md:
-                    return md
-
-    # Fallback: first entry
-    if md_dict:
-        first = next(iter(md_dict.values()))
-        return (first.get("markdown") or "").strip()
     return ""
+
+
+def _markdown_from_domain_key(md_dict: dict, domain: str) -> str:
+    """Homepage markdown stored under a full URL key matching the domain root."""
+    if not domain:
+        return ""
+    for url, data in md_dict.items():
+        # Match https://domain/ or https://domain or http://domain/
+        url_stripped = url.rstrip("/")
+        if url_stripped in _root_url_keys(domain):
+            md = (data.get("markdown") or "").strip()
+            if md:
+                return md
+    return ""
+
+
+def _root_url_keys(domain: str) -> tuple[str, ...]:
+    """URL keys (sans trailing slash) that denote the domain root."""
+    return (
+        f"https://{domain}",
+        f"http://{domain}",
+        f"https://www.{domain}",
+        f"http://www.{domain}",
+        domain,
+    )
+
+
+def _first_markdown(md_dict: dict) -> str:
+    """Markdown of the first markdowns entry, or '' when there are none."""
+    if not md_dict:
+        return ""
+    first = next(iter(md_dict.values()))
+    return (first.get("markdown") or "").strip()

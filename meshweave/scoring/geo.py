@@ -11,6 +11,7 @@ Each factor takes the crawl payload (dict) and returns a dict with:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 def _same_as_score(count: int) -> int:
@@ -67,18 +68,7 @@ def score_topical_authority(payload: dict) -> dict:
     same_as_score = _same_as_score(same_as_count)
 
     # Content page ratio: pages with >300 words / total pages
-    md_dict = payload.get("markdowns") or {}
-    total_pages = max(len(md_dict), 1) if isinstance(md_dict, dict) else 1
-    content_pages = 0
-    if isinstance(md_dict, dict):
-        for _url, pg in md_dict.items():
-            if isinstance(pg, dict):
-                cm = pg.get("content_metrics") or {}
-                if (cm.get("words") or 0) > 300:
-                    content_pages += 1
-    content_ratio = (
-        min((content_pages / total_pages) * 100, 100) if total_pages > 0 else 0
-    )
+    content_ratio = _content_page_ratio(payload)
 
     score = (
         coverage_pct * 0.3
@@ -103,6 +93,24 @@ def score_topical_authority(payload: dict) -> dict:
             "content_page_ratio": round(content_ratio, 1),
         },
     }
+
+
+def _content_page_ratio(payload: dict) -> float:
+    """Percentage of crawled pages with more than 300 words."""
+    md_dict = payload.get("markdowns") or {}
+    if not isinstance(md_dict, dict):
+        return 0
+    content_pages = sum(1 for pg in md_dict.values() if _md_page_words(pg) > 300)
+    total_pages = max(len(md_dict), 1)
+    return min((content_pages / total_pages) * 100, 100)
+
+
+def _md_page_words(pg: Any) -> int:
+    """Word count from a markdown page entry's content metrics."""
+    if not isinstance(pg, dict):
+        return 0
+    cm = pg.get("content_metrics") or {}
+    return cm.get("words") or 0
 
 
 def score_eeat(payload: dict) -> dict:
@@ -149,38 +157,13 @@ def score_eeat(payload: dict) -> dict:
 def _collect_eeat_signals(payload: dict) -> _EeatSignals:
     """Collect E-E-A-T signals (author/reviews/video/contact/privacy/terms)."""
     all_jsonld = _collect_all_jsonld(payload)
-
-    has_author = False
-    has_reviews = False
-    has_video = False
-    has_contact = False
-    has_privacy = False
-    has_terms = False
-
-    for ld in all_jsonld:
-        ld_type = (ld.get("@type") or "").lower()
-        if "author" in ld or "author" in [k.lower() for k in ld.keys()]:
-            has_author = True
-        if ld_type in ("review", "aggregaterating", "product"):
-            if ld.get("review") or ld.get("aggregateRating"):
-                has_reviews = True
-        if ld_type == "videoobject":
-            has_video = True
-        # ContactPage at top level, or a ContactPoint nested inside
-        # e.g. an Organization or WebPage block.
-        if ld_type in ("contactpage", "contactpoint") or "contactpoint" in (
-            k.lower() for k in ld.keys()
-        ):
-            has_contact = True
+    has_author, has_reviews, has_video, has_contact = _jsonld_eeat_signals(all_jsonld)
 
     # Check URL patterns for privacy/terms/contact
     urls_text = _eeat_urls_text(payload)
-    if "privacy" in urls_text:
-        has_privacy = True
-    if "terms" in urls_text or "legal" in urls_text:
-        has_terms = True
-    if "contact" in urls_text:
-        has_contact = True
+    has_privacy = "privacy" in urls_text
+    has_terms = "terms" in urls_text or "legal" in urls_text
+    has_contact = has_contact or "contact" in urls_text
 
     return _EeatSignals(
         has_author=has_author,
@@ -192,23 +175,73 @@ def _collect_eeat_signals(payload: dict) -> _EeatSignals:
     )
 
 
+def _jsonld_eeat_signals(all_jsonld: list[dict]) -> tuple[bool, bool, bool, bool]:
+    """(author, reviews, video, contact) flags found in JSON-LD blocks."""
+    has_author = any(_ld_has_author(ld) for ld in all_jsonld)
+    has_reviews = any(_ld_has_reviews(ld) for ld in all_jsonld)
+    has_video = any(_ld_is_video(ld) for ld in all_jsonld)
+    has_contact = any(_ld_has_contact(ld) for ld in all_jsonld)
+    return has_author, has_reviews, has_video, has_contact
+
+
+def _ld_has_author(ld: dict) -> bool:
+    """True when the block carries author information at any key."""
+    return "author" in ld or "author" in [k.lower() for k in ld.keys()]
+
+
+def _ld_has_reviews(ld: dict) -> bool:
+    """True when a review-like block carries review content."""
+    ld_type = (ld.get("@type") or "").lower()
+    if ld_type not in ("review", "aggregaterating", "product"):
+        return False
+    return bool(ld.get("review") or ld.get("aggregateRating"))
+
+
+def _ld_is_video(ld: dict) -> bool:
+    """True when the block is a VideoObject."""
+    return (ld.get("@type") or "").lower() == "videoobject"
+
+
+def _ld_has_contact(ld: dict) -> bool:
+    """True when the block is or contains a ContactPoint."""
+    ld_type = (ld.get("@type") or "").lower()
+    # ContactPage at top level, or a ContactPoint nested inside
+    # e.g. an Organization or WebPage block.
+    return ld_type in ("contactpage", "contactpoint") or "contactpoint" in (
+        k.lower() for k in ld.keys()
+    )
+
+
 def _collect_all_jsonld(payload: dict) -> list[dict]:
     """Gather all JSON-LD dicts from the start page and markdown pages."""
     all_jsonld: list[dict] = []
-    page = payload.get("page") or {}
-    for ld in page.get("jsonld") or []:
-        if isinstance(ld, dict):
-            all_jsonld.append(ld)
-
-    md_dict = payload.get("markdowns") or {}
-    if isinstance(md_dict, dict):
-        for _url, pg in md_dict.items():
-            if isinstance(pg, dict):
-                pg_data = pg.get("page") or pg
-                for ld in pg_data.get("jsonld") or []:
-                    if isinstance(ld, dict):
-                        all_jsonld.append(ld)
+    all_jsonld.extend(_start_page_jsonld(payload))
+    all_jsonld.extend(_markdowns_jsonld(payload))
     return all_jsonld
+
+
+def _start_page_jsonld(payload: dict) -> list[dict]:
+    """Dict JSON-LD blocks from the start page."""
+    page = payload.get("page") or {}
+    return _dict_jsonld_blocks(page.get("jsonld") or [])
+
+
+def _markdowns_jsonld(payload: dict) -> list[dict]:
+    """Dict JSON-LD blocks from every markdown page."""
+    md_dict = payload.get("markdowns") or {}
+    if not isinstance(md_dict, dict):
+        return []
+    blocks: list[dict] = []
+    for _url, pg in md_dict.items():
+        if isinstance(pg, dict):
+            pg_data = pg.get("page") or pg
+            blocks.extend(_dict_jsonld_blocks(pg_data.get("jsonld") or []))
+    return blocks
+
+
+def _dict_jsonld_blocks(items: Any) -> list[dict]:
+    """Dict entries from a JSON-LD collection."""
+    return [ld for ld in items if isinstance(ld, dict)]
 
 
 def _eeat_urls_text(payload: dict) -> str:
@@ -228,10 +261,22 @@ def _eeat_points(
     same_as_size: int,
 ) -> int:
     """Compute the additive E-E-A-T point total (capped at 100)."""
-    pts = 0
+    pts = _org_points(pages_with_org, schema_types)
+    pts += _signal_points(signals, same_as_size)
+    return min(100, pts)
+
+
+def _org_points(pages_with_org: int, schema_types: set[str]) -> int:
+    """Points for publishing Organization schema anywhere on the site."""
     lower_types = {t.lower() for t in schema_types}
     if pages_with_org > 0 or "organization" in lower_types or "org" in lower_types:
-        pts += 15
+        return 15
+    return 0
+
+
+def _signal_points(signals: _EeatSignals, same_as_size: int) -> int:
+    """Points for author, reviews, sameAs, contact, legal, and video signals."""
+    pts = 0
     if signals.has_author:
         pts += 15
     if signals.has_reviews:
@@ -244,7 +289,7 @@ def _eeat_points(
         pts += 7
     if signals.has_video:
         pts += 5
-    return min(100, pts)
+    return pts
 
 
 def score_crawl_access(payload: dict) -> dict:
@@ -265,35 +310,63 @@ def score_crawl_access(payload: dict) -> dict:
     llms = payload.get("llms_txt") or {}
 
     # Check if data is meaningful (not just the default placeholder)
+    if _is_placeholder_access(robots, llms):
+        return _placeholder_crawl_access()
+
+    pts = min(100, _crawl_access_points(robots, llms))
+
+    return {
+        "score": float(pts),
+        "weight": 0.15,
+        "auto_measurable": True,
+        "raw": _crawl_access_raw(robots, llms),
+    }
+
+
+def _is_placeholder_access(robots: dict, llms: dict) -> bool:
+    """True when robots/llms data is only the page-scope placeholder."""
     note = robots.get("note") or llms.get("note") or ""
     llms_txt_exists = (llms.get("llms_txt") or {}).get("exists")
-    if (
+    return (
         "not checked" in note.lower()
         and not robots.get("exists")
         and not llms_txt_exists
-    ):
-        return {
-            "score": None,
-            "weight": 0.15,
-            "auto_measurable": True,
-            "raw": None,
-            "note": (
-                "Re-analyze as domain for full accessibility score. "
-                "robots.txt and llms.txt are only collected for "
-                "domain-scope crawls."
-            ),
-        }
+    )
 
+
+def _placeholder_crawl_access() -> dict:
+    """Null-score result used when accessibility data was not collected."""
+    return {
+        "score": None,
+        "weight": 0.15,
+        "auto_measurable": True,
+        "raw": None,
+        "note": (
+            "Re-analyze as domain for full accessibility score. "
+            "robots.txt and llms.txt are only collected for "
+            "domain-scope crawls."
+        ),
+    }
+
+
+def _crawl_access_points(robots: dict, llms: dict) -> int:
+    """Additive crawl-accessibility points (robots, bots, llms.txt, sitemap)."""
     pts = 0
-
     # robots.txt exists: +8
     if robots.get("exists"):
         pts += 8
-
     # Bot access. "partially_restricted" means allowed site-wide except
     # specific paths (e.g. private API endpoints) — the content is still
     # crawlable, so those bots earn half credit.
-    bots = robots.get("bots") or {}
+    pts += _bot_access_points(robots.get("bots") or {})
+    pts += _llms_txt_points(llms)
+    pts += _sitemap_points(robots)
+    return pts
+
+
+def _bot_access_points(bots: dict) -> int:
+    """Points for AI-bot crawl permissions, with half credit when partial."""
+    pts = 0
     for bot_name, expected_pts in [
         ("GPTBot", 15),
         ("ClaudeBot", 12),
@@ -304,52 +377,85 @@ def score_crawl_access(payload: dict) -> dict:
             pts += expected_pts
         elif "partial" in status:
             pts += expected_pts // 2
+    return pts
 
-    # llms.txt exists: +15
+
+def _llms_txt_points(llms: dict) -> int:
+    """Points for llms.txt (+15) and llms-full.txt (+8) presence."""
+    pts = 0
     llms_txt_data = llms.get("llms_txt") or {}
     if llms_txt_data.get("exists"):
         pts += 15
-
-    # llms-full.txt exists: +8
     llms_full_data = llms.get("llms_full_txt") or {}
     if llms_full_data.get("exists"):
         pts += 8
+    return pts
 
-    # XML sitemap: +7
+
+def _sitemap_points(robots: dict) -> int:
+    """Points when robots.txt declares sitemaps."""
     sitemaps = robots.get("sitemaps") or []
-    if sitemaps:
-        pts += 7
+    return 7 if sitemaps else 0
 
-    pts = min(100, pts)
 
+def _crawl_access_raw(robots: dict, llms: dict) -> dict:
+    """Raw diagnostics for the crawl-access factor."""
+    llms_txt_data = llms.get("llms_txt") or {}
+    llms_full_data = llms.get("llms_full_txt") or {}
+    sitemaps = robots.get("sitemaps") or []
     return {
-        "score": float(pts),
-        "weight": 0.15,
-        "auto_measurable": True,
-        "raw": {
-            "robots_exists": robots.get("exists", False),
-            "bot_statuses": dict(bots),
-            "llms_txt_exists": llms_txt_data.get("exists", False),
-            "llms_full_txt_exists": llms_full_data.get("exists", False),
-            "sitemap_count": len(sitemaps),
-        },
+        "robots_exists": robots.get("exists", False),
+        "bot_statuses": dict(robots.get("bots") or {}),
+        "llms_txt_exists": llms_txt_data.get("exists", False),
+        "llms_full_txt_exists": llms_full_data.get("exists", False),
+        "sitemap_count": len(sitemaps),
     }
 
 
 def score_content_depth(payload: dict) -> dict:
     """G5. Content Depth & Originality (10% weight, auto)."""
-    pages = _payload_pages(payload)
-
-    if not pages:
-        # Single page
-        page = payload.get("page") or {}
-        if page:
-            pages = [page]
+    pages = _depth_pages(payload)
 
     total_pages = max(len(pages), 1)
     word_counts = _page_word_counts(pages)
     avg_words = sum(word_counts) / len(word_counts) if word_counts else 0
+    metrics = _code_table_metrics(pages)
 
+    score = _content_depth_score(word_counts, total_pages, avg_words, metrics)
+
+    return {
+        "score": round(score, 1),
+        "weight": 0.10,
+        "auto_measurable": True,
+        "raw": {
+            "avg_words": round(avg_words, 0),
+            "total_pages": total_pages,
+            "content_pages_gt200": sum(1 for w in word_counts if w > 200),
+            "pages_with_code": metrics[0],
+            "pages_with_tables": metrics[1],
+        },
+    }
+
+
+def _depth_pages(payload: dict) -> list[dict]:
+    """Pages to score: markdown/pages view, else the single page."""
+    pages = _payload_pages(payload)
+    if pages:
+        return pages
+    # Single page
+    page = payload.get("page") or {}
+    if page:
+        return [page]
+    return []
+
+
+def _content_depth_score(
+    word_counts: list[int],
+    total_pages: int,
+    avg_words: float,
+    metrics: tuple[int, int],
+) -> float:
+    """Weighted content-depth score from word counts and page metrics."""
     # Average word count score (0-100)
     word_score = _avg_words_score(avg_words)
 
@@ -363,7 +469,6 @@ def score_content_depth(payload: dict) -> dict:
         min((content_pages_gt200 / total_pages) * 100, 100) if total_pages > 0 else 0
     )
 
-    metrics = _code_table_metrics(pages)
     code_bonus = 100 if metrics[0] > 0 else 0
     tables_bonus = 100 if metrics[1] > 0 else 0
 
@@ -374,39 +479,36 @@ def score_content_depth(payload: dict) -> dict:
         + code_bonus * 0.15
         + tables_bonus * 0.10
     )
-    score = min(100.0, score)
-
-    return {
-        "score": round(score, 1),
-        "weight": 0.10,
-        "auto_measurable": True,
-        "raw": {
-            "avg_words": round(avg_words, 0),
-            "total_pages": total_pages,
-            "content_pages_gt200": content_pages_gt200,
-            "pages_with_code": metrics[0],
-            "pages_with_tables": metrics[1],
-        },
-    }
+    return min(100.0, score)
 
 
 def _payload_pages(payload: dict) -> list[dict]:
     """Extract per-page dicts from markdowns/pages in the payload."""
     md_dict = payload.get("markdowns") or {}
-    pages: list[dict] = []
     if isinstance(md_dict, dict) and md_dict:
-        for _url, pg in md_dict.items():
-            if isinstance(pg, dict):
-                pages.append(pg)
-    elif isinstance(md_dict, list):
-        pages = [p for p in md_dict if isinstance(p, dict)]
-    else:
-        # payload["pages"] is a derived view of markdowns; only use it as a
-        # fallback when there are no markdowns, to avoid double-counting.
-        pages_list = payload.get("pages") or []
-        if isinstance(pages_list, list):
-            pages = [p for p in pages_list if isinstance(p, dict)]
+        return _markdowns_dict_pages(md_dict)
+    if isinstance(md_dict, list):
+        return [p for p in md_dict if isinstance(p, dict)]
+    # payload["pages"] is a derived view of markdowns; only use it as a
+    # fallback when there are no markdowns, to avoid double-counting.
+    return _derived_payload_pages(payload)
+
+
+def _markdowns_dict_pages(md_dict: dict) -> list[dict]:
+    """Page dicts from a non-empty markdowns mapping."""
+    pages: list[dict] = []
+    for _url, pg in md_dict.items():
+        if isinstance(pg, dict):
+            pages.append(pg)
     return pages
+
+
+def _derived_payload_pages(payload: dict) -> list[dict]:
+    """Page dicts from the derived payload['pages'] view."""
+    pages_list = payload.get("pages") or []
+    if not isinstance(pages_list, list):
+        return []
+    return [p for p in pages_list if isinstance(p, dict)]
 
 
 def _page_word_counts(pages: list[dict]) -> list[int]:

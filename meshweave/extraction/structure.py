@@ -105,27 +105,38 @@ def _count_images(soup: Any) -> tuple[int, int]:
     for img in soup.find_all("img"):
         if not isinstance(img, Tag):
             continue
-        # Skip decorative / hidden images
-        if img.get("role") == "presentation":
+        if not _is_meaningful_image(img):
             continue
-        if str(img.get("aria-hidden", "")).lower() == "true":
-            continue
-        src = str(img.get("src", ""))
-        # Skip tracking pixels and data-URI placeholders
-        if not src or src.startswith("data:"):
-            continue
-        # Skip 1x1 tracking pixels by dimension
-        w = str(img.get("width", ""))
-        h = str(img.get("height", ""))
-        try:
-            if int(w) <= 1 or int(h) <= 1:
-                continue
-        except ValueError, TypeError:
-            pass
         img_total += 1
         if str(img.get("alt", "")).strip():
             img_with_alt += 1
     return img_total, img_with_alt
+
+
+def _is_meaningful_image(img: Tag) -> bool:
+    """True when an image is content, not decorative or a tracking pixel."""
+    if img.get("role") == "presentation":
+        return False
+    if str(img.get("aria-hidden", "")).lower() == "true":
+        return False
+    src = str(img.get("src", ""))
+    # Skip tracking pixels and data-URI placeholders
+    if not src or src.startswith("data:"):
+        return False
+    # Skip 1x1 tracking pixels by dimension
+    return not _is_tracking_pixel(img)
+
+
+def _is_tracking_pixel(img: Tag) -> bool:
+    """True when width/height attributes are present and <= 1 pixel."""
+    w = str(img.get("width", ""))
+    h = str(img.get("height", ""))
+    try:
+        return int(w) <= 1 or int(h) <= 1
+    except ValueError:
+        return False
+    except TypeError:
+        return False
 
 
 _OPTIMAL_MIN = 40
@@ -140,30 +151,44 @@ def analyze_faq_schema(
     Returns None if no FAQPage schema is present.
     Checks answer word counts against the 40-60 word optimal range.
     """
-    faq_pages = [item for item in jsonld_items if item.get("@type") == "FAQPage"]
-    if not faq_pages:
-        return None
-
-    all_questions: list[dict[str, Any]] = []
-    for faq in faq_pages:
-        for q in faq.get("mainEntity", []):
-            if q.get("@type") != "Question":
-                continue
-            answer = q.get("acceptedAnswer", {})
-            text = answer.get("text", "")
-            word_count = len(text.split())
-            all_questions.append(
-                {
-                    "question": q.get("name", ""),
-                    "answer_words": word_count,
-                    "in_optimal_range": _OPTIMAL_MIN <= word_count <= _OPTIMAL_MAX,
-                }
-            )
-
+    all_questions = _faq_questions(jsonld_items)
     if not all_questions:
         return None
 
     word_counts = [q["answer_words"] for q in all_questions]
+    return _faq_summary(all_questions, word_counts)
+
+
+def _faq_questions(jsonld_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Question detail dicts from every FAQPage schema entry."""
+    questions: list[dict[str, Any]] = []
+    for item in jsonld_items:
+        if item.get("@type") != "FAQPage":
+            continue
+        for q in item.get("mainEntity", []):
+            if q.get("@type") != "Question":
+                continue
+            questions.append(_faq_question(q))
+    return questions
+
+
+def _faq_question(q: dict[str, Any]) -> dict[str, Any]:
+    """Detail dict for one FAQ Question entry."""
+    answer = q.get("acceptedAnswer", {})
+    text = answer.get("text", "")
+    word_count = len(text.split())
+    return {
+        "question": q.get("name", ""),
+        "answer_words": word_count,
+        "in_optimal_range": _OPTIMAL_MIN <= word_count <= _OPTIMAL_MAX,
+    }
+
+
+def _faq_summary(
+    all_questions: list[dict[str, Any]],
+    word_counts: list[int],
+) -> dict[str, Any]:
+    """Aggregate FAQ answer-quality summary across all questions."""
     in_range = sum(1 for q in all_questions if q["in_optimal_range"])
     too_short = sum(1 for w in word_counts if w < _OPTIMAL_MIN)
     too_long = sum(1 for w in word_counts if w > _OPTIMAL_MAX)

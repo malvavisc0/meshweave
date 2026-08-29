@@ -240,6 +240,96 @@ def _build_payload(
     return payload
 
 
+def _start_url(url: str) -> str:
+    """Normalize a domain-only input to an https start URL."""
+    is_domain = looks_like_domain(url)
+    return f"https://{normalize_domain(url)}/" if is_domain else url
+
+
+async def _fetch_robots_and_llms(
+    base: str,
+    session: BrowserSession,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Fetch robots.txt and llms.txt info, logging failures at debug level."""
+    robots_info: dict[str, Any] = {}
+    llms_info: dict[str, Any] = {}
+    try:
+        robots_info = await fetch_robots_info(base, session=session)
+    except Exception:
+        logger.debug(
+            "robots.txt fetch failed for %s",
+            base,
+            exc_info=True,
+        )
+    try:
+        llms_info = await check_llms_txt(base, session=session)
+    except Exception:
+        logger.debug(
+            "llms.txt check failed for %s",
+            base,
+            exc_info=True,
+        )
+    return robots_info, llms_info
+
+
+async def _discover_sitemap_seeds(
+    origin: str,
+    origin_pfx: str,
+    robots_sitemaps: list,
+    session: BrowserSession,
+    max_urls: int,
+) -> tuple[list[str], dict[str, Any]]:
+    """Discover sitemap URLs and filter them into crawlable seeds.
+
+    Returns (seeds, sitemap_meta) where the meta dict carries the
+    discovery bookkeeping fields for the payload.
+    """
+    sitemap_meta: dict[str, Any] = {
+        "used": False,
+        "sources": [],
+        "urls_seeded": 0,
+        "discovered": 0,
+    }
+    seeds: list[str] = []
+    try:
+        discovered, sm_meta = await discover_sitemap_urls(
+            domain_of(origin),
+            session=session,
+            max_urls=max_urls,
+            robots_sitemaps=robots_sitemaps,
+        )
+        sitemap_meta["used"] = bool(discovered)
+        sitemap_meta["discovered"] = len(discovered)
+        sitemap_meta["sources"] = sm_meta.get("sources", [])
+        seeds = _sitemap_seed_urls(discovered, origin, origin_pfx)
+    except Exception:
+        logger.debug(
+            "Sitemap discovery failed for %s",
+            origin,
+            exc_info=True,
+        )
+    return seeds, sitemap_meta
+
+
+def _sitemap_seed_urls(
+    discovered: list,
+    origin: str,
+    origin_pfx: str,
+) -> list[str]:
+    """Normalize discovered sitemap URLs to in-scope content-page seeds."""
+    seeds: list[str] = []
+    for u in discovered:
+        normu = normalize_abs_url(u, origin)
+        if normu and should_follow(normu, origin_pfx):
+            # Crawler directives are infrastructure, not content
+            # pages: seeding them would drag every per-page average
+            # (structure, schema coverage, depth) down.
+            if _INFRA_FILE_RE.search(normu):
+                continue
+            seeds.append(normu)
+    return seeds
+
+
 async def crawl(
     url: str,
     *,
@@ -261,8 +351,7 @@ async def crawl(
     local_cache = _resolve_cache_config(disable_cache, cache_dir)
 
     # 1) Determine start URL
-    is_domain = looks_like_domain(url)
-    start_url = f"https://{normalize_domain(url)}/" if is_domain else url
+    start_url = _start_url(url)
 
     # Origin prefix defines the crawl scope
     origin_pfx: str = ""  # set after rendering
@@ -295,52 +384,16 @@ async def crawl(
         # 4) robots.txt and llms.txt (always check)
         _parts = urlsplit(origin)
         base = f"{_parts.scheme}://{_parts.netloc}"
-        robots_info: dict[str, Any] = {}
-        llms_info: dict[str, Any] = {}
-        try:
-            robots_info = await fetch_robots_info(base, session=session)
-        except Exception:
-            logger.debug(
-                "robots.txt fetch failed for %s",
-                base,
-                exc_info=True,
-            )
-        try:
-            llms_info = await check_llms_txt(base, session=session)
-        except Exception:
-            logger.debug(
-                "llms.txt check failed for %s",
-                base,
-                exc_info=True,
-            )
+        robots_info, llms_info = await _fetch_robots_and_llms(base, session)
 
         # 5) Sitemap discovery (always attempt)
-        sitemap_seeds: list[str] = []
-        try:
-            discovered, sm_meta = await discover_sitemap_urls(
-                domain_of(origin),
-                session=session,
-                max_urls=max(1, crawl_max_pages * 5),
-                robots_sitemaps=robots_info.get("sitemaps", []),
-            )
-            sitemap_meta["used"] = bool(discovered)
-            sitemap_meta["discovered"] = len(discovered)
-            sitemap_meta["sources"] = sm_meta.get("sources", [])
-            for u in discovered:
-                normu = normalize_abs_url(u, origin)
-                if normu and should_follow(normu, origin_pfx):
-                    # Crawler directives are infrastructure, not content
-                    # pages: seeding them would drag every per-page average
-                    # (structure, schema coverage, depth) down.
-                    if _INFRA_FILE_RE.search(normu):
-                        continue
-                    sitemap_seeds.append(normu)
-        except Exception:
-            logger.debug(
-                "Sitemap discovery failed for %s",
-                origin,
-                exc_info=True,
-            )
+        sitemap_seeds, sitemap_meta = await _discover_sitemap_seeds(
+            origin,
+            origin_pfx,
+            robots_info.get("sitemaps", []),
+            session,
+            max(1, crawl_max_pages * 5),
+        )
 
         render_metrics = render_metrics_to_dict(metrics)
 

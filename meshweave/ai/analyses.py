@@ -67,23 +67,17 @@ async def run_aax_analysis(
 
 async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
     """AAX analysis implementation — see ``run_aax_analysis``."""
-    if os.getenv("AAX_ENABLED", "false").lower() != "true":
+    if not _aax_enabled():
         return {"status": "disabled"}
 
     # Extract common data
     page = payload.get("page") or {}
-    domain = payload.get("domain") or ""
     md_dict = payload.get("markdowns") or {}
-
     # Prefer the site's canonical identity (canonical/og:url host) over the
     # crawl host: when a staging host is crawled (e.g. internal docker
     # names), judging contact emails "same-domain" against the crawl host
     # produces false mismatches.
-    canonical = page.get("canonical") or (page.get("og") or {}).get("url") or ""
-    if canonical:
-        canonical_host = urlsplit(canonical).hostname
-        if canonical_host:
-            domain = canonical_host
+    domain = _canonical_domain(page, payload.get("domain") or "")
 
     # Get homepage markdown (reuse preconditions helper)
     from meshweave.ai.preconditions import _get_homepage_markdown
@@ -137,6 +131,20 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
     return result.model_dump(mode="json")
 
 
+def _aax_enabled() -> bool:
+    """True when AAX analyses are enabled via the environment."""
+    return os.getenv("AAX_ENABLED", "false").lower() == "true"
+
+
+def _canonical_domain(page: dict, domain: str) -> str:
+    """The site's canonical host, falling back to the crawl host."""
+    canonical = page.get("canonical") or (page.get("og") or {}).get("url") or ""
+    if not canonical:
+        return domain
+    canonical_host = urlsplit(canonical).hostname
+    return canonical_host or domain
+
+
 def _build_aax_tasks(
     conditions: dict,
     *,
@@ -150,43 +158,78 @@ def _build_aax_tasks(
 
     # Test 2: Homepage Comprehension
     if conditions.get("homepage_comprehension") is None:
-        p, s = homepage_comprehension_prompt(domain, homepage_md)
-        tasks["homepage_comprehension"] = asyncio.create_task(
-            run_structured_test(HomepageComprehensionResult, p, s)
+        tasks["homepage_comprehension"] = _homepage_comprehension_task(
+            domain, homepage_md
         )
 
     # Test 3: Meta Optimization
     if conditions.get("meta_optimization") is None:
-        og = page.get("og") or {}
-        twitter = page.get("twitter") or {}
-        p, s = meta_optimization_prompt(
-            page.get("title") or "",
-            page.get("description") or "",
-            og.get("title") or "",
-            og.get("description") or "",
-            summarize_jsonld(page.get("jsonld") or []),
-            og_image=og.get("image") or "",
-            canonical=page.get("canonical") or "",
-            twitter_image=twitter.get("image") or "",
-        )
-        tasks["meta_optimization"] = asyncio.create_task(
-            run_structured_test(MetaOptimizationResult, p, s)
-        )
+        tasks["meta_optimization"] = _meta_optimization_task(page)
 
     # Test 5: Content Delta
     if conditions.get("content_delta") is None:
-        selected_pages = select_pages_for_analysis(md_dict)
-        if len(selected_pages) >= 2:
-            pages_text = ""
-            for pg in selected_pages:
-                pages_text += f"\n=== {pg['title'].upper()} ({pg['url']}) ===\n"
-                pages_text += pg["markdown"] + "\n"
-            p, s = content_delta_prompt(domain, pages_text)
-            tasks["content_delta"] = asyncio.create_task(
-                run_structured_test(ContentDeltaResult, p, s)
-            )
+        task = _content_delta_task(domain, md_dict)
+        if task:
+            tasks["content_delta"] = task
 
     return tasks
+
+
+def _homepage_comprehension_task(domain: str, homepage_md: str) -> asyncio.Task:
+    """Create the homepage-comprehension structured-test task."""
+    p, s = homepage_comprehension_prompt(domain, homepage_md)
+    return asyncio.create_task(run_structured_test(HomepageComprehensionResult, p, s))
+
+
+def _meta_optimization_task(page: dict) -> asyncio.Task:
+    """Create the meta-optimization structured-test task."""
+    title, description, jsonld_summary, canonical = _meta_page_fields(page)
+    og, twitter = _meta_social_fields(page)
+    p, s = meta_optimization_prompt(
+        title,
+        description,
+        og.get("title") or "",
+        og.get("description") or "",
+        jsonld_summary,
+        og_image=og.get("image") or "",
+        canonical=canonical,
+        twitter_image=twitter.get("image") or "",
+    )
+    return asyncio.create_task(run_structured_test(MetaOptimizationResult, p, s))
+
+
+def _meta_page_fields(page: dict) -> tuple[str, str, str, str]:
+    """Title, description, JSON-LD summary, and canonical for the meta prompt."""
+    return (
+        page.get("title") or "",
+        page.get("description") or "",
+        summarize_jsonld(page.get("jsonld") or []),
+        page.get("canonical") or "",
+    )
+
+
+def _meta_social_fields(page: dict) -> tuple[dict, dict]:
+    """OG and Twitter card meta dicts, defaulted to empty dicts."""
+    return page.get("og") or {}, page.get("twitter") or {}
+
+
+def _content_delta_task(domain: str, md_dict: Any) -> asyncio.Task | None:
+    """Create the content-delta task, or None when too few pages qualify."""
+    selected_pages = select_pages_for_analysis(md_dict)
+    if len(selected_pages) < 2:
+        return None
+    pages_text = _selected_pages_text(selected_pages)
+    p, s = content_delta_prompt(domain, pages_text)
+    return asyncio.create_task(run_structured_test(ContentDeltaResult, p, s))
+
+
+def _selected_pages_text(selected_pages: list[dict]) -> str:
+    """Concatenate selected pages' titles and markdown for the prompt."""
+    pages_text = ""
+    for pg in selected_pages:
+        pages_text += f"\n=== {pg['title'].upper()} ({pg['url']}) ===\n"
+        pages_text += pg["markdown"] + "\n"
+    return pages_text
 
 
 async def _gather_results(
@@ -257,77 +300,32 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
 
     No LLM call — scores based on emails, contact pages, JSON-LD, social links.
     """
-    pts = 0
-    penalties: list[str] = []
+    unique_emails, by_url, sources, md_dict, domain = _contactability_email_data(
+        payload
+    )
+    contact_pages = _contact_page_urls(md_dict)
+
     result = ContactabilityResult()
-
-    # Email data
-    emails = payload.get("emails") or {}
-    unique_emails = emails.get("unique") or []
-    by_url = emails.get("by_url") or {}
-    sources = emails.get("sources") or []
-
-    # Check for emails
-    domain = payload.get("domain") or ""
-    same_domain_emails = [
-        e for e in unique_emails if domain and domain.lower() in e.lower()
-    ]
     result.email_count = len(unique_emails)
 
-    pts, result = _score_email_presence(pts, result, same_domain_emails, unique_emails)
-
-    # mailto links
-    if any("mailto" in _found_as(src) for src in sources):
-        result.has_mailto = True
-        pts += 10
-
-    # Contact/about page
-    md_dict = payload.get("markdowns") or {}
-    contact_pages = [
-        url
-        for url in md_dict
-        if any(p in url.lower() for p in ("/contact", "/about", "/support"))
-    ]
-    if contact_pages:
-        result.has_contact_page = True
-        pts += 10
-
-    # Email on homepage or contact page. emails_by_url is keyed by the full
-    # crawled URL (e.g. "https://example.com/"), so detect the homepage by its
-    # root path rather than a literal "/" key.
+    same_domain_emails = _same_domain_emails(unique_emails, domain)
     homepage_emails = _homepage_emails(by_url)
     contact_emails = _contact_emails(by_url, contact_pages)
-    if homepage_emails or contact_emails:
-        pts += 15
 
-    # JSON-LD ContactPoint
-    all_jsonld = _contactability_jsonld(payload, md_dict)
-    if _has_contactpoint_schema(all_jsonld):
-        result.has_contact_point_schema = True
-        pts += 15
+    pts, result = _score_email_presence(0, result, same_domain_emails, unique_emails)
+    pts, result = _apply_contact_points(
+        pts,
+        result,
+        sources=sources,
+        contact_pages=contact_pages,
+        homepage_emails=homepage_emails,
+        contact_emails=contact_emails,
+    )
+    pts, result = _apply_schema_points(pts, result, payload, md_dict, unique_emails)
 
-    # Social links (sameAs)
-    entity = (payload.get("audit") or {}).get("entity") or {}
-    same_as = entity.get("same_as") or []
-    if same_as:
-        result.has_social_links = True
-        pts += 10
-
-    # Generic contact email
-    generic_prefixes = ("support@", "info@", "hello@", "contact@", "help@")
-    if any(
-        any(e.lower().startswith(p) for p in generic_prefixes) for e in unique_emails
-    ):
-        pts += 10
-
-    # Phone number in JSON-LD
-    if any(ld.get("telephone") or ld.get("phone") for ld in all_jsonld):
-        pts += 10
-
-    # Penalties
     pts, penalties = _contactability_penalties(
         pts,
-        penalties,
+        [],
         unique_emails=unique_emails,
         has_mailto=result.has_mailto,
         by_url=by_url,
@@ -340,6 +338,113 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     result.penalties = penalties
 
     return result
+
+
+def _contactability_email_data(
+    payload: dict,
+) -> tuple[list, dict, list, dict, str]:
+    """(unique emails, by_url, sources, markdowns, domain) from a payload."""
+    emails = payload.get("emails") or {}
+    return (
+        emails.get("unique") or [],
+        emails.get("by_url") or {},
+        emails.get("sources") or [],
+        payload.get("markdowns") or {},
+        payload.get("domain") or "",
+    )
+
+
+def _same_domain_emails(unique_emails: list, domain: str) -> list[str]:
+    """Emails whose address contains the site's domain."""
+    if not domain:
+        return []
+    return [e for e in unique_emails if domain.lower() in e.lower()]
+
+
+def _contact_page_urls(md_dict: dict) -> list[str]:
+    """Crawled URLs that look like contact/about/support pages."""
+    return [
+        url
+        for url in md_dict
+        if any(p in url.lower() for p in ("/contact", "/about", "/support"))
+    ]
+
+
+def _has_mailto_link(sources: list) -> bool:
+    """True when any email source was found via a mailto link."""
+    return any("mailto" in _found_as(src) for src in sources)
+
+
+def _has_generic_contact_email(unique_emails: list) -> bool:
+    """True when any email uses a generic contact prefix."""
+    generic_prefixes = ("support@", "info@", "hello@", "contact@", "help@")
+    return any(
+        any(e.lower().startswith(p) for p in generic_prefixes) for e in unique_emails
+    )
+
+
+def _has_phone_jsonld(all_jsonld: list[dict]) -> bool:
+    """True when any JSON-LD block declares a phone number."""
+    return any(ld.get("telephone") or ld.get("phone") for ld in all_jsonld)
+
+
+def _apply_contact_points(
+    pts: int,
+    result: ContactabilityResult,
+    *,
+    sources: list,
+    contact_pages: list[str],
+    homepage_emails: list[str],
+    contact_emails: list[str],
+) -> tuple[int, ContactabilityResult]:
+    """Award mailto, contact-page, and contact-email points."""
+    if _has_mailto_link(sources):
+        result.has_mailto = True
+        pts += 10
+
+    if contact_pages:
+        result.has_contact_page = True
+        pts += 10
+
+    # Email on homepage or contact page. emails_by_url is keyed by the full
+    # crawled URL (e.g. "https://example.com/"), so detect the homepage by its
+    # root path rather than a literal "/" key.
+    if homepage_emails or contact_emails:
+        pts += 15
+
+    return pts, result
+
+
+def _apply_schema_points(
+    pts: int,
+    result: ContactabilityResult,
+    payload: dict,
+    md_dict: dict,
+    unique_emails: list,
+) -> tuple[int, ContactabilityResult]:
+    """Award JSON-LD ContactPoint, social-link, and generic-email points."""
+    all_jsonld = _contactability_jsonld(payload, md_dict)
+
+    # JSON-LD ContactPoint
+    if _has_contactpoint_schema(all_jsonld):
+        result.has_contact_point_schema = True
+        pts += 15
+
+    # Social links (sameAs)
+    entity = (payload.get("audit") or {}).get("entity") or {}
+    same_as = entity.get("same_as") or []
+    if same_as:
+        result.has_social_links = True
+        pts += 10
+
+    if _has_generic_contact_email(unique_emails):
+        pts += 10
+
+    # Phone number in JSON-LD
+    if _has_phone_jsonld(all_jsonld):
+        pts += 10
+
+    return pts, result
 
 
 def _contactability_penalties(
@@ -427,16 +532,17 @@ def _contactability_jsonld(payload: dict, md_dict: dict) -> list[dict]:
     """All JSON-LD dicts from the start page and markdown pages."""
     all_jsonld: list[dict] = []
     page = payload.get("page") or {}
-    for ld in page.get("jsonld") or []:
-        if isinstance(ld, dict):
-            all_jsonld.append(ld)
+    all_jsonld.extend(_dict_jsonld_blocks(page.get("jsonld") or []))
     for _url, data in md_dict.items():
         if isinstance(data, dict):
             pg = data.get("page") or data
-            for ld in pg.get("jsonld") or []:
-                if isinstance(ld, dict):
-                    all_jsonld.append(ld)
+            all_jsonld.extend(_dict_jsonld_blocks(pg.get("jsonld") or []))
     return all_jsonld
+
+
+def _dict_jsonld_blocks(items: Any) -> list[dict]:
+    """Dict entries from a JSON-LD collection."""
+    return [ld for ld in items if isinstance(ld, dict)]
 
 
 def _has_contactpoint_schema(all_jsonld: list[dict]) -> bool:

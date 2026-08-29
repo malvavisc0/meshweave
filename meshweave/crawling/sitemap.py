@@ -20,6 +20,11 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+def _lname(tag: str) -> str:
+    """Local name of a (possibly namespaced) XML tag."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
 def _parse_sitemap_xml(xml_text: str, base_url: str) -> tuple[list[str], list[str]]:
     """Parse a sitemap XML payload and return (urls, child_sitemaps).
 
@@ -40,25 +45,23 @@ def _parse_sitemap_xml(xml_text: str, base_url: str) -> tuple[list[str], list[st
     except Exception:
         return urls, sitemaps
 
-    def _lname(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1] if "}" in tag else tag
-
     # sitemapindex case: collect sitemap/loc
     if _lname(root.tag) == "sitemapindex":
-        for el in root.iter():
-            if _lname(el.tag) == "loc":
-                loc = (el.text or "").strip()
-                if loc:
-                    sitemaps.append(urljoin(base_url, loc))
-        return urls, sitemaps
+        return urls, _collect_locs(root, base_url)
 
     # urlset (or generic): collect url/loc
+    return _collect_locs(root, base_url), sitemaps
+
+
+def _collect_locs(root: ET.Element, base_url: str) -> list[str]:
+    """Absolute URLs from every ``loc`` element under *root*."""
+    locs: list[str] = []
     for el in root.iter():
         if _lname(el.tag) == "loc":
             loc = (el.text or "").strip()
             if loc:
-                urls.append(urljoin(base_url, loc))
-    return urls, sitemaps
+                locs.append(urljoin(base_url, loc))
+    return locs
 
 
 async def discover_sitemap_urls(
@@ -88,9 +91,7 @@ async def discover_sitemap_urls(
     seen_sitemaps: set[str] = set()
 
     candidates = await _sitemap_candidates(d, robots_sitemaps, session, sources)
-    dedup_candidates = _dedupe(candidates)
-
-    fetch_queue: deque[str] = deque(dedup_candidates)
+    fetch_queue: deque[str] = deque(_dedupe(candidates))
     # Limit nested sitemap traversal
     child_sitemap_limit = 20
 
@@ -100,37 +101,55 @@ async def discover_sitemap_urls(
             continue
         seen_sitemaps.add(sm_url)
 
-        text = await fetch_text(sm_url, session=session, timeout=12.0)
-        meta: dict[str, Any] = {
-            "type": "sitemap",
-            "url": sm_url,
-            "ok": bool(text),
-        }
-        if not text:
-            sources.append(meta)
-            continue
-
-        page_urls, child_sitemaps = _parse_sitemap_xml(text, base_url=sm_url)
-
-        # Enqueue child sitemaps within limit
-        for cs in child_sitemaps:
-            if len(seen_sitemaps) + len(fetch_queue) >= child_sitemap_limit:
-                break
-            if cs not in seen_sitemaps:
-                fetch_queue.append(cs)
-
-        # Collect URLs up to max
-        for u in page_urls:
-            if len(urls) >= max_urls:
-                break
-            urls.append(u)
-
-        meta["ok"] = True
-        meta["urls"] = len(page_urls)
-        meta["children"] = len(child_sitemaps)
+        page_urls, child_sitemaps, meta = await _fetch_sitemap(sm_url, session)
+        _enqueue_child_sitemaps(
+            child_sitemaps, fetch_queue, seen_sitemaps, child_sitemap_limit
+        )
+        _append_capped(urls, page_urls, max_urls)
         sources.append(meta)
 
     return urls, {"sources": sources}
+
+
+async def _fetch_sitemap(
+    sm_url: str,
+    session: BrowserSession,
+) -> tuple[list[str], list[str], dict[str, Any]]:
+    """Fetch and parse one sitemap, returning (urls, children, source meta)."""
+    text = await fetch_text(sm_url, session=session, timeout=12.0)
+    if not text:
+        return [], [], {"type": "sitemap", "url": sm_url, "ok": False}
+    page_urls, child_sitemaps = _parse_sitemap_xml(text, base_url=sm_url)
+    meta: dict[str, Any] = {
+        "type": "sitemap",
+        "url": sm_url,
+        "ok": True,
+        "urls": len(page_urls),
+        "children": len(child_sitemaps),
+    }
+    return page_urls, child_sitemaps, meta
+
+
+def _enqueue_child_sitemaps(
+    child_sitemaps: list[str],
+    fetch_queue: deque[str],
+    seen_sitemaps: set[str],
+    limit: int,
+) -> None:
+    """Queue unseen child sitemaps while staying within *limit*."""
+    for cs in child_sitemaps:
+        if len(seen_sitemaps) + len(fetch_queue) >= limit:
+            break
+        if cs not in seen_sitemaps:
+            fetch_queue.append(cs)
+
+
+def _append_capped(urls: list[str], page_urls: list[str], max_urls: int) -> None:
+    """Append page URLs until *max_urls* is reached."""
+    for u in page_urls:
+        if len(urls) >= max_urls:
+            break
+        urls.append(u)
 
 
 async def _sitemap_candidates(

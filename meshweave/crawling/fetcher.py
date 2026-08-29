@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from html import unescape
 from pathlib import Path
 from typing import Any, Literal, overload
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from playwright.async_api import (
     Browser,
@@ -55,17 +55,38 @@ async def _resolve_cdp_ws_url(endpoint: str) -> str:
     directly bypasses discovery and satisfies the Host check.
     """
     parts = urlsplit(endpoint)
-    if parts.scheme in {"ws", "wss"}:
-        ws_host = parts.hostname or ""
-        try:
-            ipaddress.ip_address(ws_host)
-            return endpoint  # already an IP literal
-        except ValueError:
-            pass  # resolve below
+    direct = _direct_ws_endpoint(endpoint, parts)
+    if direct:
+        return direct
     host = parts.hostname
     if not host:
         raise RuntimeError(f"Invalid MESHWEAVE_CDP_ENDPOINT: {endpoint!r}")
-    port = parts.port or (443 if parts.scheme in {"https", "wss"} else 80)
+    port = _endpoint_port(parts)
+    ip = await _resolve_host_ip(host, port)
+    host_part = f"[{ip}]" if ":" in ip else ip
+    scheme = "wss" if parts.scheme in {"https", "wss"} else "ws"
+    return f"{scheme}://{host_part}:{port}/"
+
+
+def _direct_ws_endpoint(endpoint: str, parts: SplitResult) -> str | None:
+    """Return *endpoint* unchanged when it is already an IP-literal ws:// URL."""
+    if parts.scheme not in {"ws", "wss"}:
+        return None
+    ws_host = parts.hostname or ""
+    try:
+        ipaddress.ip_address(ws_host)
+    except ValueError:
+        return None
+    return endpoint
+
+
+def _endpoint_port(parts: SplitResult) -> int:
+    """Explicit or scheme-default port for an endpoint."""
+    return parts.port or (443 if parts.scheme in {"https", "wss"} else 80)
+
+
+async def _resolve_host_ip(host: str, port: int) -> str:
+    """Resolve *host* to an IP literal, preferring IPv4 results."""
     infos = await asyncio.get_running_loop().getaddrinfo(
         host, port, type=socket.SOCK_STREAM
     )
@@ -75,9 +96,7 @@ async def _resolve_cdp_ws_url(endpoint: str) -> str:
         if family == socket.AF_INET:
             ip = str(sockaddr[0])
             break
-    host_part = f"[{ip}]" if ":" in ip else ip
-    scheme = "wss" if parts.scheme in {"https", "wss"} else "ws"
-    return f"{scheme}://{host_part}:{port}/"
+    return ip
 
 
 logger = logging.getLogger(__name__)

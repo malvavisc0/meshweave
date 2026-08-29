@@ -28,7 +28,28 @@ def score_schema(payload: dict) -> dict:
     has_faq = "FAQPage" in schema_types
     has_howto = "HowTo" in schema_types
     faq_in_optimal = faq.get("answers_in_optimal_range") or 0
+    faq_count = faq.get("count") or 0
 
+    return {
+        "score": _schema_score(
+            coverage_pct, has_faq, has_howto, faq_count, faq_in_optimal
+        ),
+        "weight": 0.20,
+        "auto_measurable": True,
+        "raw": _schema_raw(
+            schema_cov, coverage_pct, schema_types, has_faq, has_howto, faq_in_optimal
+        ),
+    }
+
+
+def _schema_score(
+    coverage_pct: Any,
+    has_faq: bool,
+    has_howto: bool,
+    faq_count: int,
+    faq_in_optimal: int,
+) -> float:
+    """Schema score: coverage plus FAQ/HowTo and FAQ-quality bonuses."""
     # Base score = coverage percentage
     score = float(coverage_pct)
     # Bonuses. The FAQ bonus requires at least half the answers in the
@@ -38,24 +59,28 @@ def score_schema(payload: dict) -> dict:
         score += 10
     if has_howto:
         score += 5
-    faq_count = faq.get("count") or 0
     if faq_count > 0 and faq_in_optimal >= max(1, faq_count // 2):
         score += 10
-    score = min(100.0, score)
+    return min(100.0, score)
 
+
+def _schema_raw(
+    schema_cov: dict,
+    coverage_pct: Any,
+    schema_types: list[str],
+    has_faq: bool,
+    has_howto: bool,
+    faq_in_optimal: int,
+) -> dict:
+    """Raw diagnostics for the schema factor."""
     return {
-        "score": score,
-        "weight": 0.20,
-        "auto_measurable": True,
-        "raw": {
-            "coverage_pct": coverage_pct,
-            "pages_with_schema": schema_cov.get("pages_with_schema") or 0,
-            "pages_without_schema": schema_cov.get("pages_without_schema") or 0,
-            "schema_types": schema_types,
-            "has_faq_schema": has_faq,
-            "has_howto_schema": has_howto,
-            "faq_in_optimal_range": faq_in_optimal,
-        },
+        "coverage_pct": coverage_pct,
+        "pages_with_schema": schema_cov.get("pages_with_schema") or 0,
+        "pages_without_schema": schema_cov.get("pages_without_schema") or 0,
+        "schema_types": schema_types,
+        "has_faq_schema": has_faq,
+        "has_howto_schema": has_howto,
+        "faq_in_optimal_range": faq_in_optimal,
     }
 
 
@@ -105,23 +130,7 @@ def _content_structure_pages(payload: dict) -> list[dict]:
     Site crawls have markdowns (or a derived pages view); page crawls
     have a single page. One source is used to avoid double-counting.
     """
-    pages_data: list[dict] = []
-
-    md_dict = payload.get("markdowns") or {}
-    if isinstance(md_dict, dict):
-        pages_data = [p for p in md_dict.values() if isinstance(p, dict)]
-    elif isinstance(md_dict, list):
-        # Some payloads store pages as a list
-        pages_data = [item for item in md_dict if isinstance(item, dict)]
-    else:
-        # Fall back to payload["pages"] only when there are no markdowns
-        pages_list = payload.get("pages") or []
-        if isinstance(pages_list, list):
-            pages_data = [
-                item for item in pages_list if isinstance(item, dict) and "page" in item
-            ]
-
-    # Single page crawl
+    pages_data = _markdowns_pages(payload)
     if not pages_data:
         single_page = payload.get("page") or {}
         if single_page:
@@ -130,19 +139,57 @@ def _content_structure_pages(payload: dict) -> list[dict]:
     return pages_data
 
 
+def _markdowns_pages(payload: dict) -> list[dict]:
+    """Per-page dicts from markdowns, or the derived pages view."""
+    md_dict = payload.get("markdowns") or {}
+    if isinstance(md_dict, dict):
+        return [p for p in md_dict.values() if isinstance(p, dict)]
+    if isinstance(md_dict, list):
+        # Some payloads store pages as a list
+        return [item for item in md_dict if isinstance(item, dict)]
+    # Fall back to payload["pages"] only when there are no markdowns
+    return _derived_pages(payload)
+
+
+def _derived_pages(payload: dict) -> list[dict]:
+    """Page dicts from the derived payload['pages'] view."""
+    pages_list = payload.get("pages") or []
+    if not isinstance(pages_list, list):
+        return []
+    return [item for item in pages_list if isinstance(item, dict) and "page" in item]
+
+
 def _score_single_page(page_data: dict) -> float:
     """Score a single page's content structure (0-100)."""
     headings, metrics = _page_headings_metrics(page_data)
 
+    pts = _heading_points(headings)
+    pts += _word_structure_points(metrics)
+    pts += _image_alt_points(metrics)
+    pts += _heading_volume_points(headings)
+
+    # faq bonus: +5
+    # (checked at site level, not per-page in this implementation)
+
+    return min(100.0, pts)
+
+
+def _heading_points(headings: dict) -> float:
+    """Points for a single H1 and sufficient heading depth."""
     h1_count = headings.get("h1_count") or len(headings.get("h1") or [])
     depth = headings.get("depth") or 0
-    words = metrics.get("words") or 0
-
     pts = 0.0
     if h1_count == 1:
         pts += 15
     if depth >= 2:
         pts += 15
+    return pts
+
+
+def _word_structure_points(metrics: dict) -> float:
+    """Points for lists, tables, paragraphs, and word volume."""
+    pts = 0.0
+    words = metrics.get("words") or 0
     if (metrics.get("lists") or 0) > 0:
         pts += 10
     if (metrics.get("tables") or 0) > 0:
@@ -151,21 +198,25 @@ def _score_single_page(page_data: dict) -> float:
         pts += 15
     if words >= 1000:
         pts += 10
+    if (metrics.get("paragraphs") or 0) >= 5:
+        pts += 10
+    return pts
 
+
+def _image_alt_points(metrics: dict) -> float:
+    """Points when at least 80% of images carry alt text."""
     img_total = metrics.get("images_total") or 0
     img_alt = metrics.get("images_with_alt") or 0
     if img_total > 0 and (img_alt / img_total) >= 0.8:
-        pts += 10
+        return 10.0
+    return 0.0
 
-    if (metrics.get("paragraphs") or 0) >= 5:
-        pts += 10
+
+def _heading_volume_points(headings: dict) -> float:
+    """Points when the page has at least five headings."""
     if (headings.get("total") or 0) >= 5:
-        pts += 10
-
-    # faq bonus: +5
-    # (checked at site level, not per-page in this implementation)
-
-    return min(100.0, pts)
+        return 10.0
+    return 0.0
 
 
 def _page_headings_metrics(page_data: dict) -> tuple[dict, dict]:
@@ -247,24 +298,38 @@ def _collect_date_jsonld(
     """One JSON-LD list per unique page, deduplicated by URL."""
     pages_jsonld: list[list[dict]] = []
     seen_urls: set[str] = set()
-    start_ld = [ld for ld in page.get("jsonld") or [] if isinstance(ld, dict)]
+    start_ld = _dict_jsonld(page.get("jsonld") or [])
     if start_ld:
         pages_jsonld.append(start_ld)
         if origin_url:
             seen_urls.add(origin_url)
     if isinstance(md_dict, dict):
-        for url, md_data in md_dict.items():
-            if not isinstance(md_data, dict):
-                continue
-            key = str(url).rstrip("/")
-            if key in seen_urls:
-                continue
-            pg = md_data.get("page") or {}
-            lds = [ld for ld in pg.get("jsonld") or [] if isinstance(ld, dict)]
-            if lds:
-                pages_jsonld.append(lds)
-                seen_urls.add(key)
+        _append_markdown_jsonld(pages_jsonld, seen_urls, md_dict)
     return pages_jsonld
+
+
+def _dict_jsonld(items: Any) -> list[dict]:
+    """Dict entries from a JSON-LD collection."""
+    return [ld for ld in items if isinstance(ld, dict)]
+
+
+def _append_markdown_jsonld(
+    pages_jsonld: list[list[dict]],
+    seen_urls: set[str],
+    md_dict: dict,
+) -> None:
+    """Append each unique markdown page's JSON-LD, deduplicated by URL."""
+    for url, md_data in md_dict.items():
+        if not isinstance(md_data, dict):
+            continue
+        key = str(url).rstrip("/")
+        if key in seen_urls:
+            continue
+        pg = md_data.get("page") or {}
+        lds = _dict_jsonld(pg.get("jsonld") or [])
+        if lds:
+            pages_jsonld.append(lds)
+            seen_urls.add(key)
 
 
 def _extract_dates(pages_jsonld: list[list[dict]]) -> tuple[list[datetime], int]:

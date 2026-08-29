@@ -2,7 +2,7 @@
 
 import time
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import SplitResult, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -86,7 +86,18 @@ def _classify_link(
     raw = str(href).strip()
     # Remove query/fragment
     parts = urlsplit(urljoin(base_url, raw))
-    absu = urlunsplit(
+    absu = _normalized_abs_url(parts)
+    link_domain = normalize_domain(parts.netloc or "")
+
+    if base_domain and link_domain == base_domain:
+        _append_internal(parts, seen, internal)
+    else:
+        _append_external(absu, link_domain, ignored_domains, seen, external)
+
+
+def _normalized_abs_url(parts: SplitResult) -> str:
+    """Absolute URL with lowercase scheme/host, default path, no query/fragment."""
+    return urlunsplit(
         (
             parts.scheme.lower(),
             (parts.netloc or "").lower(),
@@ -95,24 +106,43 @@ def _classify_link(
             "",
         )
     )
-    link_domain = normalize_domain(parts.netloc or "")
 
-    if base_domain and link_domain == base_domain:
-        path = parts.path or "/"
-        if not path.startswith("/"):
-            path = "/" + path
-        if len(path) > 1 and path.endswith("/"):
-            path = path[:-1]
-        if path == "/" or should_ignore_path(path):
-            return
-        key = ("int", path)
-        if key not in seen:
-            seen.add(key)
-            internal.append(path)
-    else:
-        if is_ignored_domain(link_domain, ignored_domains):
-            return
-        key = ("ext", absu)
-        if key not in seen:
-            seen.add(key)
-            external.append(absu)
+
+def _append_internal(
+    parts: SplitResult,
+    seen: set[tuple[str, str]],
+    internal: list[str],
+) -> None:
+    """Record the internal path when it is crawl-worthy and unseen."""
+    path = _normalized_path(parts.path or "/")
+    if path == "/" or should_ignore_path(path):
+        return
+    key = ("int", path)
+    if key not in seen:
+        seen.add(key)
+        internal.append(path)
+
+
+def _normalized_path(path: str) -> str:
+    """Leading-slashed path without a trailing slash (except the root)."""
+    if not path.startswith("/"):
+        path = "/" + path
+    if len(path) > 1 and path.endswith("/"):
+        path = path[:-1]
+    return path
+
+
+def _append_external(
+    absu: str,
+    link_domain: str,
+    ignored_domains: set[str] | None,
+    seen: set[tuple[str, str]],
+    external: list[str],
+) -> None:
+    """Record the external URL when its domain is not ignored and unseen."""
+    if is_ignored_domain(link_domain, ignored_domains):
+        return
+    key = ("ext", absu)
+    if key not in seen:
+        seen.add(key)
+        external.append(absu)

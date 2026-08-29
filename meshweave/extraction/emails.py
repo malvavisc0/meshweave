@@ -49,25 +49,43 @@ def _invalid_local(local: str) -> bool:
 def _invalid_domain(parts: list[str]) -> bool:
     """True when the domain violates a structural rule."""
     domain = ".".join(parts)
-    if domain[0] in ".-" or domain[-1] in ".-" or ".." in domain:
+    if _malformed_domain_edges(domain):
         return True
-    if any(len(p) < 2 for p in parts[-2:]):
+    if _weak_label_lengths(parts):
         return True
     # Reject IP-address domains (e.g. resource@192.168.1.210.when)
     # A valid domain TLD must not be purely numeric.
     if parts[-1].isdigit():
         return True
-    # Reject domains embedding an IP address (4+ consecutive numeric segments)
-    for i in range(len(parts) - 3):
-        if all(parts[i + j].isdigit() for j in range(4)):
-            return True
+    if _embeds_ip_address(parts):
+        return True
     # Reject domains with implausibly long TLDs
     if len(parts[-1]) > 8:
         return True
     # Reject blocked domains
-    if domain in BLOCKED_DOMAINS or ".".join(parts[-2:]) in BLOCKED_DOMAINS:
-        return True
-    return False
+    return _is_blocked_domain(domain, parts)
+
+
+def _malformed_domain_edges(domain: str) -> bool:
+    """True when the domain starts/ends with a dot or dash, or contains '..'."""
+    return domain[0] in ".-" or domain[-1] in ".-" or ".." in domain
+
+
+def _weak_label_lengths(parts: list[str]) -> bool:
+    """True when either of the last two labels is shorter than 2 chars."""
+    return any(len(p) < 2 for p in parts[-2:])
+
+
+def _embeds_ip_address(parts: list[str]) -> bool:
+    """True when 4+ consecutive numeric segments embed an IP address."""
+    return any(
+        all(parts[i + j].isdigit() for j in range(4)) for i in range(len(parts) - 3)
+    )
+
+
+def _is_blocked_domain(domain: str, parts: list[str]) -> bool:
+    """True when the domain or its registrable part is blocked."""
+    return domain in BLOCKED_DOMAINS or ".".join(parts[-2:]) in BLOCKED_DOMAINS
 
 
 def _deobfuscate_text(text: str) -> str:

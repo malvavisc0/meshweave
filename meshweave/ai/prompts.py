@@ -12,6 +12,7 @@ Test mapping (non-LLM tests like Contactability are not included here):
 from __future__ import annotations
 
 import json
+from typing import Any
 
 CHARS_PER_TOKEN = 4  # rough chars-per-token estimate for budget calculations
 
@@ -316,26 +317,36 @@ def _maybe_features(obj: dict, summary: dict) -> None:
 
 
 def _maybe_main_entity(obj: dict, summary: dict) -> None:
+    """Summarize a mainEntity list (e.g. FAQ Q&A) into the summary."""
     main_entity = obj.get("mainEntity")
-    if isinstance(main_entity, list) and main_entity:
-        qa_pairs = []
-        for e in main_entity:
-            if not isinstance(e, dict) or not e.get("name"):
-                continue
-            answer = e.get("acceptedAnswer") or {}
-            text = answer.get("text") or ""
-            # First sentence of the answer, capped — enough for the
-            # meta test to see real Q&A content without dumping the
-            # full FAQ into the prompt.
-            snippet = text.split(". ")[0][:120] if text else ""
-            qa_pairs.append(
-                {"question": str(e["name"]), "answer_excerpt": snippet}
-                if snippet
-                else {"question": str(e["name"])}
-            )
-        if qa_pairs:
-            summary["mainEntity_count"] = len(main_entity)
-            summary["mainEntity_qa"] = qa_pairs[:6]
+    if not isinstance(main_entity, list) or not main_entity:
+        return
+    qa_pairs = [_question_qa_pair(e) for e in main_entity if _is_question_entry(e)]
+    if qa_pairs:
+        summary["mainEntity_count"] = len(main_entity)
+        summary["mainEntity_qa"] = qa_pairs[:6]
+
+
+def _is_question_entry(e: Any) -> bool:
+    """True when a mainEntity entry is a named Question dict."""
+    return isinstance(e, dict) and bool(e.get("name"))
+
+
+def _question_qa_pair(e: dict) -> dict:
+    """Build the Q&A excerpt pair for one mainEntity question entry."""
+    answer = e.get("acceptedAnswer") or {}
+    text = answer.get("text") or ""
+    snippet = _answer_snippet(text)
+    if snippet:
+        return {"question": str(e["name"]), "answer_excerpt": snippet}
+    return {"question": str(e["name"])}
+
+
+def _answer_snippet(text: str) -> str:
+    """First sentence of an accepted answer, capped at 120 characters."""
+    # Enough for the meta test to see real Q&A content without dumping
+    # the full FAQ into the prompt.
+    return text.split(". ")[0][:120] if text else ""
 
 
 _FLAT_JSONLD_KEYS: tuple[str, ...] = (
