@@ -78,7 +78,7 @@ class ProductInfo(BaseModel):
 class PricingInfo(BaseModel):
     """Pricing model extracted from multi-page content."""
 
-    model: str = ""
+    model: str | None = None
     tiers: list[str] = Field(default_factory=list)
 
 
@@ -135,7 +135,8 @@ class EmailValidationResult(BaseModel):
     """LLM-validated email contacts."""
 
     valid_contacts: list[ValidatedEmail] = Field(default_factory=list)
-    best_contact: str = ""
+    rejected_contacts: list[ValidatedEmail] = Field(default_factory=list)
+    best_contact: str | None = None
     confidence: str = Field(
         default="low",
         description="high | medium | low",
