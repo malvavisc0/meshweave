@@ -37,3 +37,28 @@ def friendly_reason(code: str) -> str:
         return friendly
     # Fallback: title-case unknown codes, replace underscores with spaces
     return re.sub(r"_+", " ", code.strip()).title()
+
+
+# Public-safe labels for crawl error codes shown to non-owner viewers.
+PUBLIC_ERROR_LABELS: dict[str, str] = {
+    "time_budget_exceeded": "Time budget reached",
+    "cancelled_by_user": "Cancelled by the owner",
+}
+
+
+def public_error_label(error: str | None) -> str:
+    """Return a public-safe label for a stored crawl error string.
+
+    Known error codes map to fixed labels; anything else (including raw
+    exception text) collapses to a generic label so internal details are
+    never surfaced to non-owners.
+
+    Args:
+        error: Stored crawl error string.
+
+    Returns:
+        Public-safe label string, or '' when there is no error.
+    """
+    if not error:
+        return ""
+    return PUBLIC_ERROR_LABELS.get(error.strip().lower(), "Analysis failed")

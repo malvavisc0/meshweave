@@ -140,6 +140,7 @@ templates.env.filters["relative_time"] = _relative_time
 # Register scoring helpers as template globals and filters
 from datetime import datetime  # noqa: E402
 
+from webapp.utils.reasons import public_error_label  # noqa: E402
 from webapp.utils.scoring import (  # noqa: E402
     group_recommendations_by_pillar,
     rating_class,
@@ -151,6 +152,7 @@ templates.env.globals["group_recommendations_by_pillar"] = (
 templates.env.globals["rating_class"] = rating_class
 # Also register as a filter so templates can use {{ rating|rating_class }}
 templates.env.filters["rating_class"] = rating_class
+templates.env.filters["public_error_label"] = public_error_label
 
 
 def _width_class(value):
