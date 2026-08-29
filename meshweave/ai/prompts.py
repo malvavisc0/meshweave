@@ -27,19 +27,12 @@ SYSTEM_BASE = (
 def homepage_comprehension_prompt(
     domain: str, homepage_markdown: str, max_chars: int = 50_000
 ) -> tuple[str, str]:
-    """Test 2: What can the LLM understand from the homepage alone?"""
+    """What can the LLM understand from the homepage alone?"""
     if len(homepage_markdown) > max_chars:
         homepage_markdown = homepage_markdown[:max_chars] + "\n\n[...truncated...]"
 
-    user = f"""You are an AI agent that has been given the URL https://{domain}/ and asked to evaluate the website. Here is the content of the homepage:
-
----
-{homepage_markdown}
----
-
-Based ONLY on this content, extract the following information.
-
-Respond in this JSON format:
+    user = f"""
+Based ONLY on the content of the homepage, extract the following information (Respond in JSON format):
 {{
   "brand": "company or brand name",
   "product": "what product or service they offer",
@@ -49,7 +42,14 @@ Respond in this JSON format:
   "clarity": "one of: clear, somewhat_clear, unclear",
   "information_density": "one of: dense, adequate, sparse, bloated",
   "would_remember": true or false
-}}"""
+}}
+
+Here is the content of the homepage of https://{domain} :
+
+<content>
+{homepage_markdown}
+</content>
+"""
     return user, SYSTEM_BASE
 
 
@@ -63,17 +63,8 @@ def meta_optimization_prompt(
     canonical: str = "",
     twitter_image: str = "",
 ) -> tuple[str, str]:
-    """Test 3: Are the meta tags optimized for LLM consumption?"""
-    user = f"""You are an AI agent evaluating a website's metadata. You have NOT visited the website — you only have its metadata tags:
-
-Title: {title or "(empty)"}
-Description: {description or "(empty)"}
-OG Title: {og_title or "(empty)"}
-OG Description: {og_description or "(empty)"}
-OG Image: {og_image or "(empty)"}
-Twitter Image: {twitter_image or "(empty)"}
-Canonical URL: {canonical or "(empty)"}
-JSON-LD: {jsonld_summary}
+    """Are the meta tags optimized for LLM consumption?"""
+    user = f"""You are evaluating a website's metadata. You have NOT visited the website — you only have its metadata tags.
 
 Based ONLY on this metadata, extract the following information.
 
@@ -89,6 +80,17 @@ Respond in this JSON format:
   "missing_fields": ["field1", ...],
   "improvement_suggestions": ["suggestion1", ...]
 }}
+
+<metadata>
+Title: {title or "(empty)"}
+Description: {description or "(empty)"}
+OG Title: {og_title or "(empty)"}
+OG Description: {og_description or "(empty)"}
+OG Image: {og_image or "(empty)"}
+Twitter Image: {twitter_image or "(empty)"}
+Canonical URL: {canonical or "(empty)"}
+JSON-LD: {jsonld_summary}
+</metadata>
 """
     return user, SYSTEM_BASE
 
@@ -96,7 +98,7 @@ Respond in this JSON format:
 def email_validation_prompt(
     domain: str, emails_with_context: list[dict]
 ) -> tuple[str, str]:
-    """Test 7: Validate which emails are actually reachable contacts."""
+    """Validate which emails are actually reachable contacts."""
     email_lines = []
     for entry in emails_with_context:
         email = entry.get("email", "")
@@ -144,13 +146,15 @@ Respond in this JSON format:
 
 
 def content_delta_prompt(domain: str, pages_content: str) -> tuple[str, str]:
-    """Test 5: Does adding more pages improve AI understanding?"""
-    user = f"""You are an AI agent that has been given the URL https://{domain}/ and asked to thoroughly understand the company and its offerings.
+    """Does adding more pages improve AI understanding?"""
+    user = f"""Try to understand the company and its offerings of the website.
 
 Here is the content from multiple pages of their website:
 
+---
+<content>
 {pages_content}
-
+</content>
 ---
 
 Based on ALL this content, provide a comprehensive summary.
