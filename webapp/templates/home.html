@@ -233,7 +233,7 @@
     {% from 'partials/analysis_card.html' import analysis_card with context %}
     <ul class="card-list m0 mt-3">
       {% for item in items %}
-      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, show_share=true, highlight_complete=true)
+      {{ analysis_card(item, show_summary=(item.scope=='site'), dense=false, highlight_complete=true)
       }}
       {% endfor %}
     </ul>

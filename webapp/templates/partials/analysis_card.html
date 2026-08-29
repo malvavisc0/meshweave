@@ -1,4 +1,4 @@
-{% macro analysis_card(item, show_summary=false, dense=false, show_share=true, highlight_complete=true) -%}
+{% macro analysis_card(item, show_summary=false, dense=false, highlight_complete=true) -%}
 <li
   class="card {{ 'card-leads' if highlight_complete and (item.aeo_score is not none and item.geo_score is not none and item.aax_score is not none) else '' }} {{ 'card-dense' if dense else '' }}">
   <h3 class="card-title">

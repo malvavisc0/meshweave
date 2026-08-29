@@ -91,7 +91,6 @@ def _build_site_card(domain: str, crawls: list, snapshot_map: dict) -> dict:
     )
     history = _build_history(crawls, snapshot_map)
     recommendations = _build_recommendations(latest_ss)
-    share_url, share_disabled = _build_share(latest)
     aeo_rating = latest.aeo_rating or _get_rating_label(latest.aeo_score)
     geo_rating = latest.geo_rating or _get_rating_label(latest.geo_score)
 
@@ -114,8 +113,6 @@ def _build_site_card(domain: str, crawls: list, snapshot_map: dict) -> dict:
         "aax_delta": aax_delta,
         "history": history,
         "recommendations": recommendations,
-        "share_url": share_url,
-        "share_disabled": share_disabled,
         "visibility": latest.visibility,
     }
 
@@ -188,17 +185,6 @@ def _build_recommendations(latest_ss) -> list:
             }
         )
     return out
-
-
-def _build_share(latest) -> tuple[str | None, bool]:
-    """Build the public analysis URL and whether it is available for a crawl.
-
-    Private share links have been removed (Phase 2); only the public short-key
-    preview URL remains for public analyses.
-    """
-    if latest.visibility == "public" and latest.key:
-        return f"/analysis/{latest.key}", False
-    return None, True
 
 
 def _delta_moved(s: dict, positive: bool) -> bool:

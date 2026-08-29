@@ -14,22 +14,6 @@
     }
   }
 
-  function legacyCopy(text) {
-    prompt('Copy this link:', text);
-  }
-
-  function copyLink(url) {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(url).then(function () { alert('Link copied'); }, function () { legacyCopy(url); });
-      } else {
-        legacyCopy(url);
-      }
-    } catch (e) { legacyCopy(url); }
-    try { trackEvent('share_click', null, 'copy'); } catch (err) {}
-    return false;
-  }
-
     // Lightweight tracking helper using Beacon API when available
     function trackEvent(event, action, type) {
       try {
@@ -69,28 +53,17 @@
   }
 
   // Expose minimal globals required by templates and route scripts
-  window.copyLink = copyLink;
-  window.legacyCopy = legacyCopy;
   window.escapeHtml = escapeHtml;
   window.trackEvent = trackEvent;
   window.apiJson = apiJson;
 
-  // Delegate tracking and copy handlers on links/buttons
+  // Delegate tracking handler on links/buttons
   try {
     document.addEventListener('click', function(e){
       var t = e.target || null;
-      var el = (t && t.closest) ? t.closest('a[data-track], [data-copy]') : null;
+      var el = (t && t.closest) ? t.closest('a[data-track]') : null;
       if (!el) return;
-      // tracking
-      if (el.hasAttribute('data-track')) {
-        try { trackEvent(el.getAttribute('data-track') || ''); } catch (_){}
-      }
-      // copy handler
-      if (el.hasAttribute('data-copy')) {
-        e.preventDefault();
-        var val = el.getAttribute('data-copy') || '';
-        try { copyLink(val); } catch (_){}
-      }
+      try { trackEvent(el.getAttribute('data-track') || ''); } catch (_){}
     }, true);
   } catch (_){}
 
