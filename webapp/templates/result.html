@@ -36,15 +36,11 @@ else 'n/a') ~
 </div>
 {% else %}
 <div class="report-cta">
-  <h2>Your scores reveal the gaps. Sign in to see the fixes</h2>
-  <p>You can see <strong>where</strong> your site is losing ground.{% if interp %}
-    The biggest risk right now: {{ interp.primary_exposure }}.{% endif %}
-    The revenue is in knowing <strong>what to fix first</strong>. Sign in for the
-    prioritized roadmap that closes the gap{% if total_recs and total_recs > 0 %} — all {{
-    total_recs }} finding{{ 's' if total_recs != 1 }} ranked by what protects revenue first{% endif %}.</p>
+  <h2>Sign in to see how to fix the issues</h2>
+  <p>We found{% if total_recs and total_recs > 0 %} {{ total_recs }} issue{{ 's' if total_recs != 1 }}{% else %}
+    issues{% endif %} to address. See the recommended fix for each one.</p>
   <div class="report-cta-actions">
-    <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or canonical_url or '/' }}">Get my fix
-      roadmap</a>
+    <a class="btn btn-primary" href="/login?provider=google&next={{ abs_page_url or canonical_url or '/' }}">Sign in with Google</a>
   </div>
 </div>
 {% endif %}
