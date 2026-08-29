@@ -96,18 +96,24 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
         page=page,
         md_dict=md_dict,
     )
+    # Email validation and the one-line summary run concurrently with the
+    # three in-page tests. The summary synthesises the homepage-comprehension
+    # and content-delta outputs, so it awaits those tasks directly.
+    email_task = asyncio.create_task(
+        _run_email_validation_task(payload, domain, skip_reasons)
+    )
+    summary_task = asyncio.create_task(
+        _generate_aax_summary_task(
+            domain, tasks.get("homepage_comprehension"), tasks.get("content_delta")
+        )
+    )
+
     results, skip_reasons = await _gather_results(tasks, skip_reasons)
+    email_validation = await email_task
+    summary_text = await summary_task
 
     # Test 6: Contactability (heuristic — no LLM)
     contactability = _compute_contactability(payload)
-
-    # Test 7: Email Validation (LLM — only if emails were found)
-    email_validation, skip_reasons = await _run_email_validation(
-        payload, domain, skip_reasons
-    )
-
-    # Generate one-line summary verdict for the hero card
-    summary_text = await _generate_aax_summary(domain, results)
 
     # Build aggregate result
     completed = len(results) + (1 if email_validation else 0)
@@ -158,9 +164,7 @@ def _build_aax_tasks(
 
     # Test 2: Homepage Comprehension
     if conditions.get("homepage_comprehension") is None:
-        tasks["homepage_comprehension"] = _homepage_comprehension_task(
-            domain, homepage_md
-        )
+        tasks["homepage_comprehension"] = _homepage_comprehension_task(homepage_md)
 
     # Test 3: Meta Optimization
     if conditions.get("meta_optimization") is None:
@@ -175,9 +179,31 @@ def _build_aax_tasks(
     return tasks
 
 
-def _homepage_comprehension_task(domain: str, homepage_md: str) -> asyncio.Task:
+def _homepage_max_chars() -> int:
+    """Max homepage characters fed to the comprehension test."""
+    try:
+        return int(os.getenv("AAX_HOMEPAGE_MAX_CHARS", "50000"))
+    except ValueError:
+        return 50000
+
+
+def _content_token_budget() -> int:
+    """Token budget shared by all pages in the content-delta test.
+
+    Matches the homepage test's ~12.5k-token ceiling so the multi-page
+    verdicts are not starved relative to the single-page one.
+    """
+    try:
+        return int(os.getenv("AAX_CONTENT_TOKEN_BUDGET", "24000"))
+    except ValueError:
+        return 24000
+
+
+def _homepage_comprehension_task(homepage_md: str) -> asyncio.Task:
     """Create the homepage-comprehension structured-test task."""
-    p, s = homepage_comprehension_prompt(domain, homepage_md)
+    p, s = homepage_comprehension_prompt(
+        homepage_markdown=homepage_md, max_chars=_homepage_max_chars()
+    )
     return asyncio.create_task(run_structured_test(HomepageComprehensionResult, p, s))
 
 
@@ -215,11 +241,13 @@ def _meta_social_fields(page: dict) -> tuple[dict, dict]:
 
 def _content_delta_task(domain: str, md_dict: Any) -> asyncio.Task | None:
     """Create the content-delta task, or None when too few pages qualify."""
-    selected_pages = select_pages_for_analysis(md_dict)
+    selected_pages = select_pages_for_analysis(
+        md_dict, token_budget=_content_token_budget()
+    )
     if len(selected_pages) < 2:
         return None
     pages_text = _selected_pages_text(selected_pages)
-    p, s = content_delta_prompt(domain, pages_text)
+    p, s = content_delta_prompt(pages_text)
     return asyncio.create_task(run_structured_test(ContentDeltaResult, p, s))
 
 
@@ -249,32 +277,45 @@ async def _gather_results(
     return results, skip_reasons
 
 
-async def _run_email_validation(
+async def _run_email_validation_task(
     payload: dict,
     domain: str,
     skip_reasons: dict[str, str],
-) -> tuple[Any, dict[str, str]]:
-    """Run the email-validation LLM test when quality emails exist."""
+) -> Any | None:
+    """Run the email-validation LLM test when quality emails exist.
+
+    Returns the validated result, or None when no quality emails were found.
+    The skip reason is recorded on ``skip_reasons``.
+    """
     quality_emails = _filter_quality_emails(payload)
     if not quality_emails:
         skip_reasons["email_validation"] = "No valid email addresses found to validate"
-        return None, skip_reasons
+        return None
     try:
         p, s = email_validation_prompt(domain, quality_emails)
-        return await run_structured_test(EmailValidationResult, p, s), skip_reasons
+        return await run_structured_test(EmailValidationResult, p, s)
     except Exception as e:
         logger.warning("Email validation test failed: %s", e)
         skip_reasons["email_validation"] = f"Test failed: {e}"
-        return None, skip_reasons
+        return None
 
 
-async def _generate_aax_summary(domain: str, results: dict[str, Any]) -> str:
-    """Generate the one-line summary verdict for the hero card."""
+async def _generate_aax_summary_task(
+    domain: str,
+    hc_task: asyncio.Task | None,
+    cd_task: asyncio.Task | None,
+) -> str:
+    """Generate the one-line summary verdict for the hero card.
+
+    Awaits the homepage-comprehension and content-delta tasks it
+    synthesises, treating a failed or absent task as missing data so a
+    single test failure does not also lose the summary.
+    """
     from meshweave.ai.models import AAXSummaryResult
 
     try:
-        hc_data = results.get("homepage_comprehension")
-        cd_data = results.get("content_delta")
+        hc_data = await _await_or_none(hc_task)
+        cd_data = await _await_or_none(cd_task)
         hc_dict = _as_dict(hc_data)
         cd_dict = _as_dict(cd_data)
         p, s = aax_summary_prompt(domain, hc_dict, cd_dict)
@@ -284,6 +325,16 @@ async def _generate_aax_summary(domain: str, results: dict[str, Any]) -> str:
     except Exception as e:
         logger.warning("AAX summary generation failed: %s", e)
         return ""
+
+
+async def _await_or_none(task: asyncio.Task | None) -> Any:
+    """Await a task, returning None when it is absent or failed."""
+    if task is None:
+        return None
+    try:
+        return await task
+    except Exception:
+        return None
 
 
 def _as_dict(data: Any) -> dict | None:
