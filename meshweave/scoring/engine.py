@@ -89,7 +89,7 @@ def compute_scores(
             recommendations.
 
     Returns:
-        Full score_json dict matching spec §6.4.
+        Full score_json dict.
     """
     manual = manual_inputs or {}
 

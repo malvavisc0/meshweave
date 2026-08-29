@@ -1,4 +1,4 @@
-"""Score-to-rating label mapping per spec §4.3."""
+"""Score-to-rating label mapping."""
 
 AAX_RATINGS: list[tuple[int, int, str]] = [
     (0, 24, "Opaque"),

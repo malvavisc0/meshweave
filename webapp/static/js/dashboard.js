@@ -5,7 +5,7 @@
     var CSRF_TOKEN = window.CSRF_TOKEN ||
         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-    // ── Domain filtering (§19.1) ──
+    // ── Domain filtering ──
     function initDomainFilter() {
         var input = document.getElementById('dash-q');
         var select = document.getElementById('dash-status');
@@ -36,7 +36,7 @@
         filter();
     }
 
-    // ── Status polling for running/pending cards (§19.4) ──
+    // ── Status polling for running/pending cards ──
     var _pollTimer = null;
     var _pollDeadline = null;
 
