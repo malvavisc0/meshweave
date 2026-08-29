@@ -191,11 +191,13 @@ def _build_recommendations(latest_ss) -> list:
 
 
 def _build_share(latest) -> tuple[str | None, bool]:
-    """Build the share URL and whether it is disabled for a crawl."""
+    """Build the public analysis URL and whether it is available for a crawl.
+
+    Private share links have been removed (Phase 2); only the public short-key
+    preview URL remains for public analyses.
+    """
     if latest.visibility == "public" and latest.key:
         return f"/analysis/{latest.key}", False
-    if getattr(latest, "share_key", None):
-        return f"/analysis/share/{latest.share_key}", False
     return None, True
 
 

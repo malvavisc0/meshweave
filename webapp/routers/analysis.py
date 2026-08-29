@@ -1,7 +1,5 @@
 import json
 import os
-import secrets
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -370,10 +368,6 @@ def _set_session_cookie(
         )
 
 
-# Simple in-memory rate limiter for share toggle (max 5 per hour per user)
-share_toggle_limits: dict[str, list[float]] = {}
-
-
 def _progress_for(row: Crawl, finalize: bool) -> tuple[Crawl, dict | None, bool]:
     """Build SSR progress for in-flight crawls.
 
@@ -385,89 +379,6 @@ def _progress_for(row: Crawl, finalize: bool) -> tuple[Crawl, dict | None, bool]
         row, progress = progress_view(row, finalize=finalize)
         return row, progress, aax
     return row, None, aax
-
-
-@router.get("/analysis/shared/{share_key}", response_class=HTMLResponse)
-async def view_shared_analysis(request: Request, share_key: str):
-    """View private analysis via shareable link."""
-    with get_session() as s:
-        row = (
-            s.query(Crawl)
-            .options(joinedload(Crawl.score_snapshot))
-            .filter(Crawl.share_key == share_key, Crawl.visibility == "private")
-            .first()
-        )
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    # Shared viewers are not owners: never trigger stale finalization
-    row, progress, aax = _progress_for(row, finalize=False)
-    payload: dict | None = row.payload_json
-
-    # Similar to public view, but with Unlisted badge and no claim
-    # Compute SEO/meta
-    title_from_payload, desc_from_payload = _seo_title_desc(payload)
-
-    site_name = os.getenv("SITE_NAME", "MeshWeave")
-    scope_val = str(getattr(row, "scope", "") or "").strip().lower()
-    domain_val = (row.domain or "").strip()
-    path_val = (row.path or "").strip() or "/"
-    page_title = _page_title(
-        scope_val, domain_val, path_val, title_from_payload, site_name
-    )
-
-    meta_description = _meta_description(desc_from_payload)
-
-    abs_page_url = _abs_url(request, f"/analysis/shared/{share_key}")
-    og_image_url = os.getenv("OG_IMAGE_URL") or None
-
-    in_progress = progress is not None
-    _ss_shared = None if in_progress else _build_score_snapshot_context(row)
-
-    resp = templates.TemplateResponse(
-        request,
-        "result.html",
-        {
-            "domain": row.domain,
-            "path": row.path,
-            "query": row.query,
-            "canonical_url": row.canonical_url,
-            "visibility": "unlisted",  # Special badge
-            "listed": False,
-            "key": None,  # No key for shared
-            "status": row.status,
-            "error": row.error,
-            "payload": payload,
-            "api_url": f"/api/analysis/private/{row.id}",
-            "abs_api_url": _abs_url(request, f"/api/analysis/private/{row.id}"),
-            "reason_stopped_label": _reason_stopped_label(payload),
-            "csrf_token": "",
-            "is_owner": False,  # Shared viewers are not owners
-            "user_id": "",
-            "id": row.id,
-            "page_title": page_title,
-            "meta_description": meta_description,
-            "abs_page_url": abs_page_url,
-            "og_image_url": og_image_url,
-            "site_name": site_name,
-            "json_ld": None,
-            "created_at": "",
-            "claim_min_hours": 24,
-            "ownerless": False,
-            "can_retry": False,
-            "retry_eta": "",
-            "can_refresh": False,
-            "refresh_eta": "",
-            "score_snapshot": _ss_shared,
-            "sorted_recommendations": _sorted_recommendations(_ss_shared),
-            "factor_extremes": _build_factor_extremes(_ss_shared),
-            "aax_pending": aax,
-            "in_progress": in_progress,
-            "progress": progress,
-        },
-    )
-    resp.headers["X-Robots-Tag"] = "noindex"
-    return resp
 
 
 def _is_uuid(ref: str) -> bool:
@@ -535,21 +446,18 @@ def _public_refresh_state(row: Crawl, in_progress: bool) -> tuple[bool, str]:
 async def _render_private_view(request: Request, ref: str) -> Response:
     """Render the owner-only private analysis view.
 
-    If this private job was created anonymously (no owner), allow the first
-    authenticated user reaching the page to claim ownership. Otherwise,
-    enforce ownership.
+    Only the authenticated owner may see a private analysis. An unauthenticated
+    request, an authenticated non-owner, or an ownerless row all return 404 so
+    that a private UUID's existence is never revealed.
     """
-    with get_session() as s:
-        db_row = s.get(Crawl, ref, options=[joinedload(Crawl.score_snapshot)])
-        if not db_row:
+    try:
+        row = await require_ownership(request, ref)
+    except HTTPException as exc:
+        # 401 (unauthenticated) and 403 (authenticated non-owner) collapse to
+        # 404 so that UUID existence is not revealed.
+        if exc.status_code in (401, 403):
             raise HTTPException(status_code=404, detail="Not found")
-        if not getattr(db_row, "user_id", None):
-            user = await require_auth(request)
-            db_row.user_id = user.id
-            s.flush()
-            row = db_row
-        else:
-            row = await require_ownership(request, ref)
+        raise
 
     row, progress, aax = _progress_for(row, finalize=True)
     in_progress = progress is not None
@@ -613,7 +521,6 @@ async def _render_private_view(request: Request, ref: str) -> Response:
             "json_ld": json_ld,
             # Owner toggles
             "listed": row.listed,
-            "share_url": f"/analysis/shared/{row.share_key}" if row.share_key else "",
             "can_refresh": can_retry,
             "refresh_eta": retry_eta,
             "score_snapshot": _ss_private,
@@ -774,50 +681,3 @@ async def set_listed(request: Request, crawl_id: str):
             s.commit()
 
     return {"ok": True, "listed": listed}
-
-
-@router.post("/analysis/{crawl_id}/set-share")
-async def set_share(request: Request, crawl_id: str):
-    """Enable/disable shareable link for a private analysis (owner only)."""
-    user = await require_auth(request)
-    row = await require_ownership(request, crawl_id)
-    if row.visibility != "private":
-        raise HTTPException(
-            status_code=400, detail="Only private analyses can have share links"
-        )
-
-    # Rate limiting: max 5 toggles per hour per user
-    now = time.time()
-    user_key = f"share_toggle_{user.id}"
-    if user_key not in share_toggle_limits:
-        share_toggle_limits[user_key] = []
-    share_toggle_limits[user_key] = [
-        t for t in share_toggle_limits[user_key] if now - t < 3600
-    ]
-    if len(share_toggle_limits[user_key]) >= 5:
-        raise HTTPException(
-            status_code=429, detail="Too many share toggles. Try again later."
-        )
-    share_toggle_limits[user_key].append(now)
-
-    try:
-        data = await request.json()
-        enabled = bool(data.get("enabled", False))
-    except Exception:
-        enabled = False
-
-    share_key = None
-    if enabled:
-        share_key = secrets.token_urlsafe(16)  # 32 chars
-        # Ensure unique
-        with get_session() as s:
-            while s.query(Crawl).filter(Crawl.share_key == share_key).first():
-                share_key = secrets.token_urlsafe(16)
-
-    with get_session() as s:
-        db_row = s.get(Crawl, crawl_id)
-        if db_row:
-            db_row.share_key = share_key
-            s.commit()
-
-    return {"ok": True, "enabled": enabled, "share_key": share_key}
