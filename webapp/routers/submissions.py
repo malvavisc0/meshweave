@@ -42,6 +42,19 @@ def _cooldown_redirect(return_to: str | None) -> str:
     return f"{target}{sep}notice=cooldown"
 
 
+def _anonymous_private_login_redirect(return_to: str | None) -> RedirectResponse:
+    """Send an anonymous user to sign-in when they selected private visibility.
+
+    Anonymous submissions may not create private rows. Redirect to the OAuth
+    login flow with a ``next`` back to the submitting page so the user can
+    re-submit after signing in. The lost POST is intentionally not replayed.
+    """
+    return RedirectResponse(
+        url=f"/login?provider=google&next={_safe_return_target(return_to)}",
+        status_code=303,
+    )
+
+
 def _cleanup_old_crawls(session, domain: str, visibility: str) -> None:
     """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit."""
     max_history = int(os.getenv("MAX_HISTORY_PER_DOMAIN", "20"))
@@ -314,8 +327,8 @@ def _site_submit_redirect(user, crawl_id, visibility: str, key) -> RedirectRespo
         return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
     if visibility == "public" and key:
         return RedirectResponse(url=f"/analysis/{key}", status_code=303)
-    suffix = "&private=1" if visibility == "private" else ""
-    return RedirectResponse(url=f"/?submitted={crawl_id}{suffix}", status_code=303)
+    # Anonymous private is rejected upstream; fall back to a sign-in redirect.
+    return _anonymous_private_login_redirect(None)
 
 
 async def _submit_site(
@@ -343,6 +356,12 @@ async def _submit_site(
     user = getattr(request.state, "current_user", None)
     # Resolve visibility with override support
     visibility = resolve_site_visibility(bool(user), public)
+
+    # Anonymous users may not create private analyses. Reject server-side and
+    # send them to sign in so they can re-submit; do not create a row.
+    if not user and visibility == "private":
+        return _anonymous_private_login_redirect(None)
+
     key = None
 
     # Normalize and validate domain
@@ -384,9 +403,7 @@ def _replace_site_crawl(
     """
     existing.is_latest = False
     old_key = getattr(existing, "key", None)
-    old_share_key = getattr(existing, "share_key", None)
     existing.key = None
-    existing.share_key = None
     row = Crawl(
         url=start_url,
         domain=dom,
@@ -394,7 +411,6 @@ def _replace_site_crawl(
         query="",
         canonical_url=start_url,
         key=old_key,
-        share_key=old_share_key,
         visibility=visibility,
         status="pending",
         payload_json=None,
@@ -420,6 +436,9 @@ def _create_site_crawl(
     s, user, dom: str, start_url: str, visibility, lim_req, key, now
 ):
     """Insert a fresh site crawl row (no mutable existing row).
+
+    Private rows always carry a user_id; anonymous submissions are rejected at
+    submit time, so this constructor never builds an ownerless private row.
 
     Returns:
         tuple: (new crawl id, effective public key).
@@ -542,7 +561,8 @@ def _page_submit_redirect(crawl_id, key_val, user, is_public: bool) -> RedirectR
         return RedirectResponse(url=f"/analysis/{key_val}", status_code=303)
     if user and getattr(user, "id", None):
         return RedirectResponse(url=f"/analysis/{crawl_id}", status_code=303)
-    return RedirectResponse(url=f"/?submitted={crawl_id}&private=1", status_code=303)
+    # Anonymous private is rejected upstream; fall back to a sign-in redirect.
+    return _anonymous_private_login_redirect(None)
 
 
 async def _submit_page(
@@ -578,6 +598,11 @@ async def _submit_page(
     _enforce_rate_limit(request, now)
 
     visibility = "public" if is_public else "private"
+
+    # Anonymous users may not create private analyses. Reject server-side and
+    # send them to sign in so they can re-submit; do not create a row.
+    if not user and visibility == "private":
+        return _anonymous_private_login_redirect(return_to)
 
     # Upsert behavior for page
     upsert = _upsert_page_crawl(
@@ -726,18 +751,16 @@ def _cooldown_result(return_to) -> dict:
     }
 
 
-def _retire_existing(s, existing) -> tuple:
-    """Mark the existing latest crawl non-latest and clear its keys.
+def _retire_existing(s, existing) -> str | None:
+    """Mark the existing latest crawl non-latest and clear its key.
 
     Returns:
-        tuple: (old_key, old_share_key) carried over from the retired row.
+        str | None: The old public key carried over from the retired row.
     """
     existing.is_latest = False
     old_key = getattr(existing, "key", None)
-    old_share_key = getattr(existing, "share_key", None)
     existing.key = None
-    existing.share_key = None
-    return old_key, old_share_key
+    return old_key
 
 
 def _cleanup_old_rows(s, dom: str, visibility: str) -> None:
@@ -751,7 +774,7 @@ def _cleanup_old_rows(s, dom: str, visibility: str) -> None:
 def _replace_public_crawl(s, existing, dom: str, now) -> dict:
     """Retire the public domain-root crawl and insert a replacement row."""
     start_url = f"https://{dom}/"
-    old_key, old_share_key = _retire_existing(s, existing)
+    old_key = _retire_existing(s, existing)
     row = Crawl(
         url=start_url,
         domain=dom,
@@ -759,7 +782,6 @@ def _replace_public_crawl(s, existing, dom: str, now) -> dict:
         query="",
         canonical_url=start_url,
         key=old_key,
-        share_key=old_share_key,
         visibility="public",
         status="pending",
         payload_json=None,
@@ -827,7 +849,7 @@ def _upsert_public_page_crawl(s, dom: str, now, return_to) -> dict:
 
 def _replace_private_crawl(s, existing, uval, dom, path, query, canon_url, now) -> dict:
     """Retire the owned private crawl and insert a replacement row."""
-    old_key, old_share_key = _retire_existing(s, existing)
+    old_key = _retire_existing(s, existing)
     row = Crawl(
         url=uval,
         domain=dom,
@@ -835,7 +857,6 @@ def _replace_private_crawl(s, existing, uval, dom, path, query, canon_url, now) 
         query=query,
         canonical_url=canon_url,
         key=old_key,
-        share_key=old_share_key,
         visibility="private",
         status="pending",
         payload_json=None,
@@ -859,7 +880,15 @@ def _replace_private_crawl(s, existing, uval, dom, path, query, canon_url, now) 
 
 
 def _new_private_crawl(s, user, uval, dom, path, query, canon_url, now) -> dict:
-    """Insert a fresh private crawl row for the submitter."""
+    """Insert a fresh private crawl row for the submitter.
+
+    Private rows always carry a user_id; anonymous submissions are rejected at
+    submit time, so ``user`` is always present here and the row is never
+    ownerless.
+
+    Returns:
+        dict: (crawl_id, key, force_refresh, cooldown_redirect).
+    """
     row = Crawl(
         url=uval,
         domain=dom,

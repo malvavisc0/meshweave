@@ -3,15 +3,16 @@ def resolve_page_visibility(is_authed: bool, public_param: str | None) -> bool:
 
     Rules:
       - Signed-in: default private unless 'public' param provided (truthy -> public).
-      - Signed-out: default public unless 'public' is explicitly provided and falsy.
+      - Signed-out: always public. Anonymous callers can no longer resolve to
+        private; anonymous-private submissions are rejected at submit time.
     Returns:
       bool: True if public, False if private.
     """
     if is_authed:
         # Explicit param wins; otherwise default private
         return bool(public_param)
-    # Anonymous: default public. If param is provided and falsy (empty), set private.
-    return True if (public_param is None) else bool(public_param)
+    # Anonymous: never private.
+    return True
 
 
 def resolve_site_visibility(is_authed: bool, public_param: str | None) -> str:
@@ -19,11 +20,12 @@ def resolve_site_visibility(is_authed: bool, public_param: str | None) -> str:
 
     Rules:
       - Signed-in: default private unless 'public' provided (truthy -> public).
-      - Signed-out: default public unless 'public' provided and falsy.
+      - Signed-out: always public. Anonymous callers can no longer resolve to
+        private; anonymous-private submissions are rejected at submit time.
     Returns:
       str: 'public' or 'private'.
     """
     if is_authed:
         return "public" if bool(public_param) else "private"
-    # Anonymous default public; explicit falsy -> private
-    return "public" if (public_param is None or bool(public_param)) else "private"
+    # Anonymous: never private.
+    return "public"
