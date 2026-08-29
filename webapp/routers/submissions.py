@@ -19,7 +19,7 @@ from webapp.utils.quotas import (
     enforce_concurrent_jobs_limit,
     enforce_daily_site_crawl_limit,
 )
-from webapp.utils.security import _hash_ip, _verify_csrf_token
+from webapp.utils.security import _hash_ip, verify_request_csrf
 from webapp.utils.times import ensure_utc
 from webapp.utils.url import canonicalize_url
 from webapp.utils.visibility import resolve_page_visibility, resolve_site_visibility
@@ -139,17 +139,6 @@ def _parse_site_limits(
         except Exception:
             pass
     return lim_req
-
-
-def _verify_csrf(request: Request, csrf_token: str | None) -> None:
-    """Validate the CSRF token when enabled; raises 403 on failure."""
-    if not _env_bool("WEBAPP_CSRF_ENABLED", False):
-        return
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name) or ""
-    max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-    if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-        raise HTTPException(status_code=403, detail="CSRF validation failed")
 
 
 def _generate_public_key(s) -> str:
@@ -343,15 +332,11 @@ async def _submit_site(
     time_budget_ms,
 ):
     """Handle the site-scope crawl submission branch."""
-    # CSRF validation (same as old /submit-site)
-    if _env_bool("WEBAPP_CSRF_ENABLED", False):
-        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-        session_id = request.cookies.get(cookie_name) or ""
-        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-        if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-            return RedirectResponse(
-                url="/dashboard?notice=csrf_failed", status_code=303
-            )
+    # CSRF validation (same behavior as the old /submit-site: redirect on failure)
+    try:
+        verify_request_csrf(request, csrf_token)
+    except HTTPException:
+        return RedirectResponse(url="/dashboard?notice=csrf_failed", status_code=303)
 
     user = getattr(request.state, "current_user", None)
     # Resolve visibility with override support
@@ -592,7 +577,7 @@ async def _submit_page(
     # Security: origin validation, honeypot already handled, CSRF, and simple rate limiting
     _enforce_origin(request)
 
-    _verify_csrf(request, csrf_token)
+    verify_request_csrf(request, csrf_token)
 
     # Rate limit per client/session
     _enforce_rate_limit(request, now)

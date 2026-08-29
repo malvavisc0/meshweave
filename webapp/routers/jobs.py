@@ -18,7 +18,7 @@ from webapp.utils.quotas import (
     enforce_concurrent_jobs_limit,
     enforce_daily_site_crawl_limit,
 )
-from webapp.utils.security import _make_csrf_token, _verify_csrf_token
+from webapp.utils.security import _make_csrf_token, verify_request_csrf
 from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
 
@@ -411,14 +411,12 @@ async def cancel_crawl(
 ):
     """Cancel a running crawl (owner only)."""
     # CSRF validation
-    if _env_bool("WEBAPP_CSRF_ENABLED", False):
-        cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-        session_id = request.cookies.get(cookie_name) or ""
-        max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-        if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-            return RedirectResponse(
-                url=f"/dashboard?notice=csrf_failed&job={crawl_id}", status_code=303
-            )
+    try:
+        verify_request_csrf(request, csrf_token)
+    except HTTPException:
+        return RedirectResponse(
+            url=f"/dashboard?notice=csrf_failed&job={crawl_id}", status_code=303
+        )
 
     # Auth + owner
     await require_auth(request)
@@ -453,17 +451,6 @@ async def cancel_crawl(
     return RedirectResponse(
         url=f"/dashboard?notice=cancelled&job={crawl_id}", status_code=303
     )
-
-
-def _verify_csrf_or_raise(request: Request, csrf_token: str | None) -> None:
-    """Validate the CSRF token when enabled; raises 403 on failure."""
-    if not _env_bool("WEBAPP_CSRF_ENABLED", False):
-        return
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name) or ""
-    max_age = int(os.getenv("WEBAPP_CSRF_MAX_AGE", "7200"))
-    if not _verify_csrf_token(csrf_token, session_id, max_age_seconds=max_age):
-        raise HTTPException(status_code=403, detail="CSRF validation failed")
 
 
 def _enforce_retry_cooldown(row) -> None:
@@ -527,7 +514,7 @@ async def retry_crawl(
 ):
     """Retry a crawl (owner only) when not running."""
     # CSRF validation
-    _verify_csrf_or_raise(request, csrf_token)
+    verify_request_csrf(request, csrf_token)
 
     # Auth + owner
     user = await require_auth(request)
