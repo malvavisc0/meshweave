@@ -10,7 +10,7 @@
 {# Detect partial scoring: scoring completed but score_snapshot is missing #}
 {% set _is_partial = (status == "succeeded" and not score_snapshot) %}
 
-{% macro funnel_cta(viewer_role, domain, interp, score_snapshot, total_recs=0) %}
+{% macro funnel_cta(viewer_role, domain, interp, score_snapshot) %}
 {% if viewer_role == 'owner' %}
 {% set _subject = ('Expert audit for ' ~ (domain or 'my site')) | urlencode %}
 {% set _body = (
@@ -45,6 +45,7 @@ else 'n/a') ~
       <button type="submit" class="btn btn-primary">Claim this analysis</button>
     </form>
   </div>
+  <p class="small mt-1 m0" role="status" aria-live="polite" data-claim-status></p>
   {% else %}
   <p class="small mt-1">Claimable after {{ claim_min_hours }} hours. Available in {{ claim_eta }}.</p>
   {% endif %}
@@ -71,6 +72,26 @@ else 'n/a') ~
   </div>
 </div>
 {% endif %}
+{% endmacro %}
+
+{% macro score_pill(viewer_role, anchor, label, sub, score, rating_cls) %}
+{% if viewer_role == 'owner' %}
+<a href="#{{ anchor }}" class="score-strip-pill {{ rating_cls }}"
+  aria-label="{{ label }} score: {% if score is not none %}{{ score | round(0) | int }}{% else %}not available{% endif %}. {{ sub }}.">
+{% else %}
+<div class="score-strip-pill {{ rating_cls }}">
+{% endif %}
+<span class="score-strip-label">{{ label }}:</span>
+{% if score is not none %}
+<span class="score-strip-value">{{ score | round(0) | int }}</span>
+<span class="score-strip-sub">{{ sub }}</span>
+<span class="score-strip-bar"><span class="score-strip-bar-fill {{ score | width_class }}"></span></span>
+{% else %}
+<span class="score-strip-value">—</span>
+<span class="score-strip-sub">No score</span>
+<span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
+{% endif %}
+{% if viewer_role == 'owner' %}</a>{% else %}</div>{% endif %}
 {% endmacro %}
 
 <div class="container container-wide analysis-result-page">
@@ -118,7 +139,11 @@ else 'n/a') ~
       <strong>{{ canonical_url or (domain ~ (path or '/')) }}</strong>.
     </p>
     <div class="error-block mt-2">
+      {% if viewer_role == 'owner' %}
       <pre class="error-block-pre">{{ error }}</pre>
+      {% else %}
+      <p class="small m0">{{ error | public_error_label }}</p>
+      {% endif %}
     </div>
     <div class="actions error-actions mt-2">
       {% if visibility != "public" and id %}
@@ -209,54 +234,26 @@ else 'n/a') ~
   </section>
   {% endif %}
 
-  {# --- Score Strip: quick lens comparison and jump links --- #}
+  {# --- Score Strip: quick lens comparison; jump links for owners only --- #}
   {% if score_snapshot and score_snapshot.score_data %}
   <div class="score-strip" role="group" aria-label="Lens scores at a glance">
-    <a href="#lens-aax" class="score-strip-pill {{ score_snapshot.aax_rating_class }}"
-      aria-label="AAX score: {% if score_snapshot.aax_score is not none %}{{ score_snapshot.aax_score | round(0) | int }}{% else %}not available{% endif %}. AI Agent Experience.">
-      <span class="score-strip-label">AAX:</span>
-      {% if score_snapshot.aax_score is not none %}
-      <span class="score-strip-value">{{ score_snapshot.aax_score | round(0) | int }}</span>
-      <span class="score-strip-sub">AI Agent Experience</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill {{ score_snapshot.aax_score | width_class }}"></span></span>
-      {% else %}
-      <span class="score-strip-value">—</span>
-      <span class="score-strip-sub">No score</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
-      {% endif %}
-    </a>
-    <a href="#lens-aeo" class="score-strip-pill {{ score_snapshot.aeo_rating_class }}"
-      aria-label="AEO score: {% if score_snapshot.aeo_score is not none %}{{ score_snapshot.aeo_score | round(0) | int }}{% else %}not available{% endif %}. Quotability.">
-      <span class="score-strip-label">AEO:</span>
-      {% if score_snapshot.aeo_score is not none %}
-      <span class="score-strip-value">{{ score_snapshot.aeo_score | round(0) | int }}</span>
-      <span class="score-strip-sub">Quotability</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill {{ score_snapshot.aeo_score | width_class }}"></span></span>
-      {% else %}
-      <span class="score-strip-value">—</span>
-      <span class="score-strip-sub">No score</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
-      {% endif %}
-    </a>
-    <a href="#lens-geo" class="score-strip-pill {{ score_snapshot.geo_rating_class }}"
-      aria-label="GEO score: {% if score_snapshot.geo_score is not none %}{{ score_snapshot.geo_score | round(0) | int }}{% else %}not available{% endif %}. Recommendability.">
-      <span class="score-strip-label">GEO:</span>
-      {% if score_snapshot.geo_score is not none %}
-      <span class="score-strip-value">{{ score_snapshot.geo_score | round(0) | int }}</span>
-      <span class="score-strip-sub">Recommendability</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill {{ score_snapshot.geo_score | width_class }}"></span></span>
-      {% else %}
-      <span class="score-strip-value">—</span>
-      <span class="score-strip-sub">No score</span>
-      <span class="score-strip-bar"><span class="score-strip-bar-fill w-0"></span></span>
-      {% endif %}
-    </a>
+    {{ score_pill(viewer_role, 'lens-aax', 'AAX', 'AI Agent Experience', score_snapshot.aax_score, score_snapshot.aax_rating_class) }}
+    {{ score_pill(viewer_role, 'lens-aeo', 'AEO', 'Quotability', score_snapshot.aeo_score, score_snapshot.aeo_rating_class) }}
+    {{ score_pill(viewer_role, 'lens-geo', 'GEO', 'Recommendability', score_snapshot.geo_score, score_snapshot.geo_rating_class) }}
+    {% if viewer_role == 'owner' %}
     <a href="#score-breakdown" class="score-strip-pill score-strip-pill--findings"
       aria-label="Findings: {{ _total_recs }}. View all findings.">
       <span class="score-strip-label">Findings:</span>
       <span class="score-strip-value">{{ _total_recs }}</span>
       <span class="score-strip-sub">View all <span aria-hidden="true">↓</span></span>
     </a>
+    {% else %}
+    <div class="score-strip-pill score-strip-pill--findings">
+      <span class="score-strip-label">Findings:</span>
+      <span class="score-strip-value">{{ _total_recs }}</span>
+      <span class="score-strip-sub">Top fixes shown</span>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -316,10 +313,12 @@ else 'n/a') ~
           </div>
         </li>
         {% endfor %}
-      </ol>
+       </ol>
+      {% if viewer_role == 'owner' %}
       <a href="#score-breakdown" class="top-fixes-cta">View all {{ _total_recs }} finding{{ 's' if _total_recs != 1
         }}</a>
-    </section>
+      {% endif %}
+     </section>
     {% endif %}
     {% endif %}
 
@@ -639,9 +638,9 @@ else 'n/a') ~
 
     </section>
 
-    {{ funnel_cta(viewer_role, domain, interp, score_snapshot, _total_recs) }}
+    {{ funnel_cta(viewer_role, domain, interp, score_snapshot) }}
     {% else %}
-    {{ funnel_cta(viewer_role, domain, interp, score_snapshot, _total_recs) }}
+    {{ funnel_cta(viewer_role, domain, interp, score_snapshot) }}
     {% endif %}
     {% elif _is_partial %}
     {{ funnel_cta(viewer_role, domain, none, none) }}
@@ -943,22 +942,6 @@ else 'n/a') ~
 {% endblock %}
 
 {% block scripts %}
-<script id="analysis-data" type="application/json">
-{% if in_progress %}
-{{ { 'role': viewer_role } | tojson }}
-{% elif viewer_role == 'owner' %}
-{{ { 'role': 'owner', 'id': id } | tojson }}
-{% else %}
-{{ {
-  'role': viewer_role,
-  'public_key': key if key else '',
-  'ownerless': ownerless|default(false),
-  'created_at': created_at|default(''),
-  'claim_min_hours': claim_min_hours|default(24),
-  'claim_eligible': claim_eligible|default(false)
-} | tojson }}
-{% endif %}
-</script>
 <script>
   (function () {
     var img = document.querySelector('.result-hero-image');
@@ -970,13 +953,33 @@ else 'n/a') ~
     }
     var claim = document.querySelector('[data-claim-form]');
     if (claim) {
+      var status = document.querySelector('[data-claim-status]');
+      var button = claim.querySelector('button[type="submit"]');
+      var setStatus = function (msg) {
+        if (status) status.textContent = msg;
+      };
       claim.addEventListener('submit', function (e) {
         e.preventDefault();
+        if (button) button.disabled = true;
         fetch(claim.action, { method: 'POST', body: new FormData(claim) })
           .then(function (resp) {
-            if (resp.ok) window.location.reload();
+            if (resp.ok) {
+              window.location.reload();
+              return;
+            }
+            if (button) button.disabled = false;
+            if (resp.status === 409) {
+              setStatus('This analysis was already claimed by another account.');
+            } else if (resp.status === 400) {
+              setStatus('This analysis is not claimable yet. Try again after the cooldown.');
+            } else {
+              setStatus('Claim failed. Try again in a moment.');
+            }
           })
-          .catch(function () {});
+          .catch(function () {
+            if (button) button.disabled = false;
+            setStatus('Claim failed. Check your connection and try again.');
+          });
       });
     }
   })();

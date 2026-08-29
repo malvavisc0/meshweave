@@ -10,7 +10,7 @@ from sqlalchemy.orm import joinedload
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl
-from webapp.utils.auth import require_auth, require_ownership
+from webapp.utils.auth import require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.progress import progress_view
 from webapp.utils.reasons import friendly_reason
@@ -211,7 +211,7 @@ def _meta_description(desc_from_payload: str) -> str:
     """
     meta_description = (desc_from_payload or "").strip()
     if len(meta_description) > 300:
-        meta_description = meta_description[:297] + "..."
+        meta_description = meta_description[:297] + "…"
     return meta_description
 
 
@@ -690,28 +690,3 @@ async def view_analysis(request: Request, ref: str):
 
     # Public by short key
     return await _render_public_view(request, ref)
-
-
-@router.post("/analysis/{crawl_id}/set-listed")
-async def set_listed(request: Request, crawl_id: str):
-    """Set listed status for a public analysis (owner only)."""
-    await require_auth(request)
-    row = await require_ownership(request, crawl_id)
-    if row.visibility != "public":
-        raise HTTPException(
-            status_code=400, detail="Only public analyses can be listed/unlisted"
-        )
-
-    try:
-        data = await request.json()
-        listed = bool(data.get("listed", True))
-    except Exception:
-        listed = True
-
-    with get_session() as s:
-        db_row = s.get(Crawl, crawl_id)
-        if db_row:
-            db_row.listed = listed
-            s.commit()
-
-    return {"ok": True, "listed": listed}
