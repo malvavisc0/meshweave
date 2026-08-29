@@ -13,8 +13,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    delete,
+    event,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -51,9 +54,12 @@ class User(Base):
         onupdate=lambda: datetime.now(UTC),
     )
 
-    # Relationship to crawls (owner)
+    # Relationship to crawls (owner). passive_deletes keeps the unit of work
+    # from nullifying crawls.user_id itself; the DB-level ON DELETE SET NULL
+    # handles public rows and lets the before_delete listener below see the
+    # intact user_id when it removes private rows.
     crawls: Mapped[list[Crawl]] = relationship(
-        "Crawl", back_populates="user", cascade="save-update"
+        "Crawl", back_populates="user", cascade="save-update", passive_deletes=True
     )
 
 
@@ -264,6 +270,20 @@ class Crawl(Base):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+
+@event.listens_for(User, "before_delete")
+def _delete_user_private_crawls(
+    mapper: Mapper[User], connection: Connection, target: User
+) -> None:
+    """Delete the user's private crawls before the user row is deleted.
+
+    ``Crawl.user_id`` uses ON DELETE SET NULL, so without this the user's
+    private rows would survive as ownerless private analyses.
+    """
+    connection.execute(
+        delete(Crawl).where(Crawl.user_id == target.id, Crawl.visibility == "private")
     )
 
 
