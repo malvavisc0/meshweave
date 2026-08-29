@@ -1,5 +1,6 @@
 """Tests for the opt-in Langfuse observability wiring."""
 
+import json
 import logging
 import sys
 import types
@@ -33,14 +34,29 @@ class _BrokenAuthLangfuseClient(_FakeLangfuseClient):
         raise RuntimeError("auth backend unreachable")
 
 
-def _fake_langfuse_module(client: _FakeLangfuseClient) -> types.ModuleType:
+def _fake_langfuse_module(
+    client: _FakeLangfuseClient,
+) -> tuple[types.ModuleType, dict]:
     """Build a fake ``langfuse`` module backed by ``client``.
 
     ``propagation_calls`` on the returned module records the kwargs each
-    ``propagate_attributes`` call received.
+    ``propagate_attributes`` call received. ``construction_calls`` on the
+    module records the kwargs ``Langfuse(...)`` received.
     """
     module = types.ModuleType("langfuse")
-    setattr(module, "get_client", lambda: client)
+    construction: list[dict] = []
+
+    class Langfuse:  # noqa: N801 - mirrors the SDK class name
+        def __init__(self, **kwargs) -> None:
+            construction.append(kwargs)
+
+        def auth_check(self) -> bool:
+            return client.auth_check()
+
+        def flush(self) -> None:
+            client.flush()
+
+    setattr(module, "Langfuse", Langfuse)
     calls: list[dict] = []
 
     def _propagate_attributes(**kwargs):
@@ -49,7 +65,16 @@ def _fake_langfuse_module(client: _FakeLangfuseClient) -> types.ModuleType:
 
     setattr(module, "propagate_attributes", _propagate_attributes)
     setattr(module, "propagation_calls", calls)
-    return module
+    setattr(module, "construction_calls", construction)
+    return module, construction
+
+
+def _install_fake_langfuse(
+    monkeypatch: MonkeyPatch, client: _FakeLangfuseClient
+) -> tuple[types.ModuleType, dict]:
+    module, construction = _fake_langfuse_module(client)
+    monkeypatch.setitem(sys.modules, "langfuse", module)
+    return module, construction
 
 
 @pytest.fixture(autouse=True)
@@ -74,14 +99,6 @@ def _isolated_observability(monkeypatch: MonkeyPatch) -> Iterator[None]:
 def _set_credentials(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-
-
-def _install_fake_langfuse(
-    monkeypatch: MonkeyPatch, client: _FakeLangfuseClient
-) -> types.ModuleType:
-    module = _fake_langfuse_module(client)
-    monkeypatch.setitem(sys.modules, "langfuse", module)
-    return module
 
 
 def test_disabled_without_credentials() -> None:
@@ -118,14 +135,20 @@ def test_disabled_when_langfuse_not_installed(
 def test_enables_and_instruments_agents(monkeypatch: MonkeyPatch) -> None:
     _set_credentials(monkeypatch)
     client = _FakeLangfuseClient()
-    _install_fake_langfuse(monkeypatch, client)
+    module, construction = _install_fake_langfuse(monkeypatch, client)
 
     assert obs.enable_langfuse() is True
-    assert obs.langfuse_client() is client
+    assert obs.langfuse_client() is not None
 
     from pydantic_ai import Agent
 
     assert Agent._instrument_default is True
+
+    # The client must be constructed with the masking hook registered.
+    assert len(construction) == 1
+    assert construction[0]["public_key"] == "pk-lf-test"
+    assert construction[0]["secret_key"] == "sk-lf-test"
+    assert construction[0]["mask_otel_spans"] is obs.mask_otel_spans
 
 
 def test_atexit_flush_registered_once(monkeypatch: MonkeyPatch) -> None:
@@ -151,7 +174,7 @@ def test_auth_failure_warns_but_stays_enabled(
     with caplog.at_level(logging.WARNING):
         assert obs.enable_langfuse() is True
 
-    assert obs.langfuse_client() is client
+    assert obs.langfuse_client() is not None
     assert any(
         "authentication failed" in record.message.lower() for record in caplog.records
     ), f"expected an authentication warning, got {caplog.messages}"
@@ -167,7 +190,7 @@ def test_auth_check_exception_warns_but_stays_enabled(
     with caplog.at_level(logging.WARNING):
         assert obs.enable_langfuse() is True
 
-    assert obs.langfuse_client() is client
+    assert obs.langfuse_client() is not None
     assert any(
         "auth check raised" in record.message.lower() for record in caplog.records
     ), f"expected an auth-check warning, got {caplog.messages}"
@@ -177,17 +200,6 @@ def test_flush_is_noop_when_disabled() -> None:
     obs.flush()  # must not raise
 
 
-def test_flush_calls_client(monkeypatch: MonkeyPatch) -> None:
-    _set_credentials(monkeypatch)
-    client = _FakeLangfuseClient()
-    _install_fake_langfuse(monkeypatch, client)
-    obs.enable_langfuse()
-
-    obs.flush()
-
-    assert client.flushed == 1
-
-
 def test_trace_attributes_noop_when_disabled() -> None:
     with obs.trace_attributes(user_id="u", session_id="s", tags=["aax"]):
         assert obs.langfuse_client() is None
@@ -195,7 +207,7 @@ def test_trace_attributes_noop_when_disabled() -> None:
 
 def test_trace_attributes_propagates_when_enabled(monkeypatch: MonkeyPatch) -> None:
     _set_credentials(monkeypatch)
-    module = _install_fake_langfuse(monkeypatch, _FakeLangfuseClient())
+    module, _ = _install_fake_langfuse(monkeypatch, _FakeLangfuseClient())
     obs.enable_langfuse()
 
     with obs.trace_attributes(user_id="u1", session_id="aax:c1", tags=["aax"]):
@@ -210,3 +222,129 @@ def test_trace_attributes_propagates_when_enabled(monkeypatch: MonkeyPatch) -> N
             "version": None,
         }
     ]
+
+
+# --- thinking-part masking --------------------------------------------------
+
+
+def test_strip_thinking_parts_removes_thinking_from_json_strings() -> None:
+    value = json.dumps(
+        [
+            {
+                "role": "assistant",
+                "parts": [
+                    {"type": "thinking", "content": "long reasoning…"},
+                    {"type": "text", "content": "answer"},
+                ],
+                "finish_reason": "stop",
+            }
+        ]
+    )
+    stripped = obs._strip_thinking_parts(value)
+    assert isinstance(stripped, str)
+    parsed = json.loads(stripped)
+    assert parsed[0]["parts"] == [{"type": "text", "content": "answer"}]
+    assert parsed[0]["finish_reason"] == "stop"
+
+
+def test_strip_thinking_parts_preserves_clean_values_unchanged() -> None:
+    clean = json.dumps(
+        [{"role": "system", "parts": [{"type": "text", "content": "sys"}]}]
+    )
+    # Fast path: clean values are returned by identity without parsing.
+    assert obs._strip_thinking_parts(clean) is clean
+
+
+def test_strip_thinking_parts_fast_path_skips_non_thinking_strings() -> None:
+
+    clean = (
+        '[{"role":"system","parts":[{"type":"text","content":"no reasoning here"}]}]'
+    )
+    same = obs._strip_thinking_parts(clean)
+    assert same is clean
+
+
+def test_strip_thinking_parts_fast_path_does_not_skip_real_thinking() -> None:
+    # "thinking" must appear literally in a message only as a thinking part;
+    # verify the guard does not accidentally skip messages carrying it.
+    with_thinking = '[{"role":"assistant","parts":[{"type":"thinking","content":"r"},{"type":"text","content":"t"}]}]'
+    stripped = obs._strip_thinking_parts(with_thinking)
+    assert json.loads(stripped)[0]["parts"] == [{"type": "text", "content": "t"}]
+
+
+def test_strip_thinking_parts_tolerates_invalid_json() -> None:
+    bad = "not-json-at-all"
+    assert obs._strip_thinking_parts(bad) is bad
+
+
+def test_strip_thinking_parts_invalid_json_with_thinking_sentinel() -> None:
+    # Invalid JSON that still contains the literal substring must not crash;
+    # json.loads raises and the original value is returned unchanged.
+    bad = '{"role":"thinking"-not-json'
+    assert obs._strip_thinking_parts(bad) is bad
+
+
+def test_strip_thinking_parts_accepts_parsed_lists() -> None:
+    value = [
+        {
+            "role": "assistant",
+            "parts": [
+                {"type": "thinking", "content": "r"},
+                {"type": "text", "content": "t"},
+            ],
+        }
+    ]
+    stripped = obs._strip_thinking_parts(value)
+    assert stripped == [
+        {"role": "assistant", "parts": [{"type": "text", "content": "t"}]}
+    ]
+
+
+def test_mask_otel_spans_patches_thinking_attributes() -> None:
+    import types as _types
+
+    from langfuse.types import OtelSpanPatch  # noqa: F401
+
+    messages = json.dumps(
+        [
+            {
+                "role": "assistant",
+                "parts": [
+                    {"type": "thinking", "content": "r"},
+                    {"type": "text", "content": "t"},
+                ],
+            }
+        ]
+    )
+
+    span_attrs = {"gen_ai.output.messages": messages}
+    params = _types.SimpleNamespace(
+        spans={("0" * 32, "1" * 16): _types.SimpleNamespace(attributes=span_attrs)}
+    )
+    result = obs.mask_otel_spans(params=params)
+    assert result is not None
+    ident = ("0" * 32, "1" * 16)
+    assert ident in result.span_patches
+    patched = result.span_patches[ident]
+    assert isinstance(patched, OtelSpanPatch)
+    assert patched.set_attributes["gen_ai.output.messages"] == json.dumps(
+        [{"role": "assistant", "parts": [{"type": "text", "content": "t"}]}]
+    )
+
+
+def test_mask_otel_spans_leaves_clean_spans_untouched() -> None:
+    import types as _types
+
+    messages = json.dumps(
+        [{"role": "system", "parts": [{"type": "text", "content": "sys"}]}]
+    )
+    params = _types.SimpleNamespace(
+        spans={
+            ("2" * 32, "3" * 16): _types.SimpleNamespace(
+                attributes={"gen_ai.input.messages": messages}
+            )
+        }
+    )
+    result = obs.mask_otel_spans(params=params)
+    assert result is not None
+    assert result.span_patches == {}

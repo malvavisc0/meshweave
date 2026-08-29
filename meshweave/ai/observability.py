@@ -12,9 +12,21 @@ the EU cloud (``https://cloud.langfuse.com``), other regions include
 ``https://us.cloud.langfuse.com``, ``https://jp.cloud.langfuse.com`` and the
 HIPAA instance ``https://hipaa.cloud.langfuse.com``. The client reads it from
 the environment.
+
+The Langfuse client is configured with a ``mask_otel_spans`` hook that strips
+``thinking`` parts from the OpenTelemetry input/output attributes before they
+reach Langfuse. Pydantic-ai (with ``include_content=True``, the default)
+serializes the model's raw multi-kilobyte reasoning trace into
+``gen_ai.input.messages`` / ``gen_ai.output.messages`` / ``pydantic_ai.all_messages``,
+and Langfuse maps those onto the trace/observation inputs and outputs it
+displays. Leaving the thinking blob in makes the UI's Input/Output panels
+either render the ~44 KB reasoning dump or fail to parse it and show a blank
+value. Since the injected attributes are the standard GenAI semantic
+conventions, masking here is transparent to pydantic-ai itself.
 """
 
 import atexit
+import json
 import logging
 import os
 from collections.abc import Iterator
@@ -35,6 +47,111 @@ _client: Langfuse | None = None
 # atexit flush handler against duplicate registration across repeated calls
 # (multiple lifespans in one process, test suites, …).
 _enabled = False
+
+# Span attributes emitted by pydantic-ai whose serialized value is a JSON
+# array of messages ({role, parts}) and may contain raw ``thinking`` parts.
+# Strip those parts before export so Langfuse's UI shows a clean input/output
+# instead of the multi-kilobyte reasoning trace.
+_MESSAGE_ATTRIBUTES = frozenset(
+    {
+        "gen_ai.input.messages",
+        "gen_ai.output.messages",
+        "pydantic_ai.all_messages",
+        "gen_ai.system_instructions",
+    }
+)
+
+
+def _strip_thinking_parts(value: Any) -> Any:
+    """Remove ``thinking`` parts from a JSON-encoded message array.
+
+    Accepts either the JSON string pydantic-ai stores in span attributes or an
+    already-parsed list/dict. Returns the input unchanged when nothing was
+    stripped (so span attributes without reasoning content are never rewritten
+    or re-serialized), and otherwise a value of the same shape as the input.
+    """
+    parsed: Any
+    if isinstance(value, str):
+        # Fast path: the serialized array only contains a thinking part when
+        # the literal substring appears, so no-reasoning spans skip the
+        # (multi-kilobyte) json.loads and tree traversal entirely.
+        if "thinking" not in value:
+            return value
+        try:
+            parsed = json.loads(value)
+        except ValueError, TypeError:
+            return value
+    else:
+        parsed = value
+
+    if isinstance(parsed, list):
+        cleaned = [_clean_message(m) for m in parsed]
+        if all(c is m for c, m in zip(cleaned, parsed)):
+            return value
+        return json.dumps(cleaned) if isinstance(value, str) else cleaned
+    if isinstance(parsed, dict):
+        cleaned = _clean_message(parsed)
+        if cleaned is parsed:
+            return value
+        return json.dumps(cleaned) if isinstance(value, str) else cleaned
+    return value
+
+
+def _clean_message(message: Any) -> Any:
+    """Return ``message`` with ``type == "thinking"`` parts removed.
+
+    Returns the original ``message`` object unchanged when no thinking part is
+    present, so callers can detect that nothing changed by identity.
+    """
+    if not isinstance(message, dict):
+        return message
+    parts = message.get("parts")
+    if not isinstance(parts, list):
+        return message
+    cleaned = [
+        p for p in parts if not (isinstance(p, dict) and p.get("type") == "thinking")
+    ]
+    if len(cleaned) == len(parts):
+        return message
+    return {**message, "parts": cleaned}
+
+
+def mask_otel_spans(*, params: Any) -> Any:
+    """Export-stage hook passed to the Langfuse client.
+
+    Runs on every OpenTelemetry export batch inside the Langfuse span
+    processor, immediately before the spans are turned into Langfuse
+    observations. Rewrites the JSON-serialized message attributes so the raw
+    reasoning ``thinking`` part does not reach Langfuse.
+
+    The hook is a no-op for batches whose spans carry none of the message
+    attributes, and returns ``None`` (drop the whole batch) only when the SDK
+    convention calls for it — which we never do; we return an empty result,
+    which the SDK treats as "leave the batch unchanged".
+    """
+    try:
+        from langfuse.types import (
+            MaskOtelSpansResult,
+            OtelSpanPatch,
+        )
+    except ImportError:  # pragma: no cover - SDK versions without the hook
+        return None
+
+    span_patches = {}
+    for identifier, params_span in params.spans.items():
+        attributes = params_span.attributes
+        set_attributes: dict[str, Any] = {}
+        for key in _MESSAGE_ATTRIBUTES:
+            value = attributes.get(key)
+            if value is None:
+                continue
+            stripped = _strip_thinking_parts(value)
+            if stripped is not value and stripped != value:
+                set_attributes[key] = stripped
+        if set_attributes:
+            span_patches[identifier] = OtelSpanPatch(set_attributes=set_attributes)
+
+    return MaskOtelSpansResult(span_patches=span_patches)
 
 
 def enable_langfuse() -> bool:
@@ -62,11 +179,12 @@ def enable_langfuse() -> bool:
 
     public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
     secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+    base_url = os.getenv("LANGFUSE_BASE_URL", "").strip() or None
     if not public_key or not secret_key:
         return False
 
     try:
-        from langfuse import get_client
+        from langfuse import Langfuse
         from pydantic_ai import Agent
     except ImportError as exc:
         logger.warning(
@@ -76,7 +194,12 @@ def enable_langfuse() -> bool:
         return False
 
     try:
-        _client = get_client()
+        _client = Langfuse(
+            public_key=public_key,
+            secret_key=secret_key,
+            base_url=base_url,
+            mask_otel_spans=mask_otel_spans,
+        )
         Agent.instrument_all()
     except Exception:
         _client = None
