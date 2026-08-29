@@ -417,7 +417,7 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
         "GEO": (
             "Answers work. Trust signals need strengthening for AI recommendations."
         ),
-        "AAX": ("Answers and trust are solid. Agent experience needs clearer paths."),
+        "AAX": "Answers and trust are solid. Offer and next-step signals need clarification.",
     },
     # Rule 8 — no lens variant
     "highly_readable": (
