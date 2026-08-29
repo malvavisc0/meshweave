@@ -177,8 +177,6 @@ class Crawl(Base):
     __table_args__ = (
         # Short public key used for URL access (unique across table, nullable for private)
         UniqueConstraint("key", name="uq_crawls_key"),
-        # Unique share_key for private unlisted sharing
-        UniqueConstraint("share_key", name="uq_crawls_share_key"),
         Index("ix_crawls_updated_at", "updated_at"),
         Index("ix_crawls_domain", "domain"),
         Index("ix_crawls_user_id", "user_id"),
@@ -236,7 +234,6 @@ class Crawl(Base):
     )
 
     listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    share_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # History tracking: when True, this is the current row for this domain+visibility
     is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
