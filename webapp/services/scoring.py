@@ -218,7 +218,19 @@ async def run_aax_for_crawl(
         logger.warning("AAX analysis failed for crawl %s: %s", crawl_id, e)
         aax_result = {"status": "failed", "error": str(e)}
 
-    if not aax_result or aax_result.get("status") in ("disabled", "failed"):
+    if not aax_result:
+        return aax_result
+
+    if aax_result.get("status") == "failed":
+        # Persist the failure marker so the result page stops showing
+        # "Running AI Analysis…" for a crawl whose AAX analysis died.
+        # Without it, a succeeded crawl with a crashed AAX stays
+        # "pending" forever (aax_pending checks for status ==
+        # "completed" in the stored JSON).
+        _persist_aax_failure(crawl_id, aax_result)
+        return aax_result
+
+    if aax_result.get("status") == "disabled":
         return aax_result
 
     # Compute AAX composite score
@@ -229,6 +241,29 @@ async def run_aax_for_crawl(
     _inject_aax_into_payload_json(crawl_id, aax_result, aax_score_json)
 
     return aax_score_json
+
+
+def _persist_aax_failure(crawl_id: str, aax_result: dict[str, Any]) -> None:
+    """Record a failed AAX analysis on the crawl's snapshot and payload.
+
+    Best-effort: a persistence error must not mask the analysis
+    failure itself.
+    """
+    try:
+        with get_session() as s:
+            snap = (
+                s.query(ScoreSnapshot)
+                .filter(ScoreSnapshot.crawl_id == crawl_id)
+                .first()
+            )
+            if snap:
+                existing = snap.ai_analysis_json or {}
+                existing["aax"] = aax_result
+                snap.ai_analysis_json = existing
+                flag_modified(snap, "ai_analysis_json")
+        _inject_aax_into_payload_json(crawl_id, aax_result, None)
+    except Exception:
+        logger.exception("Failed to persist AAX failure for crawl %s", crawl_id)
 
 
 def _load_payload_for_aax(

@@ -11,8 +11,19 @@ def aax_pending(crawl: Any) -> bool:
 
     Loads the score snapshot in a fresh session to avoid DetachedInstanceError
     on callers that pass a Crawl bound to a closed session.
+
+    "Finished" includes terminal failure: a stored AAX status of
+    "failed" or "disabled" must clear the pending state, or the result
+    page shows "Running AI Analysis…" forever for a crawl whose
+    analysis crashed (e.g. interrupted by a service restart).
     """
     if os.getenv("AAX_ENABLED", "false").lower() != "true":
+        return False
+    # A failed or cancelled crawl will never produce an AAX analysis;
+    # without this guard the result page shows "Running AI Analysis…"
+    # forever on a dead job.
+    status = str(getattr(crawl, "status", "") or "").lower()
+    if status not in ("pending", "running", "succeeded"):
         return False
     from webapp.db import get_session
     from webapp.models import ScoreSnapshot
@@ -26,7 +37,7 @@ def aax_pending(crawl: Any) -> bool:
         if snap is None:
             return True
         aax = (snap.ai_analysis_json or {}).get("aax") or {}
-        return aax.get("status") != "completed"
+        return aax.get("status") not in ("completed", "failed", "disabled")
 
 
 # Mapping of factor keys to human-readable display names
