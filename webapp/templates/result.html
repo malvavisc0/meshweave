@@ -224,6 +224,12 @@ else 'n/a') ~
       <div class="risk-status">{{ interp.profile_label }}</div>
       <h2 class="risk-headline">{{ interp.headline }}</h2>
       <p class="risk-summary-lede">{{ interp.diagnosis }}</p>
+      {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
+      <div class="aax-summary-note">
+        <span class="aax-summary-label">Agent readout</span>
+        <span>{{ score_snapshot.aax_analysis.summary }}</span>
+      </div>
+      {% endif %}
       <div class="risk-chips-inline" aria-label="Risk diagnostics">
         <span class="risk-chip-inline"><span>Weakest lens</span> <strong>{{ interp.weakest_lens }}</strong></span><br>
         <span class="risk-chip-inline"><span>Business risk</span> <strong>{{ interp.primary_exposure
@@ -390,12 +396,6 @@ else 'n/a') ~
         </div>
         <div class="lens-breakdown-detail">
           <h3 class="breakdown-col-header">AAX signals and fixes</h3>
-          {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.summary %}
-          <div class="aax-summary-note">
-            <span class="aax-summary-label">Agent readout</span>
-            <span>{{ score_snapshot.aax_analysis.summary }}</span>
-          </div>
-          {% endif %}
           {% set ext = factor_extremes.aax %}
           {% if ext[0] or ext[2] %}
           <div class="breakdown-interpretation">
@@ -701,6 +701,12 @@ else 'n/a') ~
 
       {% if aax.content_delta %}
       {% set cd = aax.content_delta %}
+      {% if cd.coherence %}
+      <div class="aax-summary-note">
+        <span class="aax-summary-label">Site-wide consistency</span>
+        <span>{{ cd.coherence | replace('_', ' ') }}</span>
+      </div>
+      {% endif %}
       {% if (cd.strengths and cd.strengths | length > 0) or (cd.weaknesses and cd.weaknesses | length > 0) %}
       <div class="aax-audit-grid">
         <div class="aax-audit-column aax-audit-strengths">
@@ -747,8 +753,8 @@ else 'n/a') ~
           </span>
           <span class="small">{% if llms_full_data.url %}URL: {{ llms_full_data.url }}{% endif %}</span>
         </div>
-        {% if llms_txt_data.content %}
-        <div class="aax-crawler-preview">{{ llms_txt_data.content[:500] }}</div>
+        {% if llms_txt_data.content_preview %}
+        <div class="aax-crawler-preview">{{ llms_txt_data.content_preview[:500] }}</div>
         {% endif %}
       </div>
       {% endif %}
@@ -857,6 +863,41 @@ else 'n/a') ~
       {% endif %}
 
       <h3>Contact Paths AI Can Find</h3>
+      {% set email_validation = (score_snapshot.aax_analysis or {}).email_validation or {} %}
+      {% set valid_contacts = email_validation.valid_contacts or [] %}
+      {% set rejected_contacts = email_validation.rejected_contacts or [] %}
+      {% if email_validation %}
+      {% if email_validation.best_contact %}
+      <p class="mt-0 mb-1"><strong>Best contact:</strong> <code>{{ email_validation.best_contact }}</code></p>
+      {% endif %}
+      {% if valid_contacts %}
+      <div class="table-wrap">
+        <table class="table mt-1" aria-label="Valid contacts table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Type</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for c in valid_contacts %}
+          <tr>
+            <td><code>{{ c.email }}</code></td>
+            <td class="small">{{ c.contact_type | title }}</td>
+            <td class="small">{{ c.reason }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="small mt-1">No valid contacts identified.</p>
+      {% endif %}
+      {% if rejected_contacts %}
+      <p class="small mt-1 mb-0">Rejected: {{ rejected_contacts | length }} address(es) filtered out.</p>
+      {% endif %}
+      {% else %}
       {% set has_email_detail = payload.emails and payload.emails.unique and payload.emails.unique|length > 0 %}
       {% if has_email_detail %}
       <div class="table-wrap">
@@ -887,6 +928,7 @@ else 'n/a') ~
         No emails detected.
         {% endif %}
       </div>
+      {% endif %}
       {% endif %}
     </section>
     {% endif %}
