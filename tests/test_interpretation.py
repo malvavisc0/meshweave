@@ -174,6 +174,58 @@ class TestProfileShapes:
         assert result["tone"] == "moderate"
 
 
+class TestStrongLensNotCatastrophic:
+    """A strong lens must not be framed as 'can't be parsed'.
+
+    Regression: candlebar.app scored AEO 15, GEO 22, AAX 71.2 and got
+    the high_invisibility headline "AI agents can't parse the website
+    content" — directly contradicting the strong AAX lens and its
+    agent-readout summary on the same page.
+    """
+
+    def test_two_broken_one_strong_is_material_risk(self):
+        result = interpret_profile(15.0, 22.0, 71.2)
+        assert result["profile_shape"] == "material_risk"
+        assert result["tone"] == "serious"
+        assert "can't parse" not in result["headline"].lower()
+
+    def test_low_avg_with_strong_lens_not_high_invisibility(self):
+        # avg < 35, but the strong AAX lens keeps the profile out of
+        # the catastrophic "no lens is salvageable" framing.
+        result = interpret_profile(10.0, 15.0, 70.0)
+        assert result["profile_shape"] == "material_risk"
+
+    def test_all_broken_still_high_invisibility(self):
+        result = interpret_profile(15.0, 22.0, 25.0)
+        assert result["profile_shape"] == "high_invisibility"
+        assert result["tone"] == "critical"
+
+    def test_developing_third_lens_keeps_high_invisibility(self):
+        # Nothing strong-or-better, two broken → still catastrophic.
+        result = interpret_profile(20.0, 25.0, 60.0)
+        assert result["profile_shape"] == "high_invisibility"
+
+
+class TestSingleProblemLensIsolation:
+    """'One weak spot' copy must only fire when there is exactly one."""
+
+    def test_broken_plus_weak_is_material_risk(self):
+        # Regression: cloakbrowser.dev scored AEO 46.1, GEO 36.3,
+        # AAX 78.5 and was framed as "One weak spot is affecting the
+        # visibility of the whole site" despite two lenses below par.
+        result = interpret_profile(46.1, 36.3, 78.5)
+        assert result["profile_shape"] == "material_risk"
+        assert result["tone"] == "serious"
+
+    def test_broken_plus_developing_is_broad_exposure(self):
+        result = interpret_profile(30.0, 62.0, 80.0)
+        assert result["profile_shape"] == "broad_exposure"
+
+    def test_lone_broken_between_two_strong_still_2a(self):
+        result = interpret_profile(30.0, 72.0, 80.0)
+        assert result["profile_shape"] == "critical_failure"
+
+
 class TestLensSpecificLabels:
     """Test lens-specific label substitution."""
 
@@ -409,6 +461,18 @@ class TestLensDetailsLabels:
             band = result["bands"][lens]["band"]
             label = result["lens_details"][lens]["band_label"]
             assert label.lower() == band
+
+    def test_geo_broken_meaning_is_lens_specific(self):
+        # GEO broken is a trust failure, not an unparsable-content claim.
+        result = interpret_profile(15.0, 22.0, 71.2)
+        meaning = result["lens_details"]["GEO"]["meaning"].lower()
+        assert "parse" not in meaning
+        assert "recommend" in meaning
+
+    def test_aax_broken_meaning_keeps_parsing_claim(self):
+        result = interpret_profile(15.0, 22.0, 25.0)
+        meaning = result["lens_details"]["AAX"]["meaning"].lower()
+        assert "parse" in meaning
 
 
 class TestIncompleteVariants:

@@ -8,9 +8,9 @@ Profile Shape Enum Values
 
 | profile_shape           | Rule | Description                   |
 |-------------------------|------|-------------------------------|
-| high_invisibility       | 1    | Two+ broken or very low avg   |
-| critical_failure        | 2a   | One broken, avg below 65      |
-| broken_in_strong_profile| 2b   | One broken in strong profile   |
+| high_invisibility       | 1    | No strong lens and 2+ broken, or very low avg |
+| critical_failure        | 2a   | One broken as the only sub-strong lens, avg below 65 |
+| broken_in_strong_profile| 2b   | One broken as the only sub-strong lens, avg 65+ |
 | material_risk           | 3    | Multiple weak/broken lenses   |
 | broad_exposure          | 4    | One weak/broken + developing  |
 | single_exposure         | 5    | Single weak/broken lens       |
@@ -107,6 +107,24 @@ def _band_meaning(band: BandName) -> str:
         if b == band:
             return meaning
     return ""
+
+
+# Lens-aware meaning for the "broken" band. The generic threshold text
+# ("content can't be parsed") describes an AAX failure; rendered under
+# GEO it would wrongly claim unparsable content when the lens actually
+# measures trust and recommendation signals.
+_BROKEN_BAND_MEANINGS: dict[LensName, str] = {
+    "AEO": "AI systems can't extract clean, quotable answers from this content",
+    "GEO": "AI systems don't see enough evidence to recognize or recommend this brand",
+    "AAX": "This site's content can't be parsed by AI agents",
+}
+
+
+def _lens_band_meaning(lens: LensName, band: BandName) -> str:
+    """Per-lens meaning for the broken band, shared meaning otherwise."""
+    if band == "broken":
+        return _BROKEN_BAND_MEANINGS[lens]
+    return _band_meaning(band)
 
 
 def _compute_bands(scores: dict[LensName, float]) -> dict[LensName, BandName]:
@@ -208,25 +226,33 @@ class _ProfileRule:
 
 
 _PROFILE_RULES: tuple[_ProfileRule, ...] = (
-    # Rule 1 — two+ broken lenses, or an average so low that no lens is
-    # salvageable. The average clause requires < 35 *and* at least one
-    # broken lens, so a site with three uniform 44s (no broken lens) is
-    # not framed as catastrophic "can't be parsed" — it falls through to
-    # the material_risk/needs_review rules instead.
+    # Rule 1 — no lens is salvageable: nothing reached the strong band,
+    # and either two+ lenses are broken or the average is very low with
+    # at least one broken lens. A strong third lens (e.g. AEO 15, GEO 22,
+    # AAX 71) must NOT be framed as "can't be parsed" — that profile
+    # falls through to material_risk instead.
     _ProfileRule(
         "high_invisibility",
         "critical",
-        lambda c: c.broken_count >= 2 or (c.avg < 35 and c.broken_count >= 1),
+        lambda c: (
+            c.strong_or_better_count == 0
+            and (c.broken_count >= 2 or (c.avg < 35 and c.broken_count >= 1))
+        ),
     ),
-    # Rule 2a — broken lens, avg < 65
+    # Rule 2a — the broken lens is the ONLY lens below strong and drags
+    # the average under 65. Requires the other two lenses strong+ so the
+    # "one weak spot" framing is factual; profiles with an additional
+    # weak/developing lens fall through to rules 3/4.
     _ProfileRule(
-        "critical_failure", "critical", lambda c: c.broken_count == 1 and c.avg < 65
+        "critical_failure",
+        "critical",
+        lambda c: c.broken_count == 1 and c.strong_or_better_count == 2 and c.avg < 65,
     ),
-    # Rule 2b — broken lens, avg >= 65
+    # Rule 2b — same single-broken-lens shape, but the average holds at 65+
     _ProfileRule(
         "broken_in_strong_profile",
         "serious",
-        lambda c: c.broken_count == 1 and c.avg >= 65,
+        lambda c: c.broken_count == 1 and c.strong_or_better_count == 2 and c.avg >= 65,
     ),
     # Rule 3
     _ProfileRule(
@@ -302,7 +328,7 @@ _HEADLINES: dict[str, str] = {
     "broad_exposure": "One big gap, plus a few other issues",
     "single_exposure": "Fix this one thing and everything improves",
     "partial_exposure": "AI agents only get fragments of the website",
-    "developing_with_strong": "Good shape overall — {lens} just needs polish",
+    "developing_with_strong": "Good shape overall — just polish {lens}",
     "highly_readable": "AI agents read this cleanly. Go check it yourself.",
     "strong_profile": "Solid foundation. Quick check recommended.",
     "needs_review": "Scores feel off — double-check these",
@@ -608,7 +634,7 @@ def interpret_profile(
         label = band.capitalize()
         lens_details[lens] = {
             "band_label": label,
-            "meaning": _band_meaning(band),
+            "meaning": _lens_band_meaning(lens, band),
         }
 
     # ------------------------------------------------------------------
