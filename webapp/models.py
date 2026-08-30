@@ -235,6 +235,16 @@ class Crawl(Base):
     aeo_rating: Mapped[str | None] = mapped_column(String(32), nullable=True)
     geo_rating: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ai_analysis_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # AAX queue state: "pending" | "running" | "completed" | "failed" | "disabled"
+    aax_status: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="pending"
+    )
+    # When AAX processing started (for stale detection)
+    aax_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     scoring_version: Mapped[str] = mapped_column(
         String(16), nullable=False, default="1.0"
     )
