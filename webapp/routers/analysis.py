@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import joinedload
 
 from webapp.db import get_session
@@ -12,6 +12,15 @@ from webapp.infra import templates
 from webapp.models import Crawl
 from webapp.utils.auth import require_ownership
 from webapp.utils.config import _env_bool
+from webapp.utils.diff import (
+    build_comparison_notes,
+    build_content_diff,
+    build_findings_diff,
+    build_score_diff,
+    find_previous_revision,
+    list_revision_series,
+)
+from webapp.utils.payload_counts import json_ld_count as _json_ld_count
 from webapp.utils.progress import progress_view
 from webapp.utils.reasons import friendly_reason
 from webapp.utils.scoring import (
@@ -112,80 +121,6 @@ def _payload_scope(payload: dict | None, row: Crawl) -> str:
     if not scope_val:
         scope_val = str(getattr(row, "scope", "") or "").strip().lower()
     return scope_val
-
-
-def _external_count(payload: dict, external_links_count: int) -> int:
-    """Apply the extraction reported external count (link count, not page count)."""
-    try:
-        if payload.get("metrics") and payload["metrics"].get("extraction"):
-            ext = payload["metrics"]["extraction"]
-            # Do not use internal_count for content_pages_count (it's link count, not page count)
-            if ext.get("external_count") is not None:
-                external_links_count = int(ext.get("external_count") or 0)
-    except Exception:
-        pass
-    return external_links_count
-
-
-def _link_counts(payload: dict, internal: int, external: int) -> tuple[int, int]:
-    """Count internal/external link lists, keeping the larger external count."""
-    try:
-        if payload.get("links"):
-            if isinstance(payload["links"].get("internal"), list):
-                internal = len(payload["links"]["internal"])
-            if isinstance(payload["links"].get("external"), list):
-                external = max(external, len(payload["links"]["external"]))
-    except Exception:
-        pass
-    return internal, external
-
-
-def _emails_count(payload: dict, emails_count: int) -> int:
-    """Set the email count from the payload counts when present."""
-    try:
-        if payload.get("emails") and payload["emails"].get("counts"):
-            emails_count = int(payload["emails"]["counts"].get("total_unique") or 0)
-    except Exception:
-        pass
-    return emails_count
-
-
-def _content_pages_count(payload: dict, content_pages_count: int) -> int:
-    """Count content pages from pages list or summary visited_count."""
-    try:
-        if isinstance(payload.get("pages"), list):
-            content_pages_count = len(payload["pages"])
-        elif (
-            isinstance(payload.get("summary"), dict)
-            and payload["summary"].get("visited_count") is not None
-        ):
-            content_pages_count = int(payload["summary"]["visited_count"] or 0)
-    except Exception:
-        pass
-    return content_pages_count
-
-
-def _json_ld_count(payload: dict | None) -> dict:
-    """Derive content/email/link counts from the payload for JSON-LD."""
-    if not payload:
-        return {
-            "content_pages_count": 0,
-            "emails_count": 0,
-            "internal_links_count": 0,
-            "external_links_count": 0,
-        }
-    external_links_count = _external_count(payload, 0)
-    internal_links_count, external_links_count = _link_counts(
-        payload, 0, external_links_count
-    )
-    emails_count = _emails_count(payload, 0)
-    content_pages_count = _content_pages_count(payload, 0)
-    return {
-        "content_pages_count": content_pages_count,
-        "emails_count": emails_count,
-        "internal_links_count": internal_links_count,
-        "external_links_count": external_links_count,
-    }
 
 
 def _page_title(
@@ -476,6 +411,13 @@ def _public_refresh_state(row: Crawl, in_progress: bool) -> tuple[bool, str]:
     return can_refresh, refresh_eta
 
 
+def _revision_series_for(row: Crawl) -> list[dict]:
+    """Revision strip entries for the owner view (succeeded rows only)."""
+    if row.status != "succeeded":
+        return []
+    return list_revision_series(row)
+
+
 async def _render_private_view(request: Request, ref: str) -> Response:
     """Render the owner-only private analysis view.
 
@@ -560,6 +502,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
             "aax_pending": aax,
             "in_progress": in_progress,
             "progress": progress,
+            "revisions": _revision_series_for(row),
         },
     )
     # Prevent indexing of private results
@@ -690,3 +633,121 @@ async def view_analysis(request: Request, ref: str):
 
     # Public by short key
     return await _render_public_view(request, ref)
+
+
+async def _resolve_vs_row(request: Request, vs: str, base_row: Crawl) -> Crawl | None:
+    """Load and validate the ``?vs=`` row; None on any mismatch.
+
+    The vs row must be owned by the current user, be a succeeded run, and
+    share the base row's domain, path, query, and scope (crawl_params
+    presence). Any failure — missing, non-owner, non-succeeded, mismatched
+    address — collapses to None so the caller 404s uniformly without
+    revealing whether the row exists.
+    """
+    try:
+        vs_row = await require_ownership(request, vs)
+    except HTTPException as exc:
+        if exc.status_code in (401, 403, 404):
+            return None
+        raise
+    if (
+        vs_row.status != "succeeded"
+        or vs_row.domain != base_row.domain
+        or vs_row.path != base_row.path
+        or vs_row.query != base_row.query
+        or bool(vs_row.crawl_params) != bool(base_row.crawl_params)
+    ):
+        return None
+    return vs_row
+
+
+def _diff_row_view(row: Crawl) -> dict:
+    """Return the header fields shown for one revision in the diff page."""
+    return {
+        "id": row.id,
+        "domain": row.domain,
+        "path": row.path,
+        "status": row.status,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+        "scope": "site" if row.crawl_params else "page",
+    }
+
+
+def _build_diff_context(
+    request: Request, row: Crawl, old_row: Crawl | None, is_default_compare: bool
+) -> dict:
+    """Build the template context for the diff page (empty state or full diff)."""
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    domain = (row.domain or "").strip()
+    path = (row.path or "").strip() or "/"
+    has_old = old_row is not None and old_row.id != row.id
+
+    score_diff = None
+    findings_diff = None
+    content_diff = None
+    comparison_notes: list[str] = []
+    if has_old and old_row is not None:
+        old_ss = getattr(old_row, "score_snapshot", None)
+        new_ss = getattr(row, "score_snapshot", None)
+        score_diff = build_score_diff(old_ss, new_ss, old_row, row)
+        findings_diff = build_findings_diff(old_ss, new_ss)
+        content_diff = build_content_diff(old_row.payload_json, row.payload_json)
+        comparison_notes = build_comparison_notes(old_row, row, old_ss, new_ss)
+
+    return {
+        "new": _diff_row_view(row),
+        "old": _diff_row_view(old_row) if old_row else None,
+        "has_old": has_old,
+        "is_default_compare": is_default_compare,
+        "score_diff": score_diff,
+        "findings_diff": findings_diff,
+        "content_diff": content_diff,
+        "comparison_notes": comparison_notes,
+        "revisions": list_revision_series(row),
+        "page_title": f"Revision diff — {domain}{path} — {site_name}",
+        "site_name": site_name,
+        "csrf_token": "",
+        "domain": domain,
+        "path": path,
+        "canonical_url": row.canonical_url,
+        "abs_ref_url": _abs_url(request, f"/analysis/{row.id}"),
+    }
+
+
+@router.get("/analysis/{ref}/diff", response_class=HTMLResponse)
+async def view_analysis_diff(request: Request, ref: str, vs: str | None = None):
+    """Compare the current revision against a previous one (owner-only).
+
+    ``ref`` is a UUID addressed by the owner. ``?vs=`` overrides the default
+    previous-revision comparison and must be another owned row in the same
+    series. Unauthenticated, non-owner, or mismatched refs collapse to 404.
+    """
+    target = vs or ref
+    if not _is_uuid(target):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    try:
+        row = await require_ownership(request, ref)
+    except HTTPException as exc:
+        if exc.status_code in (401, 403):
+            raise HTTPException(status_code=404, detail="Not found")
+        raise
+
+    # In-progress base rows are handled by the result page's meta-refresh loop.
+    if str(row.status or "").lower() in ("pending", "running"):
+        return RedirectResponse(url=f"/analysis/{ref}", status_code=303)
+
+    is_default_compare = False
+    if vs:
+        old_row = await _resolve_vs_row(request, vs, row)
+        if old_row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+    else:
+        old_row = find_previous_revision(row)
+        is_default_compare = True
+
+    context = _build_diff_context(request, row, old_row, is_default_compare)
+    resp = templates.TemplateResponse(request, "diff.html", context)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp

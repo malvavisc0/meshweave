@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container container-wide analysis-result-page">
+
+  <header class="diff-header">
+    <a href="{{ abs_ref_url }}" class="diff-back" aria-label="Back to this analysis">&#8592; Back to analysis</a>
+    <div class="diff-header-main">
+      <h1 class="diff-title">Revision diff &mdash; {{ domain }}{{ path }}</h1>
+      <div class="diff-header-runs" role="group" aria-label="Comparing two revisions">
+        <div class="diff-run">
+          <span class="sr-only">Current run</span>
+          <a href="/analysis/{{ new.id }}" class="diff-run-id">{{ new.id }}</a>
+          <span class="diff-run-meta">{{ new.created_at | relative_time }} &middot; {{ new.scope | title }}</span>
+        </div>
+        <span class="diff-run-arrow" aria-hidden="true">&#8594;</span>
+        {% if has_old and old %}
+        <div class="diff-run">
+          <span class="sr-only">Comparison run</span>
+          <a href="/analysis/{{ old.id }}" class="diff-run-id">{{ old.id }}</a>
+          <span class="diff-run-meta">{{ old.created_at | relative_time }} &middot; {{ old.scope | title }}</span>
+        </div>
+        {% else %}
+        <span class="diff-run-meta diff-run-meta--empty">No comparison run</span>
+        {% endif %}
+      </div>
+      {% if is_default_compare and has_old %}
+      <p class="diff-note">Comparing against the previous succeeded run in this series.</p>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if has_old %}
+
+    {# Revision selector (compare mode). #}
+    {% with mode = "compare", current_id = new.id, old_id = old.id, diff_base = new.id %}
+    {% include "partials/revision_strip.html" %}
+    {% endwith %}
+
+      {% if comparison_notes %}
+      <div class="diff-notes">
+        {% for note in comparison_notes %}
+        <div class="panel panel--warning diff-note-banner">{{ note }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+    {# Composite scores. #}
+    <section class="panel result-section diff-scores" role="region" aria-label="Score comparison">
+      <h2 class="diff-section-title">Scores</h2>
+      <div class="diff-score-rows">
+        {% for pillar in ["aeo", "geo", "aax"] %}
+        {% set c = score_diff.composites[pillar] %}
+        <div class="diff-score-row">
+          <span class="diff-score-label">{{ pillar | title }}</span>
+          <span class="diff-score-value">{{ c.old | round(0) | int if c.old is not none else '—' }}</span>
+          <span class="diff-run-arrow" aria-hidden="true">&#8594;</span>
+          <span class="diff-score-value">{{ c.new | round(0) | int if c.new is not none else '—' }}</span>
+          {% if c.delta is not none %}
+          <span class="diff-delta {{ 'diff-delta--up' if c.delta > 0 else 'diff-delta--down' }}"
+                role="img" aria-label="{{ pillar }} change {{ '+' if c.delta > 0 }}{{ c.delta }}">
+            {% if c.delta > 0 %}+{% endif %}{{ c.delta }}
+          </span>
+          {% else %}
+          <span class="diff-delta diff-delta--na">&mdash;</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {# Factor changes. #}
+    <section class="panel result-section diff-factors" role="region" aria-label="Factor comparison">
+      <h2 class="diff-section-title">Factors</h2>
+      {% if score_diff.factors %}
+      {% set unchanged_factors = score_diff.factors | selectattr('status_change', 'equalto', 'unchanged') | list %}
+      <table class="table diff-factor-table">
+        <thead>
+          <tr>
+            <th class="diff-th">Factor</th>
+            <th class="diff-th">Old</th>
+            <th class="diff-th">New</th>
+            <th class="diff-th">Delta</th>
+            <th class="diff-th">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in score_diff.factors %}
+          {% if f.status_change != 'unchanged' %}
+          <tr class="diff-factor-row">
+            <td class="diff-factor-name">{{ f.display_name }}</td>
+            <td>{{ f.old if f.old is not none else '—' }}</td>
+            <td>{{ f.new if f.new is not none else '—' }}</td>
+            <td>{% if f.delta is not none %}{% if f.delta > 0 %}+{% endif %}{{ f.delta }}{% else %}&mdash;{% endif %}</td>
+            <td><span class="badge diff-status--{{ f.status_change }}">{{ f.status_change | replace('_', ' ') | title }}</span></td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if unchanged_factors | length > 0 %}
+      <details class="diff-unchanged-factors">
+        <summary>{{ unchanged_factors | length }} unchanged factor{{ 's' if unchanged_factors | length != 1 }}</summary>
+        <ul class="diff-unchanged-list">
+          {% for f in unchanged_factors %}
+          <li>{{ f.display_name }}</li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+      {% else %}
+      <p class="small">Scores are unavailable for one of the runs, so factor-level comparison is not shown.</p>
+      {% endif %}
+    </section>
+
+    {# Findings. #}
+    <section class="panel result-section diff-findings" role="region" aria-label="Findings comparison">
+      <h2 class="diff-section-title">Findings</h2>
+      <div class="diff-findings-grid">
+        <div class="diff-findings-column">
+          <h3 class="diff-subsection-title diff-findings-title--resolved">Resolved since last run</h3>
+          {% if findings_diff.resolved %}
+          <ul class="rec-list diff-rec-list">
+            {% for rec in findings_diff.resolved %}
+            <li class="rec-item rec-priority-{{ rec.priority }}">
+              <span class="rec-title">{{ rec.title }}</span>
+              {% if rec.detail %}<p class="rec-detail">{{ rec.detail }}</p>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="small">No findings resolved.</p>
+          {% endif %}
+        </div>
+        <div class="diff-findings-column">
+          <h3 class="diff-subsection-title diff-findings-title--new">Newly flagged</h3>
+          {% if findings_diff.new %}
+          <ul class="rec-list diff-rec-list">
+            {% for rec in findings_diff.new %}
+            <li class="rec-item rec-priority-{{ rec.priority }}">
+              <span class="rec-title">{{ rec.title }}</span>
+              {% if rec.detail %}<p class="rec-detail">{{ rec.detail }}</p>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="small">No new findings.</p>
+          {% endif %}
+        </div>
+      </div>
+      {% if findings_diff.unchanged_count %}
+      <p class="small">{{ findings_diff.unchanged_count }} unchanged finding{{ 's' if findings_diff.unchanged_count != 1 }}.</p>
+      {% endif %}
+    </section>
+
+    {# Content. #}
+    <section class="panel result-section diff-content" role="region" aria-label="Content comparison">
+      <h2 class="diff-section-title">Content</h2>
+      {% if content_diff.available %}
+      <div class="diff-content-meta">
+        <div class="diff-meta-pair">
+          <div>
+            <span class="small diff-meta-label">Title &mdash; previous</span>
+            <p class="diff-meta-value">{{ content_diff.title_desc.old.title or '—' }}</p>
+          </div>
+          <div>
+            <span class="small diff-meta-label">Title &mdash; current</span>
+            <p class="diff-meta-value">{{ content_diff.title_desc.new.title or '—' }}</p>
+          </div>
+        </div>
+        <div class="diff-meta-pair">
+          <div>
+            <span class="small diff-meta-label">Meta description &mdash; previous</span>
+            <p class="diff-meta-value">{{ content_diff.title_desc.old.description or '—' }}</p>
+          </div>
+          <div>
+            <span class="small diff-meta-label">Meta description &mdash; current</span>
+            <p class="diff-meta-value">{{ content_diff.title_desc.new.description or '—' }}</p>
+          </div>
+        </div>
+      </div>
+
+      <table class="table diff-count-table">
+        <thead>
+          <tr><th class="diff-th">Metric</th><th class="diff-th">Previous</th><th class="diff-th">Current</th><th class="diff-th">Delta</th></tr>
+        </thead>
+        <tbody>
+          {% for key, label in [("content_pages_count", "Content pages"), ("emails_count", "Emails"), ("internal_links_count", "Internal links"), ("external_links_count", "External links")] %}
+          {% set m = content_diff.counts[key] %}
+          <tr>
+            <td class="diff-factor-name">{{ label }}</td>
+            <td>{{ m.old }}</td>
+            <td>{{ m.new }}</td>
+            <td>{% if m.delta != 0 %}<span class="diff-delta {{ 'diff-delta--up' if m.delta > 0 else 'diff-delta--down' }}">{{ '+' if m.delta > 0 }}{{ m.delta }}</span>{% else %}<span class="diff-delta diff-delta--na">&mdash;</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if content_diff.scope == 'site' and content_diff.page_list %}
+      <div class="diff-page-list">
+        <h3 class="diff-subsection-title">Pages added</h3>
+        {% if content_diff.page_list.added %}
+        <ul class="diff-url-list">
+          {% for url in content_diff.page_list.added %}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>{% endfor %}
+        </ul>
+        {% else %}
+        <p class="small">None.</p>
+        {% endif %}
+        <h3 class="diff-subsection-title">Pages removed</h3>
+        {% if content_diff.page_list.removed %}
+        <ul class="diff-url-list">
+          {% for url in content_diff.page_list.removed %}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>{% endfor %}
+        </ul>
+        {% else %}
+        <p class="small">None.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if content_diff.scope == 'page' and content_diff.markdown_diff_html %}
+      <details class="diff-markdown">
+        <summary>Unified markdown diff</summary>
+        <div class="diff-markdown-wrap">
+          {{ content_diff.markdown_diff_html | safe }}
+        </div>
+        {% if content_diff.markdown_truncated %}
+        <p class="small diff-truncation-note">Markdown diff truncated to bound output size.</p>
+        {% endif %}
+      </details>
+      {% endif %}
+      {% else %}
+      <p class="small">Content is unavailable for one of the runs.</p>
+      {% endif %}
+    </section>
+
+  {% else %}
+    {# Empty state. #}
+    <section class="panel diff-empty" role="region" aria-label="No revision diff">
+      {% if old is none %}
+      <h2 class="diff-empty-title">This is the first recorded run for this page.</h2>
+      <p class="diff-empty-text">Re-analyze after making changes to unlock revision diffs between runs.</p>
+      {% else %}
+      <h2 class="diff-empty-title">Choose two different runs.</h2>
+      <p class="diff-empty-text">The comparison run matches the current revision. Open a different revision to diff against this one.</p>
+      {% endif %}
+      <div class="actions">
+        <a class="btn btn-primary" href="/analysis/{{ new.id }}">Back to this analysis</a>
+      </div>
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}

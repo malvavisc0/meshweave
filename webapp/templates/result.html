@@ -651,6 +651,13 @@ else 'n/a') ~
     ================================================================ #}
     {% if viewer_role == 'owner' %}
 
+    {# --- Revisions: revision strip (owner-only, view mode) --- #}
+    {% if revisions and revisions | length > 1 %}
+    {% with mode = "view", current_id = id %}
+    {% include "partials/revision_strip.html" %}
+    {% endwith %}
+    {% endif %}
+
     {# --- AI Agent Usability Review (owner-only) --- #}
     {% if score_snapshot and score_snapshot.aax_analysis %}
     {% set aax = score_snapshot.aax_analysis %}

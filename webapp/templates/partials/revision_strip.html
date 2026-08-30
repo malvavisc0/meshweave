@@ -1,0 +1,31 @@
+{# Revision strip: shared list / compare selector for the result and diff pages. #}
+{# Context: revisions (list of {id, created_at, status, visibility, scope}), #}
+{# mode ("view" | "compare"), current_id, old_id (compare), diff_base (compare). #}
+{% if revisions and revisions | length > 0 %}
+<div class="revision-strip" role="group" aria-label="Revision history">
+  {% set visible = revisions if mode != "compare" else (revisions | rejectattr("id", "equalto", current_id) | list) %}
+  {% for rev in visible %}
+  <div class="revision-strip-row{% if rev.id == current_id %} revision-strip-row--current{% endif %}{% if old_id and rev.id == old_id %} revision-strip-row--active{% endif %}">
+    <span class="revision-strip-run">Run {{ loop.index }}</span>
+    <span class="revision-strip-meta">
+      {{ rev.created_at | relative_time }}
+      <span class="revision-strip-sep">&middot;</span>
+      {{ rev.scope | title }}
+      <span class="revision-strip-sep">&middot;</span>
+      {{ rev.visibility | title }}
+    </span>
+    {% if mode == "compare" %}
+    <a class="btn btn-sm" href="/analysis/{{ diff_base }}/diff?vs={{ rev.id }}">Compare</a>
+    <a class="btn btn-sm btn-ghost" href="/analysis/{{ rev.id }}">View run</a>
+    {% elif rev.id == current_id %}
+    <span class="revision-strip-tag">Current</span>
+    {% if revisions | length > 1 %}
+    <a class="btn btn-sm" href="/analysis/{{ current_id }}/diff">Compare with previous</a>
+    {% endif %}
+    {% else %}
+    <a class="btn btn-sm btn-ghost" href="/analysis/{{ rev.id }}">Open run</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

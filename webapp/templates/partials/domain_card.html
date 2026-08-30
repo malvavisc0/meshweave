@@ -152,6 +152,7 @@
             latest_run.date|relative_time }} compared with the prior run.</p>
     </div>
     <a href="/analysis/{{ latest_run.id }}" class="btn btn-sm">Open Latest Analysis</a>
+    <a href="/analysis/{{ latest_run.id }}/diff" class="btn btn-sm btn-ghost">Compare latest with previous</a>
 </section>
 <details class="site-card-history mt-2" open>
     <summary>Run history</summary>
@@ -169,6 +170,7 @@
                 &mdash;{% endif %}
             </span>
             <a href="/analysis/{{ h.id }}" class="btn btn-sm">View</a>
+            <a href="/analysis/{{ h.id }}/diff" class="btn btn-sm btn-ghost">Diff</a>
         </div>
         {% endfor %}
     </div>

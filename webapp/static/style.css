@@ -4799,3 +4799,447 @@ p.card-meta {
 .breakdown-interpretation br {
   display: none;
 }
+
+/* ------------------------------------------------------------------------
+   REVISION DIFF + REVISION STRIP
+   ------------------------------------------------------------------------ */
+.diff-header {
+  margin-bottom: var(--space-lg);
+}
+
+.diff-back {
+  display: inline-block;
+  margin-bottom: var(--space-sm);
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.diff-back:hover {
+  color: var(--color-ink);
+}
+
+.diff-title {
+  font: var(--font-headline);
+  color: var(--color-ink);
+  margin: 0 0 var(--space-sm);
+}
+
+.diff-header-runs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-xs);
+}
+
+.diff-run {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.diff-run-id {
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.diff-run-id:hover {
+  text-decoration: underline;
+}
+
+.diff-run-meta {
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+.diff-run-meta--empty {
+  color: var(--color-ink-subtle);
+}
+
+.diff-run-arrow {
+  color: var(--color-ink-subtle);
+  font-size: 18px;
+}
+
+.diff-note {
+  margin: 0;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+/* Revision strip (shared partial) */
+.revision-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--color-hairline);
+  border: 1px solid var(--color-hairline);
+  margin: 0 0 var(--space-lg);
+}
+
+.revision-strip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-canvas);
+  font: var(--font-body-sm);
+}
+
+.revision-strip-row--current {
+  background: var(--color-surface-1);
+  border-left: 3px solid var(--color-primary);
+}
+
+.revision-strip-row--active {
+  background: var(--color-surface-1);
+  border-left: 3px solid var(--color-semantic-warning);
+}
+
+.revision-strip-run {
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-weight: 600;
+  color: var(--color-ink);
+  flex-shrink: 0;
+}
+
+.revision-strip-meta {
+  color: var(--color-ink-muted);
+  flex: 1;
+}
+
+.revision-strip-sep {
+  color: var(--color-ink-subtle);
+}
+
+.revision-strip-tag {
+  font: var(--font-body-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.revision-strip-row .btn {
+  flex-shrink: 0;
+}
+
+/* Comparison notes banners */
+.diff-notes {
+  margin-bottom: var(--space-lg);
+}
+
+.diff-note-banner {
+  border-left: 3px solid var(--color-semantic-warning);
+  padding: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-sm);
+  background: var(--color-surface-1);
+  font: var(--font-body-sm);
+  color: var(--color-ink);
+}
+
+/* Section titles shared across the diff layers */
+.diff-section-title {
+  font: var(--font-card-title);
+  color: var(--color-ink);
+  margin: 0 0 var(--space-sm);
+}
+
+.diff-subsection-title {
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+  margin: var(--space-md) 0 var(--space-xs);
+}
+
+/* Composite scores */
+.diff-scores {
+  margin-bottom: var(--space-lg);
+}
+
+.diff-score-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.diff-score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-1);
+}
+
+.diff-score-label {
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+  width: 48px;
+  flex-shrink: 0;
+}
+
+.diff-score-value {
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-weight: 600;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+  min-width: 32px;
+  text-align: right;
+}
+
+.diff-delta {
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  padding: 2px 8px;
+}
+
+.diff-delta--up {
+  color: var(--color-semantic-success);
+}
+
+.diff-delta--down {
+  color: var(--color-semantic-error);
+}
+
+.diff-delta--na {
+  color: var(--color-ink-subtle);
+}
+
+/* Factor changes */
+.diff-factor-table th,
+.diff-count-table th {
+  text-align: left;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+  font-weight: 600;
+}
+
+.diff-factor-row td,
+.diff-count-table td {
+  padding: var(--space-xxs) var(--space-xs);
+  border-top: 1px solid var(--color-hairline);
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-factor-name {
+  font-family: IBM Plex Sans, ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.diff-status--improved,
+.diff-status--appeared {
+  color: var(--color-semantic-success);
+}
+
+.diff-status--regressed,
+.diff-status--disappeared {
+  color: var(--color-semantic-error);
+}
+
+.diff-status--unchanged {
+  color: var(--color-ink-subtle);
+}
+
+.diff-unchanged-factors {
+  margin-top: var(--space-sm);
+}
+
+.diff-unchanged-factors summary {
+  cursor: pointer;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+.diff-unchanged-list {
+  list-style: none;
+  padding-left: 0;
+  margin: var(--space-xs) 0 0;
+  color: var(--color-ink-muted);
+}
+
+.diff-unchanged-list li {
+  font: var(--font-body-sm);
+}
+
+/* Findings */
+.diff-findings {
+  margin-bottom: var(--space-lg);
+}
+
+.diff-findings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+.diff-findings-title--resolved {
+  color: var(--color-semantic-success);
+}
+
+.diff-findings-title--new {
+  color: var(--color-semantic-warning);
+}
+
+.diff-rec-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.diff-rec-list .rec-item {
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.diff-rec-list .rec-item:first-of-type {
+  border-top: none;
+}
+
+.diff-rec-list .rec-title {
+  font: var(--font-body-emphasis);
+  color: var(--color-ink);
+}
+
+.diff-rec-list .rec-detail {
+  margin: var(--space-xxs) 0 0;
+  font: var(--font-body-sm);
+  color: var(--color-ink-muted);
+}
+
+/* Content */
+.diff-content {
+  margin-bottom: var(--space-lg);
+}
+
+.diff-content-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.diff-meta-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.diff-meta-label {
+  display: block;
+  margin-bottom: var(--space-xxs);
+}
+
+.diff-meta-value {
+  margin: 0;
+  font: var(--font-body);
+  color: var(--color-ink);
+  word-break: break-word;
+}
+
+.diff-count-table {
+  width: 100%;
+  margin-bottom: var(--space-md);
+}
+
+.diff-page-list {
+  margin-top: var(--space-md);
+}
+
+.diff-url-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 var(--space-md);
+}
+
+.diff-url-list li {
+  font: var(--font-body-sm);
+}
+
+.diff-url-list a {
+  color: var(--color-primary);
+  word-break: break-all;
+}
+
+.diff-markdown {
+  margin-top: var(--space-md);
+  border: 1px solid var(--color-hairline);
+}
+
+.diff-markdown summary {
+  cursor: pointer;
+  padding: var(--space-sm) var(--space-md);
+  font: var(--font-body-emphasis);
+  color: var(--color-ink-muted);
+  background: var(--color-surface-1);
+}
+
+.diff-markdown-wrap {
+  padding: var(--space-sm);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.diff-markdown-wrap span[class^="diff-"] {
+  font-family: IBM Plex Mono, IBM Plex Sans, ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-markdown-wrap .diff-added {
+  color: var(--color-semantic-success);
+}
+
+.diff-markdown-wrap .diff-removed {
+  color: var(--color-semantic-error);
+}
+
+.diff-markdown-wrap .diff-context {
+  color: var(--color-ink-muted);
+}
+
+.diff-truncation-note {
+  margin: var(--space-xs) 0 0;
+}
+
+/* Empty state */
+.diff-empty {
+  padding: var(--space-xxl) var(--space-lg);
+  text-align: center;
+}
+
+.diff-empty-title {
+  font: var(--font-headline);
+  color: var(--color-ink);
+  margin: 0 0 var(--space-xs);
+}
+
+.diff-empty-text {
+  max-width: 46ch;
+  margin: 0 auto var(--space-md);
+  font: var(--font-body);
+  color: var(--color-ink-muted);
+}
+
+/* Warning banner parity with the error variant */
+.panel--warning {
+  border-left: 3px solid var(--color-semantic-warning);
+}
+
+@media (max-width: 768px) {
+  .diff-findings-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+
+  .diff-meta-pair {
+    grid-template-columns: 1fr;
+  }
+}
