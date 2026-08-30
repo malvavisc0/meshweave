@@ -1,8 +1,8 @@
-"""initial_schema
+"""initial schema
 
-Revision ID: 5d9d5219d656
+Revision ID: 89c33b114a5b
 Revises: 
-Create Date: 2026-08-29 22:53:56.033197
+Create Date: 2026-08-30 20:32:06.569270
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "5d9d5219d656"
+revision: str = "89c33b114a5b"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -72,6 +72,7 @@ def upgrade() -> None:
     sa.Column('error', sa.Text(), nullable=True),
     sa.Column('payload_json', sa.JSON(), nullable=True),
     sa.Column('user_id', sa.String(length=36), nullable=True),
+    sa.Column('anonymous_user_id', sa.String(length=41), nullable=True),
     sa.Column('crawl_params', sa.JSON(), nullable=True),
     sa.Column('aeo_score', sa.Float(), nullable=True),
     sa.Column('geo_score', sa.Float(), nullable=True),
