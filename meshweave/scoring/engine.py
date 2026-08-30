@@ -148,13 +148,14 @@ def compute_scores(
     }
 
 
-# AAX factor weights (excluding contactability — it's a separate signal)
+# AAX factor weights (sum to 1.0)
 AAX_WEIGHTS: dict[str, float] = {
     "homepage_comprehension": 0.30,
     "meta_optimization": 0.20,
     "content_delta": 0.20,
     "llms_txt": 0.15,
-    "email_validation": 0.15,
+    "email_validation": 0.10,
+    "contactability": 0.05,
 }
 
 
@@ -176,6 +177,7 @@ def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
     _add_content_delta_factor(factors, aax_result)
     _add_llms_txt_factor(factors, aax_result)
     _add_email_validation_factor(factors, aax_result)
+    _add_contactability_factor(factors, aax_result)
 
     if not factors:
         return None
@@ -250,18 +252,10 @@ def _add_meta_optimization_factor(
     clarity = CLARITY_MAP.get(mo.get("clarity", "unclear"), 20)
     llm_opt = LLM_OPT_MAP.get(mo.get("llm_optimization", "poor"), 20)
     click = 100 if mo.get("would_click_through") else 0
-    fields_filled = sum(1 for k in ("brand", "product", "target_audience") if mo.get(k))
-    field_score = (fields_filled / 3) * 100
     factors["meta_optimization"] = {
         "score": min(
             100.0,
-            float(
-                field_score * 0.4
-                + completeness * 0.2
-                + clarity * 0.15
-                + llm_opt * 0.15
-                + click * 0.1
-            ),
+            float(completeness * 0.35 + clarity * 0.25 + llm_opt * 0.25 + click * 0.15),
         ),
         "weight": AAX_WEIGHTS["meta_optimization"],
         "auto_measurable": True,
@@ -304,14 +298,12 @@ def _content_richness_score(cd: dict[str, Any]) -> float:
         [
             bool((cd.get("company") or {}).get("name")),
             bool(product.get("name")),
-            bool(product.get("description")),
-            bool(product.get("features")),
             bool(pricing.get("model")),
             bool(cd.get("target_audience")),
             bool(cd.get("strengths")),
         ]
     )
-    return (richness / 7) * 100
+    return (richness / 5) * 100
 
 
 def _add_llms_txt_factor(
@@ -366,6 +358,20 @@ def _add_email_validation_factor(
         "weight": AAX_WEIGHTS["email_validation"],
         "auto_measurable": True,
         "raw": ev,
+    }
+
+
+def _add_contactability_factor(
+    factors: dict[str, dict],
+    aax_result: dict[str, Any],
+) -> None:
+    """Score the contactability heuristic into *factors*."""
+    ct = aax_result["contactability"]
+    factors["contactability"] = {
+        "score": float(ct["score"]),
+        "weight": AAX_WEIGHTS["contactability"],
+        "auto_measurable": True,
+        "raw": ct,
     }
 
 

@@ -462,13 +462,12 @@ def _content_delta_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
     recs: list[dict[str, Any]] = []
     cd_raw = cd.get("raw") or {}
     weaknesses = cd_raw.get("weaknesses") or []
-    strengths_count = len(cd_raw.get("strengths") or [])
-    if weaknesses and strengths_count < 3:
+    if weaknesses:
         examples = ", ".join(weaknesses[:3])
         recs.append(
             {
                 "factor": "content_delta",
-                "priority": "medium",
+                "priority": "high",
                 "title": f"Address {len(weaknesses)} content gap(s)",
                 "detail": (
                     f"AI found gaps: {examples}. "
@@ -501,26 +500,54 @@ def _meta_optimization_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]
     mo = aax_factors.get("meta_optimization")
     if not mo:
         return []
-    issues = _meta_issues(mo.get("raw") or {})
+    mo_raw = mo.get("raw") or {}
+    suggestions = _meta_suggestions(mo_raw)
+    issues = _meta_issues(mo_raw)
     if not issues:
         return []
+    if suggestions:
+        detail = (
+            "AI found specific metadata gaps: "
+            + " ".join(suggestions[:3])
+            + " Use clear, descriptive titles and meta tags for LLM "
+            "understanding."
+        )
+    else:
+        detail = (
+            f"Improve: {', '.join(issues)}. Use clear, "
+            "descriptive titles and meta tags for LLM "
+            "understanding."
+        )
     return [
         {
             "factor": "meta_optimization",
             "priority": "medium",
             "title": "Optimize metadata for AI crawlers",
-            "detail": (
-                f"Improve: {', '.join(issues)}. Use clear, "
-                "descriptive titles and meta tags for LLM "
-                "understanding."
-            ),
+            "detail": detail,
             "impact": "AAX +10-15 points estimated",
         }
     ]
 
 
+def _meta_suggestions(mo_raw: dict) -> list[str]:
+    """Trimmed, non-empty improvement suggestions from the meta raw data."""
+    return [
+        s.strip()
+        for s in (mo_raw.get("improvement_suggestions") or [])
+        if s and s.strip()
+    ]
+
+
 def _meta_issues(mo_raw: dict) -> list[str]:
-    """Issue labels for the metadata weaknesses found."""
+    """Issue labels for the metadata weaknesses found.
+
+    Prefers the LLM's concrete ``improvement_suggestions`` when populated;
+    falls back to weak-structure labels derived from the verdict fields.
+    """
+    suggestions = _meta_suggestions(mo_raw)
+    if suggestions:
+        return suggestions[:3]
+
     completeness = mo_raw.get("completeness", "minimal")
     clarity = mo_raw.get("clarity", "unclear")
     llm_opt = mo_raw.get("llm_optimization", "poor")

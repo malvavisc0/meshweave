@@ -188,11 +188,7 @@ def _homepage_max_chars() -> int:
 
 
 def _content_token_budget() -> int:
-    """Token budget shared by all pages in the content-delta test.
-
-    Matches the homepage test's ~12.5k-token ceiling so the multi-page
-    verdicts are not starved relative to the single-page one.
-    """
+    """Token budget shared by all pages in the content-delta test."""
     try:
         return int(os.getenv("AAX_CONTENT_TOKEN_BUDGET", "24000"))
     except ValueError:
