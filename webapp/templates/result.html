@@ -779,35 +779,31 @@ else 'n/a') ~
             <th>Tables</th>
             <th>Schema</th>
             <th>Alt %</th>
-            <th>Freshness</th>
           </tr>
         </thead>
         <tbody>
           {% for p in _payload.pages %}
-          {% set pg_item = p.page if p.page else p %}
-          {% set pg_headings = pg_item.headings if pg_item.headings else {} %}
-          {% set pg_metrics = pg_item.content_metrics if pg_item.content_metrics else {} %}
-          {% set pg_img_total = pg_metrics.images_total if pg_metrics.images_total else 0 %}
-          {% set pg_img_alt = pg_metrics.images_with_alt if pg_metrics.images_with_alt else 0 %}
+          {% set pg_meta = p.page if p.page else p %}
+          {% set pg_url = p.url or pg_meta.url or pg_meta.canonical or '' %}
+          {% set pg_title = pg_meta.title or pg_url %}
+          {% set pg_headings = p.headings if p.headings else {} %}
+          {% set pg_metrics = p.content_metrics if p.content_metrics else {} %}
+          {% set pg_img_total = pg_metrics.images_total or 0 %}
+          {% set pg_img_alt = pg_metrics.images_with_alt or 0 %}
+          {% set pg_jsonld = pg_meta.jsonld or p.jsonld %}
           <tr>
-            <td><a href="{{ pg_item.url }}" target="_blank" rel="noopener">{{ pg_item.title or pg_item.url }}<span
-                class="sr-only"> (opens in new tab)</span></a></td>
+            <td><a href="{{ pg_url }}" target="_blank" rel="noopener">{{ pg_title }}<span class="sr-only">
+                (opens in new tab)</span></a></td>
             <td>{{ pg_metrics.words or 0 }}</td>
             <td>{{ pg_headings.h1_count or 0 }}</td>
             <td>{{ pg_headings.depth or 0 }}</td>
             <td>{{ pg_metrics.lists or 0 }}</td>
             <td>{{ pg_metrics.tables or 0 }}</td>
-            <td>{% if pg_item.jsonld and pg_item.jsonld|length > 0 %}<span class="cell-flag cell-flag--yes"
-                role="img" aria-label="present"></span>{% else %}<span class="cell-flag cell-flag--no"
-                role="img" aria-label="absent"></span>{%
+            <td>{% if pg_jsonld and pg_jsonld|length > 0 %}<span class="cell-flag cell-flag--yes" role="img"
+                aria-label="present"></span>{% else %}<span class="cell-flag cell-flag--no" role="img"
+                aria-label="absent"></span>{%
               endif %}</td>
             <td>{% if pg_img_total > 0 %}{{ ((pg_img_alt / pg_img_total) * 100) | round }}%{% else %}—{% endif %}</td>
-            <td>
-              {% if pg_item.jsonld %}
-              {% set _date = schema_date(pg_item.jsonld) %}
-              {% if _date %}{{ _date }}{% else %}—{% endif %}
-              {% else %}—{% endif %}
-            </td>
           </tr>
           {% endfor %}
         </tbody>
