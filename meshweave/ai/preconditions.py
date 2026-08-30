@@ -63,6 +63,11 @@ def _get_homepage_markdown(payload: dict) -> str:
 
     Handles both short keys ("", "/") and full URL keys
     ("https://example.com/", "https://example.com").
+
+    Returns "" when the homepage is absent: the comprehension test is
+    about the homepage specifically, so feeding it an arbitrary crawled
+    page (the old first-entry fallback) would grade the wrong page
+    while reporting it as the homepage.
     """
     md_dict = payload.get("markdowns") or {}
     domain = payload.get("domain") or ""
@@ -71,11 +76,7 @@ def _get_homepage_markdown(payload: dict) -> str:
     if md:
         return md
 
-    md = _markdown_from_domain_key(md_dict, domain)
-    if md:
-        return md
-
-    return _first_markdown(md_dict)
+    return _markdown_from_domain_key(md_dict, domain)
 
 
 def _markdown_from_short_key(md_dict: dict) -> str:
@@ -111,11 +112,3 @@ def _root_url_keys(domain: str) -> tuple[str, ...]:
         f"http://www.{domain}",
         domain,
     )
-
-
-def _first_markdown(md_dict: dict) -> str:
-    """Markdown of the first markdowns entry, or '' when there are none."""
-    if not md_dict:
-        return ""
-    first = next(iter(md_dict.values()))
-    return (first.get("markdown") or "").strip()

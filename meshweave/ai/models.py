@@ -1,10 +1,16 @@
 """Pydantic response models for AAX analysis tests.
 
 Each model defines the structured output that the LLM must return.
-All categorical fields use Literal types for stability across model versions.
+Categorical fields use Literal types and are REQUIRED: an off-enum or
+omitted verdict fails validation and triggers the structured-output
+retry instead of silently scoring as a default downstream. Free-text
+extraction fields (brand, product, …) keep empty-string defaults
+because "not found on the page" is a legitimate answer.
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,15 +25,9 @@ class HomepageComprehensionResult(BaseModel):
     target_audience: str = ""
     key_features: list[str] = Field(default_factory=list)
     call_to_action: str = ""
-    clarity: str = Field(
-        default="unclear",
-        description="clear | somewhat_clear | unclear",
-    )
-    information_density: str = Field(
-        default="sparse",
-        description="dense | adequate | sparse | bloated",
-    )
-    would_remember: bool = False
+    clarity: Literal["clear", "somewhat_clear", "unclear"]
+    information_density: Literal["dense", "adequate", "sparse", "bloated"]
+    would_remember: bool
 
 
 # --- Test 3: Meta Optimization ---
@@ -39,19 +39,10 @@ class MetaOptimizationResult(BaseModel):
     brand: str = ""
     product: str = ""
     target_audience: str = ""
-    would_click_through: bool = False
-    completeness: str = Field(
-        default="minimal",
-        description="complete | partial | minimal",
-    )
-    clarity: str = Field(
-        default="unclear",
-        description="clear | somewhat_clear | unclear",
-    )
-    llm_optimization: str = Field(
-        default="poor",
-        description="optimized | adequate | poor",
-    )
+    would_click_through: bool
+    completeness: Literal["complete", "partial", "minimal"]
+    clarity: Literal["clear", "somewhat_clear", "unclear"]
+    llm_optimization: Literal["optimized", "adequate", "poor"]
     missing_fields: list[str] = Field(default_factory=list)
     improvement_suggestions: list[str] = Field(default_factory=list)
 
@@ -91,14 +82,8 @@ class ContentDeltaResult(BaseModel):
     target_audience: str = ""
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
-    coherence: str = Field(
-        default="somewhat_consistent",
-        description="consistent | somewhat_consistent | contradictory",
-    )
-    completeness: str = Field(
-        default="incomplete",
-        description="comprehensive | adequate | incomplete",
-    )
+    coherence: Literal["consistent", "somewhat_consistent", "contradictory"]
+    completeness: Literal["comprehensive", "adequate", "incomplete"]
 
 
 # --- Test 6: Contactability (heuristic — no LLM) ---
@@ -125,10 +110,7 @@ class ValidatedEmail(BaseModel):
 
     email: str
     reason: str = ""
-    contact_type: str = Field(
-        default="invalid",
-        description="sales | support | general | legal | invalid",
-    )
+    contact_type: Literal["sales", "support", "general", "legal", "invalid"]
 
 
 class EmailValidationResult(BaseModel):
@@ -137,10 +119,7 @@ class EmailValidationResult(BaseModel):
     valid_contacts: list[ValidatedEmail] = Field(default_factory=list)
     rejected_contacts: list[ValidatedEmail] = Field(default_factory=list)
     best_contact: str | None = None
-    confidence: str = Field(
-        default="low",
-        description="high | medium | low",
-    )
+    confidence: Literal["high", "medium", "low"]
 
 
 # --- AAX Aggregate ---
