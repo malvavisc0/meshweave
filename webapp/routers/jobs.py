@@ -18,6 +18,7 @@ from webapp.utils.quotas import (
     enforce_concurrent_jobs_limit,
     enforce_daily_site_crawl_limit,
 )
+from webapp.utils.revisions import replace_succeeded_crawl
 from webapp.utils.security import _make_csrf_token, verify_request_csrf
 from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
@@ -471,12 +472,12 @@ def _reset_job_row(row_id, now: datetime, require_idle: bool) -> bool:
     return True
 
 
-def _schedule_retry_task(user, row, background_tasks) -> None:
+def _schedule_retry_task(user, crawl_params, crawl_id, background_tasks) -> None:
     """Schedule the retry background task with force_refresh=True."""
-    if bool(row.crawl_params):
-        background_tasks.add_task(run_site_crawl_task, row.id, True)
+    if bool(crawl_params):
+        background_tasks.add_task(run_site_crawl_task, crawl_id, True)
     else:
-        background_tasks.add_task(run_crawl_task, row.id, True, user_id=user.id)
+        background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
 
 
 def _retry_quota_ok(user, row) -> bool:
@@ -519,9 +520,21 @@ async def retry_crawl(
 
     # Reset and schedule
     now = datetime.now(UTC)
+    if row.status == "succeeded":
+        # Revision-safe: retire the succeeded row and insert a fresh pending
+        # row so the old revision stays viewable and diffable.
+        with get_session() as s:
+            new_id = replace_succeeded_crawl(s, row.id, now)
+        if new_id is None:
+            # Row vanished or was concurrently retried; treat as not found.
+            raise HTTPException(status_code=404, detail="Not found")
+        _schedule_retry_task(user, row.crawl_params, new_id, background_tasks)
+        return RedirectResponse(
+            url=f"/dashboard?notice=retried&job={new_id}", status_code=303
+        )
     if not _reset_job_row(crawl_id, now, require_idle=False):
         raise HTTPException(status_code=404, detail="Not found")
-    _schedule_retry_task(user, row, background_tasks)
+    _schedule_retry_task(user, row.crawl_params, crawl_id, background_tasks)
 
     return RedirectResponse(
         url=f"/dashboard?notice=retried&job={crawl_id}", status_code=303
@@ -685,6 +698,25 @@ async def api_my_jobs_bulk(request: Request, background_tasks: BackgroundTasks):
     return {"ok": True, "retried": retried}
 
 
+def _retry_succeeded_job(user, row, now: datetime, background_tasks) -> bool:
+    """Revision-safe retry of a succeeded job; True if scheduled.
+
+    Retires the row and schedules its fresh pending replacement. The replace
+    commits inside the session scope, so a scheduling failure afterward
+    leaves a visible pending row the user can retry.
+    """
+    try:
+        with get_session() as s:
+            new_id = replace_succeeded_crawl(s, row.id, now)
+        if new_id is None:
+            return False
+        _schedule_retry_task(user, row.crawl_params, new_id, background_tasks)
+    except Exception:
+        # Skip replacement/scheduling failures for individual jobs
+        return False
+    return True
+
+
 def _retry_job(user, row, now: datetime, background_tasks) -> bool:
     """Retry a single owned job (respecting quotas/status); True if scheduled."""
     # Only retry when not running
@@ -695,13 +727,17 @@ def _retry_job(user, row, now: datetime, background_tasks) -> bool:
     if not _retry_quota_ok(user, row):
         return False
 
+    # Succeeded rows are revision-safe: the old revision stays diffable.
+    if row.status == "succeeded":
+        return _retry_succeeded_job(user, row, now, background_tasks)
+
     # Reset state and schedule
     if not _reset_job_row(row.id, now, require_idle=True):
         return False
 
     # Schedule background task with force_refresh=True
     try:
-        _schedule_retry_task(user, row, background_tasks)
+        _schedule_retry_task(user, row.crawl_params, row.id, background_tasks)
     except Exception:
         # Skip scheduling failures for individual jobs
         return False
