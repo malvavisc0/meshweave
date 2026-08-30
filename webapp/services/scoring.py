@@ -7,8 +7,10 @@ and scores.py router.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm.attributes import flag_modified
@@ -19,6 +21,10 @@ from webapp.db import get_session
 from webapp.models import Crawl, ScoreSnapshot, User
 
 logger = logging.getLogger(__name__)
+
+# AAX queue configuration
+AAX_STALE_MINUTES = 30  # Consider AAX "running" stale after this long
+AAX_WORKER_POLL_INTERVAL = 5.0  # Seconds between queue polls
 
 
 def score_crawl(
@@ -183,6 +189,38 @@ def _persist_scores(
             s.add(snap)
 
 
+def enqueue_aax(crawl_id: str) -> bool:
+    """Mark a crawl as needing AAX analysis. Durable — survives restarts.
+
+    Called immediately after a crawl succeeds. Sets aax_status='pending'
+    so the background worker will pick it up.
+
+    Args:
+        crawl_id: The Crawl row ID.
+
+    Returns:
+        True when the row was updated, False when the crawl was not found
+        or AAX was already enqueued/completed.
+    """
+    with get_session() as s:
+        updated = (
+            s.query(Crawl)
+            .filter(
+                Crawl.id == crawl_id,
+                Crawl.status == "succeeded",
+                Crawl.aax_status.in_(["pending", "failed"]),  # allow retry on failed
+            )
+            .update(
+                {
+                    "aax_status": "pending",
+                    "aax_started_at": None,
+                },
+                synchronize_session=False,
+            )
+        )
+        return updated == 1
+
+
 async def run_aax_for_crawl(
     crawl_id: str,
     *,
@@ -190,8 +228,8 @@ async def run_aax_for_crawl(
 ) -> dict[str, Any] | None:
     """Run AAX analysis for a crawl and persist results.
 
-    Called after score_crawl() completes. Runs LLM-powered tests
-    asynchronously and stores results in ai_analysis_json on the
+    Called by the AAX worker after claiming a pending row. Runs LLM-powered
+    tests asynchronously and stores results in ai_analysis_json on the
     ScoreSnapshot.
 
     Args:
@@ -207,6 +245,7 @@ async def run_aax_for_crawl(
         crawl_id, payload
     )
     if payload is None:
+        _mark_aax_terminal(crawl_id, "failed", "payload_missing")
         return None
 
     # Run AAX analysis
@@ -223,18 +262,18 @@ async def run_aax_for_crawl(
         aax_result = {"status": "failed", "error": str(e)}
 
     if not aax_result:
+        _mark_aax_terminal(crawl_id, "failed", "empty_result")
         return aax_result
 
     if aax_result.get("status") == "failed":
         # Persist the failure marker so the result page stops showing
         # "Running AI Analysis…" for a crawl whose AAX analysis died.
-        # Without it, a succeeded crawl with a crashed AAX stays
-        # "pending" forever (aax_pending checks for status ==
-        # "completed" in the stored JSON).
         _persist_aax_failure(crawl_id, aax_result)
+        _mark_aax_terminal(crawl_id, "failed", aax_result.get("error"))
         return aax_result
 
     if aax_result.get("status") == "disabled":
+        _mark_aax_terminal(crawl_id, "disabled", None)
         return aax_result
 
     # Compute AAX composite score
@@ -243,8 +282,31 @@ async def run_aax_for_crawl(
     # Persist to DB — ScoreSnapshot and payload_json
     _apply_aax_to_score_snapshot(crawl_id, aax_result, aax_score_json, payload)
     _inject_aax_into_payload_json(crawl_id, aax_result, aax_score_json)
+    _mark_aax_terminal(crawl_id, "completed", None)
 
     return aax_score_json
+
+
+def _mark_aax_terminal(crawl_id: str, status: str, error: str | None) -> None:
+    """Mark AAX as terminally complete on the Crawl row.
+
+    Args:
+        crawl_id: The Crawl row ID.
+        status: Terminal status: "completed" | "failed" | "disabled".
+        error: Optional error message for failed status.
+    """
+    try:
+        with get_session() as s:
+            row = s.get(Crawl, crawl_id)
+            if row:
+                row.aax_status = status
+                if error:
+                    # Store AAX error in the crawl error field only if
+                    # there isn't already a crawl error there.
+                    if not row.error:
+                        row.error = f"aax_{status}: {error}"
+    except Exception:
+        logger.exception("Failed to mark AAX %s for crawl %s", status, crawl_id)
 
 
 def _persist_aax_failure(crawl_id: str, aax_result: dict[str, Any]) -> None:
@@ -270,6 +332,42 @@ def _persist_aax_failure(crawl_id: str, aax_result: dict[str, Any]) -> None:
         logger.exception("Failed to persist AAX failure for crawl %s", crawl_id)
 
 
+def _resolve_crawl_owner(
+    row: Crawl | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Extract owner identity from a Crawl row for LLM trace attribution.
+
+    Args:
+        row: The Crawl row, or None.
+
+    Returns:
+        Tuple of (user_id, user_email, anonymous_user_id).
+    """
+    if not row:
+        return None, None, None
+    user_id = row.user_id
+    anonymous_user_id = row.anonymous_user_id if not user_id else None
+    return user_id, None, anonymous_user_id
+
+
+def _load_payload_from_row(row: Crawl) -> dict[str, Any]:
+    """Parse payload_json from a Crawl row.
+
+    Args:
+        row: The Crawl row to read from.
+
+    Returns:
+        The parsed payload dict, or empty dict on failure.
+    """
+    raw = row.payload_json or {}
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+    return raw
+
+
 def _load_payload_for_aax(
     crawl_id: str,
     payload: dict[str, Any] | None,
@@ -285,25 +383,16 @@ def _load_payload_for_aax(
         ``(None, None, None, None)`` when the crawl row is missing and no
         payload was provided.
     """
-    # Load payload if not provided; also resolve the crawl's owner so LLM
-    # traces can be attributed to the user who requested the analysis.
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
-        user_id = row.user_id if row else None
-        anonymous_user_id = row.anonymous_user_id if row and not user_id else None
-        user = s.get(User, user_id) if user_id else None
-        user_email = user.email if user else None
+        user_id, user_email, anonymous_user_id = _resolve_crawl_owner(row)
+        if user_id and not user_email:
+            user = s.get(User, user_id)
+            user_email = user.email if user else None
         if payload is None:
             if not row:
                 return None, None, None, None
-            raw = row.payload_json or {}
-            if isinstance(raw, str):
-                try:
-                    payload = json.loads(raw)
-                except json.JSONDecodeError:
-                    payload = {}
-            else:
-                payload = raw
+            payload = _load_payload_from_row(row)
     return payload, user_id, user_email, anonymous_user_id
 
 
@@ -363,6 +452,26 @@ def _regenerate_aax_recommendations(
     snap.score_json["recommendations"] = all_recs
 
 
+def _parse_payload_dict(raw: Any) -> dict[str, Any]:
+    """Coerce a raw payload value into a dict.
+
+    Args:
+        raw: The raw payload_json value (dict, str, or None).
+
+    Returns:
+        The payload as a dict, or empty dict on failure.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            result = json.loads(raw)
+            return result if isinstance(result, dict) else {}
+        except json.JSONDecodeError, TypeError:
+            return {}
+    return {}
+
+
 def _inject_aax_into_payload_json(
     crawl_id: str,
     aax_result: dict[str, Any],
@@ -373,24 +482,16 @@ def _inject_aax_into_payload_json(
         row = s.get(Crawl, crawl_id)
         if not row or not row.payload_json:
             return
-        try:
-            p = (
-                row.payload_json or {}
-                if isinstance(row.payload_json, str)
-                else row.payload_json
-            )
-            if isinstance(p, dict):
-                p["aax"] = aax_result
-                if aax_score_json:
-                    scores = p.get("scores") or {}
-                    scores["aax"] = aax_score_json
-                    p["scores"] = scores
-                row.payload_json = p
-                flag_modified(row, "payload_json")
-        except json.JSONDecodeError:
-            pass
-        except TypeError:
-            pass
+        p = _parse_payload_dict(row.payload_json)
+        if not p:
+            return
+        p["aax"] = aax_result
+        if aax_score_json:
+            scores = p.get("scores") or {}
+            scores["aax"] = aax_score_json
+            p["scores"] = scores
+        row.payload_json = p
+        flag_modified(row, "payload_json")
 
 
 def update_manual_inputs(crawl_id: str, inputs: dict[str, float]) -> dict[str, Any]:
@@ -448,3 +549,149 @@ def get_score_history(domain: str, limit: int = 10) -> list[dict[str, Any]]:
             }
             for snap in snapshots
         ]
+
+
+# ---------------------------------------------------------------------------
+# AAX Queue Worker
+# ---------------------------------------------------------------------------
+
+
+def _claim_pending_aax(crawl_id: str) -> bool:
+    """Atomically claim a pending AAX job for processing.
+
+    Transitions aax_status from "pending" to "running". Uses an atomic
+    UPDATE ... WHERE to prevent double-claiming by concurrent workers.
+
+    Args:
+        crawl_id: The Crawl row ID to claim.
+
+    Returns:
+        True when the row was successfully claimed, False otherwise.
+    """
+    now = datetime.now(UTC)
+    with get_session() as s:
+        updated = (
+            s.query(Crawl)
+            .filter(
+                Crawl.id == crawl_id,
+                Crawl.aax_status == "pending",
+            )
+            .update(
+                {
+                    "aax_status": "running",
+                    "aax_started_at": now,
+                },
+                synchronize_session=False,
+            )
+        )
+        return updated == 1
+
+
+def _reset_stale_aax() -> int:
+    """Reset stale "running" AAX jobs back to "pending".
+
+    A job is stale when it has been "running" for longer than
+    AAX_STALE_MINUTES. This happens when the worker crashes or the
+    container restarts mid-analysis.
+
+    Returns:
+        Number of rows reset.
+    """
+    stale_cutoff = datetime.now(UTC) - timedelta(minutes=AAX_STALE_MINUTES)
+    with get_session() as s:
+        updated = (
+            s.query(Crawl)
+            .filter(
+                Crawl.aax_status == "running",
+                Crawl.aax_started_at < stale_cutoff,
+            )
+            .update(
+                {
+                    "aax_status": "pending",
+                    "aax_started_at": None,
+                },
+                synchronize_session=False,
+            )
+        )
+        if updated:
+            logger.info("Reset %s stale AAX jobs to pending", updated)
+        return updated
+
+
+def _fetch_pending_aax_ids(limit: int = 10) -> list[str]:
+    """Fetch IDs of crawls with pending AAX analysis.
+
+    Args:
+        limit: Maximum number of IDs to return.
+
+    Returns:
+        List of crawl IDs ready for AAX processing.
+    """
+    with get_session() as s:
+        rows = (
+            s.query(Crawl.id)
+            .filter(
+                Crawl.status == "succeeded",
+                Crawl.aax_status == "pending",
+            )
+            .order_by(Crawl.updated_at.asc())
+            .limit(limit)
+            .all()
+        )
+        return [r[0] for r in rows]
+
+
+async def _process_aax_job(crawl_id: str) -> None:
+    """Claim and run a single AAX job, marking terminal state on failure.
+
+    Args:
+        crawl_id: The Crawl row ID to process.
+    """
+    if not _claim_pending_aax(crawl_id):
+        return
+    logger.debug("Claimed AAX job for crawl %s", crawl_id)
+    try:
+        await run_aax_for_crawl(crawl_id)
+    except Exception:
+        logger.exception("AAX worker failed for crawl %s", crawl_id)
+        _mark_aax_terminal(crawl_id, "failed", "worker_exception")
+
+
+async def _aax_worker_loop(stop_event: asyncio.Event) -> None:
+    """Poll the AAX queue and process pending jobs.
+
+    Args:
+        stop_event: Event to signal graceful shutdown.
+    """
+    while not stop_event.is_set():
+        try:
+            pending_ids = _fetch_pending_aax_ids(limit=5)
+            for crawl_id in pending_ids:
+                if stop_event.is_set():
+                    break
+                await _process_aax_job(crawl_id)
+        except Exception:
+            logger.exception("AAX worker poll failed")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=AAX_WORKER_POLL_INTERVAL)
+        except TimeoutError:
+            pass
+
+
+async def aax_worker(stop_event: asyncio.Event) -> None:
+    """Background worker that processes the AAX queue.
+
+    Polls the database for pending AAX jobs, claims them atomically,
+    and runs the analysis. Designed to run as a long-lived asyncio task
+    inside the FastAPI lifespan.
+
+    Args:
+        stop_event: Event to signal graceful shutdown.
+    """
+    logger.info("AAX worker started")
+    try:
+        _reset_stale_aax()
+    except Exception:
+        logger.exception("Failed to reset stale AAX jobs on startup")
+    await _aax_worker_loop(stop_event)
+    logger.info("AAX worker stopped")

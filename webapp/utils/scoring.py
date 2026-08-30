@@ -9,13 +9,11 @@ from meshweave.scoring.interpretation import interpret_profile
 def aax_pending(crawl: Any) -> bool:
     """True when AAX is enabled but has not finished for this crawl.
 
-    Loads the score snapshot in a fresh session to avoid DetachedInstanceError
-    on callers that pass a Crawl bound to a closed session.
-
-    "Finished" includes terminal failure: a stored AAX status of
-    "failed" or "disabled" must clear the pending state, or the result
-    page shows "Running AI Analysis…" forever for a crawl whose
-    analysis crashed (e.g. interrupted by a service restart).
+    Uses the durable aax_status column on the Crawl row. "Finished" includes
+    terminal failure: a stored AAX status of "failed" or "disabled" must
+    clear the pending state, or the result page shows "Running AI Analysis…"
+    forever for a crawl whose analysis crashed (e.g. interrupted by a
+    service restart).
     """
     if os.getenv("AAX_ENABLED", "false").lower() != "true":
         return False
@@ -25,19 +23,9 @@ def aax_pending(crawl: Any) -> bool:
     status = str(getattr(crawl, "status", "") or "").lower()
     if status not in ("pending", "running", "succeeded"):
         return False
-    from webapp.db import get_session
-    from webapp.models import ScoreSnapshot
-
-    with get_session() as s:
-        snap = (
-            s.query(ScoreSnapshot)
-            .filter(ScoreSnapshot.crawl_id == crawl.id)
-            .one_or_none()
-        )
-        if snap is None:
-            return True
-        aax = (snap.ai_analysis_json or {}).get("aax") or {}
-        return aax.get("status") not in ("completed", "failed", "disabled")
+    # Use the durable aax_status column — no need to query ScoreSnapshot
+    aax_status = str(getattr(crawl, "aax_status", "") or "").lower()
+    return aax_status in ("pending", "running")
 
 
 # Mapping of factor keys to human-readable display names

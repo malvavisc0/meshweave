@@ -177,9 +177,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start background cleanup tasks
     stop_event = asyncio.Event()
     app.state.stop_event = stop_event
+
+    # AAX queue worker — processes pending AAX analyses from the DB
+    from webapp.services.scoring import aax_worker
+
     app.state.cleanup_tasks = [
         asyncio.create_task(_cleanup_auth_sessions_loop(stop_event)),
         asyncio.create_task(_cleanup_oauth_states_loop(stop_event)),
+        asyncio.create_task(aax_worker(stop_event)),
     ]
 
     try:

@@ -130,13 +130,14 @@ def _clear_stale_scores(s, row) -> None:
 
 
 async def _run_aax(crawl_id: str, payload: dict[str, Any]) -> None:
-    # Run AAX analysis — will update payload_json when done
+    # Mark AAX as pending in the database for the background worker.
+    # The worker will pick it up and run the analysis asynchronously.
     try:
-        from webapp.services.scoring import run_aax_for_crawl
+        from webapp.services.scoring import enqueue_aax
 
-        await run_aax_for_crawl(crawl_id, payload=payload)
+        enqueue_aax(crawl_id)
     except Exception:
-        logger.exception("AAX analysis failed for crawl %s", crawl_id)
+        logger.exception("Failed to enqueue AAX for crawl %s", crawl_id)
 
 
 async def run_crawl_task(

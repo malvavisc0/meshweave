@@ -351,13 +351,15 @@ def _score_crawl(payload: dict[str, Any], crawl_id: str) -> None:
 
 
 def _enqueue_aax(crawl_id: str, payload: dict[str, Any]) -> None:
-    """Schedule AAX analysis on the running event loop."""
-    import asyncio
+    """Mark AAX as pending in the database for the background worker.
 
-    from webapp.services.scoring import run_aax_for_crawl
+    This replaces the old fire-and-forget asyncio.create_task approach.
+    The DB-backed queue survives container restarts and provides
+    observability into AAX processing state.
+    """
+    from webapp.services.scoring import enqueue_aax
 
-    loop = asyncio.get_running_loop()
-    loop.create_task(run_aax_for_crawl(crawl_id, payload=payload))
+    enqueue_aax(crawl_id)
 
 
 def _persist_task_result(
