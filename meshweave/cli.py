@@ -259,6 +259,7 @@ def _run_crawl(args: argparse.Namespace) -> None:
     """Execute the crawl subcommand."""
 
     from .core import crawl  # lazy import
+    from .crawling.blocked import CrawlBlockedError
     from .crawling.fetcher import CDP_ENDPOINT_MISSING_MSG, _cdp_endpoint
 
     if not _cdp_endpoint():
@@ -272,17 +273,21 @@ def _run_crawl(args: argparse.Namespace) -> None:
         disable_cache = args.disable_cache or args.refresh
 
         _log("► Rendering page …")
-        payload = await crawl(
-            url=args.url,
-            crawl_max_pages=int(args.max_pages),
-            max_depth=int(args.max_depth),
-            include_emails=args.include_emails,
-            deobfuscate_emails=args.deobfuscate,
-            throttle_ms=int(args.throttle_ms),
-            per_page_timeout=float(args.per_page_timeout),
-            disable_cache=disable_cache,
-            cache_dir=args.cache_dir,
-        )
+        try:
+            payload = await crawl(
+                url=args.url,
+                crawl_max_pages=int(args.max_pages),
+                max_depth=int(args.max_depth),
+                include_emails=args.include_emails,
+                deobfuscate_emails=args.deobfuscate,
+                throttle_ms=int(args.throttle_ms),
+                per_page_timeout=float(args.per_page_timeout),
+                disable_cache=disable_cache,
+                cache_dir=args.cache_dir,
+            )
+        except CrawlBlockedError as e:
+            _log(f"✗ {e}")
+            sys.exit(2)
 
         # Summarise render result
         render = payload.get("metrics", {}).get("render", {})

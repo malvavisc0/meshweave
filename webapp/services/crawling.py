@@ -4,8 +4,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from meshweave.core import crawl as crawler_run
+from meshweave.crawling.blocked import blocked_error, blocked_render_reason
 from webapp.db import get_session
-from webapp.models import Crawl
+from webapp.models import Crawl, ScoreSnapshot
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
 
@@ -105,8 +106,27 @@ def _persist_failed(crawl_id: str, error: str) -> bool:
             return False
         row.status = "failed"
         row.error = error
+        _clear_stale_scores(s, row)
         row.updated_at = datetime.now(UTC)
     return True
+
+
+def _clear_stale_scores(s, row) -> None:
+    """Drop scoring state left over from a previous successful run.
+
+    Crawl rows are re-used across retries (pending/failed/succeeded →
+    running), so a previously-scored crawl that later fails keeps its
+    old scores and snapshot unless they are cleared here. Left in
+    place, list cards and the API keep showing the old report's
+    headlines for a crawl whose latest run failed.
+    """
+    row.aeo_score = None
+    row.geo_score = None
+    row.aeo_rating = None
+    row.geo_rating = None
+    snap = s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id == row.id).one_or_none()
+    if snap:
+        s.delete(snap)
 
 
 async def _run_aax(crawl_id: str, payload: dict[str, Any]) -> None:
@@ -154,6 +174,18 @@ async def run_crawl_task(
         )
 
         if _should_abort_cancelled(crawl_id, user_id, started):
+            return
+
+        blocked = blocked_render_reason(payload)
+        if blocked:
+            # The renderer received a bot-protection interstitial (or a
+            # refusal status) instead of the site. Scoring that HTML
+            # would judge the blocker, not the site — fail the crawl
+            # with an honest, actionable error instead.
+            if not _persist_failed(crawl_id, blocked_error(blocked)):
+                return
+            _safe_log_audit("crawl_blocked", crawl_id, user_id)
+            _safe_job_duration("failed", started)
             return
 
         _attach_scores(crawl_id, payload)

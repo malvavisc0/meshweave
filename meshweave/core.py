@@ -13,6 +13,12 @@ from .crawling import (
     discover_sitemap_urls,
     get_rendered_html,
 )
+from .crawling.blocked import (
+    CrawlBlockedError,
+    blocked_error,
+    find_blocked_pages,
+    start_page_blocked_reason,
+)
 from .crawling.fetcher import render_metrics_to_dict
 from .extraction import (
     analyze_faq_schema,
@@ -138,6 +144,15 @@ def _build_payload(
             },
         )
 
+    # Partial block: drop sub-pages that came back as bot-protection
+    # interstitials. Their challenge markup is not site content —
+    # leaving it in would drag content-based scoring down as if the
+    # site itself had thin pages. The URLs are recorded on the crawl
+    # metadata so the exclusion stays debuggable.
+    blocked_pages = find_blocked_pages(markdowns)
+    for blocked_url in blocked_pages:
+        markdowns.pop(blocked_url, None)
+
     payload: dict[str, Any] = {
         "page": page_data["page_meta"],
         "markdowns": markdowns,
@@ -214,6 +229,7 @@ def _build_payload(
         "limits": {"max_pages": crawl_max_pages},
         "reason_stopped": crawl_result["stop_reason"],
         "sitemap": sitemap_meta,
+        "blocked_pages": blocked_pages,
     }
 
     # AEO/GEO: FAQ analysis (cross-page, not per-page)
@@ -380,6 +396,19 @@ async def crawl(
 
         # 3) Process page (parse, meta, clean, markdown, links)
         page_data = _process_page(html, url, final_url)
+
+        # 3b) Abort early when the start page was a bot-protection
+        # interstitial or a refusal status. Without this, the BFS below
+        # would crawl every sitemap URL through the same block —
+        # burning the whole crawl budget and time budget on challenged
+        # pages before the caller could detect anything.
+        blocked_reason = start_page_blocked_reason(
+            status=int(getattr(metrics, "response_status", 0) or 0),
+            title=str(page_data["page_meta"].get("title") or "").strip(),
+            markdown=page_data.get("markdown") or "",
+        )
+        if blocked_reason:
+            raise CrawlBlockedError(blocked_error(blocked_reason))
 
         # 4) robots.txt and llms.txt (always check)
         _parts = urlsplit(origin)

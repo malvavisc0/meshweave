@@ -40,10 +40,17 @@ def friendly_reason(code: str) -> str:
 
 
 # Public-safe labels for crawl error codes shown to non-owner viewers.
+# The blocked-render error starts with a fixed prefix (set by the crawl
+# services) followed by detection detail; prefix matching happens at
+# the call site via _public_label below.
 PUBLIC_ERROR_LABELS: dict[str, str] = {
     "time_budget_exceeded": "Time budget reached",
     "cancelled_by_user": "Cancelled by the owner",
 }
+
+# Prefix of the bot-protection error written by the crawl services; any
+# error starting with it collapses to the same public label.
+_BLOCKED_ERROR_PREFIX = "crawl blocked:"
 
 
 def public_error_label(error: str | None) -> str:
@@ -61,4 +68,6 @@ def public_error_label(error: str | None) -> str:
     """
     if not error:
         return ""
+    if error.strip().lower().startswith(_BLOCKED_ERROR_PREFIX):
+        return "Site blocked the crawler (bot protection)"
     return PUBLIC_ERROR_LABELS.get(error.strip().lower(), "Analysis failed")

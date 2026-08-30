@@ -8,9 +8,10 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from meshweave.core import crawl as core_crawl
+from meshweave.crawling.blocked import blocked_error, blocked_render_reason
 from meshweave.urls import normalize_domain, should_ignore_path
 from webapp.db import get_session
-from webapp.models import Crawl
+from webapp.models import Crawl, ScoreSnapshot
 from webapp.utils.logging import log_audit
 from webapp.utils.metrics import job_duration
 
@@ -249,14 +250,29 @@ def _dispatch_finish(
             elapsed=elapsed,
         )
     else:
-        _finish_task(
-            crawl_id,
-            "succeeded",
-            payload=payload,
-            audit_event="site_crawl_succeeded",
-            metric_status="succeeded",
-            elapsed=elapsed,
-        )
+        blocked = blocked_render_reason(payload)
+        if blocked:
+            # The start page was a bot-protection interstitial or a
+            # refusal status: the site was never read, so scoring the
+            # payload would judge the blocker instead of the site.
+            _finish_task(
+                crawl_id,
+                "failed",
+                error=blocked_error(blocked),
+                payload=payload,
+                audit_event="site_crawl_blocked",
+                metric_status="failed",
+                elapsed=elapsed,
+            )
+        else:
+            _finish_task(
+                crawl_id,
+                "succeeded",
+                payload=payload,
+                audit_event="site_crawl_succeeded",
+                metric_status="succeeded",
+                elapsed=elapsed,
+            )
 
 
 async def run_site_crawl_task(crawl_id: str, force_refresh: bool = False) -> None:
@@ -372,6 +388,23 @@ def _persist_task_result(
             r.updated_at = datetime.now(UTC)
             if payload is not None:
                 r.payload_json = payload
+            if status != "succeeded":
+                # Crawl rows are re-used across retries, so a failed or
+                # cancelled run may still carry scores from a previous
+                # successful run. Clear them: list cards and the API
+                # must not show the old report's headlines for a crawl
+                # whose latest run did not complete.
+                r.aeo_score = None
+                r.geo_score = None
+                r.aeo_rating = None
+                r.geo_rating = None
+                snap = (
+                    s.query(ScoreSnapshot)
+                    .filter(ScoreSnapshot.crawl_id == crawl_id)
+                    .one_or_none()
+                )
+                if snap:
+                    s.delete(snap)
     except Exception:
         pass
     return True
