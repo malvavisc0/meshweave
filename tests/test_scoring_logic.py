@@ -135,7 +135,12 @@ def test_email_validation_quality_beats_quantity():
     """One perfect sales contact should outscore three generic ones."""
     from meshweave.scoring.engine import compute_aax_score
 
-    base = {"status": "completed", "tests_completed": 1, "tests_skipped": 0}
+    base = {
+        "status": "completed",
+        "contactability": {"score": 50.0, "email_count": 1},
+        "tests_completed": 1,
+        "tests_skipped": 0,
+    }
     perfect = dict(
         base,
         email_validation={
