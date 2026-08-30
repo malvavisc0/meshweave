@@ -159,6 +159,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
+      OTEL_SERVICE_NAME: meshweave
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DEBUG: yes
       # Database pool tuning (Postgres)
