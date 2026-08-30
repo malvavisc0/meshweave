@@ -1,6 +1,7 @@
 import os
 import secrets
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, Request, Response
@@ -163,6 +164,38 @@ def clear_auth_cookie(resp: Response) -> None:
     """
     name = _resolve_cookie_name_for_set()
     resp.delete_cookie(key=name, path="/")
+
+
+def get_or_create_anonymous_user_id(request: Request) -> str:
+    """Return this browser's Langfuse-safe anonymous user identifier.
+
+    The identifier is intentionally unrelated to an authentication session and
+    only persists in a first-party, HttpOnly cookie after a successful
+    anonymous submission.
+    """
+    cookie_name = os.getenv("WEBAPP_ANON_ID_COOKIE_NAME", "mw_anon_id")
+    value: str | None = request.cookies.get(cookie_name)
+    if value and value.startswith("anon_"):
+        try:
+            uuid.UUID(value.removeprefix("anon_"))
+            return value
+        except ValueError:
+            pass
+    return f"anon_{uuid.uuid4()}"
+
+
+def set_anonymous_user_cookie(response: Response, anonymous_user_id: str) -> None:
+    """Persist an anonymous identifier for repeat unauthenticated submissions."""
+    cookie_name = os.getenv("WEBAPP_ANON_ID_COOKIE_NAME", "mw_anon_id")
+    response.set_cookie(
+        key=cookie_name,
+        value=anonymous_user_id,
+        max_age=31_536_000,
+        httponly=True,
+        samesite="lax",
+        secure=_env_bool("WEBAPP_COOKIE_SECURE", False),
+        path="/",
+    )
 
 
 def sanitize_next(next_path: str | None) -> str:

@@ -3,14 +3,15 @@ import logging
 import os
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import or_
 
 from webapp.db import get_session
-from webapp.models import Crawl, Submission
+from webapp.models import Crawl, Submission, User
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
+from webapp.utils.auth import get_or_create_anonymous_user_id, set_anonymous_user_cookie
 from webapp.utils.config import _env_bool
 from webapp.utils.http import _client_ip_from_request, _collect_headers_subset
 from webapp.utils.logging import log_audit
@@ -374,8 +375,9 @@ async def _submit_site(
     except Exception:
         pass
 
-    # Redirect:
-    return _site_submit_redirect(user, crawl_id, visibility, key)
+    response = _site_submit_redirect(user, crawl_id, visibility, key)
+    _attribute_anonymous_crawl(request, response, crawl_id, user)
+    return response
 
 
 def _replace_site_crawl(
@@ -621,7 +623,25 @@ async def _submit_page(
     # Build redirect response and rotate session
     resp = _page_submit_redirect(crawl_id, key_val, user, is_public)
     _rotate_session_cookie(resp)
+    _attribute_anonymous_crawl(request, resp, crawl_id, user)
     return resp
+
+
+def _attribute_anonymous_crawl(
+    request: Request,
+    response: Response,
+    crawl_id: str,
+    user: User | None,
+) -> None:
+    """Persist the anonymous browser ID for background Langfuse attribution."""
+    if user:
+        return
+    anonymous_user_id = get_or_create_anonymous_user_id(request)
+    with get_session() as session:
+        row = session.get(Crawl, crawl_id)
+        if row and not row.user_id:
+            row.anonymous_user_id = anonymous_user_id
+    set_anonymous_user_cookie(response, anonymous_user_id)
 
 
 def _enforce_origin(request: Request) -> None:

@@ -224,6 +224,9 @@ class Crawl(Base):
     user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # First-party anonymous browser ID for Langfuse attribution. This is not
+    # an account identifier and is superseded by ``user_id`` after sign-in.
+    anonymous_user_id: Mapped[str | None] = mapped_column(String(41), nullable=True)
     crawl_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # AEO/GEO scores (computed deterministically from payload_json)

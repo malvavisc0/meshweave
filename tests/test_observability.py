@@ -1,11 +1,12 @@
 """Tests for the opt-in Langfuse observability wiring."""
 
+import asyncio
 import json
 import logging
 import sys
 import types
 from collections.abc import Iterator
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
@@ -220,6 +221,59 @@ def test_trace_attributes_propagates_when_enabled(monkeypatch: MonkeyPatch) -> N
             "tags": ["aax"],
             "metadata": None,
             "version": None,
+        }
+    ]
+
+
+def test_trace_attributes_propagates_user_email_metadata(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _set_credentials(monkeypatch)
+    module, _ = _install_fake_langfuse(monkeypatch, _FakeLangfuseClient())
+    obs.enable_langfuse()
+
+    with obs.trace_attributes(
+        user_id="u1", metadata={"user_email": "user@example.com"}
+    ):
+        pass
+
+    assert module.propagation_calls[0]["user_id"] == "u1"
+    assert module.propagation_calls[0]["metadata"] == {"user_email": "user@example.com"}
+
+
+def test_aax_uses_anonymous_id_when_no_authenticated_user(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from meshweave.ai import analyses
+
+    calls: list[dict] = []
+
+    @contextmanager
+    def fake_trace_attributes(**kwargs):
+        calls.append(kwargs)
+        yield
+
+    async def fake_run(payload: dict) -> dict:
+        return payload
+
+    monkeypatch.setattr(analyses, "trace_attributes", fake_trace_attributes)
+    monkeypatch.setattr(analyses, "_run_aax_analysis", fake_run)
+
+    result = asyncio.run(
+        analyses.run_aax_analysis(
+            {"status": "completed"},
+            trace_anonymous_user_id="anon_123",
+            trace_session_id="aax:c1",
+        )
+    )
+
+    assert result == {"status": "completed"}
+    assert calls == [
+        {
+            "user_id": "anon_123",
+            "session_id": "aax:c1",
+            "tags": ["aax"],
+            "metadata": None,
         }
     ]
 

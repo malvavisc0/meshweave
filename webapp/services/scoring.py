@@ -16,7 +16,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from meshweave.scoring.engine import compute_aax_score, compute_scores
 from meshweave.scoring.ratings import aeo_rating, geo_rating
 from webapp.db import get_session
-from webapp.models import Crawl, ScoreSnapshot
+from webapp.models import Crawl, ScoreSnapshot, User
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,9 @@ async def run_aax_for_crawl(
     """
     from meshweave.ai.analyses import run_aax_analysis
 
-    payload, user_id = _load_payload_for_aax(crawl_id, payload)
+    payload, user_id, user_email, anonymous_user_id = _load_payload_for_aax(
+        crawl_id, payload
+    )
     if payload is None:
         return None
 
@@ -212,6 +214,8 @@ async def run_aax_for_crawl(
         aax_result = await run_aax_analysis(
             payload,
             trace_user_id=user_id,
+            trace_user_email=user_email,
+            trace_anonymous_user_id=anonymous_user_id,
             trace_session_id=f"aax:{crawl_id}",
         )
     except Exception as e:
@@ -269,7 +273,7 @@ def _persist_aax_failure(crawl_id: str, aax_result: dict[str, Any]) -> None:
 def _load_payload_for_aax(
     crawl_id: str,
     payload: dict[str, Any] | None,
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, Any] | None, str | None, str | None, str | None]:
     """Load the AAX payload and resolve the crawl owner.
 
     Args:
@@ -277,17 +281,21 @@ def _load_payload_for_aax(
         payload: Pre-loaded crawl payload. If None, loads from DB.
 
     Returns:
-        The (payload, user_id) pair. Returns (None, None) when the crawl
-        row is missing and no payload was provided.
+        The payload, owner ID, owner email, and anonymous browser ID. Returns
+        ``(None, None, None, None)`` when the crawl row is missing and no
+        payload was provided.
     """
     # Load payload if not provided; also resolve the crawl's owner so LLM
     # traces can be attributed to the user who requested the analysis.
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         user_id = row.user_id if row else None
+        anonymous_user_id = row.anonymous_user_id if row and not user_id else None
+        user = s.get(User, user_id) if user_id else None
+        user_email = user.email if user else None
         if payload is None:
             if not row:
-                return None, None
+                return None, None, None, None
             raw = row.payload_json or {}
             if isinstance(raw, str):
                 try:
@@ -296,7 +304,7 @@ def _load_payload_for_aax(
                     payload = {}
             else:
                 payload = raw
-    return payload, user_id
+    return payload, user_id, user_email, anonymous_user_id
 
 
 def _apply_aax_to_score_snapshot(
