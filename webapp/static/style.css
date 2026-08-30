@@ -3184,6 +3184,11 @@ p.card-meta {
   margin: var(--space-sm) 0;
 }
 
+/* Grid gap supplies spacing; the stacked-panel margin would offset Run Analysis. */
+.dash-summary-row > .panel + .panel {
+  margin-top: 0;
+}
+
 .dash-overview {
   padding: var(--space-md);
 }
