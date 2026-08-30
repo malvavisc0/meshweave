@@ -128,20 +128,13 @@ Rating criteria:
 - "llm_optimization": "optimized" = structured data reinforces and extends
   the meta identity; "adequate" = meta identity present but JSON-LD is
   missing or thin; "poor" = identity signals are missing or contradictory.
-- "missing_fields": list only from these candidates: title, description,
-  og_title, og_description, og_image, twitter_image, canonical_url,
-  jsonld_identity.
 
 Respond in this JSON format:
 {{
-  "brand": "company or brand name",
-  "product": "what product or service they offer",
-  "target_audience": "who this is for",
   "would_click_through": true or false,
   "completeness": "one of: complete, partial, minimal",
   "clarity": "one of: clear, somewhat_clear, unclear",
   "llm_optimization": "one of: optimized, adequate, poor",
-  "missing_fields": ["field1", ...],
   "improvement_suggestions": ["suggestion1", ...]
 }}
 
@@ -216,7 +209,7 @@ def content_delta_prompt(pages_content: str) -> tuple[str, str]:
     """Does adding more pages improve AI understanding?"""
     user = f"""Understand the company and its offerings from the website content below.
 
-Based on ALL this content, provide a comprehensive summary.
+Based on ALL this content, provide a focused analysis.
 If pricing data is absent from the content, set pricing fields to null.
 
 Rating criteria:
@@ -231,9 +224,9 @@ Rating criteria:
 
 Respond in this JSON format:
 {{
-  "company": {{"name": "...", "description": "..."}},
-  "product": {{"name": "...", "category": "...", "description": "...", "features": ["..."]}},
-  "pricing": {{"model": "...", "tiers": ["..."]}},
+  "company": {{"name": "..."}},
+  "product": {{"name": "..."}},
+  "pricing": {{"model": "..."}},
   "target_audience": "...",
   "strengths": ["strength1", ...],
   "weaknesses": ["weakness1", ...],

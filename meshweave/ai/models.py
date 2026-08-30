@@ -36,14 +36,10 @@ class HomepageComprehensionResult(BaseModel):
 class MetaOptimizationResult(BaseModel):
     """How well the meta tags communicate the site's purpose."""
 
-    brand: str = ""
-    product: str = ""
-    target_audience: str = ""
     would_click_through: bool
     completeness: Literal["complete", "partial", "minimal"]
     clarity: Literal["clear", "somewhat_clear", "unclear"]
     llm_optimization: Literal["optimized", "adequate", "poor"]
-    missing_fields: list[str] = Field(default_factory=list)
     improvement_suggestions: list[str] = Field(default_factory=list)
 
 
@@ -51,26 +47,21 @@ class MetaOptimizationResult(BaseModel):
 
 
 class CompanyInfo(BaseModel):
-    """Company overview extracted from multi-page content."""
+    """Company name extracted from multi-page content."""
 
     name: str = ""
-    description: str = ""
 
 
 class ProductInfo(BaseModel):
-    """Product details extracted from multi-page content."""
+    """Product name extracted from multi-page content."""
 
     name: str = ""
-    category: str = ""
-    description: str = ""
-    features: list[str] = Field(default_factory=list)
 
 
 class PricingInfo(BaseModel):
     """Pricing model extracted from multi-page content."""
 
     model: str | None = None
-    tiers: list[str] = Field(default_factory=list)
 
 
 class ContentDeltaResult(BaseModel):
