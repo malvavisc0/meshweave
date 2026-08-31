@@ -42,7 +42,7 @@ dev = [
   "pytest-asyncio",
   "pytest-cov",
   "pytest-xdist",
-  "radon>=6.0.1",
+  "radon",
 ]
 
 [project.urls]

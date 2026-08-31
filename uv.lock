@@ -1338,7 +1338,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
-    { name = "radon", specifier = ">=6.0.1" },
+    { name = "radon" },
     { name = "ruff" },
 ]
 
