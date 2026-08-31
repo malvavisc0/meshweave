@@ -447,11 +447,12 @@ def _session_params(request: Request) -> tuple[str, str, bool]:
 
 
 def _seo_params(site_name: str) -> tuple[str, str]:
-    page_title = f"{site_name} — Free AI Visibility Audit: See Why AI Skips Your Site"
+    page_title = (
+        f"{site_name} — AI Agent Visibility Audit: See How Agents Read Your Site"
+    )
     meta_description = (
-        "Run a free AI visibility audit. MeshWeave shows SEO, content, "
-        "and growth teams exactly where AI tools misread their website "
-        "— and what to fix first."
+        "Run a free AI agent visibility audit. MeshWeave checks the website "
+        "signals agents can observe and shows what to fix first."
     )
     return page_title, meta_description
 
