@@ -295,6 +295,32 @@ def group_recommendations_by_pillar(
     return groups
 
 
+def _sorted_recommendations(ss: dict | None) -> list[dict]:
+    """Pre-compute sorted recommendations for the template.
+
+    Sorts by priority (high→low) then by weakest pillar first. Kept in this
+    pure module (no webapp stack) so the export serializer can reuse it.
+    """
+    if not ss or not ss.get("recommendations"):
+        return []
+    pillar_scores = {
+        "aeo": ss.get("aeo_score") or 100,
+        "geo": ss.get("geo_score") or 100,
+        "aax": ss.get("aax_score") or 100,
+    }
+    pillar_rank = {
+        k: i
+        for i, (k, _) in enumerate(sorted(pillar_scores.items(), key=lambda x: x[1]))
+    }
+    return sorted(
+        ss["recommendations"],
+        key=lambda r: (
+            PRIORITY_NUMERIC.get(r.get("priority", "medium"), 1),
+            pillar_rank.get(r.get("pillar", ""), 99),
+        ),
+    )
+
+
 def build_score_snapshot_context(crawl) -> dict | None:
     """Build the score_snapshot template context dict from a Crawl row."""
     snapshot = getattr(crawl, "score_snapshot", None)

@@ -25,12 +25,15 @@ else 'n/a') ~
 'Weakest lens: ' ~ (interp.weakest_lens if interp else '') ~ '.\n\n' ~
 'I would like an expert audit and a prioritized roadmap.'
 ) | urlencode %}
-<div class="report-cta report-cta--authed result-bottom-cta">
-  <h2>{{ interp.headline if interp else 'Your report is ready' }}</h2>
-  <p>Review the signals behind each score and the recommended next steps.</p>
+<div class="report-cta report-cta--authed report-cta--closing result-bottom-cta">
+  <div class="report-cta-copy">
+    <p class="report-cta-kicker">Optional next step</p>
+    <h2>Need help turning these findings into a plan?</h2>
+    <p>Get a prioritized roadmap from an expert who can help you act on the highest-impact fixes.</p>
+  </div>
   <div class="report-cta-actions">
-    <a class="btn btn-expert-email"
-      href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ _subject }}&body={{ _body }}">Talk to an Expert &#128172;</a>
+    <a class="btn btn-tertiary report-cta-button"
+      href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ _subject }}&body={{ _body }}">Talk to an expert</a>
   </div>
 </div>
 {% elif viewer_role == 'ownerless_public' %}
@@ -329,7 +332,7 @@ else 'n/a') ~
     {% endif %}
 
 
-    {# --- Score Breakdown — gated; single CTA lives here --- #}
+    {# --- Score Breakdown — gated; owner CTA is rendered after the full report --- #}
     {% if score_snapshot and score_snapshot.score_data %}
     {% set _grouped_recs = group_recommendations_by_pillar(sorted_recommendations) %}
     {% set interp = score_snapshot.interpretation if score_snapshot.interpretation else none %}
@@ -669,12 +672,16 @@ else 'n/a') ~
 
     </section>
 
+    {% if viewer_role != 'owner' %}
     {{ funnel_cta(viewer_role, domain, interp, score_snapshot) }}
+    {% endif %}
     {% else %}
     {{ funnel_cta(viewer_role, domain, interp, score_snapshot) }}
     {% endif %}
     {% elif _is_partial %}
+    {% if viewer_role != 'owner' %}
     {{ funnel_cta(viewer_role, domain, none, none) }}
+    {% endif %}
     {% endif %}
 
     {# ================================================================
@@ -705,27 +712,55 @@ else 'n/a') ~
     </div>
     {% endif %}
 
-    {# --- Re-check: owner-only rerun trigger (same endpoint as dashboard) --- #}
+    {# --- Report actions: owner-only controls grouped into one decision point --- #}
     {% if status == "succeeded" %}
-    <div class="panel result-section re-check-panel" role="region" aria-label="Re-check this site">
-      <div class="re-check-copy">
-        <h2>Re-check this site</h2>
-        <p class="small m0">Fixed something? Run the analysis again — the previous report stays
-          available as a revision you can compare against.</p>
+    <section class="panel result-section report-actions" role="region" aria-label="Report actions">
+      <div class="report-actions-header">
+        <div>
+          <p class="report-actions-kicker">Report actions</p>
+          <h2>Keep working on this report</h2>
+        </div>
+        <p class="small report-actions-intro">Re-run after making changes, or download the findings to share with an AI
+          agent.</p>
       </div>
-      <div class="re-check-actions">
-        {% if can_retry %}
-        <form method="post" action="/retry/{{ id }}" class="inline-block">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-          <button type="submit" class="btn btn-primary">Re-check now</button>
-        </form>
-        {% else %}
-        <button type="button" class="btn" disabled title="Available in {{ retry_eta }}">
-          Re-check available in {{ retry_eta }}
-        </button>
-        {% endif %}
+      <div class="report-actions-grid">
+        <div class="report-action">
+          <div class="report-action-copy">
+            <h3>Re-check this site</h3>
+            <p class="small">Run a fresh analysis after making changes. This report stays available as a revision.</p>
+          </div>
+          <div class="report-action-control">
+            {% if can_retry %}
+            <form method="post" action="/retry/{{ id }}" class="inline-block">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+              <button type="submit" class="btn btn-primary">Re-check now</button>
+            </form>
+            {% else %}
+            <button type="button" class="btn" disabled title="Available in {{ retry_eta }}">
+              Available in {{ retry_eta }}
+            </button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="report-action">
+          <div class="report-action-copy">
+            <h3>Download Markdown</h3>
+            {% if aax_status == "completed" and score_snapshot %}
+            <p class="small">A portable version of the complete report for an AI agent or your team.</p>
+            {% else %}
+            <p class="small">Available when the complete report is ready.</p>
+            {% endif %}
+          </div>
+          <div class="report-action-control">
+            {% if aax_status == "completed" and score_snapshot %}
+            <a class="btn btn-tertiary" href="/analysis/{{ id }}/export">Download report</a>
+            {% else %}
+            <span class="report-action-status">Not ready</span>
+            {% endif %}
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
     {% endif %}
 
     {# --- AI Agent Usability Review (owner-only) --- #}
@@ -1007,6 +1042,10 @@ else 'n/a') ~
     {% endif %}
 
     {% endif %}{# end viewer_role == owner #}
+
+    {% if viewer_role == 'owner' %}
+    {{ funnel_cta(viewer_role, domain, score_snapshot.interpretation if score_snapshot else none, score_snapshot) }}
+    {% endif %}
 
     {# --- Methodology footer (FROZEN) --- #}
     {% if score_snapshot and score_snapshot.interpretation %}

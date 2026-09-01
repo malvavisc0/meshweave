@@ -19,11 +19,16 @@ from webapp.utils.diff import (
     find_previous_revision,
     list_revision_series,
 )
+from webapp.utils.export import (
+    build_export_context,
+    render_export_markdown,
+    safe_filename,
+)
 from webapp.utils.payload_counts import json_ld_count as _json_ld_count
 from webapp.utils.progress import progress_view
 from webapp.utils.reasons import friendly_reason
 from webapp.utils.scoring import (
-    PRIORITY_NUMERIC,
+    _sorted_recommendations,
     aax_pending,
 )
 from webapp.utils.scoring import (
@@ -34,31 +39,6 @@ from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
-
-
-def _sorted_recommendations(ss: dict | None) -> list[dict]:
-    """Pre-compute sorted recommendations for the template.
-
-    Sorts by priority (high→low) then by weakest pillar first.
-    """
-    if not ss or not ss.get("recommendations"):
-        return []
-    pillar_scores = {
-        "aeo": ss.get("aeo_score") or 100,
-        "geo": ss.get("geo_score") or 100,
-        "aax": ss.get("aax_score") or 100,
-    }
-    pillar_rank = {
-        k: i
-        for i, (k, _) in enumerate(sorted(pillar_scores.items(), key=lambda x: x[1]))
-    }
-    return sorted(
-        ss["recommendations"],
-        key=lambda r: (
-            PRIORITY_NUMERIC.get(r.get("priority", "medium"), 1),
-            pillar_rank.get(r.get("pillar", ""), 99),
-        ),
-    )
 
 
 def _factor_extremes(factors: dict) -> tuple:
@@ -502,6 +482,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
             "sorted_recommendations": _sorted_recommendations(_ss_private),
             "factor_extremes": _build_factor_extremes(_ss_private),
             "aax_pending": aax,
+            "aax_status": row.aax_status,
             "in_progress": in_progress,
             "progress": progress,
             "revisions": _revision_series_for(row),
@@ -611,6 +592,7 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "sorted_recommendations": _sorted_recommendations(_ss_public),
             "factor_extremes": _build_factor_extremes(_ss_public),
             "aax_pending": aax,
+            "aax_status": row.aax_status,
             "in_progress": in_progress,
             "progress": progress,
         },
@@ -636,6 +618,47 @@ async def view_analysis(request: Request, ref: str):
 
     # Public by short key
     return await _render_public_view(request, ref)
+
+
+@router.get("/analysis/{ref}/export")
+async def export_analysis(request: Request, ref: str) -> Response:
+    """Download the private report as a Markdown artifact (owner-only).
+
+    The route is a thin gate: UUID refs only, ownership (401/403 → 404), and a
+    completeness check (incomplete → 409). All derivation lives in
+    ``webapp.utils.export`` so the policy stays unit-testable.
+    """
+    if not _is_uuid(ref):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    try:
+        row = await require_ownership(request, ref)
+    except HTTPException as exc:
+        if exc.status_code in (401, 403):
+            raise HTTPException(status_code=404, detail="Not found")
+        raise
+
+    if (
+        row.status != "succeeded"
+        or not row.score_snapshot
+        or row.aax_status != "completed"
+    ):
+        raise HTTPException(status_code=409, detail="Report is not ready")
+
+    markdown = render_export_markdown(
+        build_export_context(
+            row,
+            site_name=os.getenv("SITE_NAME", "MeshWeave"),
+            contact_email=os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweaveai.com"),
+        ),
+    )
+    response = Response(content=markdown, media_type="text/markdown; charset=utf-8")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="meshweave-report-{safe_filename(row.domain)}.md"'
+    )
+    return response
 
 
 async def _resolve_vs_row(request: Request, vs: str, base_row: Crawl) -> Crawl | None:
