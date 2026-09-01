@@ -70,31 +70,45 @@ def _strip_thinking_parts(value: Any) -> Any:
     stripped (so span attributes without reasoning content are never rewritten
     or re-serialized), and otherwise a value of the same shape as the input.
     """
-    parsed: Any
-    if isinstance(value, str):
-        # Fast path: the serialized array only contains a thinking part when
-        # the literal substring appears, so no-reasoning spans skip the
-        # (multi-kilobyte) json.loads and tree traversal entirely.
-        if "thinking" not in value:
-            return value
-        try:
-            parsed = json.loads(value)
-        except ValueError, TypeError:
-            return value
-    else:
-        parsed = value
-
+    parsed = _parse_span_value(value)
+    if parsed is _UNPARSED:
+        return value
     if isinstance(parsed, list):
         cleaned = [_clean_message(m) for m in parsed]
         if all(c is m for c, m in zip(cleaned, parsed)):
             return value
-        return json.dumps(cleaned) if isinstance(value, str) else cleaned
+        return _encode_span_value(cleaned, value)
     if isinstance(parsed, dict):
         cleaned = _clean_message(parsed)
         if cleaned is parsed:
             return value
-        return json.dumps(cleaned) if isinstance(value, str) else cleaned
+        return _encode_span_value(cleaned, value)
     return value
+
+
+# Sentinel: the value is not a JSON message container we can clean.
+_UNPARSED = object()
+
+
+def _parse_span_value(value: Any) -> Any:
+    """Parsed container for a span attribute value, or _UNPARSED."""
+    if isinstance(value, str):
+        # Fast path: the serialized array only contains a thinking part
+        # when the literal substring appears, so no-reasoning spans skip
+        # the (multi-kilobyte) json.loads and tree traversal entirely.
+        if "thinking" not in value:
+            return _UNPARSED
+        try:
+            parsed = json.loads(value)
+        except ValueError, TypeError:
+            return _UNPARSED
+        return parsed
+    return value
+
+
+def _encode_span_value(cleaned: Any, original: Any) -> Any:
+    """Re-serialize when the input was a string, else return as-is."""
+    return json.dumps(cleaned) if isinstance(original, str) else cleaned
 
 
 def _clean_message(message: Any) -> Any:

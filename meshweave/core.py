@@ -166,41 +166,7 @@ def _build_payload(
         },
     }
 
-    # Build pages[] array from markdowns dict
-    # Origin page at index 0, rest sorted alphabetically by URL
-    pages: list[dict[str, Any]] = []
-    origin_url = origin
-    origin_entry = None
-    sorted_entries: list[tuple[str, dict[str, Any]]] = []
-
-    for url, entry in markdowns.items():
-        page_entry = {
-            "url": url,
-            "page": entry.get("page", {}),
-            "markdown": entry.get("markdown", ""),
-            "headings": entry.get("headings", {}),
-            "content_metrics": entry.get("content_metrics", {}),
-            "metrics": {
-                "render": entry.get("render_metrics", {}),
-                "extraction": entry.get("extraction_metrics", {}),
-            },
-            "emails": {"unique": entry.get("emails_unique", [])},
-            "links": entry.get("links", {}),
-        }
-        if url == origin_url:
-            origin_entry = page_entry
-        else:
-            sorted_entries.append((url, page_entry))
-
-    # Sort remaining pages alphabetically by URL
-    sorted_entries.sort(key=lambda x: x[0])
-
-    # Origin first, then sorted pages
-    if origin_entry:
-        pages.append(origin_entry)
-    pages.extend(entry for _, entry in sorted_entries)
-
-    payload["pages"] = pages
+    payload["pages"] = _sorted_pages(markdowns, origin)
 
     # Webapp convenience fields
     payload["scope"] = "site"
@@ -254,6 +220,43 @@ def _build_payload(
     }
 
     return payload
+
+
+def _page_entry(url: str, entry: dict[str, Any]) -> dict[str, Any]:
+    """One pages[] row assembled from a markdowns dict entry."""
+    return {
+        "url": url,
+        "page": entry.get("page", {}),
+        "markdown": entry.get("markdown", ""),
+        "headings": entry.get("headings", {}),
+        "content_metrics": entry.get("content_metrics", {}),
+        "metrics": {
+            "render": entry.get("render_metrics", {}),
+            "extraction": entry.get("extraction_metrics", {}),
+        },
+        "emails": {"unique": entry.get("emails_unique", [])},
+        "links": entry.get("links", {}),
+    }
+
+
+def _sorted_pages(
+    markdowns: dict[str, dict[str, Any]], origin: str
+) -> list[dict[str, Any]]:
+    """pages[] rows: origin page first, the rest sorted by URL."""
+    origin_entry = None
+    sorted_entries: list[tuple[str, dict[str, Any]]] = []
+    for url, entry in markdowns.items():
+        page_entry = _page_entry(url, entry)
+        if url == origin:
+            origin_entry = page_entry
+        else:
+            sorted_entries.append((url, page_entry))
+    sorted_entries.sort(key=lambda x: x[0])
+    pages: list[dict[str, Any]] = []
+    if origin_entry:
+        pages.append(origin_entry)
+    pages.extend(entry for _, entry in sorted_entries)
+    return pages
 
 
 def _start_url(url: str) -> str:

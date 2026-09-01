@@ -527,31 +527,39 @@ async def api_status(request: Request, crawl_id: str):
     if row.visibility != "public" and not is_owner:
         raise HTTPException(status_code=404, detail="Not found")
 
-    # Raw error text is owner-only; non-owners get a fixed public label.
-    if is_owner:
-        error_value: str | None = row.error
-    else:
-        error_value = public_error_label(row.error) if row.error else None
+    return JSONResponse(content=_status_payload(row, request, is_owner=is_owner))
 
+
+def _status_payload(
+    row: Crawl, request: Request, *, is_owner: bool
+) -> dict[str, object]:
+    """Limited status fields, with owner-only error text and report URL."""
     base = _get_base_url(request)
-    if row.visibility == "public" and getattr(row, "key", None):
-        report_url = f"{base}/analysis/{row.key}"
-    else:
-        report_url = f"{base}/analysis/{row.id}"
-
-    content: dict[str, object] = {
+    return {
         "id": row.id,
         "domain": row.domain,
         "path": row.path,
         "query": row.query,
         "status": row.status,
-        "error": error_value,
+        "error": _status_error(row, is_owner=is_owner),
         "updated_at": (row.updated_at or datetime.now(UTC)).isoformat(),
-        "report_url": report_url,
+        "report_url": _status_report_url(row, base),
+        **({"key": row.key} if row.visibility == "public" else {}),
     }
-    if row.visibility == "public":
-        content["key"] = row.key
-    return JSONResponse(content=content)
+
+
+def _status_error(row: Crawl, *, is_owner: bool) -> str | None:
+    """Raw error text for owners; a fixed public label for everyone else."""
+    if is_owner:
+        return row.error
+    return public_error_label(row.error) if row.error else None
+
+
+def _status_report_url(row: Crawl, base: str) -> str:
+    """Short-key report URL for public rows; UUID URL otherwise."""
+    if row.visibility == "public" and getattr(row, "key", None):
+        return f"{base}/analysis/{row.key}"
+    return f"{base}/analysis/{row.id}"
 
 
 @router.get("/readyz")
