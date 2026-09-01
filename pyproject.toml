@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshweave"
-version = "0.1.4"
+version = "0.1.5"
 description = "Render pages with Playwright, extract markdown, links, emails, and optionally crawl internal links."
 readme = "README.md"
 requires-python = ">=3.14"
