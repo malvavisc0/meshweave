@@ -16,7 +16,6 @@ router = APIRouter()
 async def privacy(request: Request):
     site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Privacy Policy — {site_name}"
-    # Plan-aligned description
     meta_description = (
         "Learn how MeshWeave collects, uses, and protects your data. "
         "Public by default when not signed in. "

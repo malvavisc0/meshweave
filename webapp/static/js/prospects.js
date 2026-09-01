@@ -2,8 +2,6 @@
 (function () {
   'use strict';
 
-  var STATUS_VALUES = ['shortlisted', 'contacted', 'replied', 'won', 'lost'];
-
   // Form drawer helpers (similar to products.js)
   function openProspectForm(p) {
     var prfTitle = document.getElementById('prf-title'); if (prfTitle) prfTitle.textContent = p && p.id ? 'Edit Prospect' : 'New Prospect';
@@ -64,15 +62,6 @@
   function statusBadge(s) {
     var v = String(s || '').toLowerCase();
     return v ? '<span class="badge">' + escapeHtml(v) + '</span>' : '-';
-  }
-
-  function statusSelectHtml(value) {
-    var val = String(value || '').toLowerCase();
-    var opts = STATUS_VALUES.map(function (s) {
-      var sel = (s === val) ? ' selected' : '';
-      return '<option value="' + escapeHtml(s) + '"' + sel + '>' + escapeHtml(s) + '</option>';
-    }).join('');
-    return '<select class="inp pr-edit-status">' + opts + '</select>';
   }
 
   function renderProspects(items) {

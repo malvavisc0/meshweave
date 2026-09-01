@@ -2,11 +2,7 @@
 (function () {
     'use strict';
 
-    var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    var _pfLastTrigger = null;
-
     function openProductForm(p) {
-        _pfLastTrigger = document.activeElement || null;
         var pf = document.getElementById('product-form');
         if (!pf) return;
         var titleEl = document.getElementById('pf-title'); if (titleEl) titleEl.textContent = p ? 'Edit Product' : 'New Product';

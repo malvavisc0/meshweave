@@ -5,24 +5,20 @@
     var CSRF_TOKEN = window.CSRF_TOKEN ||
         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-    // ── Domain filtering ──
+    // ── Status filtering ──
     function initDomainFilter() {
-        var input = document.getElementById('dash-q');
         var select = document.getElementById('dash-status');
         var count = document.getElementById('dash-count');
         var list = document.getElementById('sites-list');
-        if (!input || !select || !list) return;
+        if (!select || !list) return;
 
         function filter() {
-            var q = (input.value || '').toLowerCase().trim();
             var s = select.value || '';
             var cards = list.querySelectorAll('.site-card');
             var visible = 0;
             cards.forEach(function (card) {
-                var domain = (card.getAttribute('data-domain') || '').toLowerCase();
                 var status = card.getAttribute('data-status') || '';
-                var match = (!q || domain.indexOf(q) !== -1) &&
-                    (!s || status === s);
+                var match = (!s || status === s);
                 card.style.display = match ? '' : 'none';
                 if (match) visible++;
             });
@@ -31,7 +27,6 @@
             }
         }
 
-        input.addEventListener('input', filter);
         select.addEventListener('change', filter);
         filter();
     }

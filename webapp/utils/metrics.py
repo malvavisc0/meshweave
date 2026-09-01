@@ -38,7 +38,7 @@ homepage_signin_cta_clicks = Counter(
 )
 
 
-# Phase 1B API metrics (owner-scoped resources)
+# Prospects / contacts metrics (owner-scoped resources)
 prospects_upsert = Counter(
     "prospects_upsert_total", "Prospects upsert/create operations"
 )

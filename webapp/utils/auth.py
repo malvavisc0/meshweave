@@ -309,7 +309,7 @@ async def require_ownership(request: Request, crawl_id: str) -> Crawl:
 
 
 # -----------------------------
-# Session lifecycle (Phase 2)
+# Session lifecycle
 # -----------------------------
 def _now() -> datetime:
     """Current UTC datetime.

@@ -649,10 +649,6 @@ label {
   margin-left: var(--space-sm) !important;
 }
 
-.mr-1 {
-  margin-right: var(--space-xs) !important;
-}
-
 .hidden {
   display: none !important;
 }
@@ -1303,54 +1299,6 @@ label {
 }
 
 /* Page column: path (mono), title (muted), domain (subtle) */
-.ps-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.ps-path {
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ps-title {
-  font-size: 12px;
-  color: var(--color-ink-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ph-metric,
-.ps-metric {
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-  font-size: 12px;
-  color: var(--color-ink-muted);
-  text-align: right;
-}
-
-.ph-page,
-.ph-tokens {
-  font: var(--font-body-emphasis);
-  color: var(--color-ink-muted);
-}
-
-/* Token estimate column — right-aligned, monospace */
-.ps-tokens {
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-  font-size: 13px;
-  text-align: right;
-  color: var(--color-ink-muted);
-}
-
 /* Card layout within a card-list */
 .card-list .card {
   padding: var(--space-md) var(--space-lg);
@@ -1832,8 +1780,6 @@ p.card-meta {
   .landing-hero {
     padding: var(--space-xxl) 0 var(--space-lg);
   }
-
-  /* .outcomes-grid-4 removed — responsive rules for a grid that was never defined or used */
 
   .landing-hero-title {
     font-size: 32px;
@@ -2783,156 +2729,6 @@ p.card-meta {
   letter-spacing: 0.16px;
   color: var(--color-ink-muted);
   margin-bottom: 4px;
-}
-
-/* ------------------------------------------------------------------------
-   SOCIAL LINKS CARDS GRID (0px corners, hover border-shift)
-   ------------------------------------------------------------------------ */
-.social-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-}
-
-.social-card-v2 {
-  background: var(--color-canvas);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-none) !important;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  transition: border-color 0.15s ease;
-}
-
-.social-card-v2:hover {
-  border-color: var(--color-hairline-strong);
-}
-
-.social-card-v2-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--color-surface-1);
-  padding-bottom: 6px;
-}
-
-.social-plat-badge {
-  font-family: IBM Plex Sans, system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16px;
-  text-transform: uppercase;
-  background: var(--color-surface-1);
-  color: var(--color-ink-muted);
-  padding: 2px 6px;
-  border-radius: var(--radius-none) !important;
-}
-
-.brand-github .social-plat-badge {
-  background: #24292e;
-  color: #fff;
-}
-
-.brand-linkedin .social-plat-badge {
-  background: #0077b5;
-  color: #fff;
-}
-
-.brand-youtube .social-plat-badge {
-  background: #ff0000;
-  color: #fff;
-}
-
-.brand-facebook .social-plat-badge {
-  background: #1877f2;
-  color: #fff;
-}
-
-.brand-twitter .social-plat-badge {
-  background: #1da1f2;
-  color: #fff;
-}
-
-.brand-instagram .social-plat-badge {
-  background: #e1306c;
-  color: #fff;
-}
-
-.brand-tiktok .social-plat-badge {
-  background: #010101;
-  color: #fff;
-}
-
-.brand-discord .social-plat-badge {
-  background: #5865f2;
-  color: #fff;
-}
-
-.social-handle-lbl {
-  font-family: IBM Plex Sans, ui-monospace, monospace;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.social-card-v2-body {
-  font-family: IBM Plex Sans, system-ui, sans-serif;
-  font-size: 13px;
-  color: var(--color-ink-muted);
-  margin-bottom: 16px;
-  word-break: break-all;
-  flex-grow: 1;
-  display: flex;
-  align-items: center;
-}
-
-.social-url-link {
-  color: var(--color-ink-subtle);
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.social-url-link:hover {
-  color: var(--color-primary);
-  text-decoration: underline;
-}
-
-.social-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  border-top: 1px solid var(--color-surface-1);
-  padding-top: var(--space-xs);
-}
-
-.social-card-actions .btn {
-  padding: 4px 8px;
-  font-size: 11px;
-  min-height: 28px;
-  border-radius: var(--radius-none) !important;
-  text-decoration: none;
-  letter-spacing: 0.16px;
-}
-
-.social-card-actions .btn-tertiary {
-  background: var(--color-canvas);
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary);
-}
-
-.social-card-actions .btn-ghost {
-  background: transparent;
-  color: var(--color-ink-muted);
-  border: 1px solid transparent;
-}
-
-.social-card-actions .btn-ghost:hover {
-  background: var(--color-surface-1);
-  color: var(--color-ink);
-  border-color: var(--color-hairline);
 }
 
 /* Rating color classes */
@@ -3928,13 +3724,6 @@ p.card-meta {
   border-radius: var(--radius-none);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.mobile-section {
-  background: var(--color-canvas);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-none);
-  padding: var(--space-md);
 }
 
 .aax-summary-note {
