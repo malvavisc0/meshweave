@@ -10,7 +10,7 @@ because "not found on the page" is a legitimate answer.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -113,6 +113,38 @@ class EmailValidationResult(BaseModel):
     confidence: Literal["high", "medium", "low"]
 
 
+# --- Citation Simulation ---
+
+
+class CitationQueriesResult(BaseModel):
+    """Buyer queries generated from the crawled content."""
+
+    queries: list[str] = Field(default_factory=list, min_length=1)
+
+
+class CitationAnswerResult(BaseModel):
+    """One simulated answer-engine response for a buyer query.
+
+    The model answers using ONLY the provided pages and reports
+    whether the brand was mentioned and which URLs it would cite.
+    """
+
+    answer: str = ""
+    brand_mentioned: bool = False
+    cited_urls: list[str] = Field(default_factory=list)
+
+
+class CitationSimulationResult(BaseModel):
+    """Aggregate simulated-citation check over the crawled pages."""
+
+    status: Literal["completed", "skipped", "failed"] = "skipped"
+    skip_reason: str = ""
+    query_count: int = 0
+    mention_rate: float = 0.0
+    citation_rate: float = 0.0
+    queries: list[dict[str, Any]] = Field(default_factory=list)
+
+
 # --- AAX Aggregate ---
 
 
@@ -135,5 +167,6 @@ class AAXAnalysisResult(BaseModel):
     contactability: ContactabilityResult | None = None
     email_validation: EmailValidationResult | None = None
     llms_txt: dict | None = None
+    citation_sim: CitationSimulationResult | None = None
     summary: str = ""
     skip_reasons: dict[str, str] = Field(default_factory=dict)

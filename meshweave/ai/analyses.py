@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 from meshweave.ai.models import (
     AAXAnalysisResult,
+    CitationSimulationResult,
     ContactabilityResult,
     ContentDeltaResult,
     EmailValidationResult,
@@ -117,6 +118,11 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
     email_validation = await email_task
     summary_text = await summary_task
 
+    # Citation simulation: grounded check that the brand is mentionable
+    # and citable from the crawled pages. Fails soft — a skipped or
+    # failed simulation never fails the AAX analysis.
+    citation_sim = await _run_citation_simulation_task(payload)
+
     # Test 6: Contactability (heuristic — no LLM)
     contactability = _compute_contactability(payload)
 
@@ -135,11 +141,25 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
         contactability=contactability,
         email_validation=email_validation,
         llms_txt=payload.get("llms_txt"),
+        citation_sim=(
+            CitationSimulationResult(**citation_sim) if citation_sim else None
+        ),
         summary=summary_text,
         skip_reasons=skip_reasons,
     )
 
     return result.model_dump(mode="json")
+
+
+async def _run_citation_simulation_task(payload: dict) -> dict | None:
+    """Run the citation simulation, logging — never raising — failures."""
+    from meshweave.ai.citation import run_citation_simulation
+
+    try:
+        return await run_citation_simulation(payload)
+    except Exception as e:
+        logger.warning("Citation simulation failed: %s", e)
+        return None
 
 
 def _aax_enabled() -> bool:

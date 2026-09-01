@@ -18,6 +18,9 @@ from typing import Any
 
 CHARS_PER_TOKEN = 4  # rough chars-per-token estimate for budget calculations
 
+# Buyer queries generated per citation simulation.
+CITATION_QUERY_COUNT = 8
+
 SYSTEM_BASE = (
     "You are an AI analysis agent evaluating websites for AI readiness. "
     "Always respond in valid JSON matching the requested schema exactly. "
@@ -464,6 +467,77 @@ _FLAT_JSONLD_KEYS: tuple[str, ...] = (
 )
 
 _NESTED_NAME_KEYS: tuple[str, ...] = ("author", "publisher", "provider")
+
+
+def citation_queries_prompt(
+    domain: str, homepage_md: str, page_titles: list[str]
+) -> tuple[str, str]:
+    """Generate realistic buyer queries for the site's category."""
+    titles_block = "\n".join(f"- {t}" for t in page_titles[:15])
+    user = f"""A buyer is evaluating products in the category this website belongs to.
+
+Based on the website content below, generate {CITATION_QUERY_COUNT} realistic
+questions a buyer might ask an AI assistant when considering this category.
+Rules:
+- Write questions buyers actually type: plain words, specific needs, some
+  with the category named, some without it.
+- Questions must be answerable by a vendor in this category — not
+  questions only this specific brand could answer.
+- Do not mention the brand or domain in the questions.
+- Vary intent: comparison ("what's a good X for Y"), how-to ("how do I ..."),
+  evaluation ("is ... worth it"), and recommendation ("what should I use
+  for ...").
+
+Website domain: {domain}
+Page titles:
+{titles_block}
+
+<homepage>
+{_neutralize_closing_tags(homepage_md)}
+</homepage>
+
+Respond in this JSON format:
+{{
+  "queries": ["question1", "question2", ...]
+}}
+"""
+    return user, SYSTEM_BASE
+
+
+def citation_answer_prompt(
+    query: str, brand_name: str, domain: str, pages_content: str
+) -> tuple[str, str]:
+    """Answer one buyer query grounded ONLY in the crawled pages."""
+    user = f"""You are an AI assistant answering a buyer's question. You have
+retrieved the website pages below as your ONLY sources. Answer the question
+using only what these pages say.
+
+Question: {query}
+
+Rules:
+- Answer like a real answer engine: direct, helpful, 2-4 sentences.
+- If the pages do not contain the answer, say what you can from the pages
+  and state what is missing. Never invent facts from outside the pages.
+- "brand_mentioned" is true only if the brand "{brand_name}" (or a clear
+  product of the brand) is named in your answer text.
+- "cited_urls" lists the page URLs you actually used from below (copy the
+  URL headers exactly). List only URLs that appear in the pages section.
+
+<pages>
+{_neutralize_closing_tags(pages_content)}
+</pages>
+
+Brand to check for: {brand_name}
+Brand domain: {domain}
+
+Respond in this JSON format:
+{{
+  "answer": "...",
+  "brand_mentioned": true or false,
+  "cited_urls": ["url1", ...]
+}}
+"""
+    return user, SYSTEM_BASE
 
 
 def select_pages_for_analysis(md_dict: dict, token_budget: int = 12000) -> list[dict]:
