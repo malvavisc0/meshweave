@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from meshweave.scoring.composite import expected_lens_delta
+
 # Map factor keys to their pillar (aeo, geo, aax)
 _FACTOR_TO_PILLAR: dict[str, str] = {
     # AEO factors
@@ -39,6 +41,12 @@ def generate_recommendations(
 ) -> list[dict[str, Any]]:
     """Generate actionable recommendations based on factor scores.
 
+    Each recommendation carries ``expected_points``: the model-derived
+    composite delta the lens score moves by when the fix lands, computed
+    with the same weights, renormalization, and calibration curve as the
+    real score. Recommendations are sorted by that number so the fix
+    order is the model's own ranking, not a typed-in estimate.
+
     Args:
         aeo_factors: AEO factor score dicts.
         geo_factors: GEO factor score dicts.
@@ -51,27 +59,89 @@ def generate_recommendations(
             when recommendations are first generated.
 
     Returns:
-        List of recommendation dicts sorted by priority.
+        List of recommendation dicts sorted by expected impact.
     """
+    lens_factors = {
+        "aeo": aeo_factors,
+        "geo": geo_factors,
+        "aax": aax_factors or {},
+    }
+
     recs: list[dict[str, Any]] = []
     recs.extend(_aeo_recommendations(aeo_factors))
     recs.extend(_geo_recommendations(geo_factors))
     if payload:
-        recs.extend(_payload_recommendations(payload))
+        recs.extend(_payload_recommendations(payload, aeo_factors))
     if aax_factors:
         recs.extend(_aax_recommendations(aax_factors))
     recs.extend(_contactability_recommendations(contactability, payload))
 
-    # Add pillar and guidance to each recommendation
     for rec in recs:
         rec["pillar"] = _FACTOR_TO_PILLAR.get(rec.get("factor", ""), "aeo")
         rec["guidance"] = _get_guidance(rec["title"], rec.get("factor", ""))
+        _attach_expected_points(rec, lens_factors)
 
-    # Sort by priority (stable — preserves insertion order within a band)
-    priority_order = {"high": 0, "medium": 1, "low": 2}
-    recs.sort(key=lambda r: priority_order.get(r["priority"], 1))
+    _sort_recommendations(recs)
 
     return recs
+
+
+def _attach_expected_points(
+    rec: dict[str, Any],
+    lens_factors: dict[str, dict[str, dict]],
+) -> None:
+    """Compute expected_points and render the impact string in place.
+
+    Recs declare ``_target_score`` (the factor score after the fix) via
+    the ``target`` helper. Recs without one — cosmetic issues outside
+    the factor scales, positive callouts, LLM-verdict factors where no
+    honest counterfactual exists — keep ``expected_points: None`` and
+    keep their qualitative impact text.
+    """
+    target = rec.pop("_target_score", None)
+    if target is None:
+        rec["expected_points"] = None
+        return
+    lens = rec["pillar"]
+    factors = lens_factors.get(lens) or {}
+    delta = expected_lens_delta(lens, factors, rec["factor"], target)
+    rec["expected_points"] = delta
+    if delta is not None:
+        rec["impact"] = f"{lens.upper()} +{delta:.1f} points"
+
+
+def _sort_recommendations(recs: list[dict[str, Any]]) -> None:
+    """Sort by expected impact first, priority band as tiebreak.
+
+    Recs with an expected-points value outrank recs without one inside
+    the same band; positive callouts (low band, no points) sink to the
+    end regardless of insertion order.
+    """
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+
+    def sort_key(r: dict[str, Any]) -> tuple[int, int, float]:
+        band = priority_order.get(r.get("priority", "medium"), 1)
+        pts = r.get("expected_points")
+        has_pts = 0 if pts is not None else 1
+        return (band, has_pts, -(pts or 0.0))
+
+    recs.sort(key=sort_key)
+
+
+def target(current: float | None, gain: float) -> float:
+    """Factor score after the fix: current plus the additive gain, capped.
+
+    ``current`` is the factor's present score (None when the factor is
+    not yet measured — e.g. the page-scope crawl_access placeholder);
+    the fix introduces it at its additive value.
+    """
+    base = current if current is not None else 0.0
+    return min(100.0, base + gain)
+
+
+def _factor_score(factors: dict[str, dict], key: str) -> float | None:
+    """Current numeric score for a factor, or None."""
+    return (factors.get(key) or {}).get("score")
 
 
 def _factor_raw(factors: dict[str, dict], key: str) -> dict:
@@ -93,6 +163,7 @@ def _schema_coverage_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
     schema_raw = _factor_raw(aeo_factors, "schema")
     coverage_pct = schema_raw.get("coverage_pct") or 0
     has_faq = schema_raw.get("has_faq_schema", False)
+    current = _factor_score(aeo_factors, "schema")
 
     if coverage_pct < 50:
         recs.append(
@@ -104,7 +175,10 @@ def _schema_coverage_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     f"Only {coverage_pct:.0f}% of pages have schema markup. "
                     "Add FAQPage, HowTo, or Article schema to key pages."
                 ),
-                "impact": "AEO +10-15 points estimated",
+                "impact": "AEO +5-10 points estimated",
+                # Coverage percentage is the factor's base score; a solid
+                # fix reaches 80% coverage.
+                "_target_score": 80.0,
             }
         )
 
@@ -118,7 +192,9 @@ def _schema_coverage_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "No FAQPage schema found. Add FAQ sections with 40-60 word "
                     "answers to product, pricing, and how-it-works pages."
                 ),
-                "impact": "AEO +10-15 points",
+                "impact": "AEO +5-8 points estimated",
+                # FAQPage bonus: +10 in the factor's additive scale.
+                "_target_score": target(current, 10.0),
             }
         )
 
@@ -159,14 +235,18 @@ def _content_structure_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]
                     "lists, tables, and ensure 300+ words per page."
                 ),
                 "impact": "AEO +5-10 points estimated",
+                # Band threshold: lift the site average out of "weak".
+                "_target_score": 70.0,
             }
         )
 
-    recs.extend(_thin_pages_recs(content_raw))
+    recs.extend(_thin_pages_recs(aeo_factors, content_raw))
     return recs
 
 
-def _thin_pages_recs(content_raw: dict) -> list[dict[str, Any]]:
+def _thin_pages_recs(
+    aeo_factors: dict[str, dict], content_raw: dict
+) -> list[dict[str, Any]]:
     """Recommendation for pages scoring below the weak-band boundary (40)."""
     # Thin pages — below the "broken"/"weak" band boundary (40)
     per_page = content_raw.get("per_page_scores") or {}
@@ -174,6 +254,9 @@ def _thin_pages_recs(content_raw: dict) -> list[dict[str, Any]]:
     if not thin_pages:
         return []
     examples = ", ".join(thin_pages[:3])
+    # Lifting each thin page to the strong-band boundary (70) raises the
+    # site average proportionally to the share of thin pages.
+    fixed_avg = _site_average_after_fix(per_page, thin_pages, 70.0)
     return [
         {
             "factor": "content_structure",
@@ -184,8 +267,21 @@ def _thin_pages_recs(content_raw: dict) -> list[dict[str, Any]]:
                 "Add headings, content, images with alt text."
             ),
             "impact": "AEO +5-8 points estimated",
+            "_target_score": fixed_avg,
         }
     ]
+
+
+def _site_average_after_fix(
+    per_page: dict[str, float],
+    fixed_urls: list[str],
+    fixed_score: float,
+) -> float:
+    """Site-average structure score after lifting the fixed pages."""
+    if not per_page:
+        return 0.0
+    total = sum(fixed_score if u in fixed_urls else s for u, s in per_page.items())
+    return min(100.0, total / len(per_page))
 
 
 def _geo_recommendations(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
@@ -205,6 +301,9 @@ def _same_as_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
 
     if same_as_count:
         return []
+    # sameAs presence earns +10 in the E-E-A-T additive scale (and feeds
+    # topical_authority's sameAs term, conservatively ignored here).
+    eeat_current = _factor_score(geo_factors, "eeat")
     return [
         {
             "factor": "entity_consistency",
@@ -216,6 +315,7 @@ def _same_as_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                 "to improve entity recognition."
             ),
             "impact": "GEO +5-10 points estimated",
+            "_target_score": target(eeat_current, 10.0),
         }
     ]
 
@@ -223,6 +323,7 @@ def _same_as_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
 def _eeat_recs(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
     """Recommendations for missing Organization and author schema."""
     eeat_raw = _factor_raw(geo_factors, "eeat")
+    eeat_current = _factor_score(geo_factors, "eeat")
     recs: list[dict[str, Any]] = []
 
     if not eeat_raw.get("has_org_schema"):
@@ -236,6 +337,8 @@ def _eeat_recs(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "to your homepage with name, logo, url, and sameAs links."
                 ),
                 "impact": "GEO +10-15 points estimated",
+                # Organization presence: +15 in the E-E-A-T additive scale.
+                "_target_score": target(eeat_current, 15.0),
             }
         )
 
@@ -250,6 +353,8 @@ def _eeat_recs(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "to article pages with name, url, and sameAs."
                 ),
                 "impact": "GEO +5-10 points estimated",
+                # Author presence: +15 in the E-E-A-T additive scale.
+                "_target_score": target(eeat_current, 15.0),
             }
         )
     return recs
@@ -269,6 +374,9 @@ def _crawl_access_recommendations(geo_factors: dict[str, dict]) -> list[dict[str
                 "title": "Re-analyze as domain for accessibility score",
                 "detail": crawl_note,
                 "impact": "GEO +10-20 points",
+                # Introducing the factor at its robots+llms+sitemap
+                # structural value when the fix is "run the domain crawl".
+                "_target_score": target(crawl_score, 46.0),
             }
         ]
     if crawl_access.get("raw"):
@@ -294,6 +402,9 @@ def _content_depth_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                 "content depth signals."
             ),
             "impact": "GEO +5-10 points estimated",
+            # 500+ average words reaches the 50-point band in
+            # _avg_words_score; code/tables bonuses are not assumed.
+            "_target_score": target(_factor_score(geo_factors, "content_depth"), 20.0),
         }
     ]
 
@@ -301,6 +412,7 @@ def _content_depth_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
 def _crawl_access_recs(crawl_access: dict) -> list[dict[str, Any]]:
     """Recommendations derived from the raw crawl-access data (llms.txt/robots)."""
     cr = crawl_access["raw"]
+    current = crawl_access.get("score")
     recs: list[dict[str, Any]] = []
     if not cr.get("llms_txt_exists"):
         recs.append(
@@ -314,6 +426,8 @@ def _crawl_access_recs(crawl_access: dict) -> list[dict[str, Any]]:
                     "description."
                 ),
                 "impact": "GEO +10-20 points estimated",
+                # llms.txt +7 and llms-full.txt +8 in the additive scale.
+                "_target_score": target(current, 15.0),
             }
         )
     if not cr.get("robots_exists"):
@@ -327,12 +441,17 @@ def _crawl_access_recs(crawl_access: dict) -> list[dict[str, Any]]:
                     "control crawler access."
                 ),
                 "impact": "GEO +10 points estimated",
+                # robots.txt existence: +8 in the additive scale.
+                "_target_score": target(current, 8.0),
             }
         )
     return recs
 
 
-def _payload_recommendations(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _payload_recommendations(
+    payload: dict[str, Any],
+    aeo_factors: dict[str, dict],
+) -> list[dict[str, Any]]:
     """Recommendations driven by the crawl payload audit.meta data."""
     recs: list[dict[str, Any]] = []
     meta = (payload.get("audit") or {}).get("meta") or {}
@@ -350,6 +469,7 @@ def _payload_recommendations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     "page. This confuses search engines and hurts snippet "
                     "capture."
                 ),
+                # Metadata hygiene: no factor-scale counterfactual.
                 "impact": "AEO +3-5 points estimated",
             }
         )
@@ -366,21 +486,29 @@ def _payload_recommendations(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     "Multiple pages share identical OG titles. This reduces "
                     "click-through rates and confuses social previews."
                 ),
+                # Metadata hygiene: no factor-scale counterfactual.
                 "impact": "AEO +2-3 points estimated",
             }
         )
 
-    recs.extend(_image_alt_recs(payload))
+    recs.extend(_image_alt_recs(payload, aeo_factors))
 
     return recs
 
 
-def _image_alt_recs(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _image_alt_recs(
+    payload: dict[str, Any],
+    aeo_factors: dict[str, dict],
+) -> list[dict[str, Any]]:
     """Site-wide image alt-text recommendation."""
     total_imgs, imgs_with_alt = _site_image_counts(payload)
     if total_imgs <= 0 or (imgs_with_alt / total_imgs) >= 0.5:
         return []
     missing = total_imgs - imgs_with_alt
+    # Alt coverage ≥80% earns the +10 alt points per affected page; the
+    # site average rises by the pages' share of the +10.
+    current = _factor_score(aeo_factors, "content_structure")
+    fixed_avg = _alt_fix_target(aeo_factors, total_imgs, imgs_with_alt, current)
     return [
         {
             "factor": "content_structure",
@@ -392,8 +520,30 @@ def _image_alt_recs(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "accessibility and image search visibility."
             ),
             "impact": "AEO +3-5 points estimated",
+            "_target_score": fixed_avg,
         }
     ]
+
+
+def _alt_fix_target(
+    aeo_factors: dict[str, dict],
+    total_imgs: int,
+    imgs_with_alt: int,
+    current: float | None,
+) -> float | None:
+    """Content-structure target once alt coverage reaches 80%."""
+    if current is None:
+        return None
+    per_page = (
+        _factor_raw(aeo_factors, "content_structure").get("per_page_scores") or {}
+    )
+    if not per_page:
+        return None
+    # Pages missing the 10-point alt bonus are those below 80% coverage;
+    # approximate the share by the global alt gap.
+    alt_gap = 1.0 - (imgs_with_alt / total_imgs) if total_imgs else 0.0
+    gain = 10.0 * alt_gap
+    return min(100.0, current + gain)
 
 
 def _site_image_counts(payload: dict[str, Any]) -> tuple[int, int]:
@@ -439,6 +589,9 @@ def _homepage_comprehension_rec(aax_factors: dict[str, dict]) -> list[dict[str, 
 
     if not missing_fields or hc.get("score", 0) >= 70:
         return []
+    # Filling all four identity fields lifts field_score to 100 (40% of
+    # the factor); clarity/density gains are LLM verdicts, so predict
+    # conservatively from the fields alone.
     return [
         {
             "factor": "homepage_comprehension",
@@ -450,6 +603,7 @@ def _homepage_comprehension_rec(aax_factors: dict[str, dict]) -> list[dict[str, 
                 "Make brand, product, audience, and CTA clear."
             ),
             "impact": "AAX +15-25 points estimated",
+            "_target_score": target(hc.get("score"), 40.0),
         }
     ]
 
@@ -475,6 +629,9 @@ def _content_delta_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "or company details."
                 ),
                 "impact": "AAX +10-20 points estimated",
+                # Richness carries 40% of the factor; coherence/completeness
+                # are LLM verdicts, so predict from richness alone.
+                "_target_score": target(cd.get("score"), 40.0),
             }
         )
     # Low cohort score
@@ -490,6 +647,7 @@ def _content_delta_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "features, and use cases."
                 ),
                 "impact": "AAX +20-30 points estimated",
+                "_target_score": 70.0,
             }
         )
     return recs
@@ -525,6 +683,10 @@ def _meta_optimization_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]
             "title": "Optimize metadata for AI crawlers",
             "detail": detail,
             "impact": "AAX +10-15 points estimated",
+            # Complete+clear+optimized+click is the perfect-verdict
+            # factor score; predict the verdict-scale midpoint of the
+            # weak fields (50 each) rather than assume perfection.
+            "_target_score": target(mo.get("score"), 25.0),
         }
     ]
 
@@ -586,6 +748,8 @@ def _llms_txt_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "Create /.well-known/llms-full.txt for full AI crawler access."
                 ),
                 "impact": "AAX +5-10 points estimated",
+                # llms-full.txt moves the factor 60 → 100.
+                "_target_score": target(llms.get("score"), 40.0),
             }
         ]
     return []
@@ -613,6 +777,10 @@ def _email_validation_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "addresses on contact page."
                 ),
                 "impact": "AAX +10-20 points est",
+                # A sales contact with high confidence scores
+                # presence 30 + type 25 + best 10 + 90*0.35 ≈ 96.5;
+                # predict a general contact at medium confidence.
+                "_target_score": target(ev.get("score"), 50.0),
             }
         ]
     return []
@@ -634,6 +802,9 @@ def _contactability_recommendations(
     missing_signals = _missing_contact_signals(contactability)
     if not missing_signals:
         return []
+    # Each missing contact signal has a fixed additive value in the
+    # contactability heuristic (email 20/5, mailto 10, contact page 10,
+    # ContactPoint 15, social 10); predict the sum of the missing ones.
     return [
         {
             "factor": "contactability",
@@ -645,8 +816,31 @@ def _contactability_recommendations(
                 "verify and recommend your business."
             ),
             "impact": "AAX +10-20 points estimated",
+            "_target_score": _contactability_fix_target(contactability),
         }
     ]
+
+
+# Additive point values of the contactability heuristic's signals.
+_CONTACT_SIGNAL_POINTS: dict[str, float] = {
+    "has_email": 20.0,
+    "has_mailto": 10.0,
+    "has_contact_page": 10.0,
+    "has_social_links": 10.0,
+    "has_contact_point_schema": 15.0,
+}
+
+
+def _contactability_fix_target(contactability: dict[str, Any]) -> float:
+    """Contactability factor score once the missing signals are added."""
+    current = contactability.get("score")
+    base = float(current) if current is not None else 0.0
+    gain = sum(
+        pts
+        for signal, pts in _CONTACT_SIGNAL_POINTS.items()
+        if not contactability.get(signal)
+    )
+    return min(100.0, base + gain)
 
 
 def _resolve_contactability(

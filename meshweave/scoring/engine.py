@@ -11,66 +11,26 @@ from typing import Any
 
 from meshweave.scoring import aeo as aeo_mod
 from meshweave.scoring import geo as geo_mod
+from meshweave.scoring.composite import (
+    AAX_WEIGHTS,
+    AEO_WEIGHTS,
+    GEO_WEIGHTS,
+)
+from meshweave.scoring.composite import (
+    weighted_composite as _weighted_composite,
+)
 from meshweave.scoring.ratings import aax_rating, aeo_rating, geo_rating
 from meshweave.scoring.recommendations import generate_recommendations
 
-AEO_WEIGHTS: dict[str, float] = {
-    "capture_rate": 0.30,
-    "schema": 0.20,
-    "content_structure": 0.20,
-    "query_match": 0.15,
-    "voice_rate": 0.10,
-    "freshness": 0.05,
-}
-
-GEO_WEIGHTS: dict[str, float] = {
-    "citation": 0.30,
-    "topical_authority": 0.20,
-    "eeat": 0.15,
-    "crawl_access": 0.15,
-    "content_depth": 0.10,
-    "entity_consistency": 0.10,
-}
-
-
 logger = logging.getLogger(__name__)
 
-
-def _weighted_composite(
-    factors: dict[str, dict],
-    weights: dict[str, float],
-) -> float | None:
-    """Compute weighted composite, re-normalizing for available factors.
-
-    Returns None if no factors have scores.
-    """
-    scored: dict[str, float] = {}
-    for key, factor in factors.items():
-        score = factor.get("score")
-        if score is not None and key in weights:
-            scored[key] = float(score)
-        elif score is not None:
-            logger.debug(
-                "Factor %r has score %.1f but no weight — excluded",
-                key,
-                score,
-            )
-
-    if not scored:
-        return None
-
-    total_weight = sum(weights[k] for k in scored)
-    if total_weight <= 0:
-        return None
-
-    composite = sum(scored[k] * weights[k] / total_weight for k in scored)
-
-    # Calibration curve: compress the upper range so average sites don't
-    # score artificially high. Power 1.15 maps 80→77, 70→66, 60→56,
-    # 50→45, 40→35 while leaving 100 untouched. Compress more by raising
-    # the exponent (e.g. 1.4 gives 80→73, 70→61, 60→49).
-    calibrated = 100.0 * (float(composite) / 100.0) ** 1.15
-    return float(round(min(100.0, calibrated), 1))
+__all__ = [
+    "AAX_WEIGHTS",
+    "AEO_WEIGHTS",
+    "GEO_WEIGHTS",
+    "compute_aax_score",
+    "compute_scores",
+]
 
 
 def compute_scores(
@@ -146,17 +106,6 @@ def compute_scores(
         },
         "recommendations": recommendations,
     }
-
-
-# AAX factor weights (sum to 1.0)
-AAX_WEIGHTS: dict[str, float] = {
-    "homepage_comprehension": 0.30,
-    "meta_optimization": 0.20,
-    "content_delta": 0.20,
-    "llms_txt": 0.15,
-    "email_validation": 0.10,
-    "contactability": 0.05,
-}
 
 
 def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
