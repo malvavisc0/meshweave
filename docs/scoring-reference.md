@@ -223,13 +223,14 @@ Additive scoring:
 
 | # | Factor | Weight | Auto? | Source |
 |---|--------|--------|-------|--------|
-| T2 | Homepage Comprehension | 30% | ✅ Auto | LLM reads homepage markdown |
+| T2 | Homepage Comprehension | 35% | ✅ Auto | LLM reads homepage markdown |
 | T3 | Meta Optimization | 20% | ✅ Auto | LLM reads meta tags only |
 | T5 | Content Delta | 20% | ✅ Auto | LLM reads multiple pages |
-| T4 | llms.txt | 15% | ✅ Auto | Heuristic (no LLM) |
-| T7 | Email Validation | 15% | ✅ Auto | LLM validates email addresses |
+| T4 | llms.txt | 5% | ✅ Auto | Heuristic (no LLM) |
+| T7 | Email Validation | 10% | ✅ Auto | LLM validates email addresses |
+| T6 | Contactability | 10% | ✅ Auto | Heuristic (no LLM) |
 
-### T2. Homepage Comprehension (30%)
+### T2. Homepage Comprehension (35%)
 
 LLM reads the homepage markdown and extracts: brand, product, target audience, key features, call-to-action, clarity, information density, memorability.
 
@@ -275,9 +276,13 @@ info_richness × 0.4         # how many of 7 fields extracted (company name, pro
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `content_delta_prompt()`, `select_pages_for_analysis()`
 
-### T4. llms.txt (15%)
+### T4. llms.txt (5%)
 
-Pure heuristic — no LLM call:
+Pure heuristic — no LLM call. Weighted lightly by design: llms.txt is an
+optional, emerging convention that most AI crawlers do not consume yet,
+and its presence already earns points in GEO's Crawl Access factor — so
+the AAX weight stays small enough that a missing file never dominates
+the agent-experience verdict.
 
 | Condition | Score |
 |-----------|-------|
@@ -287,7 +292,7 @@ Pure heuristic — no LLM call:
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`
 
-### T7. Email Validation (15%)
+### T7. Email Validation (10%)
 
 LLM validates email addresses found during crawling, classifying them by contact type and confidence.
 
@@ -305,9 +310,9 @@ Presence saturates quickly: one contact earns most of the presence points, a sec
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `email_validation_prompt()`
 
-### Contactability (separate signal, not in composite)
+### T6. Contactability (10%)
 
-A 0–100 heuristic score based on crawl data — not part of the AAX composite but included in the AAX output:
+A 0–100 heuristic score based on crawl data, weighted into the AAX composite (10%):
 
 | Signal | Points |
 |--------|--------|

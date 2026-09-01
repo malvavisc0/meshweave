@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy.orm.attributes import flag_modified
 
+from meshweave.scoring.composite import SCORING_VERSION
 from meshweave.scoring.engine import compute_aax_score, compute_scores
 from meshweave.scoring.ratings import aeo_rating, geo_rating
 from webapp.db import get_session
@@ -164,6 +165,7 @@ def _persist_scores(
         row.geo_score = geo_composite
         row.aeo_rating = aeo_r
         row.geo_rating = geo_r
+        row.scoring_version = SCORING_VERSION
 
         # Create or update ScoreSnapshot
         snap = row.score_snapshot
@@ -174,6 +176,7 @@ def _persist_scores(
             snap.aeo_rating = aeo_r
             snap.geo_rating = geo_r
             snap.has_manual_input = bool(manual_inputs)
+            snap.scoring_version = SCORING_VERSION
         else:
             snap = ScoreSnapshot(
                 crawl_id=crawl_id,
@@ -185,6 +188,7 @@ def _persist_scores(
                 geo_rating=geo_r,
                 score_json=score_json,
                 has_manual_input=bool(manual_inputs),
+                scoring_version=SCORING_VERSION,
             )
             s.add(snap)
 
