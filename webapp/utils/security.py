@@ -2,10 +2,45 @@ import hashlib
 import hmac
 import os
 import time
+import uuid
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 from .config import _env_bool, _get_secret_key
+
+
+def page_csrf(request: Request) -> tuple[str, str | None, bool]:
+    """Return (csrf_token, session_id, new_session) for a page render.
+
+    Generates a fresh session id when CSRF is enabled and none is present.
+    """
+    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
+    session_id = request.cookies.get(cookie_name)
+    new_session = False
+    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
+        session_id = str(uuid.uuid4())
+        new_session = True
+    csrf_token = (
+        _make_csrf_token(session_id)
+        if _env_bool("WEBAPP_CSRF_ENABLED", False) and session_id
+        else ""
+    )
+    return csrf_token, session_id, new_session
+
+
+def set_csrf_session_cookie(
+    response: Response, session_id: str | None, new_session: bool
+) -> None:
+    """Persist the CSRF session cookie when a new one was created."""
+    if new_session and session_id:
+        response.set_cookie(
+            key=os.getenv("WEBAPP_COOKIE_NAME", "sid"),
+            value=session_id,
+            max_age=int(os.getenv("WEBAPP_SESSION_TTL", "43200")),
+            httponly=True,
+            samesite="lax",
+            secure=_env_bool("WEBAPP_COOKIE_SECURE", False),
+        )
 
 
 def _hash_ip(ip: str, salt: str) -> str:

@@ -1,5 +1,4 @@
 import os
-import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,13 +12,16 @@ from webapp.models import Crawl, ScoreSnapshot
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
-from webapp.utils.config import _env_bool
 from webapp.utils.quotas import (
     enforce_concurrent_jobs_limit,
     enforce_daily_site_crawl_limit,
 )
 from webapp.utils.revisions import replace_succeeded_crawl
-from webapp.utils.security import _make_csrf_token, verify_request_csrf
+from webapp.utils.security import (
+    page_csrf,
+    set_csrf_session_cookie,
+    verify_request_csrf,
+)
 from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
 
@@ -288,23 +290,6 @@ def _dashboard_activity(items: list) -> list:
     ][:5]
 
 
-def _dashboard_csrf(request: Request) -> tuple[str, bool, str | None, str]:
-    """Return (csrf_token, new_session, session_id, cookie_name) for the dashboard."""
-    # CSRF token for retry forms on this page
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name)
-    new_session = False
-    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
-        session_id = str(uuid.uuid4())
-        new_session = True
-    csrf_token = (
-        _make_csrf_token(session_id)
-        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
-        else ""
-    )
-    return csrf_token, new_session, session_id, cookie_name
-
-
 @router.get("/dashboard", response_class=HTMLResponse)
 async def my_jobs(
     request: Request,
@@ -335,7 +320,7 @@ async def my_jobs(
     page_title = f"Dashboard — {site_name}"
     meta_description = "Your recent crawls."
 
-    csrf_token, new_session, session_id, cookie_name = _dashboard_csrf(request)
+    csrf_token, session_id, new_session = page_csrf(request)
 
     resp = templates.TemplateResponse(
         request,
@@ -362,18 +347,7 @@ async def my_jobs(
         },
     )
 
-    # Set session cookie if newly created for CSRF
-    if new_session and session_id:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
-        resp.set_cookie(
-            key=cookie_name,
-            value=str(session_id),
-            max_age=session_ttl,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
+    set_csrf_session_cookie(resp, session_id, new_session)
     return resp
 
 

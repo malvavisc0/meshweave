@@ -122,6 +122,10 @@
         <span class="hero-inline-notice-kicker">Recent run</span>
         <span>That site was analyzed recently. Wait a bit before starting another run.</span>
       </div>
+      {% elif notice == 'account_deleted' %}
+      <div role="status" class="hero-inline-notice">
+        <span>Your account and all associated data were deleted.</span>
+      </div>
       {% endif %}
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}

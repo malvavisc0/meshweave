@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<header class="page-header" aria-label="Profile">
+  <div class="container-wide">
+    <div class="profile-header-content">
+      <div class="profile-header-text">
+        <h1 class="page-header-title">Profile</h1>
+        <p class="page-header-subtitle">Manage your account details, API access, and stored MeshWeave data.</p>
+      </div>
+      <form action="/logout" method="post" class="profile-signout">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+        <button type="submit" class="btn btn-danger">Sign Out</button>
+      </form>
+    </div>
+  </div>
+</header>
+
+<div class="container-wide profile-page">
+  {% if profile_notice == "saved" %}<div class="notice notice-ok" role="status">Profile saved.</div>{% endif %}
+  {% if profile_notice == "delete_confirmation" %}<div class="notice notice-err" role="alert">Type DELETE to confirm account deletion.</div>{% endif %}
+
+  <section class="panel profile-section" role="region" aria-label="Account details">
+    <h2>Your profile</h2>
+    <form method="post" action="/profile">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <div class="profile-fields">
+        <label for="profile-name">Name<br>
+          <input id="profile-name" name="name" type="text" autocomplete="name" value="{{ profile_user.name or '' }}" placeholder="Your name…">
+        </label>
+        <label for="profile-company">Company name<br>
+          <input id="profile-company" name="company_name" type="text" autocomplete="organization" value="{{ profile_user.company_name or '' }}" placeholder="Your company…">
+        </label>
+        <div class="profile-email"><span>Email</span><strong>{{ profile_user.email }}</strong><small>Managed by Google</small></div>
+      </div>
+      <div class="actions mt-2" role="toolbar" aria-label="Profile Actions">
+        <button class="btn btn-primary" type="submit">Save Profile</button>
+      </div>
+    </form>
+  </section>
+
+  {% include "partials/api_access.html" %}
+
+  <section class="panel profile-section danger-zone" role="region" aria-label="Danger zone">
+    <h2>Delete Account &amp; Data</h2>
+    <p>This permanently deletes your profile, API keys, private and public analyses, reports, prospects, and other data owned by this account. This cannot be undone.</p>
+    <form method="post" action="/profile/delete">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <label for="delete-confirmation">Type <code>DELETE</code> to confirm<br>
+        <input id="delete-confirmation" name="confirmation" type="text" autocomplete="off" spellcheck="false" required>
+      </label>
+      <div class="actions mt-2">
+        <button class="btn btn-danger" type="submit">Delete Account &amp; Data</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>var CSRF_TOKEN = "{{ csrf_token or '' }}";</script>
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

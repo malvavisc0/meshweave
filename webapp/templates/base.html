@@ -68,20 +68,14 @@
     </div>
     <div class="nav-right">
       {% if request.state.current_user %}
-      <span class="nav-account">
-        <span class="nav-account-initial" aria-hidden="true">{{ (request.state.current_user.email or 'U')[0]|upper
-          }}</span>
-        {% if request.state.current_user.email %}
-        <span class="nav-account-email" title="{{ request.state.current_user.email }}">{{
-          request.state.current_user.email.split('@')[0] }}@…</span>
-        {% endif %}
-      </span>
+      {% set account_label = request.state.current_user.name or request.state.current_user.company_name or 'Account' %}
+      <a href="/profile" class="nav-account" title="{{ request.state.current_user.email or 'Profile' }}"
+        aria-label="Open profile for {{ account_label }}">
+        <span class="nav-account-initial" aria-hidden="true">{{ account_label[0]|upper }}</span>
+        <span class="nav-account-label">{{ account_label }}</span>
+      </a>
       <a href="/dashboard" class="btn btn-nav" {% if __path.startswith('/dashboard') %}aria-current="page" {% endif
         %}>Dashboard</a>
-      <form action="/logout" method="post" class="inline">
-        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
-        <button type="submit" class="btn btn-danger">Sign out</button>
-      </form>
       {% else %}
       <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary" data-track="signin_click">
         Sign in with Google

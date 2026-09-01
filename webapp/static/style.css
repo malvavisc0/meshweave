@@ -317,9 +317,16 @@ nav.topnav a {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
+  min-height: 40px;
+  padding: 0 2px;
   color: var(--color-dark-text-muted);
   font: var(--font-body-sm);
   white-space: nowrap;
+  text-decoration: none;
+}
+
+.nav-account:hover {
+  color: var(--color-dark-text);
 }
 
 .nav-account-initial {
@@ -337,11 +344,15 @@ nav.topnav a {
   flex-shrink: 0;
 }
 
-.nav-account-email {
-  max-width: 140px;
+.nav-account-label {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.29;
 }
 
 .topnav .nav-account {
@@ -369,21 +380,9 @@ nav.topnav a {
   color: var(--color-dark-text);
 }
 
-.topnav .btn-danger {
-  background: transparent;
-  border-color: rgba(218, 30, 40, 0.55);
-  color: #FF8389;
-}
-
-.topnav .btn-danger:hover {
-  background: var(--color-semantic-error);
-  border-color: var(--color-semantic-error);
-  color: var(--color-on-primary);
-}
-
 /* ------------------------------------------------------------------------
-   BUTTONS - 0px radius, flat, square
-   ------------------------------------------------------------------------ */
+    BUTTONS - 0px radius, flat, square
+    ------------------------------------------------------------------------ */
 button,
 .btn {
   font: var(--font-button);
@@ -789,6 +788,14 @@ label {
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-none);
   margin: var(--space-xs) 0;
+}
+
+.notice-ok {
+  border-color: var(--color-semantic-success);
+}
+
+.notice-err {
+  border-color: var(--color-semantic-error);
 }
 
 .alert-info {
@@ -3102,7 +3109,7 @@ p.card-meta {
   border: 1px solid var(--color-semantic-warning, #F1C21B);
 }
 
-/* Portfolio Summary strip — 3x2 pill grid */
+/* Portfolio Summary — primary metrics with a quiet status strip */
 .quick-stats {
   display: grid;
   gap: var(--space-sm);
@@ -3111,17 +3118,52 @@ p.card-meta {
 
 .quick-stats-primary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: var(--space-sm);
+  gap: var(--space-lg);
+  margin-top: var(--space-lg);
 }
 
 .quick-stats-secondary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: var(--space-sm);
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-hairline);
 }
 
-.stat-card-emphasis {
+.quick-stats-primary .stat-card {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.quick-stats-secondary .stat-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
   background: var(--color-surface-1);
-  border-color: var(--color-primary);
+  border: 1px solid var(--color-hairline);
+}
+
+.quick-stats-secondary .stat-k {
+  margin: 0;
+  color: var(--color-ink-muted);
+}
+
+.quick-stats-secondary .stat-v {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-stats-secondary .stat-card-alert {
+  border-left: 2px solid var(--color-semantic-error);
+}
+
+.quick-stats-secondary .stat-card-active {
+  border-left: 2px solid var(--color-primary);
 }
 
 .stat-k {
@@ -3134,7 +3176,7 @@ p.card-meta {
 
 .stat-v {
   font-family: IBM Plex Sans, ui-monospace, monospace;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--color-ink);
   letter-spacing: -0.4px;
@@ -3157,6 +3199,81 @@ p.card-meta {
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--space-md);
+}
+
+.api-access-actions { display: flex; gap: var(--space-xs); align-items: center; flex-wrap: wrap; }
+.api-access-copy {
+  max-width: 680px;
+  margin: 0;
+  color: var(--color-ink-muted);
+}
+
+.api-key-list {
+  margin: var(--space-md) 0;
+  border-top: 1px solid var(--color-hairline);
+}
+.api-key-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); padding: var(--space-sm) 0; border-bottom: 1px solid var(--color-hairline); }
+.api-key-meta { display: flex; gap: var(--space-sm); align-items: baseline; flex-wrap: wrap; }
+.api-key-row code { color: var(--color-ink-muted); }
+.api-key-row small { color: var(--color-ink-subtle); }
+.api-key-row--revoked { color: var(--color-ink-subtle); }
+.api-key-reveal { display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; margin-top: var(--space-md); padding: var(--space-sm); border: 1px solid var(--color-primary); background: var(--color-canvas); }
+.api-key-reveal[hidden] { display: none; }
+.api-key-reveal code { overflow-wrap: anywhere; }
+
+.profile-page {
+  padding-bottom: var(--space-xxl);
+}
+
+.profile-header-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.profile-header-text {
+  min-width: 0;
+}
+
+.profile-signout {
+  flex-shrink: 0;
+}
+
+.profile-section h2 {
+  margin: 0 0 var(--space-md);
+  font: var(--font-card-title);
+}
+
+.profile-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.profile-email {
+  display: grid;
+  gap: 2px;
+  color: var(--color-ink-muted);
+}
+
+.profile-email strong {
+  color: var(--color-ink);
+  font-weight: 400;
+}
+
+.profile-email small {
+  color: var(--color-ink-subtle);
+}
+
+.profile-email span {
+  font: var(--font-body);
+}
+
+.danger-zone > p {
+  max-width: 720px;
+  color: var(--color-ink-muted);
 }
 
 .dash-header-text {
@@ -3878,8 +3995,17 @@ p.card-meta {
     grid-template-columns: 1fr;
   }
 
-  .quick-stats-primary,
+  .quick-stats-primary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-sm);
+  }
+
   .quick-stats-secondary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: var(--space-sm);
+  }
+
+  .profile-fields {
     grid-template-columns: 1fr;
   }
 
@@ -3894,6 +4020,10 @@ p.card-meta {
   }
 
   .dash-header-content {
+    flex-direction: column;
+  }
+
+  .profile-header-content {
     flex-direction: column;
   }
 

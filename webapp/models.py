@@ -39,6 +39,7 @@ class User(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="google")
     provider_id: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
@@ -56,10 +57,34 @@ class User(Base):
 
     # Relationship to crawls (owner). passive_deletes keeps the unit of work
     # from nullifying crawls.user_id itself; the DB-level ON DELETE SET NULL
-    # handles public rows and lets the before_delete listener below see the
-    # intact user_id when it removes private rows.
+    # is the backstop for rows not covered by the before_delete listener
+    # below (e.g. raw-SQL deletes), which removes the user's crawls first.
     crawls: Mapped[list[Crawl]] = relationship(
         "Crawl", back_populates="user", cascade="save-update", passive_deletes=True
+    )
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    __table_args__ = (
+        Index("ix_api_keys_user_id", "user_id"),
+        Index("ix_api_keys_key_hash", "key_hash", unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False, default="Default")
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(24), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
 
@@ -189,6 +214,8 @@ class Crawl(Base):
         Index("ix_crawls_visibility_user_id_listed", "visibility", "user_id", "listed"),
         # Index for history tracking: find latest crawl per domain+visibility
         Index("ix_crawls_domain_is_latest", "domain", "is_latest"),
+        # Index for the AAX worker query: find pending AAX jobs efficiently
+        Index("ix_crawls_aax_status", "aax_status", "updated_at"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -238,7 +265,7 @@ class Crawl(Base):
 
     # AAX queue state: "pending" | "running" | "completed" | "failed" | "disabled"
     aax_status: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="pending"
+        String(10), nullable=False, default="pending", server_default="pending"
     )
     # When AAX processing started (for stale detection)
     aax_started_at: Mapped[datetime | None] = mapped_column(
@@ -287,17 +314,11 @@ class Crawl(Base):
 
 
 @event.listens_for(User, "before_delete")
-def _delete_user_private_crawls(
+def _delete_user_crawls(
     mapper: Mapper[User], connection: Connection, target: User
 ) -> None:
-    """Delete the user's private crawls before the user row is deleted.
-
-    ``Crawl.user_id`` uses ON DELETE SET NULL, so without this the user's
-    private rows would survive as ownerless private analyses.
-    """
-    connection.execute(
-        delete(Crawl).where(Crawl.user_id == target.id, Crawl.visibility == "private")
-    )
+    """Delete every crawl owned by the user before deleting the user row."""
+    connection.execute(delete(Crawl).where(Crawl.user_id == target.id))
 
 
 class Submission(Base):

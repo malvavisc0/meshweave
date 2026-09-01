@@ -18,6 +18,8 @@ It scores a site across three independent risk lenses and produces a prioritized
 - AI agent experience auditing (can AI navigate and act on your site?)
 - Entity consistency and crawl-access auditing
 - Prioritized, concrete remediation roadmap
+- Private report history for signed-in users
+- Personal API keys for programmatic access to owned private reports
 
 ## Three Risk Lenses
 
@@ -37,6 +39,31 @@ MeshWeave scores each lens on a 0–100 scale. Factors with no measured score ar
 
 Scores are diagnostic signals, not guarantees of ranking, traffic, or conversion.
 
+## API
+
+Public analysis previews do not require authentication:
+
+```http
+GET https://meshweaveai.com/api/analysis/public/{key}
+GET https://meshweaveai.com/api/analysis/public/{key}/summary
+GET https://meshweaveai.com/api/domain/{domain}
+GET https://meshweaveai.com/api/status/{crawl_id}
+```
+
+Signed-in users create API keys on `/profile`. Use a key as a Bearer token to
+read an owned private report:
+
+```http
+GET https://meshweaveai.com/api/analysis/private/{crawl_id}
+Authorization: Bearer mw_live_...
+```
+
+Private responses include the complete crawl payload, score factors,
+recommendations, and score snapshots. A key cannot read another user's report.
+The complete secret is returned only once by `POST /api/keys`; keys can be listed
+by prefix and revoked from `/profile`. Contact `hello@meshweaveai.com` for
+bulk, commercial, or expert-guided integrations.
+
 ## How to be more visible to AI
 
 - Put clear, factual claims about your product near the top of each page.
@@ -52,6 +79,7 @@ Scores are diagnostic signals, not guarantees of ranking, traffic, or conversion
 - Methodology: https://meshweaveai.com/methodology
 - Privacy: https://meshweaveai.com/privacy
 - Terms: https://meshweaveai.com/terms
+- Contact: https://meshweaveai.com/contact
 
 ## Built For
 

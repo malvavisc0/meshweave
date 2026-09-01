@@ -1,0 +1,28 @@
+<section id="api-access" class="panel profile-section api-access" role="region" aria-label="API access">
+  <header>
+    <h2 id="api-access-title">API Access</h2>
+    <p class="api-access-copy">Use a personal key to read your private analysis payloads from scripts, CI, or an internal dashboard. Keys are shown once when created.</p>
+  </header>
+  <div class="api-key-list">
+    {% for key in api_keys %}
+    <div class="api-key-row{% if key.revoked %} api-key-row--revoked{% endif %}">
+      <span class="api-key-meta"><strong>{{ key.name }}</strong><code>{{ key.prefix }}…</code><small>Created {{ key.created_at }}</small></span>
+      {% if not key.revoked %}
+      <button class="btn btn-sm api-key-revoke" type="button" data-key-id="{{ key.id }}">Revoke</button>
+      {% else %}<span class="small">Revoked</span>{% endif %}
+    </div>
+    {% else %}
+    <p class="small">No keys yet. Create one when you are ready to connect MeshWeave to your workflow.</p>
+    {% endfor %}
+  </div>
+  <div class="api-access-actions">
+    <button class="btn btn-primary" type="button" id="api-key-create">Create API Key</button>
+    <a href="/.well-known/llms-full.txt" class="btn">Read API Docs</a>
+    <span id="api-key-status" class="small" role="status"></span>
+  </div>
+  <div id="api-key-reveal" class="api-key-reveal" hidden>
+    <strong>Copy this key now. It will not be shown again.</strong>
+    <code id="api-key-value"></code>
+    <button class="btn btn-sm" type="button" id="api-key-copy">Copy Key</button>
+  </div>
+</section>

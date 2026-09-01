@@ -1,6 +1,8 @@
 import csv
+import hashlib
 import os
 import re
+import secrets
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from typing import cast
@@ -12,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from webapp.db import get_session
-from webapp.models import Crawl, Product
+from webapp.models import ApiKey, Crawl, Product
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.metrics import (
@@ -27,6 +29,108 @@ from webapp.utils.times import ensure_utc
 from webapp.utils.url import _get_base_url
 
 router = APIRouter()
+
+
+def _api_key_token() -> str:
+    return "mw_live_" + secrets.token_urlsafe(32)
+
+
+def _api_key_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _api_key_dict(row: ApiKey) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "prefix": row.key_prefix,
+        "created_at": row.created_at.isoformat(),
+        "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+    }
+
+
+def _bearer_user_id(request: Request) -> str | None:
+    """Resolve the user id for a valid, non-revoked Bearer API key, if present.
+
+    Returns None when no Bearer header is present. Raises 401 for a
+    malformed, unknown, or revoked key.
+    """
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization[7:].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    with get_session() as s:
+        row = (
+            s.query(ApiKey)
+            .filter(
+                ApiKey.key_hash == _api_key_hash(token), ApiKey.revoked_at.is_(None)
+            )
+            .one_or_none()
+        )
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return row.user_id
+
+
+@router.get("/api/keys")
+async def list_api_keys(request: Request) -> dict:
+    """List the current user's API keys (metadata only, never the secret)."""
+    user = await require_auth(request)
+    with get_session() as s:
+        rows = (
+            s.query(ApiKey)
+            .filter(ApiKey.user_id == user.id)
+            .order_by(ApiKey.created_at.desc())
+            .all()
+        )
+    return {"items": [_api_key_dict(row) for row in rows]}
+
+
+@router.post("/api/keys")
+async def create_api_key(request: Request) -> JSONResponse:
+    """Create an API key; the response contains the secret exactly once."""
+    user = await require_auth(request)
+    verify_request_csrf(request, request.headers.get("x-csrf-token"))
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    name = (data.get("name") or "Default").strip()[:100] or "Default"
+    token = _api_key_token()
+    with get_session() as s:
+        row = ApiKey(
+            user_id=user.id,
+            name=name,
+            key_hash=_api_key_hash(token),
+            key_prefix=token[:16],
+        )
+        s.add(row)
+        s.flush()
+        result = _api_key_dict(row)
+    return JSONResponse(status_code=201, content={"item": result, "key": token})
+
+
+@router.post("/api/keys/{key_id}/revoke")
+async def revoke_api_key(request: Request, key_id: str) -> dict:
+    """Revoke one of the current user's API keys."""
+    user = await require_auth(request)
+    verify_request_csrf(request, request.headers.get("x-csrf-token"))
+    with get_session() as s:
+        row = (
+            s.query(ApiKey)
+            .filter(
+                ApiKey.id == key_id,
+                ApiKey.user_id == user.id,
+                ApiKey.revoked_at.is_(None),
+            )
+            .one_or_none()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        row.revoked_at = datetime.now(UTC)
+    return {"ok": True}
 
 
 def _build_status_info(row: Crawl) -> dict:
@@ -145,16 +249,41 @@ async def api_public_by_key(request: Request, key: str):
     return JSONResponse(content=preview)
 
 
+async def _authorize_private_crawl(request: Request, crawl_id: str) -> Crawl:
+    """Return the crawl row when the caller owns it via Bearer key or session.
+
+    Raises:
+        HTTPException: 401 for an invalid/revoked key or unauthenticated
+            session; 404 when the crawl is missing or not owned (never 403,
+            so the existence of a private UUID is not revealed).
+    """
+    bearer_user_id = _bearer_user_id(request)
+    if bearer_user_id:
+        with get_session() as s:
+            row = s.get(Crawl, crawl_id)
+        if not row or row.user_id != bearer_user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        return row
+    try:
+        return await require_ownership(request, crawl_id)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise HTTPException(status_code=404, detail="Not found")
+        raise
+
+
 @router.get("/api/analysis/private/{crawl_id}")
-async def api_private(request: Request, crawl_id: str):
+async def api_private(request: Request, crawl_id: str) -> JSONResponse:
     """Private API for a crawl addressed by UUID.
 
-    Unauthenticated requests get 401 (auth is checked before the row is
-    looked up). An authenticated non-owner gets 404 — not 403 — so that the
-    existence of a private UUID is not revealed.
+    Authorized when the caller presents a valid Bearer API key or an
+    authenticated browser session belonging to the crawl's owner. Invalid or
+    revoked keys and unauthenticated sessions get 401; an authenticated
+    non-owner gets 404 — not 403 — so the existence of a private UUID is
+    not revealed.
 
-    If the crawl is not yet succeeded, returns a 202 with status information;
-    otherwise returns the stored payload and sets noindex.
+    If the crawl is not yet succeeded, returns 202 with status information;
+    otherwise returns the stored payload with X-Robots-Tag: noindex.
 
     Args:
         crawl_id (str): UUID of the crawl.
@@ -162,17 +291,7 @@ async def api_private(request: Request, crawl_id: str):
     Returns:
         JSONResponse: JSON payload or status info.
     """
-    try:
-        await require_ownership(request, crawl_id)
-    except HTTPException as exc:
-        if exc.status_code == 403:
-            raise HTTPException(status_code=404, detail="Not found")
-        raise
-    with get_session() as s:
-        row = s.get(Crawl, crawl_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-
+    row = await _authorize_private_crawl(request, crawl_id)
     if row.status != "succeeded" or not row.payload_json:
         return JSONResponse(
             content={
@@ -184,9 +303,7 @@ async def api_private(request: Request, crawl_id: str):
             },
             status_code=202,
         )
-
-    payload = row.payload_json or {}
-    resp = JSONResponse(content=payload)
+    resp = JSONResponse(content=row.payload_json or {})
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
 

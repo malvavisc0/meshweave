@@ -37,12 +37,13 @@ never confused with another:
   and find a credible next step? Homepage comprehension, meta optimization, cross-page
   content consistency, email contacts, and contact paths.
 
-## API integration (free)
+## API integration
 
-The public JSON API returns the same analysis shown on the site. No key required
-today; an API key plan (free tier + paid tiers) is planned. Responses are JSON except
-`POST /submit`, which answers with a 303 redirect. No authentication is required for
-public analyses.
+The public JSON API returns a curated preview of public analyses without a key.
+Signed-in users create a personal API key from `/profile` and use it as a Bearer
+token to read their full private analysis payloads. Keys are hashed at rest, shown
+once at creation, and can be revoked from `/profile`. Contact us before bulk or
+commercial usage.
 
 ### Analyze a site (anonymous submission)
 
@@ -68,7 +69,7 @@ GET {base}/api/status/{crawl_id}
 Returns `{status: "pending"|"running"|"succeeded"|"failed", error, report_url}`. Public
 analyses also include a short `key`. Poll until `succeeded`, then use the key below.
 
-### Get the analysis (public)
+### Get the analysis (public preview)
 
 ```
 GET {base}/api/analysis/public/{key}
@@ -79,6 +80,22 @@ Returns headline scores (AEO, GEO, AAX composites + ratings), a risk summary
 (profile, headline, diagnosis), finding count, and counts (pages, emails, links). The
 public payload is intentionally curated: raw emails, full page bodies, recommendation
 guidance, and the full score snapshot are owner-only.
+
+### Get a private analysis (API key)
+
+```
+GET {base}/api/analysis/private/{crawl_id}
+Authorization: Bearer mw_live_...
+```
+
+The key must belong to the owner of the analysis. Browser sessions can also access
+this endpoint as the owner.
+
+### Manage keys
+
+Create, list, and revoke keys from `/profile`. The browser
+endpoints are `GET /api/keys`, `POST /api/keys`, and
+`POST /api/keys/{key_id}/revoke`; the create response includes the secret once.
 
 ### List analyses for a domain
 
@@ -98,8 +115,7 @@ GET {base}/readyz     → checks DB + OAuth readiness
 ## Notes for agents and integrators
 
 - Full private payloads (complete factors, recommendations, score snapshots) require a
-  browser-authenticated owner session; an API-key regime is planned. For programmatic
-  access today, use public analyses or contact us.
+  browser-authenticated owner session or an API key belonging to that analysis owner.
 - `robots.txt` at {base} declares AI crawlers welcome; the site serves this
   `llms.txt` and a fuller `llms-full.txt` at {base}/.well-known/llms-full.txt.
 - Rate limits: anonymous crawls are capped server-side (10 pages default); signed-in

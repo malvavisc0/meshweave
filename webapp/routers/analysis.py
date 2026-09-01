@@ -11,7 +11,6 @@ from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl
 from webapp.utils.auth import require_ownership
-from webapp.utils.config import _env_bool
 from webapp.utils.diff import (
     build_comparison_notes,
     build_content_diff,
@@ -30,7 +29,7 @@ from webapp.utils.scoring import (
 from webapp.utils.scoring import (
     build_score_snapshot_context as _build_score_snapshot_context,
 )
-from webapp.utils.security import _make_csrf_token
+from webapp.utils.security import page_csrf, set_csrf_session_cookie
 from webapp.utils.times import ensure_utc
 from webapp.utils.url import _abs_url
 
@@ -278,42 +277,6 @@ def _compute_viewer_role(current_user, row: Crawl) -> str:
     )
 
 
-def _csrf(request: Request) -> tuple:
-    """Return (csrf_token, cookie_name, session_id, new_session).
-
-    Generates a fresh session id when CSRF is enabled and none is present.
-    """
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name)
-    new_session = False
-    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
-        session_id = str(uuid.uuid4())
-        new_session = True
-    csrf_token = (
-        _make_csrf_token(session_id)
-        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
-        else ""
-    )
-    return csrf_token, cookie_name, session_id, new_session
-
-
-def _set_session_cookie(
-    resp: Response, new_session: bool, session_id: str | None, cookie_name: str
-) -> None:
-    """Persist the generated session cookie when a new one was created."""
-    if new_session and session_id:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
-        resp.set_cookie(
-            key=cookie_name,
-            value=str(session_id),
-            max_age=session_ttl,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
-
-
 def _progress_for(row: Crawl, finalize: bool) -> tuple[Crawl, dict | None, bool]:
     """Build SSR progress for in-flight crawls.
 
@@ -498,7 +461,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
     can_retry = (row.status != "running") and can_retry_cooldown
 
     # CSRF token for retry form (generate new session if missing and CSRF is enabled)
-    csrf_token, cookie_name, session_id, new_session = _csrf(request)
+    csrf_token, session_id, new_session = page_csrf(request)
 
     _ss_private = None if in_progress else _build_score_snapshot_context(row)
     since_last_run = _since_last_run(row)
@@ -547,7 +510,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
     )
     # Prevent indexing of private results
     resp.headers["X-Robots-Tag"] = "noindex"
-    _set_session_cookie(resp, new_session, session_id, cookie_name)
+    set_csrf_session_cookie(resp, session_id, new_session)
     return resp
 
 
@@ -588,7 +551,7 @@ async def _render_public_view(request: Request, ref: str) -> Response:
     abs_api_url = _abs_url(request, api_url)
 
     # CSRF token for refresh form (generate new session if missing and CSRF is enabled)
-    csrf_token, cookie_name, session_id, new_session = _csrf(request)
+    csrf_token, session_id, new_session = page_csrf(request)
 
     # Claim eligibility inputs for public view (used by client-side countdown/UI)
     claim_min_hours = _claim_min_hours()
@@ -652,7 +615,7 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "progress": progress,
         },
     )
-    _set_session_cookie(resp, new_session, session_id, cookie_name)
+    set_csrf_session_cookie(resp, session_id, new_session)
 
     # Prevent indexing of non-succeeded public pages
     if row.status != "succeeded":

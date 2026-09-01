@@ -373,7 +373,7 @@ def _refresh_google_user_fields(user: User, email: str, name, picture) -> None:
     if email and user.email != email:
         user.email = email
         changed = True
-    if name and user.name != name:
+    if name and not user.name:
         user.name = name
         changed = True
     if picture and user.avatar_url != picture:

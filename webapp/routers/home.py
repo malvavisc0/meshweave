@@ -16,7 +16,7 @@ from webapp.infra import templates
 from webapp.models import Crawl
 from webapp.utils.config import _env_bool
 from webapp.utils.logging import log_audit
-from webapp.utils.security import _make_csrf_token
+from webapp.utils.security import _make_csrf_token, set_csrf_session_cookie
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
@@ -489,7 +489,7 @@ async def home(request: Request, db: Session = Depends(get_db)):
     community_metrics = _compute_community_metrics(db)
 
     # Ensure session cookie and CSRF token
-    cookie_name, session_id, new_session = _session_params(request)
+    _, session_id, new_session = _session_params(request)
 
     csrf_token = (
         _make_csrf_token(session_id) if _env_bool("WEBAPP_CSRF_ENABLED", False) else ""
@@ -533,18 +533,9 @@ async def home(request: Request, db: Session = Depends(get_db)):
         },
     )
     if new_session:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
         try:
             log_audit("session_created", request=request)
         except Exception:
             pass
-        resp.set_cookie(
-            key=cookie_name,
-            value=session_id,
-            max_age=session_ttl,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
+    set_csrf_session_cookie(resp, session_id, new_session)
     return resp

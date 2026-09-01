@@ -11,6 +11,7 @@
                 <p class="dash-subtitle">Track how each domain changes over time.
                     Catch regressions. Open the right report fast.</p>
             </div>
+            <a class="btn" href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject=MeshWeave%20API%20integration">Talk to us about your integration</a>
         </div>
     </header>
 
@@ -76,22 +77,22 @@
                     <div class="stat-k">Improved</div>
                     <div class="stat-v">{{ summary.improved }}</div>
                 </div>
-                <div class="stat-card stat-card-primary stat-card-emphasis">
+                <div class="stat-card stat-card-primary">
                     <div class="stat-k">Need another run</div>
                     <div class="stat-v">{{ summary.need_baseline }}</div>
                 </div>
             </div>
 
-            <div class="quick-stats quick-stats-secondary">
-                <div class="stat-card stat-card-secondary">
+            <div class="quick-stats quick-stats-secondary" aria-label="Analysis status">
+                <div class="stat-card stat-card-secondary{% if summary.declined > 0 %} stat-card-alert{% endif %}">
                     <div class="stat-k">Declined</div>
                     <div class="stat-v{% if summary.declined > 0 %} stat-err{% endif %}">{{ summary.declined }}</div>
                 </div>
-                <div class="stat-card stat-card-secondary">
+                <div class="stat-card stat-card-secondary{% if summary.running > 0 %} stat-card-active{% endif %}">
                     <div class="stat-k">Running</div>
                     <div class="stat-v">{{ summary.running }}</div>
                 </div>
-                <div class="stat-card stat-card-secondary">
+                <div class="stat-card stat-card-secondary{% if summary.failed > 0 %} stat-card-alert{% endif %}">
                     <div class="stat-k">Failed</div>
                     <div class="stat-v{% if summary.failed > 0 %} stat-err{% endif %}">{{ summary.failed }}</div>
                 </div>
@@ -204,7 +205,6 @@
             {% include "partials/site_crawl_form.html" %}
         </div>
     </div>
-
     {% endif %}
 
 </div><!-- /.container-wide -->

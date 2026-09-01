@@ -1,13 +1,11 @@
 import os
-import uuid
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from webapp.infra import templates
 from webapp.utils.auth import require_auth
-from webapp.utils.config import _env_bool
-from webapp.utils.security import _make_csrf_token
+from webapp.utils.security import page_csrf, set_csrf_session_cookie
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
@@ -22,18 +20,7 @@ async def prospects_page(request: Request):
     page_title = f"Prospects — {site_name}"
     meta_description = "Manage your prospects and contacts."
 
-    # CSRF token for forms (consistent with Products page)
-    cookie_name = os.getenv("WEBAPP_COOKIE_NAME", "sid")
-    session_id = request.cookies.get(cookie_name)
-    new_session = False
-    if _env_bool("WEBAPP_CSRF_ENABLED", False) and not session_id:
-        session_id = str(uuid.uuid4())
-        new_session = True
-    csrf_token = (
-        _make_csrf_token(session_id)
-        if (_env_bool("WEBAPP_CSRF_ENABLED", False) and session_id)
-        else ""
-    )
+    csrf_token, session_id, new_session = page_csrf(request)
 
     resp = templates.TemplateResponse(
         request,
@@ -47,15 +34,5 @@ async def prospects_page(request: Request):
         },
     )
 
-    if new_session and session_id:
-        cookie_secure = _env_bool("WEBAPP_COOKIE_SECURE", False)
-        session_ttl = int(os.getenv("WEBAPP_SESSION_TTL", "43200"))
-        resp.set_cookie(
-            key=cookie_name,
-            value=str(session_id),
-            max_age=session_ttl,
-            httponly=True,
-            samesite="lax",
-            secure=cookie_secure,
-        )
+    set_csrf_session_cookie(resp, session_id, new_session)
     return resp

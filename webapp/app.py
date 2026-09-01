@@ -25,6 +25,7 @@ from webapp.routers import (
     jobs,
     legal,
     products,
+    profile,
     prospects,
     prospects_page,
     scores,
@@ -248,6 +249,7 @@ def create_app() -> FastAPI:
     # Prospects management page and API
     app.include_router(prospects.router)
     app.include_router(prospects_page.router)
+    app.include_router(profile.router)
     # Scoring methodology page
     app.include_router(scoring.router)
     # Score API router

@@ -116,6 +116,57 @@
     function initDashboard() {
         initDomainFilter();
         startPolling();
+        initApiKeys();
+    }
+
+    function initApiKeys() {
+        var create = document.getElementById('api-key-create');
+        var status = document.getElementById('api-key-status');
+        if (!create) return;
+        create.addEventListener('click', function () {
+            create.disabled = true;
+            if (status) status.textContent = 'Creating…';
+            fetch('/api/keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                body: JSON.stringify({ name: 'Dashboard key' })
+            }).then(function (response) {
+                if (!response.ok) throw new Error('Unable to create key');
+                return response.json();
+            }).then(function (data) {
+                var reveal = document.getElementById('api-key-reveal');
+                var value = document.getElementById('api-key-value');
+                if (value) value.textContent = data.key;
+                if (reveal) reveal.hidden = false;
+                if (status) status.textContent = 'Key created.';
+                create.disabled = false;
+            }).catch(function () {
+                if (status) status.textContent = 'Could not create the key. Try again.';
+                create.disabled = false;
+            });
+        });
+        var copy = document.getElementById('api-key-copy');
+        if (copy) copy.addEventListener('click', function () {
+            navigator.clipboard.writeText(document.getElementById('api-key-value').textContent)
+                .then(function () { if (status) status.textContent = 'Key copied.'; })
+                .catch(function () { if (status) status.textContent = 'Could not copy. Select the key text manually.'; });
+        });
+        document.querySelectorAll('.api-key-revoke').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (!window.confirm('Revoke this API key? Existing integrations will stop working.')) return;
+                fetch('/api/keys/' + encodeURIComponent(button.dataset.keyId) + '/revoke', {
+                    method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                }).then(function (response) {
+                    if (!response.ok) throw new Error('Unable to revoke key');
+                    if (status) status.textContent = 'Key revoked.';
+                    var row = button.closest('.api-key-row');
+                    row.classList.add('api-key-row--revoked');
+                    button.outerHTML = '<span class="small">Revoked</span>';
+                }).catch(function () {
+                    if (status) status.textContent = 'Could not revoke the key. Try again.';
+                });
+            });
+        });
     }
 
     if (document.readyState === 'loading') {
