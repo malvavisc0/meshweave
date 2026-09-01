@@ -67,7 +67,7 @@ export MESHWEAVE_CDP_ENDPOINT=http://localhost:9222
 
 ## Web App
 
-A full-featured FastAPI web application for submitting URLs and viewing AI visibility analysis results.
+A full-featured FastAPI web application for submitting URLs and viewing AI visibility analysis results. The local Compose stack runs PostgreSQL, LightPanda, and the webapp.
 
 ### Key capabilities
 
@@ -81,10 +81,10 @@ A full-featured FastAPI web application for submitting URLs and viewing AI visib
 ### Architecture
 
 ```
-FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── LightPanda (CDP browser)
-                                                    │
-                                             LLM scoring engine
-                                          (OpenAI-compatible API)
+FastAPI (webapp/) ── PostgreSQL 18 ── LightPanda (CDP browser)
+                                        │
+                                 LLM scoring engine
+                              (OpenAI-compatible API)
 ```
 
 ### Key environment variables
@@ -92,7 +92,6 @@ FastAPI (webapp/) ── PostgreSQL 18 ── Redis ── LightPanda (CDP brows
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | — |
-| `REDIS_URL` | Redis connection string | `redis://redis:6379` |
 | `SITE_BASE_URL` | Public base URL for the site | — |
 | `SITE_NAME` | Brand name shown in UI | `MeshWeave` |
 | `OAUTH_CLIENT_ID` | Google OAuth client ID | — |

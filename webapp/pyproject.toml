@@ -25,7 +25,6 @@ runtime = [
   "prometheus-client",
   "alembic",
   "openai",
-  "redis",
   "sentry-sdk",
   "langfuse",
 ]
