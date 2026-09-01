@@ -1,37 +1,116 @@
 # MeshWeave
 
-> AI visibility risk analysis for citation, discovery, and agent trust.
+> AI Agent Visibility Audit — see how AI reads your website, and fix what matters first.
 
-MeshWeave audits how AI systems crawl, understand, and cite websites. It identifies structural weaknesses that limit visibility, citation confidence, generative discovery, and AI agent trust — then delivers a prioritized remediation roadmap.
+MeshWeave helps teams understand what AI agents can make of their website. It crawls a
+site as a machine reader would, checks the signals available to an agent, and turns the
+findings into a prioritized list of improvements.
 
-## Core Capabilities
+Free web app: https://meshweaveai.com/ · Free JSON API (see below) · Open source:
+https://github.com/malvavisc0/meshweave
 
-- AI visibility risk analysis across three lenses: AEO, GEO, AAX
-- Citation-readiness diagnostics (can AI quote your content?)
-- Generative discovery optimization (does AI recommend you?)
-- AI agent experience auditing (can agents navigate and act on your site?)
-- Entity consistency and crawl-access auditing
-- Prioritized, concrete remediation roadmap
+## What problem it solves
 
-## Three Risk Lenses
+Search is no longer limited to a list of links. Buyers increasingly ask AI agents to
+explain a category, compare vendors, or suggest what to do next. A site can have good
+search fundamentals and still be difficult for an agent to use: a long marketing paragraph
+may hide the answer, a missing `Organization` schema may leave the business identity
+ambiguous, an email buried on a legal page may not look like a useful next step.
 
-- **AEO (Answer Engine Optimization)**: Whether AI can extract clear, trustworthy answers from your content. Failure means your brand is not quoted when buyers ask questions.
-- **GEO (Generative Engine Optimization)**: Whether AI systems see sufficient authority, trust, and entity signals. Failure means your brand is overlooked in recommendations.
-- **AAX (AI Agent Experience)**: Whether AI agents can understand, navigate, and act on your site. Failure means agent-mediated buyers abandon before conversion.
+MeshWeave looks at the layer after discovery: whether an AI agent can accurately
+understand, extract, trust, cite, and use what the site says.
 
-## Key Pages
+## The three lenses
 
-- Homepage: https://meshweaveai.com/
-- Browse analyses: https://meshweaveai.com/browse
-- Methodology: https://meshweaveai.com/methodology
-- Privacy: https://meshweaveai.com/privacy
-- Terms: https://meshweaveai.com/terms
-- Contact: https://meshweaveai.com/contact
+Each audit answers three questions, scored separately so the fix for one failure mode is
+never confused with another:
 
-## Built For
+- **AEO — Answer Engine Optimization** (`Poor` → `Excellent`): Can an agent find and
+  extract the answer a buyer needs? Looks at schema coverage, heading hierarchy, content
+  structure, dates, and image alt text.
+- **GEO — Generative Engine Optimization** (`Invisible` → `Dominant`): Does the site
+  give an agent enough consistent, credible evidence to trust and recommend the
+  business? Looks at Organization schema, entity consistency, E-E-A-T signals, AI
+  crawler access (GPTBot, ClaudeBot, PerplexityBot), `robots.txt`, sitemaps, and
+  `llms.txt`.
+- **AAX — AI Agent Experience** (`Opaque` → `Fluent`): Can an agent understand the offer
+  and find a credible next step? Homepage comprehension, meta optimization, cross-page
+  content consistency, email contacts, and contact paths.
 
-SEO & Content Teams · Product & Web Teams · Marketing & Growth Teams · Founders & Operators · Agencies & Consultants
+## API integration (free)
+
+The public JSON API returns the same analysis shown on the site. No key required
+today; an API key plan (free tier + paid tiers) is planned. Responses are JSON except
+`POST /submit`, which answers with a 303 redirect. No authentication is required for
+public analyses.
+
+### Analyze a site (anonymous submission)
+
+```
+POST {base}/submit
+Content-Type: application/x-www-form-urlencoded
+
+mode=site&domain=example.com
+```
+
+Anonymous submissions are public; max 10 pages, depth 1. Authenticated submissions
+(via browser session) can be private, up to 25 pages by default (250 cap, depth 3).
+
+The response is a redirect to the analysis page — for API use, follow the redirect and
+extract the crawl id or short key, then poll:
+
+### Check analysis status
+
+```
+GET {base}/api/status/{crawl_id}
+```
+
+Returns `{status: "pending"|"running"|"succeeded"|"failed", error, report_url}`. Public
+analyses also include a short `key`. Poll until `succeeded`, then use the key below.
+
+### Get the analysis (public)
+
+```
+GET {base}/api/analysis/public/{key}
+GET {base}/api/analysis/public/{key}/summary
+```
+
+Returns headline scores (AEO, GEO, AAX composites + ratings), a risk summary
+(profile, headline, diagnosis), finding count, and counts (pages, emails, links). The
+public payload is intentionally curated: raw emails, full page bodies, recommendation
+guidance, and the full score snapshot are owner-only.
+
+### List analyses for a domain
+
+```
+GET {base}/api/domain/{domain}
+```
+
+Returns up to 100 public entries with keys and status.
+
+### Health
+
+```
+GET {base}/healthz    → {"status": "ok"}
+GET {base}/readyz     → checks DB + OAuth readiness
+```
+
+## Notes for agents and integrators
+
+- Full private payloads (complete factors, recommendations, score snapshots) require a
+  browser-authenticated owner session; an API-key regime is planned. For programmatic
+  access today, use public analyses or contact us.
+- `robots.txt` at {base} declares AI crawlers welcome; the site serves this
+  `llms.txt` and a fuller `llms-full.txt` at {base}/.well-known/llms-full.txt.
+- Rate limits: anonymous crawls are capped server-side (10 pages default); signed-in
+  users get higher quotas. If you need bulk or commercial usage, email us first.
+
+## Built for
+
+SEO & content teams · marketing & growth teams · founders & operators · agencies and
+consultants · product & web teams
 
 ## Contact
 
 - Email: hello@meshweaveai.com
+- Open source: https://github.com/malvavisc0/meshweave
