@@ -321,7 +321,8 @@ point.
 
 ### JSON API and Agent Integration
 
-The web application exposes a free JSON API — no key required today:
+The web application exposes a free JSON API with public preview endpoints that do
+not require a key:
 
 - `POST /submit` starts an analysis (anonymous runs are public, capped at 10
   pages).
@@ -331,9 +332,10 @@ The web application exposes a free JSON API — no key required today:
 - `GET /api/analysis/public/{key}/summary` returns the short verdict only.
 - `GET /api/domain/{domain}` lists public analyses for a domain.
 
-Full private payloads — complete factors, recommendations, and score
-snapshots — require a browser-authenticated owner session; an API-key regime
-is planned.
+Full private payloads — complete factors, recommendations, and score snapshots —
+require a browser-authenticated owner session or an API key belonging to the
+analysis owner. Users create and revoke keys from their profile page; the secret is
+shown only once.
 
 The site also serves the agent-facing files it audits for:
 `/.well-known/llms.txt` and `/.well-known/llms-full.txt` describe the product

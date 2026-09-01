@@ -45,6 +45,31 @@ credentials for the `/readyz` healthcheck. Set `OAUTH_CLIENT_ID` and
 `OAUTH_CLIENT_SECRET` in `.env` before starting the stack. AAX also requires the
 LLM settings; set `AAX_ENABLED=false` if AAX is not configured locally.
 
+### Run database migrations
+
+The Compose file provides a dedicated `alembic` service under the `migration`
+profile. Start the database and apply all pending migrations with:
+
+```bash
+docker compose --profile migration run --rm alembic
+```
+
+The migration service runs `uv run alembic upgrade head` and waits for the
+PostgreSQL healthcheck before applying migrations. Confirm the current revision
+with:
+
+```bash
+docker compose --profile migration run --rm alembic current
+```
+
+The webapp also has `WEBAPP_AUTO_MIGRATE=true` in the local Compose configuration,
+but running the dedicated migration service explicitly is recommended when
+applying schema changes. For local development without Docker, use:
+
+```bash
+uv run alembic upgrade head
+```
+
 ### Local development
 
 Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/):
@@ -170,7 +195,7 @@ uv run pytest -q
 # Run with hot-reload
 uv run uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --reload
 
-# Database migrations
+# Database migrations without Docker
 uv run alembic upgrade head
 ```
 

@@ -4,8 +4,7 @@ Retrying a succeeded row must retire it (``is_latest=False``, key cleared,
 payload/snapshot intact) and insert a fresh pending row — never reset in
 place. Targets ``webapp/utils/revisions.py`` directly so no FastAPI
 imports are needed; the router's status branch is a thin wrapper over
-``replace_succeeded_crawl``. These are the §2 revision-safety invariants
-from the analysis revision diff plan.
+``replace_succeeded_crawl``.
 """
 
 from __future__ import annotations
