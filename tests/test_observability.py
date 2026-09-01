@@ -225,20 +225,18 @@ def test_trace_attributes_propagates_when_enabled(monkeypatch: MonkeyPatch) -> N
     ]
 
 
-def test_trace_attributes_propagates_user_email_metadata(
+def test_trace_attributes_propagates_metadata(
     monkeypatch: MonkeyPatch,
 ) -> None:
     _set_credentials(monkeypatch)
     module, _ = _install_fake_langfuse(monkeypatch, _FakeLangfuseClient())
     obs.enable_langfuse()
 
-    with obs.trace_attributes(
-        user_id="u1", metadata={"user_email": "user@example.com"}
-    ):
+    with obs.trace_attributes(user_id="u1", metadata={"plan": "pro"}):
         pass
 
     assert module.propagation_calls[0]["user_id"] == "u1"
-    assert module.propagation_calls[0]["metadata"] == {"user_email": "user@example.com"}
+    assert module.propagation_calls[0]["metadata"] == {"plan": "pro"}
 
 
 def test_aax_uses_anonymous_id_when_no_authenticated_user(
@@ -402,3 +400,107 @@ def test_mask_otel_spans_leaves_clean_spans_untouched() -> None:
     result = obs.mask_otel_spans(params=params)
     assert result is not None
     assert result.span_patches == {}
+
+
+# --- email redaction ---------------------------------------------------------
+
+
+def test_redact_emails_masks_string() -> None:
+    assert (
+        obs._redact_emails("contact user@example.com for details")
+        == "contact [email redacted] for details"
+    )
+
+
+def test_redact_emails_masks_multiple_and_case_insensitive() -> None:
+    redacted = obs._redact_emails("From A@B.IO to bob.smith+x@sub.example.co.uk")
+    assert redacted == "From [email redacted] to [email redacted]"
+
+
+def test_redact_emails_returns_same_string_when_no_match() -> None:
+    clean = "no addresses here"
+    assert obs._redact_emails(clean) is clean
+
+
+def test_redact_emails_recurses_into_dicts_and_lists() -> None:
+    value = {
+        "role": "user",
+        "parts": [
+            {"type": "text", "content": "reach me at jane@example.org"},
+            {"type": "text", "content": "plain"},
+        ],
+    }
+    redacted = obs._redact_emails(value)
+    assert redacted == {
+        "role": "user",
+        "parts": [
+            {"type": "text", "content": "reach me at [email redacted]"},
+            {"type": "text", "content": "plain"},
+        ],
+    }
+
+
+def test_redact_emails_preserves_identity_when_nothing_matches() -> None:
+    value = {"role": "user", "parts": [{"type": "text", "content": "plain"}]}
+    assert obs._redact_emails(value) is value
+    lst = [{"type": "text", "content": "plain"}]
+    assert obs._redact_emails(lst) is lst
+
+
+def test_redact_emails_leaves_non_containers_untouched() -> None:
+    assert obs._redact_emails(42) == 42
+    assert obs._redact_emails(None) is None
+
+
+def test_strip_thinking_parts_redacts_emails_in_json_strings() -> None:
+    value = json.dumps(
+        [
+            {
+                "role": "user",
+                "parts": [{"type": "text", "content": "email me at a@b.com"}],
+            }
+        ]
+    )
+    stripped = obs._strip_thinking_parts(value)
+    assert isinstance(stripped, str)
+    parsed = json.loads(stripped)
+    assert parsed[0]["parts"][0]["content"] == "email me at [email redacted]"
+
+
+def test_strip_thinking_parts_redacts_emails_in_parsed_lists() -> None:
+    value = [{"role": "user", "parts": [{"type": "text", "content": "a@b.com"}]}]
+    stripped = obs._strip_thinking_parts(value)
+    assert stripped[0]["parts"][0]["content"] == "[email redacted]"
+
+
+def test_mask_otel_spans_patches_email_attributes() -> None:
+    import types as _types
+
+    messages = json.dumps(
+        [
+            {
+                "role": "user",
+                "parts": [{"type": "text", "content": "contact a@b.com"}],
+            }
+        ]
+    )
+    params = _types.SimpleNamespace(
+        spans={
+            ("4" * 32, "5" * 16): _types.SimpleNamespace(
+                attributes={"gen_ai.input.messages": messages}
+            )
+        }
+    )
+    result = obs.mask_otel_spans(params=params)
+    assert result is not None
+    ident = ("4" * 32, "5" * 16)
+    assert ident in result.span_patches
+    patched = result.span_patches[ident]
+    assert patched.set_attributes["gen_ai.input.messages"] == json.dumps(
+        [
+            {
+                "role": "user",
+                "parts": [{"type": "text", "content": "contact [email redacted]"}],
+            }
+        ]
+    )

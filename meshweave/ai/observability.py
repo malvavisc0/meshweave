@@ -29,6 +29,7 @@ import atexit
 import json
 import logging
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -60,6 +61,7 @@ _MESSAGE_ATTRIBUTES = frozenset(
         "gen_ai.system_instructions",
     }
 )
+_EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 
 
 def _strip_thinking_parts(value: Any) -> Any:
@@ -75,11 +77,13 @@ def _strip_thinking_parts(value: Any) -> Any:
         return value
     if isinstance(parsed, list):
         cleaned = [_clean_message(m) for m in parsed]
+        cleaned = [_redact_emails(m) for m in cleaned]
         if all(c is m for c, m in zip(cleaned, parsed)):
             return value
         return _encode_span_value(cleaned, value)
     if isinstance(parsed, dict):
         cleaned = _clean_message(parsed)
+        cleaned = _redact_emails(cleaned)
         if cleaned is parsed:
             return value
         return _encode_span_value(cleaned, value)
@@ -96,7 +100,7 @@ def _parse_span_value(value: Any) -> Any:
         # Fast path: the serialized array only contains a thinking part
         # when the literal substring appears, so no-reasoning spans skip
         # the (multi-kilobyte) json.loads and tree traversal entirely.
-        if "thinking" not in value:
+        if "thinking" not in value and not _EMAIL_PATTERN.search(value):
             return _UNPARSED
         try:
             parsed = json.loads(value)
@@ -128,6 +132,39 @@ def _clean_message(message: Any) -> Any:
     if len(cleaned) == len(parts):
         return message
     return {**message, "parts": cleaned}
+
+
+def _redact_email_str(value: str) -> str:
+    """Return ``value`` with email addresses masked (same object if clean)."""
+    redacted = _EMAIL_PATTERN.sub("[email redacted]", value)
+    return value if redacted == value else redacted
+
+
+def _redact_email_list(value: list[Any]) -> list[Any]:
+    """Redact each item, preserving identity when nothing changed."""
+    redacted = [_redact_emails(item) for item in value]
+    if all(a is b for a, b in zip(redacted, value)):
+        return value
+    return redacted
+
+
+def _redact_email_dict(value: dict[Any, Any]) -> dict[Any, Any]:
+    """Redact each value, preserving identity when nothing changed."""
+    redacted = {key: _redact_emails(item) for key, item in value.items()}
+    if all(redacted[key] is item for key, item in value.items()):
+        return value
+    return redacted
+
+
+def _redact_emails(value: Any) -> Any:
+    """Mask email addresses in exported LLM message content."""
+    if isinstance(value, str):
+        return _redact_email_str(value)
+    if isinstance(value, list):
+        return _redact_email_list(value)
+    if isinstance(value, dict):
+        return _redact_email_dict(value)
+    return value
 
 
 def mask_otel_spans(*, params: Any) -> Any:

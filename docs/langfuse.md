@@ -123,11 +123,11 @@ in the logs if the keys are genuinely wrong.
 
 ## Privacy note
 
-Instrumentation exports full prompts and completions. AAX prompts contain crawled
-third-party page content (markdown excerpts, extracted emails, metadata). Point
-`LANGFUSE_BASE_URL` at a self-hosted instance, or configure masking in
-`meshweave/ai/observability.py`, before enabling tracing on data you cannot send
-to Langfuse Cloud.
+Instrumentation exports prompts and completions containing crawled third-party
+page content and metadata. Email addresses in exported message attributes are
+masked, and user email is not attached as trace metadata. Other site content
+may still be sensitive, so point `LANGFUSE_BASE_URL` at a self-hosted instance
+or review the data-processing implications before enabling tracing.
 
 ## Tests
 

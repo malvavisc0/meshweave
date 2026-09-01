@@ -107,6 +107,9 @@ services:
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-staging}
       # Tag events with the deployed image version (e.g. v0.1.4)
       SENTRY_RELEASE: ${MESHWEAVE_VERSION:-latest}
+      METRICS_AUTH_TOKEN: ${METRICS_AUTH_TOKEN:?set METRICS_AUTH_TOKEN}
+      # Fail closed (503) if the token above is ever missing
+      WEBAPP_REQUIRE_METRICS_AUTH: "true"
       LLM_BASE_URL: ${LLM_BASE_URL:?set LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL:?set LLM_MODEL}

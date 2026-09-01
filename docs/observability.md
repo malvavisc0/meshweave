@@ -6,7 +6,11 @@ This project exposes Prometheus-compatible metrics and a readiness probe by defa
 - LLM observability (Langfuse tracing for AAX analyses) is covered separately in [langfuse.md](langfuse.md)
 
 Important
-- Metrics do not require authentication and should only be exposed inside trusted networks or behind an ingress with access control.
+- Metrics require `METRICS_AUTH_TOKEN` when configured. Production Compose requires this token; expose `/metrics` only to the Prometheus network or an ingress with access control.
+- Auth policy (implemented in `webapp/utils/metrics_auth.py`):
+  - `METRICS_AUTH_TOKEN` set: requests must send the token as `Authorization: Bearer <token>` (case-insensitive scheme) or as the `X-Metrics-Token` header; anything else gets 401.
+  - Token unset and `WEBAPP_REQUIRE_METRICS_AUTH=true`: the endpoint fails closed with 503 so production cannot silently expose metrics.
+  - Token unset and the flag unset: open access (local/dev default).
 - Example alert rules for this app are provided at docs/observability/alerts.prometheus.yml. Load them with Prometheus rule_files (see configs below).
 
 What you get out of the box
@@ -20,8 +24,8 @@ Endpoints Summary
 - /readyz: Readiness probe (DB connectivity; optionally requires OAuth config when WEBAPP_READINESS_REQUIRE_OAUTH=true)
 
 Quick reference: scrape targets and names
-- Target: http://meshweave:8080/metrics (when running via docker-compose on the same network)
-- Target: http://localhost:8080/metrics (when running locally without Compose networking)
+- Target: http://meshweave:8080/metrics (when running via docker-compose on the same network; send `Authorization: Bearer $METRICS_AUTH_TOKEN`)
+- Target: http://localhost:8080/metrics (when running locally without Compose networking; send the token when `METRICS_AUTH_TOKEN` is set)
 - Example metric names you will see:
   - auth_attempts_total{provider, result}
   - active_sessions_count
@@ -275,6 +279,7 @@ Security considerations
 -------------------------------------------------------------------------------
 
 - Do not expose /metrics publicly. Restrict access to Prometheus networks/namespaces only.
+- Set `METRICS_AUTH_TOKEN` in every production deployment and configure Prometheus to send it as a bearer token. Set `WEBAPP_REQUIRE_METRICS_AUTH=true` (the prod Compose file does) so the endpoint returns 503 instead of serving open metrics if the token is ever missing.
 - Place the app behind a reverse proxy or service mesh and scope network policies appropriately.
 - If you must expose metrics through an ingress, enforce mTLS, IP allowlists, or auth at the gateway.
 

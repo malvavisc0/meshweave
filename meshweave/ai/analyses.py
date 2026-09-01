@@ -42,7 +42,6 @@ async def run_aax_analysis(
     payload: dict,
     *,
     trace_user_id: str | None = None,
-    trace_user_email: str | None = None,
     trace_anonymous_user_id: str | None = None,
     trace_session_id: str | None = None,
 ) -> dict[str, Any]:
@@ -58,15 +57,14 @@ async def run_aax_analysis(
     one unit: ``trace_session_id`` when provided (e.g. the originating crawl
     id), otherwise a fresh id per run. ``trace_user_id`` attributes the
     traces to the user who triggered the analysis. Anonymous runs use their
-    persistent browser ID instead. When available, the email is included as
-    ``user_email`` metadata. All trace attributes are ignored when tracing is
-    disabled.
+    persistent browser ID instead. No trace metadata is attached. All trace
+    attributes are ignored when tracing is disabled.
     """
     with trace_attributes(
         user_id=trace_user_id or trace_anonymous_user_id,
         session_id=trace_session_id or uuid.uuid4().hex,
         tags=["aax"],
-        metadata={"user_email": trace_user_email} if trace_user_email else None,
+        metadata=None,
     ):
         return await _run_aax_analysis(payload)
 

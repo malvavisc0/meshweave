@@ -15,6 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from webapp.db import get_session
 from webapp.models import ApiKey, Crawl, Product
+from webapp.utils import metrics_auth
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.metrics import (
@@ -22,6 +23,7 @@ from webapp.utils.metrics import (
     metrics_body,
     metrics_content_type,
 )
+from webapp.utils.metrics_auth import check_metrics_access
 from webapp.utils.reasons import public_error_label
 from webapp.utils.scoring import build_score_snapshot_context
 from webapp.utils.security import verify_request_csrf
@@ -709,12 +711,22 @@ async def readyz():
 
 
 @router.get("/metrics")
-async def metrics():
+async def metrics(request: Request):
     """Prometheus metrics exposition.
+
+    Access policy lives in ``webapp.utils.metrics_auth``: bearer-token auth
+    when ``METRICS_AUTH_TOKEN`` is set, fail-closed 503 when auth is required
+    (``WEBAPP_REQUIRE_METRICS_AUTH=true``) but no token is configured, and
+    open access otherwise.
 
     Returns:
         Response: Metrics body in Prometheus exposition format and content type.
     """
+    decision = check_metrics_access(dict(request.headers))
+    if decision == metrics_auth.NOT_CONFIGURED:
+        raise HTTPException(status_code=503, detail="Metrics auth is not configured")
+    if decision == metrics_auth.UNAUTHORIZED:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     return Response(content=metrics_body(), media_type=metrics_content_type())
 
 

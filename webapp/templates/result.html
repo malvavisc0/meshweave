@@ -297,7 +297,7 @@ else 'n/a') ~
   {% endif %}
 
   {# --- Top Fixes: highest-priority recommendations before full diagnostics --- #}
-  {% if sorted_recommendations %}
+  {% if viewer_role == 'owner' and sorted_recommendations %}
   {% set _top_fixes = namespace(items=[]) %}
   {% for rec in sorted_recommendations %}
   {% if rec.priority == 'high' and _top_fixes.items | length < 3 %} {% set _top_fixes.items=_top_fixes.items + [rec] %}
