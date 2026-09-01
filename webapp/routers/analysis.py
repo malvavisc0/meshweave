@@ -418,6 +418,44 @@ def _revision_series_for(row: Crawl) -> list[dict]:
     return list_revision_series(row)
 
 
+def _since_last_run(row: Crawl) -> dict | None:
+    """Signed lens deltas against the previous succeeded revision.
+
+    Returns None when this run is the first in its series or either
+    snapshot lacks scores. Deltas round to one decimal; AAX is omitted
+    when the previous revision has no AAX composite yet.
+    """
+    if row.status != "succeeded":
+        return None
+    prev = find_previous_revision(row)
+    if prev is None or prev.score_snapshot is None:
+        return None
+
+    def _delta(current: float | None, old: float | None) -> float | None:
+        if current is None or old is None:
+            return None
+        return round(float(current) - float(old), 1)
+
+    deltas = {
+        "aeo": _delta(row.aeo_score, prev.score_snapshot.aeo_score),
+        "geo": _delta(row.geo_score, prev.score_snapshot.geo_score),
+    }
+    prev_aax = (prev.score_snapshot.score_json or {}).get("aax", {}).get("composite")
+    cur_aax = (
+        (row.score_snapshot.score_json or {}).get("aax", {}).get("composite")
+        if row.score_snapshot
+        else None
+    )
+    deltas["aax"] = _delta(cur_aax, prev_aax)
+
+    if all(d is None for d in deltas.values()):
+        return None
+    return {
+        "previous_id": prev.id,
+        "deltas": deltas,
+    }
+
+
 async def _render_private_view(request: Request, ref: str) -> Response:
     """Render the owner-only private analysis view.
 
@@ -463,6 +501,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
     csrf_token, cookie_name, session_id, new_session = _csrf(request)
 
     _ss_private = None if in_progress else _build_score_snapshot_context(row)
+    since_last_run = _since_last_run(row)
     resp = templates.TemplateResponse(
         request,
         "result.html",
@@ -503,6 +542,7 @@ async def _render_private_view(request: Request, ref: str) -> Response:
             "in_progress": in_progress,
             "progress": progress,
             "revisions": _revision_series_for(row),
+            "since_last_run": since_last_run,
         },
     )
     # Prevent indexing of private results

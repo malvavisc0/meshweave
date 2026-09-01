@@ -125,6 +125,12 @@
             <li class="rec-item rec-priority-{{ rec.priority }}">
               <span class="rec-title">{{ rec.title }}</span>
               {% if rec.detail %}<p class="rec-detail">{{ rec.detail }}</p>{% endif %}
+              {% if rec.expected_points is not none and rec.observed_delta is not none %}
+              <p class="rec-prediction small">
+                Predicted {{ rec.pillar | upper }} +{{ rec.expected_points }} ·
+                observed {{ '+' if rec.observed_delta > 0 }}{{ rec.observed_delta }}
+              </p>
+              {% endif %}
             </li>
             {% endfor %}
           </ul>

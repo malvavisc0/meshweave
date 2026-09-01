@@ -9,8 +9,8 @@ dicts for the template.
 from __future__ import annotations
 
 import difflib
+from html import escape
 
-from markupsafe import escape
 from sqlalchemy import String, cast
 from sqlalchemy.orm import joinedload
 
@@ -255,18 +255,78 @@ def build_findings_diff(
     A recommendation is identified by its ``factor`` key when present (so
     "Enrich 3 thin page(s)" and "Enrich 5 thin page(s)" match) and by exact
     title otherwise. Returns resolved (old-only), newly triggered (new-only),
-    and the unchanged count.
+    and the unchanged count. Each resolved recommendation that carried
+    ``expected_points`` gains ``observed_delta`` — the actual lens composite
+    movement between the two snapshots — so the page can show the model's
+    prediction against what happened.
     """
     old_recs = {_recommendation_id(r): r for r in _recommendations(old_ss)}
     new_recs = {_recommendation_id(r): r for r in _recommendations(new_ss)}
     resolved = [old_recs[k] for k in old_recs if k not in new_recs]
     newly = [new_recs[k] for k in new_recs if k not in old_recs]
     unchanged_count = sum(1 for k in old_recs if k in new_recs)
+
+    composite_deltas = _lens_composite_deltas(old_ss, new_ss)
+    for rec in resolved:
+        _attach_observed_delta(rec, composite_deltas)
+
     return {
         "resolved": _sort_recommendations(resolved),
         "new": _sort_recommendations(newly),
         "unchanged_count": unchanged_count,
     }
+
+
+_LENS_COMPOSITE_KEYS: dict[str, str] = {
+    "aeo": "aeo_score",
+    "geo": "geo_score",
+}
+
+
+def _lens_composite_deltas(
+    old_ss: ScoreSnapshot | None, new_ss: ScoreSnapshot | None
+) -> dict[str, float | None]:
+    """Signed composite deltas per lens between two snapshots."""
+    deltas = {
+        lens: _numeric_delta(
+            getattr(old_ss, attr, None) if old_ss else None,
+            getattr(new_ss, attr, None) if new_ss else None,
+        )
+        for lens, attr in _LENS_COMPOSITE_KEYS.items()
+    }
+    deltas["aax"] = _numeric_delta(
+        _aax_composite(old_ss),
+        _aax_composite(new_ss),
+    )
+    return deltas
+
+
+def _aax_composite(ss: ScoreSnapshot | None) -> float | None:
+    """The AAX composite stored inside a snapshot's score_json."""
+    if not ss:
+        return None
+    return ((ss.score_json or {}).get("aax") or {}).get("composite")
+
+
+def _numeric_delta(old: float | None, new: float | None) -> float | None:
+    """new − old rounded to one decimal; None when either side is absent."""
+    if old is None or new is None:
+        return None
+    return round(float(new) - float(old), 1)
+
+
+def _attach_observed_delta(
+    rec: dict, composite_deltas: dict[str, float | None]
+) -> None:
+    """Record the observed lens movement on a resolved recommendation.
+
+    Only attaches when the old recommendation carried a predicted
+    ``expected_points`` — a prediction is only checkable when it was
+    made.
+    """
+    if rec.get("expected_points") is None:
+        return
+    rec["observed_delta"] = composite_deltas.get(rec.get("pillar") or "")
 
 
 def _page_meta(payload: dict | None) -> dict:

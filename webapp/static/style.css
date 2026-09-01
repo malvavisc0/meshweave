@@ -5243,3 +5243,149 @@ p.card-meta {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Citation simulation (AAX owner panel) ─────────────────────────── */
+
+.citation-sim {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-surface-raised, var(--color-bg));
+}
+
+.citation-sim-header {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 var(--space-xs);
+  color: var(--color-ink);
+}
+
+.citation-sim-lede {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-ink-muted);
+}
+
+.citation-sim-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.citation-sim-list {
+  list-style: none;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.citation-sim-item {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.citation-sim-query {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.citation-sim-answer {
+  color: var(--color-ink-muted);
+}
+
+.citation-sim-verdict--good {
+  color: var(--color-semantic-success);
+}
+
+.citation-sim-verdict--ok {
+  color: var(--color-semantic-warning);
+}
+
+.citation-sim-verdict--bad {
+  color: var(--color-semantic-danger);
+}
+
+/* ── Since-last-run delta strip (result page) ──────────────────────── */
+
+.since-last-run {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-raised, var(--color-bg));
+  border: 1px solid var(--color-border);
+  margin-bottom: var(--space-md);
+}
+
+.since-last-run-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  margin-right: var(--space-xs);
+}
+
+.delta-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+}
+
+.delta-chip-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta-chip--up .delta-chip-value {
+  color: var(--color-semantic-success);
+}
+
+.delta-chip--down .delta-chip-value {
+  color: var(--color-semantic-danger);
+}
+
+.delta-chip--flat .delta-chip-value {
+  color: var(--color-ink-muted);
+}
+
+.since-last-run-link {
+  font-size: 13px;
+  margin-left: auto;
+}
+
+/* ── Re-check panel (owner result page) ────────────────────────────── */
+
+.re-check-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.re-check-panel h2 {
+  font-size: 16px;
+  margin: 0 0 var(--space-xs);
+}
+
+.re-check-actions {
+  flex-shrink: 0;
+}
+
+/* ── Predicted-vs-observed rows (diff findings) ────────────────────── */
+
+.rec-prediction {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}

@@ -396,6 +396,37 @@ else 'n/a') ~
         </div>
         <div class="lens-breakdown-detail">
           <h3 class="breakdown-col-header">AAX signals and fixes</h3>
+          {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.citation_sim
+            and score_snapshot.aax_analysis.citation_sim.status == 'completed' %}
+          {% set csim = score_snapshot.aax_analysis.citation_sim %}
+          <div class="citation-sim" role="region" aria-label="Citation simulation">
+            <h4 class="citation-sim-header">Citation simulation</h4>
+            <p class="citation-sim-lede small">
+              An AI model answered {{ csim.query_count }} buyer questions about your category using
+              <strong>only your crawled pages</strong>. Mention rate: <strong>{{ (csim.mention_rate * 100) | round(0) }}%</strong>
+              — citation rate: <strong>{{ (csim.citation_rate * 100) | round(0) }}%</strong>.
+              Simulated — grounded in this crawl only, not a live answer-engine measurement.
+            </p>
+            <details class="citation-sim-details">
+              <summary>See the questions and answers</summary>
+              <ul class="citation-sim-list">
+                {% for q in csim.queries %}
+                <li class="citation-sim-item">
+                  <span class="citation-sim-query">{{ q.query }}</span>
+                  {% if q.answer %}<span class="citation-sim-answer small">{{ q.answer }}</span>{% endif %}
+                  <span class="citation-sim-verdict small
+                    {% if q.brand_mentioned and q.cited_urls %}citation-sim-verdict--good
+                    {% elif q.brand_mentioned or q.cited_urls %}citation-sim-verdict--ok
+                    {% else %}citation-sim-verdict--bad{% endif %}">
+                    {% if q.brand_mentioned %}Brand mentioned{% else %}Brand not mentioned{% endif %}
+                    {% if q.cited_urls %} · cited: {{ q.cited_urls | length }} page(s){% else %} · no pages cited{% endif %}
+                  </span>
+                </li>
+                {% endfor %}
+              </ul>
+            </details>
+          </div>
+          {% endif %}
           {% set ext = factor_extremes.aax %}
           {% if ext[0] or ext[2] %}
           <div class="breakdown-interpretation">
@@ -656,6 +687,45 @@ else 'n/a') ~
     {% with mode = "view", current_id = id %}
     {% include "partials/revision_strip.html" %}
     {% endwith %}
+    {% endif %}
+
+    {# --- Since last run: signed lens deltas (owner-only) --- #}
+    {% if since_last_run %}
+    <div class="since-last-run" role="status" aria-label="Changes since the previous run">
+      <span class="since-last-run-label">Since last run</span>
+      {% for lens, delta in since_last_run.deltas.items() %}
+      {% if delta is not none %}
+      <span class="delta-chip {% if delta > 0 %}delta-chip--up{% elif delta < 0 %}delta-chip--down{% else %}delta-chip--flat{% endif %}">
+        <span>{{ lens | upper }}</span>
+        <span class="delta-chip-value">{{ '+' if delta > 0 }}{{ delta }}</span>
+      </span>
+      {% endif %}
+      {% endfor %}
+      <a class="since-last-run-link" href="/analysis/{{ id }}/diff">Compare with previous run</a>
+    </div>
+    {% endif %}
+
+    {# --- Re-check: owner-only rerun trigger (same endpoint as dashboard) --- #}
+    {% if status == "succeeded" %}
+    <div class="panel result-section re-check-panel" role="region" aria-label="Re-check this site">
+      <div class="re-check-copy">
+        <h2>Re-check this site</h2>
+        <p class="small m0">Fixed something? Run the analysis again — the previous report stays
+          available as a revision you can compare against.</p>
+      </div>
+      <div class="re-check-actions">
+        {% if can_retry %}
+        <form method="post" action="/retry/{{ id }}" class="inline-block">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+          <button type="submit" class="btn btn-primary">Re-check now</button>
+        </form>
+        {% else %}
+        <button type="button" class="btn" disabled title="Available in {{ retry_eta }}">
+          Re-check available in {{ retry_eta }}
+        </button>
+        {% endif %}
+      </div>
+    </div>
     {% endif %}
 
     {# --- AI Agent Usability Review (owner-only) --- #}
