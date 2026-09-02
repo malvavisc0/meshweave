@@ -254,13 +254,20 @@ nav.topnav a {
 .topnav .brandmark {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-xs);
   margin-right: var(--space-sm);
   padding: 10px 0;
   color: #FFFFFF;
   text-decoration: none;
   border-bottom: 0;
   flex-shrink: 0;
+}
+
+.topnav .brandmark-name {
+  color: var(--color-dark-text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
 }
 
 .topnav .brandmark:hover {
@@ -897,12 +904,12 @@ label {
   border: 0;
 }
 
-/* Hero section — full viewport height, centered */
+/* Landing hero keeps the audit control visible before the fold. */
 .landing-hero {
-  min-height: calc(100vh - var(--component-topnav-height));
+  min-height: calc(var(--space-section) * 6 + var(--space-lg) * 2);
   display: flex;
   align-items: center;
-  padding: var(--space-xxl) 0;
+  padding: clamp(var(--space-xxl), 9vw, calc(var(--space-section) + var(--space-lg))) 0;
   background: var(--color-dark-bg);
   position: relative;
   overflow: hidden;
@@ -939,30 +946,37 @@ label {
 
 .landing-hero-title {
   font: var(--font-display-xl);
-  letter-spacing: -0.4px;
-  margin: 0 0 var(--space-lg);
+  letter-spacing: -1px;
+  margin: 0 0 var(--space-md);
   color: var(--color-dark-text);
+  max-width: 820px;
+  text-wrap: balance;
 }
 
 .landing-hero-supporting {
-  font: var(--font-subhead);
+  font: var(--font-body-lg);
   letter-spacing: 0;
   color: var(--color-dark-text);
-  margin: 0 0 var(--space-sm);
-  max-width: 800px;
-  line-height: 1.6;
+  margin: 0;
+  max-width: 680px;
+  line-height: 1.55;
 }
 
-.landing-hero-strong {
-  font: var(--font-headline);
-  letter-spacing: 0;
-  color: var(--color-dark-text);
-  margin: 0 0 var(--space-lg);
+.landing-hero-eyebrow {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-primary);
+  font: var(--font-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.landing-hero-copy {
+  max-width: 820px;
 }
 
 .landing-hero-cta {
-  text-align: center;
-  margin: var(--space-lg) 0 var(--space-md);
+  margin: var(--space-md) 0 0;
 }
 
 .landing-hero-audience {
@@ -997,7 +1011,11 @@ label {
 }
 
 .landing-hero-form {
-  max-width: 100%;
+  max-width: 760px;
+  margin-top: var(--space-xl);
+  padding: var(--space-md);
+  border: 1px solid var(--color-dark-border);
+  background: var(--color-dark-surface);
 }
 
 .hero-inline-notice {
@@ -1021,10 +1039,21 @@ label {
   text-transform: uppercase;
 }
 
-.landing-hero .landing-hero-title,
-.landing-hero .landing-hero-supporting,
-.landing-hero .landing-hero-form {
-  max-width: 1100px;
+.site-crawl-controls {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: stretch;
+}
+
+.landing-hero .site-input {
+  min-width: 0;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-canvas);
+}
+
+.landing-hero .site-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Dark-zone form overrides — labels, checkboxes, helper text */
@@ -1047,6 +1076,23 @@ label {
   width: 100%;
   position: relative;
   z-index: 1;
+}
+
+.landing-status {
+  padding: var(--space-sm) 0;
+  background: var(--color-surface-1);
+  border-bottom: 1px solid var(--color-hairline);
+  font: var(--font-body);
+}
+
+.landing-status .container {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.landing-status--error {
+  border-bottom-color: var(--color-semantic-error);
 }
 
 /* Landing sections */
@@ -1778,7 +1824,8 @@ p.card-meta {
   }
 
   .landing-hero {
-    padding: var(--space-xxl) 0 var(--space-lg);
+    min-height: 0;
+    padding: var(--space-xxl) 0;
   }
 
   .landing-hero-title {
@@ -1788,6 +1835,20 @@ p.card-meta {
 
   .landing-hero-supporting {
     font: var(--font-body-lg);
+  }
+
+  .landing-hero-form {
+    margin-top: var(--space-lg);
+  }
+
+  .site-crawl-controls,
+  .landing-status .container {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .landing-hero .site-btn {
+    width: 100%;
   }
 
   .landing-hero-audience {

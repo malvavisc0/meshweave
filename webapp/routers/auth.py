@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 import uuid
@@ -25,6 +26,7 @@ from webapp.utils.security import _verify_csrf_token
 from webapp.utils.url import _get_base_url
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Google OIDC endpoints (avoid discovery to keep dependencies minimal)
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -316,6 +318,10 @@ async def _exchange_google_code(code: str, redirect_uri: str) -> dict | None:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if token_resp.status_code != 200:
+            logger.warning(
+                "Google OAuth token exchange failed with status %s",
+                token_resp.status_code,
+            )
             return None
         tok = token_resp.json()
         access_token = tok.get("access_token")
@@ -326,6 +332,10 @@ async def _exchange_google_code(code: str, redirect_uri: str) -> dict | None:
             GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
         )
         if ui_resp.status_code != 200:
+            logger.warning(
+                "Google OAuth user-info request failed with status %s",
+                ui_resp.status_code,
+            )
             return None
         data = ui_resp.json()
         return data if isinstance(data, dict) else None
@@ -474,6 +484,7 @@ async def auth_callback(
         HTTPException: 400 for invalid or expired state or when required parameters are missing.
     """
     if error:
+        logger.warning("Google OAuth callback returned provider error: %s", error)
         return _auth_failure_redirect()
 
     if not state or not code:
@@ -489,14 +500,17 @@ async def auth_callback(
 
     profile = _validated_google_profile(ui) if ui else None
     if profile is None:
+        logger.warning("Google OAuth callback did not yield a verified profile")
         return _auth_failure_redirect()
     sub, email, name, picture = profile
 
     if not _google_user_allowed(email):
+        logger.warning("Google OAuth account was rejected by the domain allowlist")
         return _auth_failure_redirect()
 
     upsert = _upsert_google_user(email, sub, name, picture)
     if upsert is None:
+        logger.warning("Google OAuth user or session creation failed")
         return _auth_failure_redirect()
     user, sess = upsert
 

@@ -18,12 +18,14 @@
     <input type="text" name="website" tabindex="-1" autocomplete="off">
   </div>
 
-  <label class="mb-1 block sr-only">URL or domain (e.g., example.com/path):</label>
-  <input type="text" class="site-input" placeholder="example.com or example.com/subpath" required
-    autocomplete="off" autocapitalize="off" spellcheck="false"
-    inputmode="url" aria-invalid="false">
-  <button type="submit" class="btn btn-primary mt-2 site-btn" data-track="start_analysis_click"
-    aria-label="Start analysis" disabled>Run Analysis</button>
+  <label class="mb-1 block sr-only" for="site-url">URL or domain (e.g., example.com/path):</label>
+  <div class="site-crawl-controls">
+    <input type="text" id="site-url" name="site_input" class="site-input" placeholder="example.com or example.com/subpath…" required
+      autocomplete="off" autocapitalize="off" spellcheck="false"
+      inputmode="url" aria-invalid="false">
+    <button type="submit" class="btn btn-primary site-btn" data-track="start_analysis_click"
+      aria-label="Start analysis">Run Analysis</button>
+  </div>
   <div class="small mt-1 domain-feedback"></div>
 
   {% if request.state.current_user %}

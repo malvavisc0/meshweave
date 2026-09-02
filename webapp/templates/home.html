@@ -80,9 +80,10 @@
 {% block content %}
 
 {% if login_error %}
-<div class="container">
-  <div role="alert" class="alert alert-err">
-    Sign-in failed. Please try again.
+<div role="alert" class="landing-status landing-status--error">
+  <div class="container container-wide">
+    <strong>Sign-in was not completed.</strong>
+    <span>Please try Google sign-in again to save private analyses and score history.</span>
   </div>
 </div>
 {% endif %}
@@ -111,12 +112,13 @@
 <section class="landing-hero" aria-label="AI visibility audit">
   <canvas class="hero-particle-canvas" aria-hidden="true"></canvas>
   <div class="container container-wide">
-    <h1 class="landing-hero-title">See how AI agents read your website</h1>
-    <p class="landing-hero-supporting">AI agents use your website to answer questions, compare options, and identify next
-      steps. MeshWeave checks the signals they can observe, shows where your content is difficult to extract or trust, and
-      gives you a prioritized list of fixes.</p>
-    <p class="landing-hero-strong"><strong>See what AI agents get wrong about your site.</strong></p>
-    <div class="landing-hero-form mt-3">
+    <div class="landing-hero-copy">
+      <p class="landing-hero-eyebrow">AI visibility audit</p>
+      <h1 class="landing-hero-title">Measure how AI systems read your website.</h1>
+      <p class="landing-hero-supporting">Inspect the pages, structure, and trust signals that help answer engines understand,
+        cite, and recommend your work.</p>
+    </div>
+    <div class="landing-hero-form">
       {% if notice == 'cooldown' %}
       <div role="alert" class="hero-inline-notice hero-inline-notice--cooldown">
         <span class="hero-inline-notice-kicker">Recent run</span>
@@ -130,10 +132,8 @@
       <h2 class="sr-only" id="site-heading">Score a website</h2>
       {% include "partials/site_crawl_form.html" %}
     </div>
-    <p class="landing-hero-audience mt-3"><span class="landing-hero-audience-label">Built for:</span>
-      <span>SEO &amp; Content Teams</span> · <span>Product &amp; Web Teams</span> · <span>Marketing &amp; Growth
-        Teams</span> ·
-      <span>Founders &amp; Operators</span> · <span>Agencies &amp; Consultants</span>
+    <p class="landing-hero-audience"><span class="landing-hero-audience-label">Built for</span>
+      <span>Content teams</span><span>Web teams</span><span>Growth teams</span><span>Agencies</span>
     </p>
     <div class="landing-hero-cta">
       <a class="btn btn-primary"

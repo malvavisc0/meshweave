@@ -66,14 +66,11 @@
             var dom = toDomain(raw);
             if (dom && dom.includes('.')) {
               try { siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
-              try { siteBtn.disabled = false; } catch (_) { }
               if (!__firedValidEvent) { try { trackEvent('domain_valid_input'); } catch (_) { } __firedValidEvent = true; }
             } else if (raw.trim().length > 0) {
               try { siteInput.setAttribute('aria-invalid', 'true'); } catch (_) { }
-              try { siteBtn.disabled = true; } catch (_) { }
             } else {
               try { siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
-              try { siteBtn.disabled = true; } catch (_) { }
             }
           });
         }
@@ -112,6 +109,10 @@
         try { if (siteInput) siteInput.setAttribute('aria-invalid', 'false'); } catch (_) { }
         // Toggle public hidden field based on checkbox (runs for all users)
         if (sitePublic) { sitePublic.value = (sitePrivate && sitePrivate.checked) ? '' : '1'; }
+        if (siteBtn) {
+          siteBtn.disabled = true;
+          siteBtn.textContent = 'Starting…';
+        }
       });
     } catch (_) { /* swallow */ }
   }
