@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import ipaddress
 import json
 import logging
 import os
@@ -69,15 +68,17 @@ async def _resolve_cdp_ws_url(endpoint: str) -> str:
 
 
 def _direct_ws_endpoint(endpoint: str, parts: SplitResult) -> str | None:
-    """Return *endpoint* unchanged when it is already an IP-literal ws:// URL."""
-    if parts.scheme not in {"ws", "wss"}:
-        return None
-    ws_host = parts.hostname or ""
-    try:
-        ipaddress.ip_address(ws_host)
-    except ValueError:
-        return None
-    return endpoint
+    """Return *endpoint* unchanged when it is a direct ws(s):// CDP URL.
+
+    Direct ws(s):// URLs must be connected to verbatim: remote/cloud CDP
+    endpoints (e.g. ``wss://host/ws?token=...&browser=chrome&proxy=...``)
+    require their hostname for TLS SNI/Host routing and their query string
+    for authentication. Only ``http(s)://`` LightPanda endpoints (which
+    expose ``/json/version`` discovery) need IP-literal rewriting below.
+    """
+    if parts.scheme in {"ws", "wss"}:
+        return endpoint
+    return None
 
 
 def _endpoint_port(parts: SplitResult) -> int:
