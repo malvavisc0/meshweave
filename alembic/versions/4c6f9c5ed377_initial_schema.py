@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 89c33b114a5b
+Revision ID: 4c6f9c5ed377
 Revises: 
-Create Date: 2026-08-30 20:32:06.569270
+Create Date: 2026-09-02 10:48:54.718185
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "89c33b114a5b"
+revision: str = "4c6f9c5ed377"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -37,6 +37,7 @@ def upgrade() -> None:
     sa.Column('provider', sa.String(length=32), nullable=False),
     sa.Column('provider_id', sa.String(length=255), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=True),
+    sa.Column('company_name', sa.String(length=255), nullable=True),
     sa.Column('avatar_url', sa.String(length=1024), nullable=True),
     sa.Column('is_admin', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
@@ -47,6 +48,19 @@ def upgrade() -> None:
     )
     op.create_index('ix_users_email', 'users', ['email'], unique=False)
     op.create_index('ix_users_provider', 'users', ['provider', 'provider_id'], unique=False)
+    op.create_table('api_keys',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('key_hash', sa.String(length=64), nullable=False),
+    sa.Column('key_prefix', sa.String(length=24), nullable=False),
+    sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_api_keys_key_hash', 'api_keys', ['key_hash'], unique=True)
+    op.create_index('ix_api_keys_user_id', 'api_keys', ['user_id'], unique=False)
     op.create_table('auth_sessions',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
@@ -79,6 +93,8 @@ def upgrade() -> None:
     sa.Column('aeo_rating', sa.String(length=32), nullable=True),
     sa.Column('geo_rating', sa.String(length=32), nullable=True),
     sa.Column('ai_analysis_json', sa.JSON(), nullable=True),
+    sa.Column('aax_status', sa.String(length=10), server_default='pending', nullable=False),
+    sa.Column('aax_started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('scoring_version', sa.String(length=16), nullable=False),
     sa.Column('has_manual_input', sa.Boolean(), nullable=False),
     sa.Column('listed', sa.Boolean(), nullable=False),
@@ -89,6 +105,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('key', name='uq_crawls_key')
     )
+    op.create_index('ix_crawls_aax_status', 'crawls', ['aax_status', 'updated_at'], unique=False)
     op.create_index('ix_crawls_domain', 'crawls', ['domain'], unique=False)
     op.create_index('ix_crawls_domain_is_latest', 'crawls', ['domain', 'is_latest'], unique=False)
     op.create_index('ix_crawls_updated_at', 'crawls', ['updated_at'], unique=False)
@@ -220,9 +237,13 @@ def downgrade() -> None:
     op.drop_index('ix_crawls_updated_at', table_name='crawls')
     op.drop_index('ix_crawls_domain_is_latest', table_name='crawls')
     op.drop_index('ix_crawls_domain', table_name='crawls')
+    op.drop_index('ix_crawls_aax_status', table_name='crawls')
     op.drop_table('crawls')
     op.drop_index('ix_auth_sessions_expires_at', table_name='auth_sessions')
     op.drop_table('auth_sessions')
+    op.drop_index('ix_api_keys_user_id', table_name='api_keys')
+    op.drop_index('ix_api_keys_key_hash', table_name='api_keys')
+    op.drop_table('api_keys')
     op.drop_index('ix_users_provider', table_name='users')
     op.drop_index('ix_users_email', table_name='users')
     op.drop_table('users')
