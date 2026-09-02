@@ -68,7 +68,7 @@ services:
       WEBAPP_AUTO_MIGRATE: "true"
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
       # Render pages through the LightPanda CDP service (no local browser in image)
-      MESHWEAVE_CDP_ENDPOINT: ${MESHWEAVE_CDP_ENDPOINT:-http://lightpanda:9222}
+      MESHWEAVE_CDP_ENDPOINT: ${CDP_ENDPOINT:-http://lightpanda:9222}
       SITE_NAME: MeshWeave
       WEBAPP_AUTH_ENABLED: "true"
       WEBAPP_READINESS_REQUIRE_OAUTH: "true"
