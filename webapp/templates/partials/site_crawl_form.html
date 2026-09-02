@@ -20,7 +20,7 @@
 
   <label class="mb-1 block sr-only" for="site-url">URL or domain (e.g., example.com/path):</label>
   <div class="site-crawl-controls">
-    <input type="text" id="site-url" name="site_input" class="site-input" placeholder="example.com or example.com/subpath…" required
+    <input type="text" id="site-url" name="site_input" class="site-input" placeholder="example.org" required
       autocomplete="off" autocapitalize="off" spellcheck="false"
       inputmode="url" aria-invalid="false">
     <button type="submit" class="btn btn-primary site-btn" data-track="start_analysis_click"
@@ -34,7 +34,8 @@
   {% endif %}
 
   <div class="small mt-2 site-help">
-    <p><strong>Free analysis — no sign-up required.</strong> See what AI agents can understand from your site.</p>
+    <p><strong>Free analysis. No sign-up required.</strong> The review covers rendered pages, structure, crawler access,
+      and contact paths.</p>
     {% if request.state.current_user %}
     <p>Analyses are private by default when logged in.</p>
     {% else %}

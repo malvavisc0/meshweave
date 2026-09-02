@@ -17,10 +17,8 @@
 
     var hero = canvas.parentElement;
     var particles = [];
-    var PARTICLE_COUNT = 45;
-    var CONNECT_DIST = 140;
-    var MOUSE_DIST = 180;
-    var mouse = { x: -9999, y: -9999 };
+    var PARTICLE_COUNT = 4;
+    var CONNECT_DIST = 260;
     var raf = 0;
 
     function resize() {
@@ -88,19 +86,6 @@
           }
         }
 
-        // Mouse connections
-        var mdx = particles[i].x - mouse.x;
-        var mdy = particles[i].y - mouse.y;
-        var mdist = Math.sqrt(mdx * mdx + mdy * mdy);
-        if (mdist < MOUSE_DIST) {
-          var malpha = (1 - mdist / MOUSE_DIST) * 0.4;
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(mouse.x, mouse.y);
-          ctx.strokeStyle = 'rgba(0, 163, 108, ' + malpha + ')';
-          ctx.lineWidth = 0.8;
-          ctx.stroke();
-        }
       }
 
       // Draw nodes
@@ -158,17 +143,6 @@
 
     resize();
     createParticles();
-
-    hero.addEventListener('mousemove', function (e) {
-      var rect = hero.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-    });
-
-    hero.addEventListener('mouseleave', function () {
-      mouse.x = -9999;
-      mouse.y = -9999;
-    });
 
     var resizeTimer;
     window.addEventListener('resize', function () {

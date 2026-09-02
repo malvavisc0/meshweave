@@ -112,32 +112,50 @@
 <section class="landing-hero" aria-label="AI visibility audit">
   <canvas class="hero-particle-canvas" aria-hidden="true"></canvas>
   <div class="container container-wide">
-    <div class="landing-hero-copy">
-      <p class="landing-hero-eyebrow">AI visibility audit</p>
-      <h1 class="landing-hero-title">Measure how AI systems read your website.</h1>
-      <p class="landing-hero-supporting">Inspect the pages, structure, and trust signals that help answer engines understand,
-        cite, and recommend your work.</p>
-    </div>
-    <div class="landing-hero-form">
-      {% if notice == 'cooldown' %}
-      <div role="alert" class="hero-inline-notice hero-inline-notice--cooldown">
-        <span class="hero-inline-notice-kicker">Recent run</span>
-        <span>That site was analyzed recently. Wait a bit before starting another run.</span>
+    <div class="landing-hero-layout">
+      <div class="landing-hero-copy">
+        <p class="landing-hero-eyebrow">AI visibility audit</p>
+        <h1 class="landing-hero-title">Make it easy for AI agents to understand, trust, and recommend your website.</h1>
+        <p class="landing-hero-supporting">MeshWeave crawls your site to show what an AI agent can find, what it may
+          miss, and where your next improvement belongs.</p>
+        <p class="landing-hero-annotation">Run a check before launch, after a redesign, or whenever the pages buyers
+          rely on change.</p>
+        <p class="landing-hero-lenses-label">Every report answers three questions.</p>
+        <dl class="landing-hero-lenses">
+          <div>
+            <dt>AEO <span>Answer extraction</span></dt>
+            <dd>Can an agent find and extract the answer a buyer needs?</dd>
+          </div>
+          <div>
+            <dt>GEO <span>Credibility</span></dt>
+            <dd>Does the site provide enough clear evidence to trust the business?</dd>
+          </div>
+          <div>
+            <dt>AAX <span>Next step</span></dt>
+            <dd>Can an agent understand the offer and identify a credible next step?</dd>
+          </div>
+        </dl>
+        <a class="btn btn-expert"
+          href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ 'MeshWeave expert consultation' | urlencode }}">Talk to an expert</a>
       </div>
-      {% elif notice == 'account_deleted' %}
-      <div role="status" class="hero-inline-notice">
-        <span>Your account and all associated data were deleted.</span>
+      <div class="landing-hero-form">
+        <h2 class="hero-form-title" id="site-heading">Run a site review</h2>
+        <p class="hero-form-intro">Start with a domain or page. We will take you to the report when it is ready.</p>
+        {% if notice == 'cooldown' %}
+        <div role="alert" class="hero-inline-notice hero-inline-notice--cooldown">
+          <span class="hero-inline-notice-kicker">Recent run</span>
+          <span>That site was analyzed recently. Wait a bit before starting another run.</span>
+        </div>
+        {% elif notice == 'account_deleted' %}
+        <div role="status" class="hero-inline-notice">
+          <span>Your account and all associated data were deleted.</span>
+        </div>
+        {% endif %}
+        {% include "partials/site_crawl_form.html" %}
+        {% if request.state.current_user %}
+        <p class="hero-form-account-note">Private reports, score history, and API access are available in your account.</p>
+        {% endif %}
       </div>
-      {% endif %}
-      <h2 class="sr-only" id="site-heading">Score a website</h2>
-      {% include "partials/site_crawl_form.html" %}
-    </div>
-    <p class="landing-hero-audience"><span class="landing-hero-audience-label">Built for</span>
-      <span>Content teams</span><span>Web teams</span><span>Growth teams</span><span>Agencies</span>
-    </p>
-    <div class="landing-hero-cta">
-      <a class="btn btn-primary"
-        href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ 'MeshWeave expert consultation' | urlencode }}">Talk to an expert</a>
     </div>
   </div>
 </section>
