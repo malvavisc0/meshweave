@@ -16,8 +16,8 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-UTC}
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:-meshweave}
     volumes:
       - postgres_data:/var/lib/postgresql
@@ -58,13 +58,13 @@ services:
     restart: always
     environment:
       TZ: ${TZ:-UTC}
-      SITE_BASE_URL: ${SITE_BASE_URL:?set SITE_BASE_URL}
+      SITE_BASE_URL: ${SITE_BASE_URL:?}
       # HMAC key for CSRF tokens; required so prod never falls back to the
       # hard-coded development default
-      WEBAPP_SECRET_KEY: ${WEBAPP_SECRET_KEY:?set WEBAPP_SECRET_KEY}
+      WEBAPP_SECRET_KEY: ${WEBAPP_SECRET_KEY:?}
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meshweave}
       FOOTER_REPO_URL: ${FOOTER_REPO_URL:-https://github.com/malvavisc0/meshweave}
-      FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL:?set FOOTER_CONTACT_EMAIL}
+      FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL:?}
       WEBAPP_AUTO_MIGRATE: "true"
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
       # Render pages through the LightPanda CDP service (no local browser in image)
@@ -88,8 +88,8 @@ services:
       ANON_SITE_MAX_DEPTH_DEFAULT: "1"
       ANON_SITE_MAX_PAGES_CAP: "10"
       OAUTH_PROVIDER: google
-      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?set OAUTH_CLIENT_ID}
-      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET}
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?}
       OAUTH_ALLOWED_DOMAINS: ${SITE_DOMAIN}
       OAUTH_STATE_TTL: "600"
       LOGIN_RATE_LIMIT_MAX: "5"
@@ -107,12 +107,12 @@ services:
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-staging}
       # Tag events with the deployed image version (e.g. v0.1.4)
       SENTRY_RELEASE: ${MESHWEAVE_VERSION:-latest}
-      METRICS_AUTH_TOKEN: ${METRICS_AUTH_TOKEN:?set METRICS_AUTH_TOKEN}
+      METRICS_AUTH_TOKEN: ${METRICS_AUTH_TOKEN:?}
       # Fail closed (503) if the token above is ever missing
       WEBAPP_REQUIRE_METRICS_AUTH: "true"
-      LLM_BASE_URL: ${LLM_BASE_URL:?set LLM_BASE_URL}
-      LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY}
-      LLM_MODEL: ${LLM_MODEL:?set LLM_MODEL}
+      LLM_BASE_URL: ${LLM_BASE_URL:?}
+      LLM_API_KEY: ${LLM_API_KEY:?}
+      LLM_MODEL: ${LLM_MODEL:?}
       AAX_ENABLED: ${AAX_ENABLED:-true}
       # Opt-in LLM observability (Langfuse); off unless both keys are provided
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
