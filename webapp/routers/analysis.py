@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl
+from webapp.services import nudges as nudges_svc
 from webapp.utils.auth import require_ownership
 from webapp.utils.diff import (
     build_comparison_notes,
@@ -487,12 +488,87 @@ async def _render_private_view(request: Request, ref: str) -> Response:
             "progress": progress,
             "revisions": _revision_series_for(row),
             "since_last_run": since_last_run,
+            **_funnel_nudge_context(
+                getattr(request.state, "current_user", None),
+                "result",
+                "owner",
+            ),
         },
     )
     # Prevent indexing of private results
     resp.headers["X-Robots-Tag"] = "noindex"
     set_csrf_session_cookie(resp, session_id, new_session)
     return resp
+
+
+def _save_offer_state(request: Request, row: Crawl, current_user) -> dict:
+    """Inputs for the result page's "Save to my account" offer.
+
+    The offer shows only when the viewer is authenticated, the crawl is
+    ownerless, and this browser's anonymous cookie matches the crawl's
+    ``anonymous_user_id`` — provable per-analysis attribution.
+    """
+    ownerless = getattr(row, "user_id", None) is None
+    anon_cookie = request.cookies.get(
+        os.getenv("WEBAPP_ANON_ID_COOKIE_NAME", "mw_anon_id")
+    )
+    cookie_match = bool(anon_cookie and row.anonymous_user_id == anon_cookie)
+    return {
+        "can_save": bool(current_user and ownerless and cookie_match),
+        "anon_id": anon_cookie or "",
+    }
+
+
+def _funnel_nudge_context(
+    current_user,
+    surface: str,
+    viewer_role: str | None = None,
+    *,
+    suppress: bool = False,
+) -> dict:
+    """Nudge selection + impression metric for the result page.
+
+    The nudge never renders for anonymous viewers (the page's own stage-1
+    CTA covers them) or when ``suppress`` says the page's primary CTA (the
+    save offer) is already showing. Owners get nothing to save and no gate
+    pitch — selection handles that via the viewer role.
+    """
+    if suppress or viewer_role == "anonymous_public":
+        return {"funnel_nudge": None}
+    return nudges_svc.funnel_context(
+        getattr(current_user, "id", None), surface, viewer_role
+    )
+
+
+def _public_viewer_state(request: Request, row: Crawl, in_progress: bool) -> dict:
+    """Viewer-role, claim, refresh, save-offer, and CTA-impression state."""
+    claim_min_hours = _claim_min_hours()
+    created_at_iso = (row.created_at or datetime.now(UTC)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    ownerless = getattr(row, "user_id", None) is None
+    can_refresh, refresh_eta = _public_refresh_state(row, in_progress)
+    current_user = getattr(request.state, "current_user", None)
+    viewer_role = _compute_viewer_role(current_user, row)
+    claim_eligible, claim_eta = _claim_state(row, claim_min_hours)
+    if viewer_role == "anonymous_public":
+        try:
+            from webapp.utils.metrics import signin_cta_shown
+
+            signin_cta_shown.labels("result").inc()
+        except Exception:
+            pass
+    return {
+        "claim_min_hours": claim_min_hours,
+        "created_at": created_at_iso,
+        "ownerless": ownerless,
+        "can_refresh": can_refresh,
+        "refresh_eta": refresh_eta,
+        "viewer_role": viewer_role,
+        "claim_eligible": claim_eligible,
+        "claim_eta": claim_eta,
+        **_save_offer_state(request, row, current_user),
+    }
 
 
 async def _render_public_view(request: Request, ref: str) -> Response:
@@ -534,19 +610,8 @@ async def _render_public_view(request: Request, ref: str) -> Response:
     # CSRF token for refresh form (generate new session if missing and CSRF is enabled)
     csrf_token, session_id, new_session = page_csrf(request)
 
-    # Claim eligibility inputs for public view (used by client-side countdown/UI)
-    claim_min_hours = _claim_min_hours()
-    created_at_iso = (row.created_at or datetime.now(UTC)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
-    ownerless = getattr(row, "user_id", None) is None
-
-    can_refresh, refresh_eta = _public_refresh_state(row, in_progress)
-
-    # Compute the explicit viewer role from the row's owner, not auth alone.
     current_user = getattr(request.state, "current_user", None)
-    viewer_role = _compute_viewer_role(current_user, row)
-    claim_eligible, claim_eta = _claim_state(row, claim_min_hours)
+    viewer_state = _public_viewer_state(request, row, in_progress)
 
     _ss_public = None if in_progress else _build_score_snapshot_context(row)
     resp = templates.TemplateResponse(
@@ -568,9 +633,6 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "reason_stopped_label": reason_stopped_label,
             "csrf_token": csrf_token,
             # Ownership / gating
-            "viewer_role": viewer_role,
-            "claim_eligible": claim_eligible,
-            "claim_eta": claim_eta,
             "email_source_map": _email_source_map(payload),
             # Provide private id to owners for chat scoping
             "id": row.id,
@@ -581,13 +643,7 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "og_image_url": og_image_url,
             "site_name": site_name,
             "json_ld": json_ld,
-            # Claim eligibility (public ownerless)
-            "created_at": created_at_iso,
-            "claim_min_hours": claim_min_hours,
-            "ownerless": ownerless,
             # Refresh cooldown
-            "can_refresh": can_refresh,
-            "refresh_eta": refresh_eta,
             "score_snapshot": _ss_public,
             "sorted_recommendations": _sorted_recommendations(_ss_public),
             "factor_extremes": _build_factor_extremes(_ss_public),
@@ -595,6 +651,13 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "aax_status": row.aax_status,
             "in_progress": in_progress,
             "progress": progress,
+            **viewer_state,
+            **_funnel_nudge_context(
+                current_user,
+                "result",
+                viewer_state.get("viewer_role"),
+                suppress=bool(viewer_state.get("can_save")),
+            ),
         },
     )
     set_csrf_session_cookie(resp, session_id, new_session)

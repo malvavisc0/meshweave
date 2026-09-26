@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -15,14 +16,14 @@ from webapp.utils.auth import get_or_create_anonymous_user_id, set_anonymous_use
 from webapp.utils.config import _env_bool
 from webapp.utils.http import _client_ip_from_request, _collect_headers_subset
 from webapp.utils.logging import log_audit
-from webapp.utils.metrics import homepage_analyze_submits
+from webapp.utils.metrics import analysis_submits, homepage_analyze_submits
 from webapp.utils.quotas import (
     enforce_concurrent_jobs_limit,
     enforce_daily_site_crawl_limit,
 )
 from webapp.utils.security import _hash_ip, verify_request_csrf
 from webapp.utils.times import ensure_utc
-from webapp.utils.url import canonicalize_url
+from webapp.utils.url import canonicalize_url, reject_internal_target
 from webapp.utils.visibility import resolve_page_visibility, resolve_site_visibility
 
 router = APIRouter()
@@ -56,16 +57,27 @@ def _anonymous_private_login_redirect(return_to: str | None) -> RedirectResponse
     )
 
 
-def _cleanup_old_crawls(session, domain: str, visibility: str) -> None:
-    """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit."""
+def _cleanup_old_crawls(
+    session, domain: str, visibility: str, user_id: str | None = None
+) -> None:
+    """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit.
+
+    Private history is pruned per owner: without ``user_id`` scoping, one
+    user's pruning would delete another user's private revisions for the
+    same domain. Public rows are shared and prune globally (``user_id``
+    is None).
+    """
     max_history = int(os.getenv("MAX_HISTORY_PER_DOMAIN", "20"))
+    filters = [
+        Crawl.domain == domain,
+        Crawl.visibility == visibility,
+        Crawl.is_latest == False,  # noqa: E712
+    ]
+    if visibility == "private":
+        filters.append(Crawl.user_id == user_id)
     old_rows = (
         session.query(Crawl)
-        .filter(
-            Crawl.domain == domain,
-            Crawl.visibility == visibility,
-            Crawl.is_latest == False,  # noqa: E712
-        )
+        .filter(*filters)
         .order_by(Crawl.created_at.desc())
         .offset(max_history)
         .all()
@@ -103,7 +115,12 @@ def _normalize_domain_field(domain: str | None) -> str:
     dom = _domain_from_url_field(dom)
     if dom.startswith("www."):
         dom = dom[4:]
-    return _require_valid_domain(dom)
+    dom = _require_valid_domain(dom)
+    if reject_internal_target(dom):
+        raise HTTPException(
+            status_code=400, detail="Domain targets a non-public network address"
+        )
+    return dom
 
 
 def _site_start_url(dom: str, url: str | None) -> str:
@@ -321,6 +338,18 @@ def _site_submit_redirect(user, crawl_id, visibility: str, key) -> RedirectRespo
     return _anonymous_private_login_redirect(None)
 
 
+def _track_site_submit(user, visibility: str) -> None:
+    """Increment the site-scope submission counter (aggregate only)."""
+    try:
+        analysis_submits.labels(
+            surface="dashboard" if user else "homepage",
+            authed="true" if user else "false",
+            public="true" if visibility == "public" else "false",
+        ).inc()
+    except Exception:
+        pass
+
+
 async def _submit_site(
     request,
     background_tasks,
@@ -348,8 +377,6 @@ async def _submit_site(
     if not user and visibility == "private":
         return _anonymous_private_login_redirect(None)
 
-    key = None
-
     # Normalize and validate domain
     dom = _normalize_domain_field(domain)
 
@@ -357,6 +384,8 @@ async def _submit_site(
     if user and getattr(user, "id", None):
         enforce_concurrent_jobs_limit(user.id)
         enforce_daily_site_crawl_limit(user.id)
+
+    _track_site_submit(user, visibility)
 
     lim_req = _parse_site_limits(max_pages, max_depth, time_budget_ms)
     start_url = _site_start_url(dom, url)
@@ -412,7 +441,7 @@ def _replace_site_crawl(
     s.flush()
     crawl_id = row.id
     try:
-        _cleanup_old_crawls(s, dom, visibility)
+        _cleanup_old_crawls(s, dom, visibility, existing.user_id)
     except Exception:
         pass
     s.commit()
@@ -456,18 +485,23 @@ def _create_site_crawl(
 
 
 def _upsert_site_crawl_row(s, user, dom, start_url, visibility, lim_req, key, now):
-    """Create/retire the site crawl row, returning the new crawl id."""
-    existing = (
-        s.query(Crawl)
-        .filter(
-            Crawl.visibility == visibility,
-            Crawl.domain == dom,
-            Crawl.path == "/",
-            Crawl.query == "",
-            Crawl.is_latest == True,  # noqa: E712
-        )
-        .one_or_none()
-    )
+    """Create/retire the site crawl row, returning the new crawl id.
+
+    Private site series are per-owner: the lookup is scoped to the
+    submitter so one user's site crawl can never retire another user's
+    private revision history for the same domain. Public rows are shared
+    and stay unscoped.
+    """
+    filters = [
+        Crawl.visibility == visibility,
+        Crawl.domain == dom,
+        Crawl.path == "/",
+        Crawl.query == "",
+        Crawl.is_latest == True,  # noqa: E712
+    ]
+    if visibility == "private":
+        filters.append(Crawl.user_id == getattr(user, "id", None))
+    existing = s.query(Crawl).filter(*filters).one_or_none()
     if existing and _row_can_update(user, existing):
         return _replace_site_crawl(
             s, existing, dom, start_url, visibility, lim_req, now
@@ -480,22 +514,27 @@ def _require_page_url(uval: str) -> str:
     """Validate the submitted page URL; raises 400 when invalid.
 
     Raises:
-        HTTPException: 400 when the URL does not start with http(s)://.
+        HTTPException: 400 when the URL does not start with http(s)://
+            or targets a non-public network address.
     """
     if not (uval.startswith("http://") or uval.startswith("https://")):
         raise HTTPException(
             status_code=400, detail="Invalid URL. Must start with http(s)://"
         )
+    if reject_internal_target(urlparse(uval).netloc.split("@")[-1].split(":")[0]):
+        raise HTTPException(
+            status_code=400, detail="URL targets a non-public network address"
+        )
     return uval
 
 
-def _track_homepage_submit(user, is_public: bool) -> None:
-    """Increment the homepage Analyze submission metric (page mode)."""
+def _track_homepage_submit(user, is_public: bool, surface: str = "homepage") -> None:
+    """Increment submission counters (page mode, per surface)."""
     try:
-        homepage_analyze_submits.labels(
-            authed="true" if user else "false",
-            public="true" if is_public else "false",
-        ).inc()
+        authed = "true" if user else "false"
+        public = "true" if is_public else "false"
+        homepage_analyze_submits.labels(authed=authed, public=public).inc()
+        analysis_submits.labels(surface=surface, authed=authed, public=public).inc()
     except Exception:
         pass
 
@@ -552,6 +591,71 @@ def _page_submit_redirect(crawl_id, key_val, user, is_public: bool) -> RedirectR
     return _anonymous_private_login_redirect(None)
 
 
+def _resolve_page_submission(request, user, csrf_token, return_to, now: datetime):
+    """Run the page-submission security checks.
+
+    CSRF failures raise (403, the historical page-mode behavior) rather
+    than redirecting. Returns None when the submission may continue.
+    """
+    verify_request_csrf(request, csrf_token)
+    _enforce_origin(request)
+    _enforce_rate_limit(request, now)
+    return None
+
+
+def _upsert_result_or_redirect(
+    request,
+    user,
+    uval,
+    dom,
+    path,
+    query,
+    canon_url,
+    is_public,
+    visibility,
+    now,
+    return_to,
+):
+    """Run the page upsert; returns (result_dict, cooldown_redirect)."""
+    upsert = _upsert_page_crawl(
+        request,
+        user,
+        uval,
+        dom,
+        path,
+        query,
+        canon_url,
+        is_public,
+        visibility,
+        now,
+        return_to,
+    )
+    if upsert["cooldown_redirect"]:
+        return None, upsert["cooldown_redirect"]
+    return upsert, None
+
+
+def _finalize_page_submission(
+    request, background_tasks, user, upsert, uval, dom, is_public, force_refresh
+):
+    """Schedule the crawl, log the submission, and build the redirect."""
+    crawl_id = upsert["crawl_id"] or None
+    if crawl_id is None:
+        raise HTTPException(status_code=500, detail="Crawl creation failed")
+
+    # Schedule background crawl if not already running
+    _schedule_page_crawl(background_tasks, crawl_id, is_public, user, force_refresh)
+
+    # Capture submission metadata (configurable)
+    _maybe_log_submission(request, crawl_id, dom, uval, is_public, force_refresh)
+
+    # Build redirect response and rotate session
+    resp = _page_submit_redirect(crawl_id, upsert["key"], user, is_public)
+    _rotate_session_cookie(resp)
+    _attribute_anonymous_crawl(request, resp, crawl_id, user)
+    return resp
+
+
 async def _submit_page(
     request,
     background_tasks,
@@ -571,18 +675,15 @@ async def _submit_page(
     if not dom:
         raise HTTPException(status_code=400, detail="Unable to extract domain from URL")
 
-    # Metrics: count homepage Analyze submissions (page mode)
-    _track_homepage_submit(user, is_public)
+    # Metrics: count page submissions by surface (homepage form, result
+    # page re-run, dashboard) — anonymous activity is aggregate-only
+    surface = "result" if (return_to or "").startswith("/analysis") else "homepage"
+    _track_homepage_submit(user, is_public, surface)
 
     now = datetime.now(UTC)
 
-    # Security: origin validation, honeypot already handled, CSRF, and simple rate limiting
-    _enforce_origin(request)
-
-    verify_request_csrf(request, csrf_token)
-
-    # Rate limit per client/session
-    _enforce_rate_limit(request, now)
+    # Security: origin validation, honeypot already handled, CSRF, and rate limiting
+    _resolve_page_submission(request, user, csrf_token, return_to, now)
 
     visibility = "public" if is_public else "private"
 
@@ -592,7 +693,7 @@ async def _submit_page(
         return _anonymous_private_login_redirect(return_to)
 
     # Upsert behavior for page
-    upsert = _upsert_page_crawl(
+    upsert, cooldown = _upsert_result_or_redirect(
         request,
         user,
         uval,
@@ -605,26 +706,18 @@ async def _submit_page(
         now,
         return_to,
     )
-    if upsert["cooldown_redirect"]:
-        return upsert["cooldown_redirect"]
-    crawl_id = upsert["crawl_id"] or None
-    key_val = upsert["key"]
-    force_refresh = upsert["force_refresh"]
-
-    if crawl_id is None:
-        raise HTTPException(status_code=500, detail="Crawl creation failed")
-
-    # Schedule background crawl if not already running
-    _schedule_page_crawl(background_tasks, crawl_id, is_public, user, force_refresh)
-
-    # Capture submission metadata (configurable)
-    _maybe_log_submission(request, crawl_id, dom, uval, is_public, force_refresh)
-
-    # Build redirect response and rotate session
-    resp = _page_submit_redirect(crawl_id, key_val, user, is_public)
-    _rotate_session_cookie(resp)
-    _attribute_anonymous_crawl(request, resp, crawl_id, user)
-    return resp
+    if cooldown is not None:
+        return cooldown
+    return _finalize_page_submission(
+        request,
+        background_tasks,
+        user,
+        upsert,
+        uval,
+        dom,
+        is_public,
+        upsert["force_refresh"],
+    )
 
 
 def _attribute_anonymous_crawl(
@@ -731,19 +824,24 @@ def _enforce_rate_limit(request: Request, now: datetime) -> None:
         pass
 
 
-def _find_latest_crawl(s, visibility, dom, path, query):
-    """Load the latest crawl row for the given visibility/domain/path/query."""
-    return (
-        s.query(Crawl)
-        .filter(
-            Crawl.visibility == visibility,
-            Crawl.domain == dom,
-            Crawl.path == path,
-            Crawl.query == query,
-            Crawl.is_latest == True,  # noqa: E712
-        )
-        .one_or_none()
-    )
+def _find_latest_crawl(s, visibility, dom, path, query, user_id: str | None = None):
+    """Load the latest crawl row for the given visibility/domain/path/query.
+
+    Private lookups must pass ``user_id``: private series are per-owner, and
+    an unscoped lookup would hand another user's latest row to the replace
+    path (its revision history would be retired under the wrong account).
+    Public rows are shared and stay unscoped.
+    """
+    filters = [
+        Crawl.visibility == visibility,
+        Crawl.domain == dom,
+        Crawl.path == path,
+        Crawl.query == query,
+        Crawl.is_latest == True,  # noqa: E712
+    ]
+    if visibility == "private":
+        filters.append(Crawl.user_id == user_id)
+    return s.query(Crawl).filter(*filters).one_or_none()
 
 
 def _cooldown_result(return_to) -> dict:
@@ -768,10 +866,10 @@ def _retire_existing(s, existing) -> str | None:
     return old_key
 
 
-def _cleanup_old_rows(s, dom: str, visibility: str) -> None:
+def _cleanup_old_rows(s, dom: str, visibility: str, user_id: str | None = None) -> None:
     """Delete old crawls for the domain, ignoring failures."""
     try:
-        _cleanup_old_crawls(s, dom, visibility)
+        _cleanup_old_crawls(s, dom, visibility, user_id)
     except Exception:
         pass
 
@@ -874,7 +972,7 @@ def _replace_private_crawl(s, existing, uval, dom, path, query, canon_url, now) 
     s.add(row)
     s.flush()
     crawl_id = row.id
-    _cleanup_old_rows(s, dom, "private")
+    _cleanup_old_rows(s, dom, "private", existing.user_id)
     s.commit()
     return {
         "crawl_id": crawl_id,
@@ -928,7 +1026,9 @@ def _upsert_private_page_crawl(
     Returns a dict with crawl_id, key, force_refresh, and optional
     cooldown_redirect used when a refresh falls within the cooldown window.
     """
-    existing = _find_latest_crawl(s, "private", dom, path, query)
+    existing = _find_latest_crawl(
+        s, "private", dom, path, query, getattr(user, "id", None)
+    )
     if not existing:
         return _new_private_crawl(s, user, uval, dom, path, query, canon_url, now)
     if _now_refreshing(s, existing, now):

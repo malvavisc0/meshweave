@@ -32,14 +32,27 @@ Quick reference: scrape targets and names
   - rate_limit_hits_total{type}
   - crawl_job_duration_seconds_bucket|count|sum{scope, status}
   - homepage_analyze_submits_total{authed, public}
-  - homepage_advanced_toggle_clicks_total{action}
   - homepage_signin_cta_clicks_total
-  - result_share_clicks_total{type}
   - stale_finalize_attempts_total{scope}
   - stale_finalize_finished_total{scope, outcome}
   - prospects_upsert_total
   - prospects_patch_total
   - contacts_create_total
+
+Conversion funnel (see `.kilo/plans/conversion-funnel.md`):
+  - funnel_events_total{event_type}
+  - funnel_stage_transitions_total{from, to}
+  - funnel_nudge_shown_total{surface, stage, segment}
+  - funnel_nudge_dismissed_total{nudge}
+  - analysis_submits_total{surface, authed, public}
+  - analysis_failures_total{scope, authed}
+  - signin_cta_shown_total{surface}
+  - signin_cta_clicks_total{surface}
+  - contact_cta_clicks_total{surface}
+
+Funnel events (per-user, funnel_events table — known users only):
+  - gated_feature_hit / gated_feature_taken (gate offer shown or taken; once per user per feature)
+  - contact_mailto_clicked (known user opening a mail draft; navigation clicks stay aggregate-only)
 
 Optional: Blackbox/HTTP probing for /readyz
 - You can use Prometheus Blackbox Exporter to actively probe /readyz. This helps catch conditions where the process responds but is not fully healthy.

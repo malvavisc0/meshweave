@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import ApiKey, User
+from webapp.services import nudges as nudges_svc
 from webapp.utils.auth import (
     clear_auth_cookie,
     destroy_all_sessions_for_user,
@@ -50,6 +51,7 @@ async def profile(request: Request) -> HTMLResponse:
     user = await require_auth(request)
     csrf_token, session_id, new_session = page_csrf(request)
     site_name = os.getenv("SITE_NAME", "MeshWeave")
+    nudge_ctx = nudges_svc.funnel_context(user.id, "profile")
     resp = templates.TemplateResponse(
         request,
         "profile.html",
@@ -62,6 +64,7 @@ async def profile(request: Request) -> HTMLResponse:
             "profile_user": user,
             "api_keys": _profile_keys(user.id),
             "profile_notice": request.query_params.get("notice"),
+            **nudge_ctx,
         },
     )
     set_csrf_session_cookie(resp, session_id, new_session)

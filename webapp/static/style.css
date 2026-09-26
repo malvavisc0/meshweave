@@ -2606,7 +2606,7 @@ p.card-meta {
 }
 
 @media (max-width: 992px) {
-  
+
   .factor-row {
     grid-template-columns: 160px 1fr 70px;
   }
@@ -2616,7 +2616,7 @@ p.card-meta {
    RESPONSIVE — updated for new components
    ----------------------------------------------------------------------- */
 @media (max-width: 768px) {
-  
+
   .factor-row {
     grid-template-columns: 120px 1fr 60px;
   }
@@ -5533,4 +5533,47 @@ p.card-meta {
   margin: var(--space-xs) 0 0;
   color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------------
+   FUNNEL NUDGE (one per page, dismissible)
+   ------------------------------------------------------------------------ */
+.funnel-nudge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--space-xs) 0;
+}
+
+.funnel-nudge-copy {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+
+.funnel-nudge-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.funnel-nudge-body {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-ink-muted);
+}
+
+.funnel-nudge-example {
+  margin: var(--space-xs) 0 0;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-bg-inset, #f6f7f9);
+  border-radius: var(--radius-sm, 6px);
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+
+.funnel-nudge-actions {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+  flex: 0 0 auto;
 }

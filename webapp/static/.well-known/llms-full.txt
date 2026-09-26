@@ -50,19 +50,48 @@ GET https://meshweaveai.com/api/domain/{domain}
 GET https://meshweaveai.com/api/status/{crawl_id}
 ```
 
-Signed-in users create API keys on `/profile`. Use a key as a Bearer token to
-read an owned private report:
+Signed-in users create API keys on `/profile`. The complete secret is returned
+only once by `POST /api/keys`; keys can be listed by prefix and revoked from
+`/profile`. A key cannot read another user's resources.
+
+### v1 API (Bearer key)
+
+All v1 endpoints are authenticated with `Authorization: Bearer mw_live_...`
+and scoped to the key owner:
 
 ```http
-GET https://meshweaveai.com/api/analysis/private/{crawl_id}
-Authorization: Bearer mw_live_...
+# Bulk-submit up to 25 URLs (scope: "page" | "site"); each URL is admitted
+# or rejected independently: queued | cooldown | quota | invalid.
+# Queued crawls run on a durable queue and are private to the key owner.
+# Targets on private/loopback/metadata networks (e.g. localhost, 127.0.0.1,
+# 169.254.169.254) are rejected as invalid.
+POST https://meshweaveai.com/api/v1/analyses
+Content-Type: application/json
+
+{"urls": ["https://example.com", "https://other.com"], "scope": "page"}
+
+# List your analyses, newest-first (keyset pagination via next_cursor)
+GET https://meshweaveai.com/api/v1/analyses?limit=50&cursor={last_id}
+
+# Full private payload for one owned analysis (202 while running)
+GET https://meshweaveai.com/api/v1/analyses/{crawl_id}
+
+# Unbranded, client-ready Markdown audit report
+GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/report.md
+
+# Progress diff vs the previous revision (JSON or Markdown):
+# score deltas per lens + resolved findings. Predicted changes are per fix;
+# observed changes are per lens (aggregate).
+GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff
+GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff.md
+GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff?vs={crawl_id}
 ```
 
 Private responses include the complete crawl payload, score factors,
-recommendations, and score snapshots. A key cannot read another user's report.
-The complete secret is returned only once by `POST /api/keys`; keys can be listed
-by prefix and revoked from `/profile`. Contact `hello@meshweaveai.com` for
-bulk, commercial, or expert-guided integrations.
+recommendations, and score snapshots. (Legacy alias for the private payload:
+`GET /api/analysis/private/{crawl_id}`, which also accepts the owner's
+browser session.) Contact `hello@meshweaveai.com` for bulk, commercial, or
+expert-guided integrations.
 
 ## How to be more visible to AI
 

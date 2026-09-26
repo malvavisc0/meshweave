@@ -19,9 +19,11 @@ from webapp.utils import metrics_auth
 from webapp.utils.auth import require_auth, require_ownership
 from webapp.utils.config import _env_bool
 from webapp.utils.metrics import (
+    contact_cta_clicks,
     homepage_signin_cta_clicks,
     metrics_body,
     metrics_content_type,
+    signin_cta_clicks,
 )
 from webapp.utils.metrics_auth import check_metrics_access
 from webapp.utils.reasons import public_error_label
@@ -55,7 +57,10 @@ def _bearer_user_id(request: Request) -> str | None:
     """Resolve the user id for a valid, non-revoked Bearer API key, if present.
 
     Returns None when no Bearer header is present. Raises 401 for a
-    malformed, unknown, or revoked key.
+    malformed, unknown, or revoked key. The first successful use stamps
+    ``first_used_at`` and emits ``api_key_first_used`` in the same
+    transaction — a one-time conditional UPDATE keeps it exactly-once
+    under concurrent calls.
     """
     authorization = request.headers.get("authorization", "")
     if not authorization.lower().startswith("bearer "):
@@ -63,6 +68,8 @@ def _bearer_user_id(request: Request) -> str | None:
     token = authorization[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    from webapp.services import funnel
+
     with get_session() as s:
         row = (
             s.query(ApiKey)
@@ -71,9 +78,29 @@ def _bearer_user_id(request: Request) -> str | None:
             )
             .one_or_none()
         )
-    if not row:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return row.user_id
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        # Expose the resolved key for per-key usage accounting (v1 layer).
+        try:
+            request.state.bearer_api_key_id = row.id
+        except Exception:
+            pass
+        # Exactly-once first-use stamp: only the call that flips
+        # first_used_at from NULL emits the activation event.
+        claimed = (
+            s.query(ApiKey)
+            .filter(ApiKey.id == row.id, ApiKey.first_used_at.is_(None))
+            .update({"first_used_at": datetime.now(UTC)}, synchronize_session=False)
+        )
+        if claimed == 1:
+            funnel.emit(
+                s,
+                row.user_id,
+                funnel.EVENT_API_KEY_FIRST_USED,
+                stage="api_consumer",
+                key_id=row.id,
+            )
+        return row.user_id
 
 
 @router.get("/api/keys")
@@ -101,6 +128,8 @@ async def create_api_key(request: Request) -> JSONResponse:
         data = {}
     name = (data.get("name") or "Default").strip()[:100] or "Default"
     token = _api_key_token()
+    from webapp.services import funnel
+
     with get_session() as s:
         row = ApiKey(
             user_id=user.id,
@@ -110,6 +139,12 @@ async def create_api_key(request: Request) -> JSONResponse:
         )
         s.add(row)
         s.flush()
+        funnel.emit(
+            s,
+            user.id,
+            funnel.EVENT_API_KEY_CREATED,
+            key_id=row.id,
+        )
         result = _api_key_dict(row)
     return JSONResponse(status_code=201, content={"item": result, "key": token})
 
@@ -610,9 +645,51 @@ async def claim_public(request: Request, key: str, csrf_token: str | None = Form
         if updated != 1:
             return JSONResponse(status_code=409, content={"detail": "not_claimed"})
 
+        from webapp.services import funnel
+
+        funnel.emit(
+            s,
+            user.id,
+            funnel.EVENT_ANALYSIS_CLAIMED,
+            crawl_id=row.id,
+            domain=row.domain,
+        )
+
         # Return claimed id
         claimed = s.query(Crawl).filter(Crawl.key == key).one_or_none()
         return {"ok": True, "id": getattr(claimed, "id", None), "key": key}
+
+
+@router.post("/api/analysis/public/{key}/save")
+async def save_public_analysis(
+    request: Request, key: str, csrf_token: str | None = Form(None)
+):
+    """Save an ownerless analysis to the signed-in account via cookie proof.
+
+    The browser's ``mw_anon_id`` cookie must match the crawl's persisted
+    ``anonymous_user_id`` — proof this browser ran the analysis — and the
+    crawl must still be ownerless. One conditional UPDATE decides; a
+    concurrent save or claim loses cleanly with 409. Unlike the claim
+    endpoint there is no 24h age guard: the submitter saves their own run
+    immediately.
+    """
+    verify_request_csrf(request, csrf_token)
+    user = await require_auth(request)
+    anon_id = request.cookies.get(os.getenv("WEBAPP_ANON_ID_COOKIE_NAME", "mw_anon_id"))
+
+    with get_session() as s:
+        row = (
+            s.query(Crawl)
+            .filter(Crawl.key == key, Crawl.visibility == "public")
+            .one_or_none()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        from webapp.services import funnel
+
+        if not funnel.save_own_analysis(s, user.id, row.id, anon_id):
+            return JSONResponse(status_code=409, content={"detail": "not_saved"})
+        return {"ok": True, "id": row.id, "key": key}
 
 
 @router.get("/api/status/{crawl_id}")
@@ -681,6 +758,31 @@ def _status_report_url(row: Crawl, base: str) -> str:
     return f"{base}/analysis/{row.id}"
 
 
+@router.post("/api/funnel/nudge/dismiss")
+async def dismiss_nudge(request: Request) -> JSONResponse:
+    """Dismiss a funnel nudge ("not now" — it resurfaces after ~7 days).
+
+    Body: {"nudge": "<registered nudge name>"}.
+    """
+    user = await require_auth(request)
+    verify_request_csrf(request, request.headers.get("x-csrf-token"))
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    nudge = str(data.get("nudge") or "").strip()
+    from webapp.services import funnel
+    from webapp.utils.metrics import funnel_nudge_dismissed
+
+    if not funnel.record_nudge_dismissal(user.id, nudge):
+        raise HTTPException(status_code=400, detail="Unknown nudge")
+    try:
+        funnel_nudge_dismissed.labels(nudge).inc()
+    except Exception:
+        pass
+    return JSONResponse(content={"ok": True})
+
+
 @router.get("/readyz")
 async def readyz():
     """Readiness probe: DB connectivity and auth config (when enabled).
@@ -730,20 +832,83 @@ async def metrics(request: Request):
     return Response(content=metrics_body(), media_type=metrics_content_type())
 
 
-@router.get("/api/track")
-async def track_get(event: str = ""):
-    """Lightweight tracking endpoint (GET) for client beacons."""
+def _track_signin_event(event: str, surface: str) -> None:
+    """Map a sign-in beacon to its counters."""
     if event == "signin_click":
         homepage_signin_cta_clicks.inc()
+        signin_cta_clicks.labels(surface or "homepage").inc()
+    elif event == "signin_cta_click":
+        signin_cta_clicks.labels(surface or "homepage").inc()
+
+
+def _track_contact_nav(surface: str) -> None:
+    """Navigation to /contact: aggregate counter only. Looking at the
+    contact page is curiosity, not intent — it never enters the funnel."""
+    contact_cta_clicks.labels(surface or "footer").inc()
+
+
+def _track_contact_mailto(request: Request, surface: str) -> None:
+    """A mailto click opens a mail draft — deliberate contact intent.
+    Aggregate counter always; for known users also a funnel event and
+    the 'inquiry' stage (never demotes a customer)."""
+    contact_cta_clicks.labels(surface or "footer").inc()
+    user = getattr(request.state, "current_user", None)
+    if user and getattr(user, "id", None):
+        from webapp.services import funnel
+
+        with get_session() as s:
+            funnel.emit(
+                s,
+                user.id,
+                funnel.EVENT_CONTACT_MAILTO_CLICKED,
+                surface=surface or "footer",
+                stage="inquiry",
+            )
+
+
+def _track_nudge_cta_click(request: Request, nudge: str) -> None:
+    """A gate offer was taken; record it (once per user per feature)."""
+    user = getattr(request.state, "current_user", None)
+    if user and getattr(user, "id", None):
+        from webapp.services import funnel
+
+        funnel.record_gate_taken(user.id, nudge=nudge)
+
+
+def _track_beacon(request: Request, event: str, surface: str) -> dict:
+    """Map a beacon event to its counter; unknown events are ignored.
+
+    ``signin_click`` is the homepage's legacy name and stays working; the
+    per-surface ``signin_cta_click`` counter is the general form. Only
+    mailto clicks carry contact *intent* into the funnel tables — plain
+    /contact navigation is an aggregate counter only.
+    """
+    handlers = {
+        "signin_click": lambda: _track_signin_event(event, surface),
+        "signin_cta_click": lambda: _track_signin_event(event, surface),
+        "contact_click": lambda: _track_contact_nav(surface),
+        "contact_mailto_click": lambda: _track_contact_mailto(request, surface),
+        "nudge_cta_click": lambda: _track_nudge_cta_click(request, surface),
+    }
+    try:
+        handler = handlers.get(event)
+        if handler:
+            handler()
+    except Exception:
+        pass
     return {"ok": True}
+
+
+@router.get("/api/track")
+async def track_get(request: Request, event: str = "", surface: str = ""):
+    """Lightweight tracking endpoint (GET) for client beacons."""
+    return _track_beacon(request, event, surface)
 
 
 @router.post("/api/track")
-async def track_post(event: str = ""):
+async def track_post(request: Request, event: str = "", surface: str = ""):
     """Lightweight tracking endpoint (POST) for client beacons."""
-    if event == "signin_click":
-        homepage_signin_cta_clicks.inc()
-    return {"ok": True}
+    return _track_beacon(request, event, surface)
 
 
 @router.get("/healthz")

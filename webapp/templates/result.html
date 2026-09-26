@@ -38,7 +38,19 @@ else 'n/a') ~
 </div>
 {% elif viewer_role == 'ownerless_public' %}
 <div class="report-cta result-bottom-cta">
-  <h2>Claim this analysis</h2>
+  <h2>{% if can_save %}Save this analysis to your account{% else %}Claim this analysis{% endif %}</h2>
+  {% if can_save %}
+  <p>You ran this analysis in this browser. Save it to your account to keep the
+    full report and its score history.</p>
+  <div class="report-cta-actions">
+    <form method="post" action="/api/analysis/public/{{ key }}/save" class="inline-block" data-save-form>
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <input type="hidden" name="key" value="{{ key }}">
+      <button type="submit" class="btn btn-primary">Save to my account</button>
+    </form>
+  </div>
+  <p class="small mt-1 m0" role="status" aria-live="polite" data-save-status></p>
+  {% else %}
   <p>This public analysis is unclaimed. Claim it to save it to your account and
     unlock the complete report.</p>
   {% if claim_eligible %}
@@ -51,6 +63,7 @@ else 'n/a') ~
   <p class="small mt-1 m0" role="status" aria-live="polite" data-claim-status></p>
   {% else %}
   <p class="small mt-1">Claimable after {{ claim_min_hours }} hours. Available in {{ claim_eta }}.</p>
+  {% endif %}
   {% endif %}
 </div>
 {% elif viewer_role == 'public_non_owner' %}
@@ -98,6 +111,8 @@ else 'n/a') ~
 {% endmacro %}
 
 <div class="container container-wide analysis-result-page">
+
+  {% include "partials/funnel_nudge.html" %}
 
   {% if in_progress %}
   <p>Status: {{ status|title }}. {% if aax_pending %}Running AI Analysis…{% else %}Processing…{% endif %}</p>
@@ -1133,6 +1148,31 @@ else 'n/a') ~
           .catch(function () {
             if (button) button.disabled = false;
             setStatus('Claim failed. Check your connection and try again.');
+          });
+      });
+    }
+    var save = document.querySelector('[data-save-form]');
+    if (save) {
+      var saveStatus = document.querySelector('[data-save-status]');
+      var saveButton = save.querySelector('button[type="submit"]');
+      save.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (saveButton) saveButton.disabled = true;
+        fetch(save.action, { method: 'POST', body: new FormData(save) })
+          .then(function (resp) {
+            if (resp.ok) {
+              window.location.reload();
+              return;
+            }
+            if (saveButton) saveButton.disabled = false;
+            if (saveStatus) saveStatus.textContent =
+              resp.status === 409
+                ? 'This analysis could not be saved — it may already belong to an account.'
+                : 'Save failed. Try again in a moment.';
+          })
+          .catch(function () {
+            if (saveButton) saveButton.disabled = false;
+            if (saveStatus) saveStatus.textContent = 'Save failed. Check your connection and try again.';
           });
       });
     }

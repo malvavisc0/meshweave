@@ -84,12 +84,66 @@ guidance, and the full score snapshot are owner-only.
 ### Get a private analysis (API key)
 
 ```
-GET {base}/api/analysis/private/{crawl_id}
+GET {base}/api/v1/analyses/{crawl_id}
 Authorization: Bearer mw_live_...
 ```
 
-The key must belong to the owner of the analysis. Browser sessions can also access
-this endpoint as the owner.
+The key must belong to the owner of the analysis. Returns the full private
+payload (complete factors, recommendations, score snapshots); `202` with
+status while the crawl is still running. (Legacy alias:
+`GET /api/analysis/private/{crawl_id}` — same payload, also accepts the
+owner's browser session.)
+
+### Bulk submit analyses (API key)
+
+```
+POST {base}/api/v1/analyses
+Authorization: Bearer mw_live_...
+Content-Type: application/json
+
+{"urls": ["https://a.com", "https://b.com"], "scope": "page"}
+```
+
+`scope` is `"page"` (single page) or `"site"` (whole domain). Up to 25 URLs
+per batch. Each URL is admitted or rejected independently — the response is
+`201` with `{"items": [{"url", "crawl_id", "status"}...]}` where status is
+`queued` | `cooldown` (same target re-run within 60 min) | `quota` |
+`invalid`. Queued crawls run on a durable queue (they survive restarts) and
+are private to the key owner. Poll `GET /api/v1/analyses/{crawl_id}` (or
+`/api/status/{crawl_id}`) until `succeeded`.
+
+### List your analyses (API key)
+
+```
+GET {base}/api/v1/analyses?limit=50&cursor={last_id}
+Authorization: Bearer mw_live_...
+```
+
+Your crawls, newest-first: id, url, domain, scope, status, AEO/GEO scores
+and ratings, created_at. Keyset pagination via `next_cursor` in the
+response.
+
+### Export the client-ready report (API key)
+
+```
+GET {base}/api/v1/analyses/{crawl_id}/report.md
+Authorization: Bearer mw_live_...
+```
+
+An unbranded Markdown audit report — scores per lens, executive summary,
+prioritized recommendations, methodology — ready to hand to a client as-is.
+
+### Export the progress diff (API key)
+
+```
+GET {base}/api/v1/analyses/{crawl_id}/diff[.md][?vs={crawl_id}]
+Authorization: Bearer mw_live_...
+```
+
+Before/after score deltas per lens and resolved findings vs the previous
+revision of the same target (or an explicit `vs` crawl). JSON, or Markdown
+with the `.md` suffix. Predicted changes are estimated per fix; observed
+changes are measured per lens (aggregate).
 
 ### Manage keys
 

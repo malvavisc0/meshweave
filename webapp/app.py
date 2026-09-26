@@ -180,12 +180,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.stop_event = stop_event
 
     # AAX queue worker — processes pending AAX analyses from the DB
+    # Durable crawl queue worker — executes bulk/API-submitted crawls
+    from webapp.services.crawl_queue import crawl_queue_worker
     from webapp.services.scoring import aax_worker
 
     app.state.cleanup_tasks = [
         asyncio.create_task(_cleanup_auth_sessions_loop(stop_event)),
         asyncio.create_task(_cleanup_oauth_states_loop(stop_event)),
         asyncio.create_task(aax_worker(stop_event)),
+        asyncio.create_task(crawl_queue_worker(stop_event)),
     ]
 
     try:
@@ -254,6 +257,10 @@ def create_app() -> FastAPI:
     app.include_router(scoring.router)
     # Score API router
     app.include_router(scores.router)
+    # Versioned JSON API (v1) — bulk submit, exports, diffs
+    from webapp.routers import api_v1
+
+    app.include_router(api_v1.router)
     # API router remains last
     app.include_router(api.router)
 

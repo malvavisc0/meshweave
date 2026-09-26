@@ -17,16 +17,27 @@ from sqlalchemy.orm import Session
 from webapp.models import Crawl
 
 
-def cleanup_old_crawls(session: Session, domain: str, visibility: str) -> None:
-    """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit."""
+def cleanup_old_crawls(
+    session: Session, domain: str, visibility: str, user_id: str | None = None
+) -> None:
+    """Delete oldest non-latest crawls beyond MAX_HISTORY_PER_DOMAIN limit.
+
+    Private history is pruned per owner: without ``user_id`` scoping, one
+    user's pruning would delete another user's private revisions for the
+    same domain. Public rows are shared and prune globally (``user_id``
+    is None).
+    """
     max_history = int(os.getenv("MAX_HISTORY_PER_DOMAIN", "20"))
+    filters = [
+        Crawl.domain == domain,
+        Crawl.visibility == visibility,
+        Crawl.is_latest == False,  # noqa: E712
+    ]
+    if visibility == "private":
+        filters.append(Crawl.user_id == user_id)
     old_rows = (
         session.query(Crawl)
-        .filter(
-            Crawl.domain == domain,
-            Crawl.visibility == visibility,
-            Crawl.is_latest == False,  # noqa: E712
-        )
+        .filter(*filters)
         .order_by(Crawl.created_at.desc(), Crawl.id.desc())
         .offset(max_history)
         .all()
@@ -85,7 +96,7 @@ def replace_succeeded_crawl(s: Session, row_id: str, now: datetime) -> str | Non
     s.flush()
     new_id = new_row.id
     try:
-        cleanup_old_crawls(s, db_row.domain, db_row.visibility)
+        cleanup_old_crawls(s, db_row.domain, db_row.visibility, db_row.user_id)
     except Exception:
         pass
     return new_id

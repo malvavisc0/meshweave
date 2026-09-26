@@ -12,8 +12,10 @@ from meshweave.crawling.blocked import blocked_error, blocked_render_reason
 from meshweave.urls import normalize_domain, should_ignore_path
 from webapp.db import get_session
 from webapp.models import Crawl, ScoreSnapshot
+from webapp.services import funnel
+from webapp.utils.diff import find_previous_revision
 from webapp.utils.logging import log_audit
-from webapp.utils.metrics import job_duration
+from webapp.utils.metrics import analysis_failures, job_duration
 
 logger = logging.getLogger(__name__)
 
@@ -407,9 +409,49 @@ def _persist_task_result(
                 )
                 if snap:
                     s.delete(snap)
+            if status in ("succeeded", "failed"):
+                _emit_outcome(s, r, failed=status == "failed")
     except Exception:
         pass
     return True
+
+
+def _emit_outcome(s, row: Crawl, *, failed: bool = False) -> None:
+    """Emit funnel events for a known user's crawl, in this transaction."""
+    if not row.user_id:
+        if failed:
+            try:
+                analysis_failures.labels("site", "false").inc()
+            except Exception:
+                pass
+        return
+    event = funnel.EVENT_ANALYSIS_FAILED if failed else funnel.EVENT_ANALYSIS_COMPLETED
+    funnel.emit(
+        s,
+        row.user_id,
+        event,
+        crawl_id=row.id,
+        domain=row.domain,
+        scope="site",
+    )
+    if failed:
+        try:
+            analysis_failures.labels("site", "true").inc()
+        except Exception:
+            pass
+        return
+    try:
+        if find_previous_revision(row, s) is not None:
+            funnel.emit(
+                s,
+                row.user_id,
+                funnel.EVENT_RECHECK_COMPLETED,
+                crawl_id=row.id,
+                domain=row.domain,
+                scope="site",
+            )
+    except Exception:
+        pass
 
 
 def _emit_task_observability(

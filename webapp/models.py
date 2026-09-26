@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Index,
+    Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -83,7 +86,32 @@ class ApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    first_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class ApiKeyUsageDaily(Base):
+    """One row per API key per UTC day: the usage data behind the deferred
+    free-API rate-limit decision (p50/p95 calls and URLs per key per day)."""
+
+    __tablename__ = "api_key_usage_daily"
+    __table_args__ = (
+        Index("ix_api_key_usage_daily_day", "day"),
+        Index("ix_api_key_usage_daily_key_day", "api_key_id", "day"),
+    )
+
+    api_key_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("api_keys.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    urls_admitted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    urls_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
@@ -216,6 +244,17 @@ class Crawl(Base):
         Index("ix_crawls_domain_is_latest", "domain", "is_latest"),
         # Index for the AAX worker query: find pending AAX jobs efficiently
         Index("ix_crawls_aax_status", "aax_status", "updated_at"),
+        # Save-flow lookup: find an ownerless crawl by its anonymous browser id
+        Index("ix_crawls_anonymous_user_id", "anonymous_user_id"),
+        # Pipeline list cursor: keyset pagination over the caller's crawls
+        Index(
+            "ix_crawls_user_created",
+            "user_id",
+            "created_at",
+            "id",
+        ),
+        # Durable crawl queue worker: find pending queue jobs efficiently
+        Index("ix_crawls_queue_status", "queue_status", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -269,6 +308,15 @@ class Crawl(Base):
     )
     # When AAX processing started (for stale detection)
     aax_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Durable crawl queue state (bulk/API-submitted jobs). NULL means the
+    # crawl is not queue-managed (form submissions still ride BackgroundTasks).
+    # "pending" | "running" | "done" | "failed"
+    queue_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # When the queue worker claimed the job (for stale reclaim)
+    queue_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -442,6 +490,85 @@ class ScoreSnapshot(Base):
 
     # Relationships
     crawl: Mapped[Crawl] = relationship("Crawl", back_populates="score_snapshot")
+
+
+class FunnelEvent(Base):
+    """Append-only funnel event for a known user.
+
+    Written in the same transaction as the state change that caused it;
+    ``crawl_id`` is nullable so events survive crawl deletion while the
+    denormalized ``domain`` keeps agency counting join-free.
+    """
+
+    __tablename__ = "funnel_events"
+    __table_args__ = (
+        Index("ix_funnel_events_user", "user_id", "created_at"),
+        Index("ix_funnel_events_type", "event_type", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    crawl_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("crawls.id", ondelete="SET NULL"), nullable=True
+    )
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class FunnelState(Base):
+    """One row per user; the summary pages read at request time."""
+
+    __tablename__ = "funnel_state"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    stage: Mapped[str] = mapped_column(String(16), nullable=False, default="registered")
+    segment: Mapped[str] = mapped_column(String(16), nullable=False, default="standard")
+    analyses_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    distinct_domains: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_event_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    dismissed_nudges: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Gate offers/takes already recorded — once per user per feature, so
+    # hit/taken events count users, not renders.
+    gates_seen: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    gates_taken: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class FunnelActorDomain(Base):
+    """The distinct-domain set; uniqueness here makes agency counting exact."""
+
+    __tablename__ = "funnel_actor_domains"
+    __table_args__ = (
+        PrimaryKeyConstraint("user_id", "domain", name="pk_funnel_actor_domains"),
+    )
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
 
 
 class Product(Base):

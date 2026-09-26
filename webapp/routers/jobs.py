@@ -9,6 +9,7 @@ from sqlalchemy import func
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl, ScoreSnapshot
+from webapp.services import nudges as nudges_svc
 from webapp.services.crawling import run_crawl_task
 from webapp.services.site_crawling import run_site_crawl_task
 from webapp.utils.auth import require_auth, require_ownership
@@ -290,6 +291,11 @@ def _dashboard_activity(items: list) -> list:
     ][:5]
 
 
+def _funnel_context(user_id: str | None, surface: str, request: Request) -> dict:
+    """Nudge selection + impression metric for a page render."""
+    return nudges_svc.funnel_context(user_id, surface)
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def my_jobs(
     request: Request,
@@ -344,6 +350,7 @@ async def my_jobs(
             "meta_description": meta_description,
             "abs_page_url": _abs_url(request, "/dashboard"),
             "csrf_token": csrf_token,
+            **_funnel_context(user.id, "dashboard", request),
         },
     )
 

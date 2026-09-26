@@ -1,8 +1,53 @@
 import base64
+import ipaddress
+import socket
 import uuid
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import Request
+
+# Hosts that must never be crawled, whatever the submitter's intent.
+FORBIDDEN_HOSTNAMES = {
+    "localhost",
+    "localhost.localdomain",
+    "ip6-localhost",
+    "metadata",
+}
+
+
+def reject_internal_target(domain: str) -> bool:
+    """True when the domain resolves (or literally names) a non-public target.
+
+    Blocks loopback, private, link-local, and reserved networks — including
+    cloud metadata hosts — so submitted URLs cannot aim the crawler at our
+    own or anyone's internal infrastructure. DNS failures reject closed.
+
+    Args:
+        domain (str): Bare hostname or IP literal (no scheme, no port).
+
+    Returns:
+        bool: True when the target must be rejected.
+    """
+    host = (domain or "").strip().lower().rstrip(".")
+    if not host:
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        addr = None
+    if addr is not None:
+        return not addr.is_global
+    if (
+        host in FORBIDDEN_HOSTNAMES
+        or host.endswith(".internal")
+        or host.endswith(".local")
+    ):
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return True
+    return any(not ipaddress.ip_address(i[4][0]).is_global for i in infos)
 
 
 def normalize_domain(url: str) -> str:

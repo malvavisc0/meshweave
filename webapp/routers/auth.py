@@ -395,24 +395,35 @@ def _refresh_google_user_fields(user: User, email: str, name, picture) -> None:
 
 def _upsert_google_user(
     email: str, sub: str, name, picture
-) -> tuple[User, AuthSession] | None:
-    """Upsert the Google user and create an auth session, or None on failure."""
+) -> tuple[User, AuthSession, bool] | None:
+    """Upsert the Google user and create an auth session, or None on failure.
+
+    The user creation, the ``user_registered`` funnel event, and the auth
+    session share one transaction, so registration is never recorded for a
+    user whose row did not land (or vice versa). Returns the user, the
+    session, and whether the user was newly created.
+    """
+    from webapp.services import funnel
+
     with get_session() as s:
         user = (
             s.query(User)
             .filter(User.provider == "google", User.provider_id == sub)
             .one_or_none()
         )
+        created = False
         if not user:
             user = _new_google_user(email, sub, name, picture)
             s.add(user)
             s.flush()
+            created = True
         else:
             # Update mutable fields
             _refresh_google_user_fields(user, email, name, picture)
 
-        # Create auth session (enforces concurrent limit)
-        # Commit user upsert before creating session in a separate DB transaction
+        if created:
+            funnel.emit(s, user.id, funnel.EVENT_USER_REGISTERED)
+
         try:
             s.commit()
         except Exception:
@@ -420,9 +431,9 @@ def _upsert_google_user(
             return None
         try:
             sess = create_auth_session(user.id)
-        except HTTPException:
+        except Exception:
             return None
-        return user, sess
+        return user, sess, created
 
 
 def _validated_google_profile(
@@ -512,7 +523,7 @@ async def auth_callback(
     if upsert is None:
         logger.warning("Google OAuth user or session creation failed")
         return _auth_failure_redirect()
-    user, sess = upsert
+    user, sess, _created = upsert
 
     return _auth_success_redirect(next_path_val, oauth_row, sess)
 

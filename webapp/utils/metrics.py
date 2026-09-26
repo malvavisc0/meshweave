@@ -37,6 +37,39 @@ homepage_signin_cta_clicks = Counter(
     "Homepage Sign-in CTA clicks",
 )
 
+# Conversion funnel — known users, tied to table events
+funnel_events = Counter("funnel_events_total", "Emitted funnel events", ["event_type"])
+funnel_stage_transitions = Counter(
+    "funnel_stage_transitions_total", "Funnel stage changes", ["from", "to"]
+)
+funnel_nudge_shown = Counter(
+    "funnel_nudge_shown_total",
+    "Funnel nudge impressions",
+    ["surface", "stage", "segment"],
+)
+funnel_nudge_dismissed = Counter(
+    "funnel_nudge_dismissed_total", "Funnel nudge dismissals", ["nudge"]
+)
+
+# Anonymous-side aggregate counters — no identity, no table rows
+analysis_submits = Counter(
+    "analysis_submits_total",
+    "Analysis submissions by surface",
+    ["surface", "authed", "public"],
+)
+analysis_failures = Counter(
+    "analysis_failures_total", "Failed crawls", ["scope", "authed"]
+)
+signin_cta_shown = Counter(
+    "signin_cta_shown_total", "Sign-in CTA impressions", ["surface"]
+)
+signin_cta_clicks = Counter(
+    "signin_cta_clicks_total", "Sign-in CTA clicks", ["surface"]
+)
+contact_cta_clicks = Counter(
+    "contact_cta_clicks_total", "Service-inquiry CTA clicks", ["surface"]
+)
+
 
 # Prospects / contacts metrics (owner-scoped resources)
 prospects_upsert = Counter(

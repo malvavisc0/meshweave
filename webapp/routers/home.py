@@ -510,6 +510,14 @@ async def home(request: Request, db: Session = Depends(get_db)):
         request
     )
 
+    if not getattr(request.state, "current_user", None):
+        try:
+            from webapp.utils.metrics import signin_cta_shown
+
+            signin_cta_shown.labels("homepage").inc()
+        except Exception:
+            pass
+
     resp = templates.TemplateResponse(
         request,
         "home.html",

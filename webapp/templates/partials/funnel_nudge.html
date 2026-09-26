@@ -1,0 +1,22 @@
+{% if funnel_nudge %}
+<div class="panel funnel-nudge" data-nudge="{{ funnel_nudge.name }}" role="region"
+  aria-label="{{ funnel_nudge.title }}">
+  <div class="funnel-nudge-copy">
+    <p class="funnel-nudge-title">{{ funnel_nudge.title }}</p>
+    <p class="funnel-nudge-body">{{ funnel_nudge.body }}</p>
+    {% if funnel_nudge.example %}
+    <pre class="funnel-nudge-example"><code>{{ funnel_nudge.example }}</code></pre>
+    {% endif %}
+  </div>
+  <div class="funnel-nudge-actions">
+    {% if funnel_nudge.cta %}
+    <a class="btn btn-sm btn-primary" href="{{ funnel_nudge.cta.href }}"
+      data-nudge-cta="{{ funnel_nudge.name }}">{{ funnel_nudge.cta.label }}</a>
+    {% endif %}
+    <button class="btn btn-sm funnel-nudge-dismiss" type="button"
+      data-nudge-name="{{ funnel_nudge.name }}" aria-label="Dismiss this suggestion">
+      Not now
+    </button>
+  </div>
+</div>
+{% endif %}

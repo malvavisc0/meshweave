@@ -11,7 +11,7 @@
                 <p class="dash-subtitle">Track how each domain changes over time.
                     Catch regressions. Open the right report fast.</p>
             </div>
-            <a class="btn" href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject=MeshWeave%20API%20integration">Talk to us about your integration</a>
+            <a class="btn" href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject=MeshWeave%20API%20integration" data-track="contact_mailto_click" data-track-surface="dashboard">Talk to us about your integration</a>
         </div>
     </header>
 
@@ -56,6 +56,8 @@
         {% endif %}
     </div>
     {% endif %}
+
+    {% include "partials/funnel_nudge.html" %}
 
     {% if summary.domains_tracked > 0 %}
 

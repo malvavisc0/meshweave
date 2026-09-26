@@ -7,8 +7,10 @@ from meshweave.core import crawl as crawler_run
 from meshweave.crawling.blocked import blocked_error, blocked_render_reason
 from webapp.db import get_session
 from webapp.models import Crawl, ScoreSnapshot
+from webapp.services import funnel
+from webapp.utils.diff import find_previous_revision
 from webapp.utils.logging import log_audit
-from webapp.utils.metrics import job_duration
+from webapp.utils.metrics import analysis_failures, job_duration
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,7 @@ def _persist_succeeded(crawl_id: str, payload: dict[str, Any]) -> bool:
         row.status = "succeeded"
         row.error = None
         row.updated_at = datetime.now(UTC)
+        _emit_outcome(s, row)
     return True
 
 
@@ -108,7 +111,51 @@ def _persist_failed(crawl_id: str, error: str) -> bool:
         row.error = error
         _clear_stale_scores(s, row)
         row.updated_at = datetime.now(UTC)
+        _emit_outcome(s, row, failed=True)
     return True
+
+
+def _emit_outcome(s, row: Crawl, *, failed: bool = False) -> None:
+    """Emit funnel events for a known user's crawl, in this transaction.
+
+    Anonymous crawls count toward the Prometheus failure counter only —
+    no funnel rows. A known user's success in an existing revision series
+    is a recheck: the loop closed, the proof moment happened.
+    """
+    if not row.user_id:
+        if failed:
+            try:
+                analysis_failures.labels("page", "false").inc()
+            except Exception:
+                pass
+        return
+    event = funnel.EVENT_ANALYSIS_FAILED if failed else funnel.EVENT_ANALYSIS_COMPLETED
+    funnel.emit(
+        s,
+        row.user_id,
+        event,
+        crawl_id=row.id,
+        domain=row.domain,
+        scope="page",
+    )
+    if failed:
+        try:
+            analysis_failures.labels("page", "true").inc()
+        except Exception:
+            pass
+        return
+    try:
+        if find_previous_revision(row, s) is not None:
+            funnel.emit(
+                s,
+                row.user_id,
+                funnel.EVENT_RECHECK_COMPLETED,
+                crawl_id=row.id,
+                domain=row.domain,
+                scope="page",
+            )
+    except Exception:
+        pass
 
 
 def _clear_stale_scores(s, row) -> None:

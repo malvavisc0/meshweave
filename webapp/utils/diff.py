@@ -12,7 +12,7 @@ import difflib
 from html import escape
 
 from sqlalchemy import String, cast
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import Session, joinedload
 
 from webapp.db import get_session
 from webapp.models import Crawl, ScoreSnapshot
@@ -43,19 +43,21 @@ def _same_series_scope(row: Crawl):
     return Crawl.crawl_params.is_(None) | is_json_null
 
 
-def find_previous_revision(row: Crawl) -> Crawl | None:
+def find_previous_revision(row: Crawl, s: Session | None = None) -> Crawl | None:
     """Return the previous succeeded revision in the same series, or None.
 
     Matches the dedup key used by ``_find_latest_crawl``: same ``user_id``,
     ``domain``, ``path``, ``query``, and scope. Only ``succeeded`` runs count,
     and the candidate must predate ``row``. Ordered newest-first; the first
-    hit is the default "compare against" revision.
+    hit is the default "compare against" revision. Pass the caller's open
+    session to avoid a second connection inside a live transaction.
     """
     if row.id is None or row.created_at is None:
         return None
-    with get_session() as s:
+
+    def _query(session: Session) -> Crawl | None:
         return (
-            s.query(Crawl)
+            session.query(Crawl)
             .options(joinedload(Crawl.score_snapshot))
             .filter(
                 Crawl.user_id == row.user_id,
@@ -69,6 +71,11 @@ def find_previous_revision(row: Crawl) -> Crawl | None:
             .order_by(Crawl.created_at.desc())
             .first()
         )
+
+    if s is not None:
+        return _query(s)
+    with get_session() as s2:
+        return _query(s2)
 
 
 def list_revision_series(row: Crawl) -> list[dict]:

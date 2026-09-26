@@ -97,8 +97,14 @@ def _md_cell(value) -> str:
 
 
 def _md_header(ctx: dict) -> str:
+    site_name = (ctx.get("site_name") or "").strip()
+    title = (
+        f"# {site_name} — AI Visibility Report"
+        if site_name
+        else f"# AI Visibility Report — {ctx['domain']}"
+    )
     lines = [
-        f"# {ctx['site_name']} — AI Visibility Report",
+        title,
         "",
         f"**Domain:** {ctx['domain']}",
         f"**Scope:** {ctx['scope']}",
@@ -178,14 +184,18 @@ def _md_methodology(ctx: dict) -> str:
 
 def _md_next_step(ctx: dict) -> str:
     interp = ctx.get("interpretation") or {}
-    lines = ["## Next Step", ""]
+    email = (ctx.get("consultation_email") or "").strip()
+    if not interp.get("next_step") and not email:
+        # Unbranded export with nothing to say: omit the section entirely
+        # rather than dangling a "contact ." line.
+        return ""
+    lines: list[str] = ["## Next Step", ""]
     if interp.get("next_step"):
         lines.append(interp["next_step"])
         lines.append("")
-    lines.append(
-        f"For expert review or remediation, contact {ctx['consultation_email']}."
-    )
-    lines.append("")
+    if email:
+        lines.append(f"For expert review or remediation, contact {email}.")
+        lines.append("")
     return "\n".join(lines)
 
 

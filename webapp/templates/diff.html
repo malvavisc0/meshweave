@@ -116,6 +116,7 @@
     {# Findings. #}
     <section class="panel result-section diff-findings" role="region" aria-label="Findings comparison">
       <h2 class="diff-section-title">Findings</h2>
+      <p class="small">Predicted changes are per fix; observed score changes are per lens (aggregate), so multiple fixes and outside changes mix into one number.</p>
       <div class="diff-findings-grid">
         <div class="diff-findings-column">
           <h3 class="diff-subsection-title diff-findings-title--resolved">Resolved since last run</h3>
@@ -129,6 +130,7 @@
               <p class="rec-prediction small">
                 Predicted {{ rec.pillar | upper }} +{{ rec.expected_points }} ·
                 observed {{ '+' if rec.observed_delta > 0 }}{{ rec.observed_delta }}
+                (per lens, not per fix)
               </p>
               {% endif %}
             </li>

@@ -15,11 +15,12 @@
   }
 
     // Lightweight tracking helper using Beacon API when available
-    function trackEvent(event, action, type) {
+    function trackEvent(event, action, type, surface) {
       try {
         var params = new URLSearchParams();
         if (event) params.set('event', event);
         if (type) params.set('type', type);
+        if (surface) params.set('surface', surface);
         if (action != null && action !== '') {
           if (typeof action === 'object') {
             try { params.set('meta', JSON.stringify(action)); } catch (_) {}
@@ -63,7 +64,46 @@
       var t = e.target || null;
       var el = (t && t.closest) ? t.closest('a[data-track]') : null;
       if (!el) return;
-      try { trackEvent(el.getAttribute('data-track') || ''); } catch (_){}
+      try {
+        var ev = el.getAttribute('data-track') || '';
+        var surf = el.getAttribute('data-track-surface') ||
+          (el.closest('[data-surface]') ? el.closest('[data-surface]').getAttribute('data-surface') : '');
+        trackEvent(ev, null, null, surf);
+      } catch (_){}
+    }, true);
+  } catch (_){}
+
+  // Funnel nudge: dismissal ("not now" — resurfaces after a cooldown)
+  // and CTA beacons (which gate offer was taken).
+  try {
+    document.addEventListener('click', function(e){
+      var t = e.target || null;
+      var btn = (t && t.closest) ? t.closest('.funnel-nudge-dismiss') : null;
+      var cta = (t && t.closest) ? t.closest('[data-nudge-cta]') : null;
+      if (cta) {
+        try {
+          var img = new Image();
+          img.src = '/api/track?event=nudge_cta_click&surface=' +
+            encodeURIComponent(cta.getAttribute('data-nudge-cta') || '');
+        } catch (_) {}
+        return;
+      }
+      if (!btn) return;
+      var nudge = btn.getAttribute('data-nudge-name') || '';
+      var panel = btn.closest('.funnel-nudge');
+      try {
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        fetch('/api/funnel/nudge/dismiss', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': meta ? meta.getAttribute('content') : ''
+          },
+          body: JSON.stringify({nudge: nudge})
+        }).then(function(){ if (panel) panel.remove(); })
+          .catch(function(){ if (panel) panel.remove(); });
+      } catch (_) {}
     }, true);
   } catch (_){}
 

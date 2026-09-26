@@ -401,6 +401,33 @@ examples:
 """
 
 
+def _run_mark_customer(args: argparse.Namespace) -> None:
+    """Execute the mark-customer subcommand."""
+    # The webapp packages import side effects (env, config) — importing
+    # lazily keeps the crawl path untouched.
+    from webapp.db import get_session
+    from webapp.models import User
+    from webapp.services import funnel
+
+    email = (args.email or "").strip().lower()
+    with get_session() as s:
+        user = s.query(User).filter(User.email == email).one_or_none()
+        if not user:
+            print(f"No user found with email: {args.email}")
+            sys.exit(1)
+        user_id = user.id
+    already = not funnel.mark_customer(
+        user_id,
+        source=args.source,
+        note=args.note,
+        contract_value=args.contract_value,
+    )
+    if already:
+        print(f"{args.email} is already a customer; nothing changed.")
+    else:
+        print(f"{args.email} marked as a customer (source: {args.source}).")
+
+
 def main() -> None:
     """CLI entry point.
 
@@ -416,7 +443,7 @@ def main() -> None:
     # available subcommands.  When the first argument is a URL (i.e. not a
     # known subcommand), default to "crawl" for backward compatibility
     # with  meshweave <url> [flags].
-    known_subcommands = {"crawl", "--help", "-h", "--version"}
+    known_subcommands = {"crawl", "mark-customer", "--help", "-h", "--version"}
     if len(sys.argv) < 2:
         sys.argv.insert(1, "--help")
     elif sys.argv[1] not in known_subcommands:
@@ -448,6 +475,35 @@ def main() -> None:
     )
     _add_crawl_args(crawl_parser)
     crawl_parser.set_defaults(func=_run_crawl)
+
+    # -- mark-customer --
+    mc_parser = subs.add_parser(
+        "mark-customer",
+        help="Mark a user as a customer in the conversion funnel",
+        description=(
+            "Record that a user became a paying customer (Plan A: services, "
+            "or Plan B: paid API). Run this when a deal is closed — it is an "
+            "operator action, never triggered by in-product behavior. "
+            "Idempotent: re-marking a customer does nothing."
+        ),
+    )
+    mc_parser.add_argument("email", help="The customer's account email")
+    mc_parser.add_argument(
+        "--source",
+        required=True,
+        choices=["api", "services"],
+        help="Which journey closed: 'api' (paid API) or 'services' (we did the work)",
+    )
+    mc_parser.add_argument(
+        "--note", default=None, help="Free-text context (e.g. 'retainer, 3 domains')"
+    )
+    mc_parser.add_argument(
+        "--contract-value",
+        type=int,
+        default=None,
+        help="Monthly contract value in whole currency units, when known",
+    )
+    mc_parser.set_defaults(func=_run_mark_customer)
 
     args = parser.parse_args()
     args.func(args)
