@@ -323,9 +323,6 @@ class Crawl(Base):
     scoring_version: Mapped[str] = mapped_column(
         String(16), nullable=False, default="1.0"
     )
-    has_manual_input: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
 
     listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -458,10 +455,10 @@ class ScoreSnapshot(Base):
     geo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     aeo_rating: Mapped[str | None] = mapped_column(
         String(32), nullable=True
-    )  # "Poor"..."Excellent"
+    )  # "Not extractable"..."Fully extractable"
     geo_rating: Mapped[str | None] = mapped_column(
         String(32), nullable=True
-    )  # "Invisible"..."Dominant"
+    )  # "Unreachable"..."Fully connected"
 
     # Full score breakdown — JSONB on PostgreSQL
     score_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -471,9 +468,6 @@ class ScoreSnapshot(Base):
     # Scoring metadata
     scoring_version: Mapped[str] = mapped_column(
         String(16), nullable=False, default="1.0"
-    )
-    has_manual_input: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
     )
 
     created_at: Mapped[datetime] = mapped_column(

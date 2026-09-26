@@ -6,7 +6,8 @@
 <header class="page-header" aria-label="Scoring methodology">
     <div class="container">
         <h1 class="page-header-title">How does MeshWeave score AI visibility?</h1>
-        <p class="page-header-subtitle">This page explains how MeshWeave computes AEO, GEO, and AAX, how missing inputs
+        <p class="page-header-subtitle">This page explains how MeshWeave computes AEO, GEO, and AAX, how missing
+            factors
             are
             handled, and how to interpret each score as a diagnostic signal rather than a guaranteed outcome.</p>
     </div>
@@ -17,8 +18,7 @@
     <section class="prose-section" aria-label="How to read the methodology">
         <h2>How to read this page</h2>
         <p class="m0">MeshWeave uses AEO, GEO, and AAX as diagnostic views into AI visibility risk. These scores do not
-            guarantee ranking, traffic, or conversion. They show where AI systems may fail to crawl, interpret, cite, or
-            act
+            guarantee ranking, traffic, or conversion. They show where AI systems may fail to crawl, interpret, or act
             on your content.</p>
     </section>
 
@@ -35,8 +35,6 @@
                 the remaining factors</li>
             <li><strong>Calibration</strong> — the composite is passed through a power curve that compresses the upper
                 range, so near-perfect scores require near-perfect factors</li>
-            <li><strong>Auto vs. manual</strong> — free scans score auto-measurable factors only; manual inputs
-                (citation frequency, capture rate, …) complete the picture for full audits</li>
         </ul>
         <div class="table-wrap mt-2">
             <table class="table small">
@@ -62,7 +60,7 @@
                     </tr>
                     <tr>
                         <td>Output</td>
-                        <td>Capped at 100, rounded to 1 decimal place, plus an auto-only composite</td>
+                        <td>Capped at 100, rounded to 1 decimal place</td>
                     </tr>
                 </tbody>
             </table>
@@ -71,49 +69,24 @@
 
     <section class="prose-section" aria-label="AEO methodology">
         <h2>AEO — answer extraction risk</h2>
-        <p class="m0">AEO measures how well your content is structured for AI answer engines such as featured snippets,
-            AI
-            Overviews, and voice assistants.</p>
+        <p class="m0">AEO measures how well your content is structured so AI agents can extract direct answers from
+            it. A grounded answerability test joins this lens with material weight; until it lands, the composite
+            re-normalizes across the factors below.</p>
         <div class="table-wrap mt-2">
             <table class="table small">
                 <thead>
                     <tr>
                         <th>Factor</th>
                         <th>Weight</th>
-                        <th>Auto?</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in aeo_factors %}
                     <tr>
-                        <td>Capture Rate</td>
-                        <td>30%</td>
-                        <td>No — manual input</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.weight }}</td>
                     </tr>
-                    <tr>
-                        <td>Schema Implementation</td>
-                        <td>20%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Content Structure</td>
-                        <td>20%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Query Match</td>
-                        <td>15%</td>
-                        <td>No — manual input</td>
-                    </tr>
-                    <tr>
-                        <td>Voice Rate</td>
-                        <td>10%</td>
-                        <td>No — manual input</td>
-                    </tr>
-                    <tr>
-                        <td>Freshness</td>
-                        <td>5%</td>
-                        <td>Yes</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -126,76 +99,37 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in aeo_bands %}
                     <tr>
-                        <td>0–25</td>
-                        <td>Poor</td>
+                        <td>{{ row.range }}</td>
+                        <td>{{ row.label }}</td>
                     </tr>
-                    <tr>
-                        <td>26–45</td>
-                        <td>Below Average</td>
-                    </tr>
-                    <tr>
-                        <td>46–65</td>
-                        <td>Average</td>
-                    </tr>
-                    <tr>
-                        <td>66–85</td>
-                        <td>Strong</td>
-                    </tr>
-                    <tr>
-                        <td>86–100</td>
-                        <td>Excellent</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
     </section>
 
     <section class="prose-section" aria-label="GEO methodology">
-        <h2>GEO — generative discovery risk</h2>
-        <p class="m0">GEO measures how well your content is positioned to be discovered, cited, and referenced by LLMs
-            such
-            as ChatGPT, Claude, and Perplexity.</p>
+        <h2>GEO — machine context risk</h2>
+        <p class="m0">GEO measures site-wide machine context: whether AI agents can reach the relevant material and
+            reconcile the business identity, evidence, and claims across the site. Crawl access, entity consistency,
+            content depth, and site-wide evidence carry the score — presence of third-party markers does not.</p>
         <div class="table-wrap mt-2">
             <table class="table small">
                 <thead>
                     <tr>
                         <th>Factor</th>
                         <th>Weight</th>
-                        <th>Auto?</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in geo_factors %}
                     <tr>
-                        <td>Citation</td>
-                        <td>30%</td>
-                        <td>No — manual input</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.weight }}</td>
                     </tr>
-                    <tr>
-                        <td>Topical Authority</td>
-                        <td>20%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>E-E-A-T Signals</td>
-                        <td>15%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Crawl Access</td>
-                        <td>15%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Content Depth</td>
-                        <td>10%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Entity Consistency</td>
-                        <td>10%</td>
-                        <td>Yes</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -208,26 +142,12 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in geo_bands %}
                     <tr>
-                        <td>0–25</td>
-                        <td>Invisible</td>
+                        <td>{{ row.range }}</td>
+                        <td>{{ row.label }}</td>
                     </tr>
-                    <tr>
-                        <td>26–45</td>
-                        <td>Emerging</td>
-                    </tr>
-                    <tr>
-                        <td>46–65</td>
-                        <td>Visible</td>
-                    </tr>
-                    <tr>
-                        <td>66–85</td>
-                        <td>Authoritative</td>
-                    </tr>
-                    <tr>
-                        <td>86–100</td>
-                        <td>Dominant</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -244,40 +164,15 @@
                     <tr>
                         <th>Factor</th>
                         <th>Weight</th>
-                        <th>Auto?</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in aax_factors %}
                     <tr>
-                        <td>Homepage Comprehension</td>
-                        <td>35%</td>
-                        <td>Yes</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.weight }}</td>
                     </tr>
-                    <tr>
-                        <td>Meta Optimization</td>
-                        <td>20%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Content Delta</td>
-                        <td>20%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>llms.txt</td>
-                        <td>5%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Email Validation</td>
-                        <td>10%</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td>Contactability</td>
-                        <td>10%</td>
-                        <td>Yes — heuristic</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -290,26 +185,12 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% for row in aax_bands %}
                     <tr>
-                        <td>0–24</td>
-                        <td>Opaque</td>
+                        <td>{{ row.range }}</td>
+                        <td>{{ row.label }}</td>
                     </tr>
-                    <tr>
-                        <td>25–39</td>
-                        <td>Unclear</td>
-                    </tr>
-                    <tr>
-                        <td>40–59</td>
-                        <td>Readable</td>
-                    </tr>
-                    <tr>
-                        <td>60–79</td>
-                        <td>Clear</td>
-                    </tr>
-                    <tr>
-                        <td>80–100</td>
-                        <td>Fluent</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -319,43 +200,6 @@
         <h2>Automatic inputs</h2>
         <p class="m0">MeshWeave scores measurable technical signals from crawl data, structured data, content structure,
             entity consistency, crawl accessibility, and LLM-based page analysis where AAX is enabled.</p>
-    </section>
-
-    <section class="prose-section" aria-label="Manual inputs">
-        <h2>Manual inputs</h2>
-        <div class="table-wrap mt-2">
-            <table class="table small">
-                <thead>
-                    <tr>
-                        <th>Input</th>
-                        <th>Used in</th>
-                        <th>Purpose</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Capture Rate</td>
-                        <td>AEO</td>
-                        <td>Featured snippets and AI Overviews</td>
-                    </tr>
-                    <tr>
-                        <td>Query Match</td>
-                        <td>AEO</td>
-                        <td>Natural-language demand alignment</td>
-                    </tr>
-                    <tr>
-                        <td>Voice Rate</td>
-                        <td>AEO</td>
-                        <td>Voice assistant answer selection</td>
-                    </tr>
-                    <tr>
-                        <td>Citation</td>
-                        <td>GEO</td>
-                        <td>Observed LLM citation frequency</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
     </section>
 
     <div class="prose-contact">

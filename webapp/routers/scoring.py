@@ -6,10 +6,29 @@ import os
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from meshweave.scoring.composite import LENS_WEIGHTS
+from meshweave.scoring.ratings import AAX_RATINGS, AEO_RATINGS, GEO_RATINGS
 from webapp.infra import templates
+from webapp.utils.scoring import FACTOR_DISPLAY_NAMES
 from webapp.utils.url import _abs_url
 
 router = APIRouter()
+
+
+def _factor_rows(lens: str) -> list[dict[str, str]]:
+    """Methodology weight rows derived from the authoritative weight table."""
+    return [
+        {
+            "name": FACTOR_DISPLAY_NAMES.get(key, key.replace("_", " ").title()),
+            "weight": f"{weight:.0%}",
+        }
+        for key, weight in LENS_WEIGHTS[lens].items()
+    ]
+
+
+def _band_rows(ratings: list[tuple[int, int, str]]) -> list[dict[str, str]]:
+    """Methodology rating rows derived from the authoritative band table."""
+    return [{"range": f"{lo}\u2013{hi}", "label": label} for lo, hi, label in ratings]
 
 
 @router.get("/methodology", response_class=HTMLResponse)
@@ -39,8 +58,7 @@ async def methodology_page(request: Request):
                 "dateModified": "2026-08-27",
                 "description": (
                     "How MeshWeave computes AEO, GEO, and AAX scores: "
-                    "factors, weights, auto vs. manual inputs, and rating "
-                    "bands."
+                    "factors, weights, and rating bands."
                 ),
                 "mainEntity": {
                     "@type": "CreativeWork",
@@ -66,5 +84,11 @@ async def methodology_page(request: Request):
             "abs_page_url": abs_page_url,
             "og_image_url": og_image_url,
             "json_ld": json_ld,
+            "aeo_factors": _factor_rows("aeo"),
+            "geo_factors": _factor_rows("geo"),
+            "aax_factors": _factor_rows("aax"),
+            "aeo_bands": _band_rows(AEO_RATINGS),
+            "geo_bands": _band_rows(GEO_RATINGS),
+            "aax_bands": _band_rows(AAX_RATINGS),
         },
     )

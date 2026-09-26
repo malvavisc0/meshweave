@@ -482,19 +482,11 @@ def build_content_diff(old_payload: dict | None, new_payload: dict | None) -> di
     }
 
 
-def _scoring_meta(
-    ss: ScoreSnapshot | None, row: Crawl | None
-) -> tuple[str | None, bool]:
-    """Return (scoring_version, has_manual_input) from snapshot, else row."""
+def _scoring_version(ss: ScoreSnapshot | None, row: Crawl | None) -> str | None:
+    """Return the scoring_version from snapshot, else row."""
     if ss is not None:
-        return (
-            getattr(ss, "scoring_version", None),
-            bool(getattr(ss, "has_manual_input", False)),
-        )
-    return (
-        getattr(row, "scoring_version", None),
-        bool(getattr(row, "has_manual_input", False)),
-    )
+        return getattr(ss, "scoring_version", None)
+    return getattr(row, "scoring_version", None)
 
 
 def build_comparison_notes(
@@ -506,12 +498,11 @@ def build_comparison_notes(
     """Return honest-comparison banners when the two runs are not apples-to-apples.
 
     Flags a scoring_version mismatch (factor comparison may reflect algorithm
-    changes, not page changes) and a manual-input mismatch (composites are on
-    different bases).
+    changes, not page changes).
     """
     notes: list[str] = []
-    old_version, old_manual = _scoring_meta(old_ss, old_row)
-    new_version, new_manual = _scoring_meta(new_ss, new_row)
+    old_version = _scoring_version(old_ss, old_row)
+    new_version = _scoring_version(new_ss, new_row)
     if (
         old_version is not None
         and new_version is not None
@@ -520,9 +511,5 @@ def build_comparison_notes(
         notes.append(
             "Scores were computed with different scoring versions; factor-level "
             "comparison may not reflect page changes alone."
-        )
-    if bool(old_manual) != bool(new_manual):
-        notes.append(
-            "One run includes manual inputs; composites are not on the same basis."
         )
     return notes

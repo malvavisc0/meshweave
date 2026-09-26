@@ -32,7 +32,6 @@ def score_crawl(
     crawl_id: str,
     *,
     payload: dict[str, Any] | None = None,
-    manual_inputs: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Compute AEO/GEO scores for a crawl and persist to DB.
 
@@ -41,8 +40,6 @@ def score_crawl(
         payload: Pre-loaded crawl payload dict. If None, loads from
             the Crawl row's payload_json. Pass this when you already
             have the payload in memory (e.g. after a crawl completes).
-        manual_inputs: Optional manual score inputs for non-auto
-            factors (capture_rate, query_match, voice_rate, citation).
 
     Returns:
         The full score_json dict from the scoring engine.
@@ -60,7 +57,7 @@ def score_crawl(
             payload = _payload_from_row(row)
 
     # Compute scores
-    score_json = compute_scores(payload, manual_inputs=manual_inputs)
+    score_json = compute_scores(payload)
     aeo_composite = score_json.get("aeo", {}).get("composite")
     geo_composite = score_json.get("geo", {}).get("composite")
     aeo_r = aeo_rating(aeo_composite)
@@ -78,7 +75,6 @@ def score_crawl(
         geo_composite,
         aeo_r,
         geo_r,
-        manual_inputs,
     )
 
     return score_json
@@ -139,7 +135,6 @@ def _persist_scores(
     geo_composite: Any,
     aeo_r: str | None,
     geo_r: str | None,
-    manual_inputs: dict[str, float] | None,
 ) -> None:
     """Persist computed scores to the Crawl row and ScoreSnapshot.
 
@@ -150,7 +145,6 @@ def _persist_scores(
         geo_composite: The GEO composite score.
         aeo_r: The AEO rating label.
         geo_r: The GEO rating label.
-        manual_inputs: Manual inputs passed to score_crawl, if any.
 
     Raises:
         ValueError: If the crawl row disappeared during scoring.
@@ -175,7 +169,6 @@ def _persist_scores(
             snap.geo_score = geo_composite
             snap.aeo_rating = aeo_r
             snap.geo_rating = geo_r
-            snap.has_manual_input = bool(manual_inputs)
             snap.scoring_version = SCORING_VERSION
         else:
             snap = ScoreSnapshot(
@@ -187,7 +180,6 @@ def _persist_scores(
                 aeo_rating=aeo_r,
                 geo_rating=geo_r,
                 score_json=score_json,
-                has_manual_input=bool(manual_inputs),
                 scoring_version=SCORING_VERSION,
             )
             s.add(snap)
@@ -492,30 +484,6 @@ def _inject_aax_into_payload_json(
         flag_modified(row, "payload_json")
 
 
-def update_manual_inputs(crawl_id: str, inputs: dict[str, float]) -> dict[str, Any]:
-    """Update manual score inputs and recompute.
-
-    Args:
-        crawl_id: The Crawl row ID.
-        inputs: Dict of manual input values (capture_rate, query_match,
-            voice_rate, citation). Values should be 0-100.
-
-    Returns:
-        The updated score_json dict.
-
-    Raises:
-        ValueError: If the crawl row or snapshot is not found.
-    """
-    with get_session() as s:
-        row = s.get(Crawl, crawl_id)
-        if not row:
-            raise ValueError(f"Crawl {crawl_id} not found")
-        if not row.score_snapshot:
-            raise ValueError(f"Scores not computed yet for crawl {crawl_id}")
-
-    return score_crawl(crawl_id, manual_inputs=inputs)
-
-
 def get_score_history(domain: str, limit: int = 10) -> list[dict[str, Any]]:
     """Get score history for a domain.
 
@@ -542,7 +510,6 @@ def get_score_history(domain: str, limit: int = 10) -> list[dict[str, Any]]:
                 "aeo_rating": snap.aeo_rating,
                 "geo_rating": snap.geo_rating,
                 "scoring_version": snap.scoring_version,
-                "has_manual_input": snap.has_manual_input,
                 "created_at": snap.created_at.isoformat(),
             }
             for snap in snapshots

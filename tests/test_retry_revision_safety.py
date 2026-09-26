@@ -118,7 +118,6 @@ def _make_succeeded_crawl(
         user_id=user_id,
         crawl_params=crawl_params,
         scoring_version="1.0",
-        has_manual_input=False,
         listed=True,
         is_latest=True,
         created_at=ts,
@@ -133,7 +132,6 @@ def _make_succeeded_crawl(
             domain=domain,
             score_json={"aeo": {"composite": 50.0}},
             scoring_version="1.0",
-            has_manual_input=False,
             created_at=ts,
             updated_at=ts,
         )
@@ -156,7 +154,6 @@ def _make_failed_crawl(s, *, user_id: str, domain: str = "failed.com") -> Crawl:
         error="boom",
         user_id=user_id,
         scoring_version="1.0",
-        has_manual_input=False,
         listed=True,
         is_latest=True,
         created_at=datetime(2026, 8, 1, tzinfo=UTC),

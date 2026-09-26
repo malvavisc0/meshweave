@@ -13,7 +13,7 @@ from meshweave.scoring.recommendations import generate_recommendations
 
 
 def _geo_factors(**overrides: float | None) -> dict[str, dict]:
-    """GEO auto factors at given scores (citation absent — manual)."""
+    """GEO auto factors at given scores (all auto-measured)."""
     base = {
         "topical_authority": {"score": 0.0, "raw": {}},
         "eeat": {"score": 0.0, "raw": {}},
@@ -79,13 +79,13 @@ class TestGEORecommendationOrdering:
             },
         }
 
-    def test_llms_txt_outranks_org_schema_outranks_sameas(self):
+    def test_org_and_llms_outrank_sameas(self):
         payload = self._geo_zero_payload()
         scores = compute_scores(payload)
         geo_factors = scores["geo"]["factors"]
         # Force the rec-triggering raw shapes with zero scores.
         geo_factors["eeat"]["raw"] = _eeat_raw()
-        geo_factors["topical_authority"]["raw"] = {"same_as_count": 0}
+        geo_factors["entity_consistency"]["raw"] = {"same_as": []}
         geo_factors["crawl_access"]["raw"] = {
             "llms_txt_exists": False,
             "robots_exists": True,
@@ -102,16 +102,23 @@ class TestGEORecommendationOrdering:
 
         by_title = {r["title"]: r for r in recs}
         org_pts = by_title["Add Organization JSON-LD schema"]["expected_points"]
+        llms_pts = by_title["Publish an llms.txt file"]["expected_points"]
         sameas_pts = by_title["Add sameAs links to your Organization schema"][
             "expected_points"
         ]
-        # 0.15 weight × (+15 llms) > 0.15 × (+15 org) share? No — llms
-        # also lifts llms-full (target 15 vs org 15), but org and sameAs
-        # share the eeat factor: the org rec must dominate sameAs.
-        assert org_pts is not None and sameas_pts is not None
+        # Crawl access carries 0.30 weight: the llms.txt fix (+15 on
+        # crawl_access) and the org-schema fix (+30 on eeat) both move GEO
+        # ~3.4 points and outrank the sameAs fix (+16 on entity_consistency
+        # at 0.20 weight).
+        assert org_pts is not None and llms_pts is not None
+        assert sameas_pts is not None
+        assert llms_pts > sameas_pts
         assert org_pts > sameas_pts
         # And the ordering in the returned list follows the points.
         assert titles.index("Publish an llms.txt file") < titles.index(
+            "Add sameAs links to your Organization schema"
+        )
+        assert titles.index("Add Organization JSON-LD schema") < titles.index(
             "Add sameAs links to your Organization schema"
         )
 
@@ -120,7 +127,7 @@ class TestGEORecommendationOrdering:
         scores = compute_scores(payload)
         geo_factors = scores["geo"]["factors"]
         geo_factors["eeat"]["raw"] = _eeat_raw()
-        geo_factors["topical_authority"]["raw"] = {"same_as_count": 0}
+        geo_factors["entity_consistency"]["raw"] = {"same_as": []}
         geo_factors["crawl_access"]["raw"] = {
             "llms_txt_exists": False,
             "robots_exists": True,
@@ -166,7 +173,7 @@ class TestPointlessRecommendations:
         aeo_factors = scores["aeo"]["factors"]
         geo_factors = scores["geo"]["factors"]
         geo_factors["eeat"]["raw"] = _eeat_raw()
-        geo_factors["topical_authority"]["raw"] = {"same_as_count": 0}
+        geo_factors["entity_consistency"]["raw"] = {"same_as": []}
 
         recs = generate_recommendations(aeo_factors, geo_factors, payload=payload)
         medium_band = [r for r in recs if r["priority"] == "medium"]

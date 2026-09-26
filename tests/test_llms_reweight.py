@@ -1,55 +1,132 @@
-"""Tests pinning the v1.1 AAX llms.txt reweight.
+"""Tests pinning llms.txt's place in the scoring model.
 
-llms.txt is an optional, emerging convention: a site without one must
-not be punished as if it failed agent experience. At 5% weight, a
-perfect site missing llms.txt still lands in the Fluent band's
-neighborhood; at the old 15% it was capped near 83.
+llms.txt evidence is counted once, inside GEO's crawl_access factor. It
+is not an AAX factor, and adding or removing the file must never move
+any composite outside GEO.
 """
-
-from __future__ import annotations
 
 from meshweave.scoring.composite import (
     AAX_WEIGHTS,
+    AEO_WEIGHTS,
+    GEO_WEIGHTS,
     SCORING_VERSION,
-    weighted_composite,
 )
+from meshweave.scoring.engine import compute_aax_score, compute_scores
+
+_WITH_LLMS = {
+    "llms_txt": {"exists": True, "size": 200},
+    "llms_full_txt": {"exists": True},
+}
+_WITHOUT_LLMS = {
+    "llms_txt": {"exists": False},
+    "llms_full_txt": {"exists": False},
+}
 
 
-def _all_perfect_except(llms_score: float) -> dict[str, dict]:
+def _payload(llms: dict) -> dict:
     return {
-        "homepage_comprehension": {"score": 100.0},
-        "meta_optimization": {"score": 100.0},
-        "content_delta": {"score": 100.0},
-        "llms_txt": {"score": llms_score},
-        "email_validation": {"score": 100.0},
-        "contactability": {"score": 100.0},
+        "robots": {
+            "exists": True,
+            "bots": {
+                "GPTBot": "allowed",
+                "ClaudeBot": "allowed",
+                "PerplexityBot": "allowed",
+            },
+            "sitemaps": ["https://example.com/sitemap.xml"],
+        },
+        "llms_txt": llms,
     }
 
 
-class TestAaxLlmsReweight:
+def _aax_result(llms: dict) -> dict:
+    return {
+        "status": "completed",
+        "homepage_comprehension": {
+            "brand": "Acme",
+            "product": "Widgets",
+            "target_audience": "Builders",
+            "key_features": ["fast", "solid", "cheap", "small"],
+            "call_to_action": "Buy",
+            "clarity": "clear",
+            "information_density": "dense",
+            "would_remember": True,
+        },
+        "meta_optimization": {
+            "completeness": "complete",
+            "clarity": "clear",
+            "llm_optimization": "optimized",
+            "would_click_through": True,
+        },
+        "content_delta": {
+            "company": {"name": "Acme", "description": "Great"},
+            "product": {
+                "name": "Widgets",
+                "description": "Best",
+                "features": ["A", "B"],
+            },
+            "pricing": {"model": "subscription"},
+            "target_audience": "All",
+            "strengths": ["Fast"],
+            "coherence": "consistent",
+            "completeness": "comprehensive",
+        },
+        "contactability": {"score": 75.0},
+        "email_validation": {
+            "valid_contacts": [
+                {"email": "sales@acme.com", "contact_type": "sales"},
+            ],
+            "confidence": "high",
+            "best_contact": "sales@acme.com",
+        },
+        "llms_txt": llms,
+        "tests_completed": 5,
+        "tests_skipped": 0,
+    }
+
+
+class TestWeightPins:
     def test_weights_sum_to_one(self):
-        assert abs(sum(AAX_WEIGHTS.values()) - 1.0) < 1e-9
+        assert abs(sum(AEO_WEIGHTS.values()) - 1.0) < 0.001
+        assert abs(sum(GEO_WEIGHTS.values()) - 1.0) < 0.001
+        assert abs(sum(AAX_WEIGHTS.values()) - 1.0) < 0.001
 
-    def test_llms_txt_weight_is_light(self):
-        assert AAX_WEIGHTS["llms_txt"] == 0.05
+    def test_aax_weights(self):
+        assert AAX_WEIGHTS == {
+            "homepage_comprehension": 0.35,
+            "content_delta": 0.25,
+            "meta_optimization": 0.15,
+            "contactability": 0.15,
+            "email_validation": 0.10,
+        }
 
-    def test_homepage_comprehension_leads(self):
-        assert AAX_WEIGHTS["homepage_comprehension"] == 0.35
-        assert AAX_WEIGHTS["homepage_comprehension"] == max(AAX_WEIGHTS.values())
+    def test_llms_txt_is_not_an_aax_factor(self):
+        assert "llms_txt" not in AAX_WEIGHTS
 
-    def test_perfect_site_without_llms_txt_scores_high(self):
-        composite = weighted_composite(_all_perfect_except(0.0), AAX_WEIGHTS)
-        # Old weighting capped this site at 83; the reweight lets a
-        # site that fails only the optional-file check clear 90.
-        assert composite is not None
-        assert composite > 90.0
+    def test_scoring_version_pin(self):
+        assert SCORING_VERSION == "1.2"
 
-    def test_llms_fix_incentive_is_proportionate(self):
-        """Publishing llms.txt must move AAX by ~3 points, not ~10."""
-        base = weighted_composite(_all_perfect_except(0.0), AAX_WEIGHTS)
-        fixed = weighted_composite(_all_perfect_except(60.0), AAX_WEIGHTS)
-        assert base is not None and fixed is not None
-        assert 2.0 <= round(fixed - base, 1) <= 4.0
 
-    def test_scoring_version_bumped(self):
-        assert SCORING_VERSION == "1.1"
+class TestLlmsCountedOnce:
+    def test_aax_ignores_llms_data(self):
+        with_llms = compute_aax_score(_aax_result(_WITH_LLMS))
+        without_llms = compute_aax_score(_aax_result(_WITHOUT_LLMS))
+        assert "llms_txt" not in (with_llms.get("factors") or {})
+        assert with_llms["composite"] == without_llms["composite"]
+
+    def test_site_without_llms_loses_nothing_outside_crawl_access(self):
+        with_llms = compute_scores(_payload(_WITH_LLMS))
+        without_llms = compute_scores(_payload(_WITHOUT_LLMS))
+        # Only the GEO crawl_access factor may differ.
+        assert with_llms["aeo"] == without_llms["aeo"]
+        for key in GEO_WEIGHTS:
+            if key != "crawl_access":
+                assert (
+                    with_llms["geo"]["factors"][key]
+                    == without_llms["geo"]["factors"][key]
+                )
+
+    def test_publishing_llms_txt_moves_geo_only(self):
+        with_llms = compute_scores(_payload(_WITH_LLMS))
+        without_llms = compute_scores(_payload(_WITHOUT_LLMS))
+        assert with_llms["geo"]["composite"] > without_llms["geo"]["composite"]
+        assert with_llms["aeo"]["composite"] == without_llms["aeo"]["composite"]

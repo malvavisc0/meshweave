@@ -35,32 +35,26 @@ __all__ = [
 
 def compute_scores(
     payload: dict,
-    manual_inputs: dict[str, float] | None = None,
     aax_factors: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """Compute AEO and GEO scores from a crawl payload.
 
     Args:
         payload: The crawl result payload (JSON-parsed).
-        manual_inputs: Optional dict of user-provided scores for
-            non-auto-measurable factors. Keys match factor names
-            (capture_rate, query_match, voice_rate, citation).
         aax_factors: Optional AAX factor dicts for generating AAX
             recommendations.
 
     Returns:
         Full score_json dict.
     """
-    manual = manual_inputs or {}
-
     # --- AEO factors ---
+    # The answerability factor is part of the model but not yet computed;
+    # the composite re-normalizes across the factors below until its
+    # grounded test lands.
     aeo_factors: dict[str, dict] = {
         "schema": aeo_mod.score_schema(payload),
         "content_structure": aeo_mod.score_content_structure(payload),
         "freshness": aeo_mod.score_freshness(payload),
-        "capture_rate": aeo_mod.score_capture_rate(manual.get("capture_rate")),
-        "query_match": aeo_mod.score_query_match(manual.get("query_match")),
-        "voice_rate": aeo_mod.score_voice_rate(manual.get("voice_rate")),
     }
 
     # --- GEO factors ---
@@ -70,18 +64,11 @@ def compute_scores(
         "crawl_access": geo_mod.score_crawl_access(payload),
         "content_depth": geo_mod.score_content_depth(payload),
         "entity_consistency": geo_mod.score_entity_consistency(payload),
-        "citation": geo_mod.score_citation(manual.get("citation")),
     }
 
     # --- Composite scores ---
     aeo_composite = _weighted_composite(aeo_factors, AEO_WEIGHTS)
     geo_composite = _weighted_composite(geo_factors, GEO_WEIGHTS)
-
-    # Auto-only composites (exclude manual-input factors)
-    aeo_auto_only = {k: v for k, v in aeo_factors.items() if v.get("auto_measurable")}
-    geo_auto_only = {k: v for k, v in geo_factors.items() if v.get("auto_measurable")}
-    aeo_auto_composite = _weighted_composite(aeo_auto_only, AEO_WEIGHTS)
-    geo_auto_composite = _weighted_composite(geo_auto_only, GEO_WEIGHTS)
 
     # --- Recommendations ---
     recommendations = generate_recommendations(
@@ -92,16 +79,12 @@ def compute_scores(
     return {
         "aeo": {
             "composite": aeo_composite,
-            "auto_only_composite": aeo_auto_composite,
             "rating": aeo_rating(aeo_composite),
-            "auto_rating": aeo_rating(aeo_auto_composite),
             "factors": aeo_factors,
         },
         "geo": {
             "composite": geo_composite,
-            "auto_only_composite": geo_auto_composite,
             "rating": geo_rating(geo_composite),
-            "auto_rating": geo_rating(geo_auto_composite),
             "factors": geo_factors,
         },
         "recommendations": recommendations,
@@ -124,7 +107,6 @@ def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
     _add_homepage_comprehension_factor(factors, aax_result)
     _add_meta_optimization_factor(factors, aax_result)
     _add_content_delta_factor(factors, aax_result)
-    _add_llms_txt_factor(factors, aax_result)
     _add_email_validation_factor(factors, aax_result)
     _add_contactability_factor(factors, aax_result)
 
@@ -253,35 +235,6 @@ def _content_richness_score(cd: dict[str, Any]) -> float:
         ]
     )
     return (richness / 5) * 100
-
-
-def _add_llms_txt_factor(
-    factors: dict[str, dict],
-    aax_result: dict[str, Any],
-) -> None:
-    """Score the llms.txt presence heuristic into *factors*."""
-    llms = aax_result.get("llms_txt")
-    if not llms:
-        return
-    factors["llms_txt"] = {
-        "score": _llms_txt_score(llms),
-        "weight": AAX_WEIGHTS["llms_txt"],
-        "auto_measurable": True,
-        "raw": llms,
-    }
-
-
-def _llms_txt_score(llms: dict[str, Any]) -> float:
-    """100 when both llms.txt variants exist, 60 for one, else 0."""
-    llms_txt_data = llms.get("llms_txt") or {}
-    llms_full_data = llms.get("llms_full_txt") or {}
-    has_llms = llms_txt_data.get("exists", False)
-    has_llms_full = llms_full_data.get("exists", False)
-    if has_llms and has_llms_full:
-        return 100.0
-    if has_llms or has_llms_full:
-        return 60.0
-    return 0.0
 
 
 def _add_email_validation_factor(

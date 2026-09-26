@@ -9,24 +9,20 @@ from meshweave.scoring.composite import expected_lens_delta
 # Map factor keys to their pillar (aeo, geo, aax)
 _FACTOR_TO_PILLAR: dict[str, str] = {
     # AEO factors
+    "answerability": "aeo",
     "schema": "aeo",
     "content_structure": "aeo",
     "freshness": "aeo",
-    "capture_rate": "aeo",
-    "query_match": "aeo",
-    "voice_rate": "aeo",
     # GEO factors
     "topical_authority": "geo",
     "eeat": "geo",
     "crawl_access": "geo",
     "content_depth": "geo",
     "entity_consistency": "geo",
-    "citation": "geo",
     # AAX factors
     "homepage_comprehension": "aax",
     "meta_optimization": "aax",
     "content_delta": "aax",
-    "llms_txt": "aax",
     "email_validation": "aax",
     "contactability": "aax",
 }
@@ -175,7 +171,7 @@ def _schema_coverage_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     f"Only {coverage_pct:.0f}% of pages have schema markup. "
                     "Add FAQPage, HowTo, or Article schema to key pages."
                 ),
-                "impact": "AEO +5-10 points estimated",
+                "impact": "AEO +8-15 points estimated",
                 # Coverage percentage is the factor's base score; a solid
                 # fix reaches 80% coverage.
                 "_target_score": 80.0,
@@ -192,7 +188,7 @@ def _schema_coverage_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "No FAQPage schema found. Add FAQ sections with 40-60 word "
                     "answers to product, pricing, and how-it-works pages."
                 ),
-                "impact": "AEO +5-8 points estimated",
+                "impact": "AEO +2-4 points estimated",
                 # FAQPage bonus: +10 in the factor's additive scale.
                 "_target_score": target(current, 10.0),
             }
@@ -266,7 +262,7 @@ def _thin_pages_recs(
                 f"Pages with low structure scores: {examples}. "
                 "Add headings, content, images with alt text."
             ),
-            "impact": "AEO +5-8 points estimated",
+            "impact": "AEO +2-6 points estimated",
             "_target_score": fixed_avg,
         }
     ]
@@ -295,15 +291,13 @@ def _geo_recommendations(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
 
 
 def _same_as_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
-    """Recommendation for missing sameAs links."""
-    topical_raw = _factor_raw(geo_factors, "topical_authority")
-    same_as_count = topical_raw.get("same_as_count") or 0
-
-    if same_as_count:
+    """Recommendation for missing sameAs links (entity-consistency signal)."""
+    entity_raw = _factor_raw(geo_factors, "entity_consistency")
+    if entity_raw.get("same_as"):
         return []
-    # sameAs presence earns +10 in the E-E-A-T additive scale (and feeds
-    # topical_authority's sameAs term, conservatively ignored here).
-    eeat_current = _factor_score(geo_factors, "eeat")
+    # The first sameAs bucket (1-2 links) earns +16 on the
+    # entity-consistency scale (40-point sameAs slot, shared bucketing).
+    entity_current = _factor_score(geo_factors, "entity_consistency")
     return [
         {
             "factor": "entity_consistency",
@@ -312,10 +306,10 @@ def _same_as_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
             "detail": (
                 "No sameAs links found. Add links to your LinkedIn, GitHub, "
                 "Twitter, and other profiles in your Organization JSON-LD "
-                "to improve entity recognition."
+                "to keep your identity consistent across pages."
             ),
-            "impact": "GEO +5-10 points estimated",
-            "_target_score": target(eeat_current, 10.0),
+            "impact": "GEO +2-4 points estimated",
+            "_target_score": target(entity_current, 16.0),
         }
     ]
 
@@ -336,9 +330,9 @@ def _eeat_recs(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "No Organization schema found. Add an Organization block "
                     "to your homepage with name, logo, url, and sameAs links."
                 ),
-                "impact": "GEO +10-15 points estimated",
-                # Organization presence: +15 in the E-E-A-T additive scale.
-                "_target_score": target(eeat_current, 15.0),
+                "impact": "GEO +3-5 points estimated",
+                # Organization presence: +30 in the E-E-A-T additive scale.
+                "_target_score": target(eeat_current, 30.0),
             }
         )
 
@@ -352,9 +346,9 @@ def _eeat_recs(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "No author schema found in articles. Add author JSON-LD "
                     "to article pages with name, url, and sameAs."
                 ),
-                "impact": "GEO +5-10 points estimated",
-                # Author presence: +15 in the E-E-A-T additive scale.
-                "_target_score": target(eeat_current, 15.0),
+                "impact": "GEO +3-5 points estimated",
+                # Author presence: +30 in the E-E-A-T additive scale.
+                "_target_score": target(eeat_current, 30.0),
             }
         )
     return recs
@@ -373,7 +367,7 @@ def _crawl_access_recommendations(geo_factors: dict[str, dict]) -> list[dict[str
                 "priority": "medium",
                 "title": "Re-analyze as domain for accessibility score",
                 "detail": crawl_note,
-                "impact": "GEO +10-20 points",
+                "impact": "GEO +8-15 points",
                 # Introducing the factor at its robots+llms+sitemap
                 # structural value when the fix is "run the domain crawl".
                 "_target_score": target(crawl_score, 46.0),
@@ -401,7 +395,7 @@ def _content_depth_rec(geo_factors: dict[str, dict]) -> list[dict[str, Any]]:
                 "Target 500+ words for key pages to improve "
                 "content depth signals."
             ),
-            "impact": "GEO +5-10 points estimated",
+            "impact": "GEO +3-5 points estimated",
             # 500+ average words reaches the 50-point band in
             # _avg_words_score; code/tables bonuses are not assumed.
             "_target_score": target(_factor_score(geo_factors, "content_depth"), 20.0),
@@ -425,8 +419,8 @@ def _crawl_access_recs(crawl_access: dict) -> list[dict[str, Any]]:
                     "Create /.well-known/llms.txt with a brief site "
                     "description."
                 ),
-                "impact": "GEO +10-20 points estimated",
-                # llms.txt +7 and llms-full.txt +8 in the additive scale.
+                "impact": "GEO +3-5 points estimated",
+                # llms.txt +15 and llms-full.txt +8 in the additive scale.
                 "_target_score": target(current, 15.0),
             }
         )
@@ -434,14 +428,14 @@ def _crawl_access_recs(crawl_access: dict) -> list[dict[str, Any]]:
         recs.append(
             {
                 "factor": "crawl_access",
-                "priority": "medium",
+                "priority": "high",
                 "title": "Add a robots.txt file",
                 "detail": (
-                    "No robots.txt found. Create one at /robots.txt to "
-                    "control crawler access."
+                    "No robots.txt found. Create one at the domain root "
+                    "to guide AI crawlers and search engines."
                 ),
-                "impact": "GEO +10 points estimated",
-                # robots.txt existence: +8 in the additive scale.
+                "impact": "GEO +2-3 points estimated",
+                # robots.txt exists: +8 in the additive scale.
                 "_target_score": target(current, 8.0),
             }
         )
@@ -466,11 +460,11 @@ def _payload_recommendations(
                 "title": f"Fix canonical URL mismatches on {len(canonical_issues)} page(s)",
                 "detail": (
                     "These pages have canonical URLs pointing to a different "
-                    "page. This confuses search engines and hurts snippet "
-                    "capture."
+                    "page. This confuses crawlers about which URL is the "
+                    "canonical one."
                 ),
                 # Metadata hygiene: no factor-scale counterfactual.
-                "impact": "AEO +3-5 points estimated",
+                "impact": "AEO +1-2 points estimated",
             }
         )
 
@@ -483,11 +477,11 @@ def _payload_recommendations(
                 "priority": "medium",
                 "title": f"Differentiate OG titles — {len(dup_titles)} group(s) share the same title",
                 "detail": (
-                    "Multiple pages share identical OG titles. This reduces "
-                    "click-through rates and confuses social previews."
+                    "Multiple pages share identical OG titles. This "
+                    "confuses social previews and page identity."
                 ),
                 # Metadata hygiene: no factor-scale counterfactual.
-                "impact": "AEO +2-3 points estimated",
+                "impact": "AEO +1-2 points estimated",
             }
         )
 
@@ -566,7 +560,6 @@ def _aax_recommendations(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
     recs.extend(_homepage_comprehension_rec(aax_factors))
     recs.extend(_content_delta_rec(aax_factors))
     recs.extend(_meta_optimization_rec(aax_factors))
-    recs.extend(_llms_txt_rec(aax_factors))
     recs.extend(_email_validation_rec(aax_factors))
     return recs
 
@@ -602,7 +595,7 @@ def _homepage_comprehension_rec(aax_factors: dict[str, dict]) -> list[dict[str, 
                 f"Missing: {', '.join(missing_fields)}. "
                 "Make brand, product, audience, and CTA clear."
             ),
-            "impact": "AAX +15-25 points estimated",
+            "impact": "AAX +8-15 points estimated",
             "_target_score": target(hc.get("score"), 40.0),
         }
     ]
@@ -628,7 +621,7 @@ def _content_delta_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "Add missing product info, pricing, use cases, "
                     "or company details."
                 ),
-                "impact": "AAX +10-20 points estimated",
+                "impact": "AAX +5-10 points estimated",
                 # Richness carries 40% of the factor; coherence/completeness
                 # are LLM verdicts, so predict from richness alone.
                 "_target_score": target(cd.get("score"), 40.0),
@@ -646,7 +639,7 @@ def _content_delta_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "descriptions, pricing, target audience, "
                     "features, and use cases."
                 ),
-                "impact": "AAX +20-30 points estimated",
+                "impact": "AAX +8-15 points estimated",
                 "_target_score": 70.0,
             }
         )
@@ -682,7 +675,7 @@ def _meta_optimization_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]
             "priority": "medium",
             "title": "Optimize metadata for AI crawlers",
             "detail": detail,
-            "impact": "AAX +10-15 points estimated",
+            "impact": "AAX +2-5 points estimated",
             # Complete+clear+optimized+click is the perfect-verdict
             # factor score; predict the verdict-scale midpoint of the
             # weak fields (50 each) rather than assume perfection.
@@ -729,32 +722,6 @@ def _meta_issues(mo_raw: dict) -> list[str]:
     return issues
 
 
-def _llms_txt_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
-    """Recommendation for the llms-full.txt variant (full-file AAX access)."""
-    llms = aax_factors.get("llms_txt")
-    if not llms:
-        return []
-    llms_raw = llms.get("raw") or {}
-    llms_txt_data = llms_raw.get("llms_txt") or {}
-    llms_full_data = llms_raw.get("llms_full_txt") or {}
-
-    if llms_txt_data.get("exists") and not llms_full_data.get("exists"):
-        return [
-            {
-                "factor": "llms_txt",
-                "priority": "medium",
-                "title": "Publish llms-full.txt for full AI access",
-                "detail": (
-                    "Create /.well-known/llms-full.txt for full AI crawler access."
-                ),
-                "impact": "AAX +5-10 points estimated",
-                # llms-full.txt moves the factor 60 → 100.
-                "_target_score": target(llms.get("score"), 40.0),
-            }
-        ]
-    return []
-
-
 def _email_validation_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
     """Recommendation for lacking valid contact email signals."""
     ev = aax_factors.get("email_validation")
@@ -776,7 +743,7 @@ def _email_validation_rec(aax_factors: dict[str, dict]) -> list[dict[str, Any]]:
                     "business. Add mailto: links with valid "
                     "addresses on contact page."
                 ),
-                "impact": "AAX +10-20 points est",
+                "impact": "AAX +3-6 points estimated",
                 # A sales contact with high confidence scores
                 # presence 30 + type 25 + best 10 + 90*0.35 ≈ 96.5;
                 # predict a general contact at medium confidence.
@@ -794,7 +761,7 @@ def _contactability_recommendations(
 
     Prefers the explicitly passed contactability signal; falls back to the
     payload only when the caller knows ``scores.aax`` is already present
-    (e.g. manual-input re-scores loading a persisted payload).
+    (e.g. re-scores loading a persisted payload).
     """
     contactability = _resolve_contactability(contactability, payload)
     if not contactability:
@@ -813,9 +780,9 @@ def _contactability_recommendations(
             "detail": (
                 f"Missing: {', '.join(missing_signals)}. "
                 "AI agents need clear contact signals to "
-                "verify and recommend your business."
+                "identify a next step."
             ),
-            "impact": "AAX +10-20 points estimated",
+            "impact": "AAX +3-8 points estimated",
             "_target_score": _contactability_fix_target(contactability),
         }
     ]
@@ -921,9 +888,6 @@ _GUIDANCE: dict[str, str] = {
     "Increase average content depth": ("Aim for 500+ words on your key pages."),
     "Optimize metadata for AI crawlers": (
         "Improve your value proposition, metadata, and descriptions for LLM understanding."
-    ),
-    "Publish llms-full.txt for full AI access": (
-        "Create /.well-known/llms-full.txt for full AI crawler access."
     ),
     "Add valid contact emails for AI verification": (
         "Add mailto: links with real addresses to your contact page."

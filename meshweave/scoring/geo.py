@@ -1,8 +1,8 @@
 """GEO (Generative Engine Optimization) factor scoring functions.
 
 Each factor takes the crawl payload (dict) and returns a dict with:
-  - score: float | None (0-100, or None if not auto-measurable)
-  - weight: float
+  - score: float | None (0-100, or None if not measurable)
+  - weight: float (from the authoritative GEO weight table)
   - auto_measurable: bool
   - raw: dict (diagnostic data)
   - note: str | None (optional)
@@ -13,11 +13,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from meshweave.scoring.composite import GEO_WEIGHTS
+
 
 def _same_as_score(count: int) -> int:
-    """Shared sameAs presence scale used across GEO factors.
+    """Shared sameAs presence scale used by entity consistency.
 
-    One bucketing for all factors so entity signals stay consistent:
+    One bucketing so entity signals stay consistent:
     0 → 0, 1-2 → 40, 3-5 → 70, 6+ → 100.
     """
     if count == 0:
@@ -42,15 +44,17 @@ class _EeatSignals:
 
 
 def score_topical_authority(payload: dict) -> dict:
-    """G2. Topical Authority / Entity Coverage (20% weight, auto).
+    """G2. Topical Authority / Entity Coverage (auto).
 
-    Weighted factors:
-      - schema_coverage.coverage_pct: 0.3
-      - schema type diversity: 0.2
+    Weighted site-wide evidence:
+      - schema_coverage.coverage_pct: 0.35
+      - schema type diversity: 0.25
       - entity.name_consistent: 0.15
       - entity.description_consistent: 0.15
-      - entity.same_as count: 0.1
-      - content page ratio: 0.1
+      - content page ratio: 0.10
+
+    The sameAs count is kept as raw evidence only — the presence of
+    third-party profiles is not a score driver.
     """
     audit = payload.get("audit") or {}
     schema_cov = audit.get("schema_coverage") or {}
@@ -63,26 +67,23 @@ def score_topical_authority(payload: dict) -> dict:
     name_consistent = 100 if entity.get("name_consistent") else 0
     desc_consistent = 100 if entity.get("description_consistent") else 0
 
-    same_as = entity.get("same_as") or []
-    same_as_count = len(same_as)
-    same_as_score = _same_as_score(same_as_count)
+    same_as_count = len(entity.get("same_as") or [])
 
     # Content page ratio: pages with >300 words / total pages
     content_ratio = _content_page_ratio(payload)
 
     score = (
-        coverage_pct * 0.3
-        + diversity * 0.2
+        coverage_pct * 0.35
+        + diversity * 0.25
         + name_consistent * 0.15
         + desc_consistent * 0.15
-        + same_as_score * 0.1
-        + content_ratio * 0.1
+        + content_ratio * 0.10
     )
     score = min(100.0, score)
 
     return {
         "score": round(score, 1),
-        "weight": 0.20,
+        "weight": GEO_WEIGHTS["topical_authority"],
         "auto_measurable": True,
         "raw": {
             "coverage_pct": coverage_pct,
@@ -114,12 +115,12 @@ def _md_page_words(pg: Any) -> int:
 
 
 def score_eeat(payload: dict) -> dict:
-    """G3. E-E-A-T Signals (15% weight, partial auto).
+    """G3. E-E-A-T Signals (auto).
 
-    Additive scoring: 15 organization + 15 author + 15 reviews + 10 sameAs
-    + 8 contact + 7 privacy/terms + 5 video. The auto-measurable maximum
-    is 75 (no reviews, no video) — the last 25 points require real
-    customer proof and video content, which a site cannot grant itself.
+    Additive scoring on site-side evidence: 30 organization identity +
+    30 authorship + 20 contact + 20 policy pages. Review, video, and
+    sameAs signals are kept as raw evidence only — third-party markers
+    are not score drivers.
     """
     audit = payload.get("audit") or {}
     entity = audit.get("entity") or {}
@@ -135,12 +136,11 @@ def score_eeat(payload: dict) -> dict:
         pages_with_org=pages_with_org,
         schema_types=schema_types,
         signals=signals,
-        same_as_size=len(same_as),
     )
 
     return {
         "score": float(pts),
-        "weight": 0.15,
+        "weight": GEO_WEIGHTS["eeat"],
         "auto_measurable": True,
         "raw": {
             "has_org_schema": pages_with_org > 0,
@@ -258,11 +258,10 @@ def _eeat_points(
     pages_with_org: int,
     schema_types: set[str],
     signals: _EeatSignals,
-    same_as_size: int,
 ) -> int:
     """Compute the additive E-E-A-T point total (capped at 100)."""
     pts = _org_points(pages_with_org, schema_types)
-    pts += _signal_points(signals, same_as_size)
+    pts += _signal_points(signals)
     return min(100, pts)
 
 
@@ -270,38 +269,30 @@ def _org_points(pages_with_org: int, schema_types: set[str]) -> int:
     """Points for publishing Organization schema anywhere on the site."""
     lower_types = {t.lower() for t in schema_types}
     if pages_with_org > 0 or "organization" in lower_types or "org" in lower_types:
-        return 15
+        return 30
     return 0
 
 
-def _signal_points(signals: _EeatSignals, same_as_size: int) -> int:
-    """Points for author, reviews, sameAs, contact, legal, and video signals."""
+def _signal_points(signals: _EeatSignals) -> int:
+    """Points for authorship, contact, and policy-page signals."""
     pts = 0
     if signals.has_author:
-        pts += 15
-    if signals.has_reviews:
-        pts += 15
-    if same_as_size > 0:
-        pts += 10
+        pts += 30
     if signals.has_contact:
-        pts += 8
+        pts += 20
     if signals.has_privacy or signals.has_terms:
-        pts += 7
-    if signals.has_video:
-        pts += 5
+        pts += 20
     return pts
 
 
 def score_crawl_access(payload: dict) -> dict:
-    """G4. LLM Crawl Accessibility (15% weight, auto when data available).
+    """G4. LLM Crawl Accessibility (auto when data available).
 
     Additive scoring: 8 robots.txt + up to 39 bot access (GPTBot 15,
     ClaudeBot 12, PerplexityBot 12 — half credit when partially
     restricted) + 15 llms.txt + 8 llms-full.txt + 7 sitemap.
     Structural maximum: 77 — the remaining 23 points do not exist to be
-    earned. Combined with other factor ceilings, the auto-only GEO
-    composite tops out ≈84 ("Authoritative"); the "Dominant" rating is
-    reachable only with manual citation input, by design.
+    earned. Optional llms.txt evidence is scored here only, once.
 
     If robots/llms data is only a placeholder (page-scope crawl),
     returns null with a note.
@@ -317,7 +308,7 @@ def score_crawl_access(payload: dict) -> dict:
 
     return {
         "score": float(pts),
-        "weight": 0.15,
+        "weight": GEO_WEIGHTS["crawl_access"],
         "auto_measurable": True,
         "raw": _crawl_access_raw(robots, llms),
     }
@@ -338,7 +329,7 @@ def _placeholder_crawl_access() -> dict:
     """Null-score result used when accessibility data was not collected."""
     return {
         "score": None,
-        "weight": 0.15,
+        "weight": GEO_WEIGHTS["crawl_access"],
         "auto_measurable": True,
         "raw": None,
         "note": (
@@ -413,7 +404,7 @@ def _crawl_access_raw(robots: dict, llms: dict) -> dict:
 
 
 def score_content_depth(payload: dict) -> dict:
-    """G5. Content Depth & Originality (10% weight, auto)."""
+    """G5. Content Depth & Originality (auto)."""
     pages = _depth_pages(payload)
 
     total_pages = max(len(pages), 1)
@@ -425,7 +416,7 @@ def score_content_depth(payload: dict) -> dict:
 
     return {
         "score": round(score, 1),
-        "weight": 0.10,
+        "weight": GEO_WEIGHTS["content_depth"],
         "auto_measurable": True,
         "raw": {
             "avg_words": round(avg_words, 0),
@@ -556,12 +547,10 @@ def _avg_words_score(avg_words: float) -> float:
 
 
 def score_entity_consistency(payload: dict) -> dict:
-    """G6. Cross-Platform Entity Consistency (10% weight, auto).
+    """G6. Cross-Platform Entity Consistency (auto).
 
     Additive scoring: 20 consistent name + 15 consistent description +
     up to 40 for sameAs presence (shared _same_as_score scale, scaled).
-    Auto-measurable maximum: 75 — a full 40 for sameAs requires 6+ org
-    profiles, which most sites must accumulate externally.
     """
     audit = payload.get("audit") or {}
     entity = audit.get("entity") or {}
@@ -579,16 +568,15 @@ def score_entity_consistency(payload: dict) -> dict:
         pts += 15
 
     # sameAs on the shared scale (0/40/70/100), scaled to the 40-point
-    # remainder of this factor. Uses the same buckets as topical
-    # authority so one signal cannot be "good" in one factor and
-    # "mediocre" in another.
+    # remainder of this factor, so one signal cannot be "good" in one
+    # place and "mediocre" in another.
     pts += _same_as_score(len(same_as)) * 0.4
 
     pts = min(100, pts)
 
     return {
         "score": float(pts),
-        "weight": 0.10,
+        "weight": GEO_WEIGHTS["entity_consistency"],
         "auto_measurable": True,
         "raw": {
             "name_consistent": name_consistent,
@@ -597,21 +585,4 @@ def score_entity_consistency(payload: dict) -> dict:
             "name_variants": name_variants,
             "desc_variants": desc_variants,
         },
-    }
-
-
-def score_citation(user_input: float | None = None) -> dict:
-    """G1. AI Citation Frequency & Quality (30%, NOT auto)."""
-    return {
-        "score": user_input,
-        "weight": 0.30,
-        "auto_measurable": False,
-        "manual_input_guidance": (
-            "Search your brand on ChatGPT, Claude, and Perplexity. "
-            "Estimate how often you're cited. Enter 0-100. "
-            "Tier 1 (named+link)=1.0x, Tier 2 (named)=0.7x, "
-            "Tier 3 (paraphrased)=0.3x"
-        ),
-        "user_value": user_input,
-        "raw": None,
     }

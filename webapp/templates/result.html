@@ -262,8 +262,8 @@ else 'n/a') ~
   {% if score_snapshot and score_snapshot.score_data %}
   <div class="score-strip" role="group" aria-label="Lens scores at a glance">
     {{ score_pill(viewer_role, 'lens-aax', 'AAX', 'AI Agent Experience', score_snapshot.aax_score, score_snapshot.aax_rating_class) }}
-    {{ score_pill(viewer_role, 'lens-aeo', 'AEO', 'Quotability', score_snapshot.aeo_score, score_snapshot.aeo_rating_class) }}
-    {{ score_pill(viewer_role, 'lens-geo', 'GEO', 'Recommendability', score_snapshot.geo_score, score_snapshot.geo_rating_class) }}
+    {{ score_pill(viewer_role, 'lens-aeo', 'AEO', 'Answer extraction', score_snapshot.aeo_score, score_snapshot.aeo_rating_class) }}
+    {{ score_pill(viewer_role, 'lens-geo', 'GEO', 'Machine context', score_snapshot.geo_score, score_snapshot.geo_rating_class) }}
     {% if viewer_role == 'owner' %}
     <a href="#score-breakdown" class="score-strip-pill score-strip-pill--findings"
       aria-label="Findings: {{ _total_recs }}. View all findings.">
@@ -291,23 +291,23 @@ else 'n/a') ~
         <dd>
           <span class="lens-def-name">AI Agent Experience</span>
           <span class="lens-def-note">Measures whether AI systems can identify the offer, understand the content,
-            evaluate credibility, and find a credible next step — reading your pages and parsing the structure.</span>
+            and find a credible next step — reading your pages and parsing the structure.</span>
         </dd>
       </div>
       <div class="lens-def-row">
         <dt><span class="gauge-pillar gauge-pillar--aeo">AEO</span></dt>
         <dd>
           <span class="lens-def-name">Answer Engine Optimization</span>
-          <span class="lens-def-note">Measures whether your site provides clear, attributable answers that AI systems
-            can quote directly — concise, well-structured content that surfaces in AI-generated responses.</span>
+          <span class="lens-def-note">Measures whether your site provides clear, structured answers — direct,
+            well-organized content that AI agents can extract from your pages.</span>
         </dd>
       </div>
       <div class="lens-def-row">
         <dt><span class="gauge-pillar gauge-pillar--geo">GEO</span></dt>
         <dd>
           <span class="lens-def-name">Generative Engine Optimization</span>
-          <span class="lens-def-note">Measures whether your site provides enough credible evidence — proof points,
-            reviews, and context — for AI systems to confidently recommend your brand over competitors.</span>
+          <span class="lens-def-note">Measures whether AI agents can reach your content and reconcile the business
+            identity, evidence, and claims across the site.</span>
         </dd>
       </div>
     </dl>
@@ -502,9 +502,9 @@ else 'n/a') ~
           <span class="lens-breakdown-score {{ score_snapshot.aeo_rating_class }}">{{ score_snapshot.aeo_score |
             round(1)
             }}</span>
-          <h3>Can the site be quoted?</h3>
+          <h3>Can agents extract answers?</h3>
           <p>{% if interp and interp.lens_details and interp.lens_details.AEO %}{{ interp.lens_details.AEO.meaning }}{%
-            else %}Measures whether pages provide clear, attributable content AI systems can cite.{% endif %}</p>
+            else %}Measures whether pages provide clear, structured answers agents can extract.{% endif %}</p>
           <ul class="factor-mini-list" aria-label="AEO factor scores">
             {% if score_snapshot.score_data.aeo and score_snapshot.score_data.aeo.factors %}
             {% for factor in score_snapshot.score_data.aeo.factors.values() %}
@@ -596,10 +596,9 @@ else 'n/a') ~
           <span class="lens-breakdown-score {{ score_snapshot.geo_rating_class }}">{{ score_snapshot.geo_score |
             round(1)
             }}</span>
-          <h3>Will the brand be recommended?</h3>
+          <h3>Can agents reach and connect the site?</h3>
           <p>{% if interp and interp.lens_details and interp.lens_details.GEO %}{{ interp.lens_details.GEO.meaning }}{%
-            else %}Measures whether the site gives enough evidence for AI systems to understand and recommend the
-            brand.{%
+            else %}Measures whether agents can reach the site's content and reconcile its identity and evidence.{%
             endif %}</p>
           <ul class="factor-mini-list" aria-label="GEO factor scores">
             {% if score_snapshot.score_data.geo and score_snapshot.score_data.geo.factors %}
@@ -860,31 +859,6 @@ else 'n/a') ~
       {% endif %}
       {% endif %}
 
-      {% if aax.llms_txt %}
-      {% set llms = aax.llms_txt %}
-      <div class="aax-crawler-card mt-3">
-        <h3 class="m0">Crawler Guidance for AI Agents</h3>
-        {% set llms_txt_data = llms.llms_txt or {} %}
-        {% set llms_full_data = llms.llms_full_txt or {} %}
-        <div class="aax-crawler-row">
-          <span class="aax-crawler-label">llms.txt</span>
-          <span class="{% if llms_txt_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-            {% if llms_txt_data.exists %}Active{% else %}Missing{% endif %}
-          </span>
-          <span class="small">{% if llms_txt_data.size %}{{ llms_txt_data.size }}&nbsp;bytes{% endif %}</span>
-        </div>
-        <div class="aax-crawler-row">
-          <span class="aax-crawler-label">llms-full.txt</span>
-          <span class="{% if llms_full_data.exists %}aax-check-pass{% else %}aax-check-fail{% endif %}">
-            {% if llms_full_data.exists %}Active{% else %}Missing{% endif %}
-          </span>
-          <span class="small">{% if llms_full_data.url %}URL: {{ llms_full_data.url }}{% endif %}</span>
-        </div>
-        {% if llms_txt_data.content_preview %}
-        <div class="aax-crawler-preview">{{ llms_txt_data.content_preview[:500] }}</div>
-        {% endif %}
-      </div>
-      {% endif %}
     </section>
     {% endif %}
 
@@ -1062,17 +1036,12 @@ else 'n/a') ~
     {{ funnel_cta(viewer_role, domain, score_snapshot.interpretation if score_snapshot else none, score_snapshot) }}
     {% endif %}
 
-    {# --- Methodology footer (FROZEN) --- #}
+    {# --- Methodology footer --- #}
     {% if score_snapshot and score_snapshot.interpretation %}
     {% set interp = score_snapshot.interpretation %}
     <div class="risk-methodology-footer result-section">
-      <p class="risk-method-note"><strong>Method:</strong> scored across citation, recommendation, and agent usability.
-        Fix order is based on which area has the weakest automated signal.</p>
-      {% if interp.score_basis == "auto" %}
-      <p class="risk-caveat">This assessment is based on automated signals only. Manual evaluation of citation presence,
-        query match, voice readiness, and capture rate requires an expert audit and may significantly change these
-        findings.</p>
-      {% endif %}
+      <p class="risk-method-note"><strong>Method:</strong> scored across answer extraction, machine context, and agent
+        usability. Fix order is based on which area has the weakest automated signal.</p>
     </div>
     {% endif %}
 

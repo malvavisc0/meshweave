@@ -56,10 +56,10 @@ BandName = Literal["broken", "weak", "developing", "strong", "excellent"]
 # Score band definitions
 #
 # Bands are aligned with the per-lens rating scales (ratings.py): the
-# "excellent" band starts where AEO/GEO's "Excellent"/"Dominant" and AAX's
-# "Fluent" top bands start (86+), and "strong" matches their 70-85 band —
-# so a site can never be rated "Authoritative" while its band reads
-# "developing".
+# "excellent" band starts where AEO's "Fully extractable", GEO's
+# "Fully connected", and AAX's "Fluent" top bands start (86+), and
+# "strong" matches their 66-85 band — so a site can never be rated
+# "Connected" while its band reads "developing".
 # ---------------------------------------------------------------------------
 
 _BAND_THRESHOLDS: list[tuple[float, float, BandName, str]] = [
@@ -111,11 +111,11 @@ def _band_meaning(band: BandName) -> str:
 
 # Lens-aware meaning for the "broken" band. The generic threshold text
 # ("content can't be parsed") describes an AAX failure; rendered under
-# GEO it would wrongly claim unparsable content when the lens actually
-# measures trust and recommendation signals.
+# AEO or GEO it would wrongly claim unparsable content when the lens
+# actually measures answer extraction or site-wide machine context.
 _BROKEN_BAND_MEANINGS: dict[LensName, str] = {
-    "AEO": "AI systems can't extract clean, quotable answers from this content",
-    "GEO": "AI systems don't see enough evidence to recognize or recommend this brand",
+    "AEO": "Agents can't extract clean, direct answers from this content",
+    "GEO": "Agents can't reach or reconcile this site's content",
     "AAX": "This site's content can't be parsed by AI agents",
 }
 
@@ -292,25 +292,19 @@ _PROFILE_RULES: tuple[_ProfileRule, ...] = (
 
 _LENS_META: dict[LensName, dict[str, str]] = {
     "AEO": {
-        "gap": "answers aren't citeable",
         "exposure": "answer structure",
-        "failure": "answers fall apart",
         "critical_label": "no answers to find",
-        "primary_exposure": "Lower likelihood of being quoted",
+        "primary_exposure": "Agents fall back to generic text instead of these answers",
         "fix_priority": "Structured answers",
     },
     "GEO": {
-        "gap": "no one recommends this brand",
-        "exposure": "trust signals",
-        "failure": "invisible to recommenders",
-        "critical_label": "trust factor too low",
-        "primary_exposure": "Lower likelihood of appearing in AI results",
-        "fix_priority": "Entity + trust signals",
+        "exposure": "machine context",
+        "critical_label": "machine context too weak",
+        "primary_exposure": "Agents can't reach or reconcile this site's content",
+        "fix_priority": "Crawl access + entity consistency",
     },
     "AAX": {
-        "gap": "Next-step signals need work",
         "exposure": "agent experience",
-        "failure": "Next-step signals are weak",
         "critical_label": "Agent experience is weak",
         "primary_exposure": "AI systems may struggle to identify a credible next step",
         "fix_priority": "Offer, content, and next-step signals",
@@ -322,15 +316,15 @@ _LENS_META: dict[LensName, dict[str, str]] = {
 # ---------------------------------------------------------------------------
 _HEADLINES: dict[str, str] = {
     "high_invisibility": "AI agents can't parse the website content",
-    "critical_failure": "One weak spot is affecting the visibility of the whole site",
+    "critical_failure": "One weak spot is pulling down the whole site",
     "broken_in_strong_profile": "Everything works except this one broken thing",
-    "material_risk": "AI agents see the site but can't fully trust it",
+    "material_risk": "Multiple areas block a clean agent read",
     "broad_exposure": "One big gap, plus a few other issues",
     "single_exposure": "Fix this one thing and everything improves",
     "partial_exposure": "AI agents only get fragments of the website",
     "developing_with_strong": "Good shape overall — just polish {lens}",
     "highly_readable": "AI agents read this cleanly. Go check it yourself.",
-    "strong_profile": "Solid foundation. Quick check recommended.",
+    "strong_profile": "Solid foundation. Worth a quick manual check.",
     "needs_review": "Scores feel off — double-check these",
     "incomplete": "Missing scores — re-run the scan",
 }
@@ -339,13 +333,13 @@ _HEADLINES: dict[str, str] = {
 # Profile labels (per profile shape, with lens interpolation)
 # ---------------------------------------------------------------------------
 _PROFILE_LABELS: dict[str, str] = {
-    "high_invisibility": "Can't be found by AI",
+    "high_invisibility": "Content isn't usable by AI agents",
     "critical_failure": "{critical_label}",
     "broken_in_strong_profile": "{critical_label}",
     "material_risk": "Several blind spots",
     "broad_exposure": "Two areas need attention",
     "single_exposure": "{exposure} needs work",
-    "partial_exposure": "Partially visible",
+    "partial_exposure": "Partial read across the site",
     "developing_with_strong": "{exposure} needs work",
     "highly_readable": "AI Agents read this site well",
     "strong_profile": "Solid foundation",
@@ -372,87 +366,94 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
             "The best insights get lost in generic summaries or skipped entirely."
         ),
         "GEO": (
-            "When people ask AI agents for recommendations, "
-            "this brand is unlikely to surface. Missing entity data, authority signals, and social proof."
+            "Agents can't reach or connect this site's content. Crawl access, "
+            "identity consistency, and machine context are too thin to build a "
+            "full picture."
         ),
         "AAX": (
-            "AI systems land here but struggle with the offer and next steps. "
-            "Lower likelihood of a credible next step."
+            "AI systems land here but can't establish the offer or a next step. "
+            "The action path is missing or unclear."
         ),
     },
     # Rule 2b — lens-specific
     "broken_in_strong_profile": {
         "AEO": (
-            "Trust signals are decent, but answer structure falls apart. "
-            "The content gets ignored in AI responses."
+            "The site is reachable and connected, but answers can't be "
+            "extracted cleanly. The content lacks the structure agents need "
+            "to pull direct answers."
         ),
         "GEO": (
-            "Answers work, but AI agents don't see enough trust or "
-            "authority signals to recommend the brand. Competitors with clearer "
-            "entity data will get picked instead."
+            "Answers work, but the machine context is inconsistent. Agents can't "
+            "reliably reach the content or reconcile the business identity "
+            "across pages."
         ),
         "AAX": (
-            "Answer and trust signals are solid, but recommendation signals need attention. "
-            "Lower likelihood of a credible next step."
+            "Answers and machine context are solid, but no clear next step is "
+            "established. Agents can't find an action path."
         ),
     },
     # Rule 3 — no lens variant
     "material_risk": (
-        "AI grabs fragments but can't see the whole story. "
-        "Key content, trust signals, or next-step signals are missing in multiple places."
+        "Agents get fragments, not the whole picture. Answers, machine context, "
+        "or action paths are missing in multiple places."
     ),
     # Rule 4 — lens-specific
     "broad_exposure": {
         "AEO": (
-            "Answers aren't working, plus another area needs attention. "
-            "AI doesn't have enough to go on in two places."
+            "Answers can't be extracted, plus another area needs attention. "
+            "Agents don't have enough to work with in two places."
         ),
         "GEO": (
-            "Trust signals are weak and another area is still developing. "
-            "AI doesn't have enough reason to recommend this brand over alternatives."
+            "Machine context is inconsistent and another area is still developing. "
+            "Agents can't reliably reach and connect the content."
         ),
         "AAX": (
-            "Friction appears here and another area isn't ready. "
-            "Lower likelihood of a credible next step."
+            "The action path is unclear here and another area isn't ready. "
+            "Agents can't establish a next step."
         ),
     },
     # Rule 5 — lens-specific
     "single_exposure": {
         "AEO": (
-            "Trust signals are strong. But fix answers and everything improves fast."
+            "The rest of the profile holds up. Fix answer structure and "
+            "everything improves fast."
         ),
         "GEO": (
-            "Answers work, but AI systems don't see enough trust signals to "
-            "recommend the brand. Entity data, author info, and social proof need work."
+            "Answers work, but the machine context is inconsistent. Identity, "
+            "authorship, and policy consistency need work."
         ),
         "AAX": (
-            "Answer and trust signals work, but the offer and next-step signals are "
-            "unclear. AI systems may struggle to identify a credible next step."
+            "Answers and machine context work, but the offer and next step are "
+            "unclear. Agents can't find a clear action path."
         ),
     },
     # Rule 6 — no lens variant
     "partial_exposure": (
-        "AI reads parts of the website, but the full picture's missing. "
-        "Multiple areas are 'almost there'—not enough for confident AI action."
+        "Agents read parts of the website, but the full picture's missing. "
+        "Multiple areas are 'almost there' — not enough for a clean, "
+        "complete read."
     ),
     # Rule 7 — lens-specific
     "developing_with_strong": {
         "AEO": (
-            "Trust signals are strong. Answer structure is the only area holding this site back."
+            "Reachability and action paths are solid. Answer structure is the "
+            "only area holding this site back."
         ),
         "GEO": (
-            "Answers work. Trust signals need strengthening for AI recommendations."
+            "Answers and action paths are solid. Machine context needs "
+            "strengthening — consistency and crawl access."
         ),
-        "AAX": "Answers and trust are solid. Offer and next-step signals need clarification.",
+        "AAX": "Answers and machine context are solid. The offer and next step need clarification.",
     },
     # Rule 8 — no lens variant
     "highly_readable": (
-        "AI reads the content well. Citations, recommendations, and signals look strong. "
-        "Run self-verification to be sure."
+        "Agents read this site cleanly — content, context, and next steps "
+        "all hold up. Run self-verification to be sure."
     ),
     # Rule 9 — no lens variant
     "strong_profile": (
-        "Strong scores across the board. Manual verification needed for citation accuracy, competitive positioning, or capture rate."
+        "Strong scores across the board. Manual verification still matters — "
+        "check the details yourself before acting."
     ),
     # Rule 10 — no lens variant
     "needs_review": (
@@ -464,18 +465,6 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
         "Re-run the crawl or check for scoring errors."
     ),
 }
-
-# ---------------------------------------------------------------------------
-# Limitations for auto-only scans (what the free scan doesn't show)
-# ---------------------------------------------------------------------------
-
-_AUTO_ONLY_LIMITATIONS: list[str] = [
-    "Citation frequency — requires checking manually",
-    "Query-match relevance — requires query-match analysis",
-    "Competitor comparison — requires competitive analysis",
-    "Voice assistant presence — requires testing through voice",
-    "Capture rate accuracy — requires Search Console data",
-]
 
 # ---------------------------------------------------------------------------
 # Next step recommendation (always present)
@@ -512,16 +501,12 @@ def _resolve_profile_label(
     """Return the profile label with substitutions."""
     default = "Score pattern needs review"
     template = _PROFILE_LABELS.get(profile_shape, default)
-    if "{failure}" in template:
-        template = template.replace("{failure}", lens_meta.get("failure", ""))
     if "{critical_label}" in template:
         template = template.replace(
             "{critical_label}", lens_meta.get("critical_label", "")
         )
     if "{exposure}" in template:
         template = template.replace("{exposure}", lens_meta.get("exposure", ""))
-    if "{gap_label}" in template:
-        template = template.replace("{gap_label}", lens_meta.get("gap", ""))
     # Ensure the resolved label starts with an uppercase letter
     if template:
         return template[0].upper() + template[1:]
@@ -544,8 +529,6 @@ def interpret_profile(
     aeo_score: float | None,
     geo_score: float | None,
     aax_score: float | None,
-    *,
-    score_basis: str = "auto",
 ) -> dict:
     """Classify the shape of an AEO/GEO/AAX score profile.
 
@@ -553,13 +536,11 @@ def interpret_profile(
         aeo_score: AEO composite score (0-100) or None.
         geo_score: GEO composite score (0-100) or None.
         aax_score: AAX composite score (0-100) or None.
-        score_basis: "auto" for free scans (auto-only composites),
-                     "full" for paid audits (complete composites).
 
     Returns:
         Interpretation dict with profile_label, tone, headline, diagnosis,
         weakest_lens, strongest_lens, primary_exposure, fix_priority, bands,
-        profile_shape, lens_details, score_basis, limitations, next_step.
+        profile_shape, lens_details, next_step.
     """
     # ------------------------------------------------------------------
     # None handling — return minimal fallback
@@ -581,8 +562,6 @@ def interpret_profile(
             "bands": {},
             "profile_shape": "incomplete",
             "lens_details": {},
-            "score_basis": score_basis,
-            "limitations": (_AUTO_ONLY_LIMITATIONS if score_basis == "auto" else []),
             "next_step": _NEXT_STEP,
         }
 
@@ -655,7 +634,5 @@ def interpret_profile(
         },
         "profile_shape": profile_shape,
         "lens_details": lens_details,
-        "score_basis": score_basis,
-        "limitations": (_AUTO_ONLY_LIMITATIONS if score_basis == "auto" else []),
         "next_step": _NEXT_STEP,
-    }  # noqa: E501
+    }

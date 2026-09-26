@@ -249,7 +249,7 @@ def _interpret_headline(aeo_sc: Any, geo_sc: Any, aax_sc: Any) -> tuple[Any, Any
     tone = None
     try:
         if aeo_sc is not None and geo_sc is not None and aax_sc is not None:
-            interp = interpret_profile(aeo_sc, geo_sc, aax_sc, score_basis="auto")
+            interp = interpret_profile(aeo_sc, geo_sc, aax_sc)
             headline = interp.get("headline")
             tone = interp.get("tone")
     except Exception:

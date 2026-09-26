@@ -70,8 +70,8 @@ def test_contactability_rec_from_explicit_param():
 
 
 def test_llms_txt_recommendation_not_duplicated():
-    """Missing llms.txt must produce exactly one llms.txt card (GEO),
-    not two (GEO + AAX)."""
+    """Missing llms.txt must produce exactly one llms.txt card (GEO crawl
+    access) — AAX has no llms.txt recommendation at all."""
     aeo_factors = {"schema": {"score": 100.0, "raw": {"coverage_pct": 100}}}
     geo_factors = {
         "crawl_access": {
@@ -83,16 +83,7 @@ def test_llms_txt_recommendation_not_duplicated():
             },
         }
     }
-    aax_factors = {
-        "llms_txt": {
-            "score": 0.0,
-            "raw": {
-                "llms_txt": {"exists": False},
-                "llms_full_txt": {"exists": False},
-            },
-        }
-    }
-    recs = generate_recommendations(aeo_factors, geo_factors, aax_factors=aax_factors)
+    recs = generate_recommendations(aeo_factors, geo_factors)
     llms_titles = [r["title"] for r in recs if "llms" in r["title"].lower()]
     assert len(llms_titles) == 1
 

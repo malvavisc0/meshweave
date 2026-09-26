@@ -166,7 +166,6 @@ class AAXAnalysisResult(BaseModel):
     content_delta: ContentDeltaResult | None = None
     contactability: ContactabilityResult | None = None
     email_validation: EmailValidationResult | None = None
-    llms_txt: dict | None = None
     citation_sim: CitationSimulationResult | None = None
     summary: str = ""
     skip_reasons: dict[str, str] = Field(default_factory=dict)

@@ -108,8 +108,8 @@ def _seed_series(s, *, aeo_old=50.0, aeo_new=60.0, geo_old=40.0, geo_new=44.0):
                 domain="example.com",
                 aeo_score=aeo,
                 geo_score=geo,
-                aeo_rating="Average",
-                geo_rating="Emerging",
+                aeo_rating="Partially extractable",
+                geo_rating="Fragmented",
                 score_json={
                     "aax": {"composite": aax} if aax is not None else {},
                     "recommendations": recs,

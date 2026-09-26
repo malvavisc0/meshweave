@@ -3,47 +3,53 @@
 Lives outside ``engine.py`` so ``recommendations.py`` can compute
 model-derived expected deltas without importing the engine (which
 imports the recommendation generator, creating a cycle).
+
+The weight tables here are the single source of truth for every
+displayed weight (result page, methodology page, exports).
 """
 
 from __future__ import annotations
 
 import logging
 
+# AEO: answer extractability. The answerability slot carries material
+# weight; its grounded test lands in a later phase — until then it is
+# not computed and the composite re-normalizes across the remaining
+# factors.
 AEO_WEIGHTS: dict[str, float] = {
-    "capture_rate": 0.30,
+    "answerability": 0.40,
+    "content_structure": 0.25,
     "schema": 0.20,
-    "content_structure": 0.20,
-    "query_match": 0.15,
-    "voice_rate": 0.10,
-    "freshness": 0.05,
+    "freshness": 0.15,
 }
 
+# GEO: site-wide machine context. Crawlability and consistent,
+# substantive site evidence carry the composite — no external-outcome
+# or third-party authority-proxy factors.
 GEO_WEIGHTS: dict[str, float] = {
-    "citation": 0.30,
-    "topical_authority": 0.20,
+    "crawl_access": 0.30,
+    "entity_consistency": 0.20,
+    "content_depth": 0.20,
+    "topical_authority": 0.15,
     "eeat": 0.15,
-    "crawl_access": 0.15,
-    "content_depth": 0.10,
-    "entity_consistency": 0.10,
 }
 
-# AAX factor weights (sum to 1.0). v1.1: llms.txt 15% → 5% — an
-# optional, emerging file must not dominate the agent-experience lens
-# (and its presence already earns points in GEO's crawl_access factor).
-# The 10 points moved to homepage comprehension (30 → 35, the strongest
-# agent-utility signal) and contactability (5 → 10, real actionability).
+# AAX: agent actionability. All factors must establish a clear action
+# path; llms.txt is not a factor — its evidence is scored once, inside
+# GEO crawl_access.
 AAX_WEIGHTS: dict[str, float] = {
     "homepage_comprehension": 0.35,
-    "meta_optimization": 0.20,
-    "content_delta": 0.20,
-    "llms_txt": 0.05,
+    "content_delta": 0.25,
+    "meta_optimization": 0.15,
+    "contactability": 0.15,
     "email_validation": 0.10,
-    "contactability": 0.10,
 }
 
 # Bumped when weights or factor formulas change so the diff page can
-# flag cross-version comparisons. 1.1: AAX llms.txt reweight.
-SCORING_VERSION = "1.1"
+# flag cross-version comparisons. 1.2: site-side scoring model reset —
+# manual external factors removed, AAX llms.txt factor removed,
+# GEO topical-authority/E-E-A-T rewritten, AEO answerability slot added.
+SCORING_VERSION = "1.2"
 
 LENS_WEIGHTS: dict[str, dict[str, float]] = {
     "aeo": AEO_WEIGHTS,

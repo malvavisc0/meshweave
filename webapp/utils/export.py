@@ -167,16 +167,11 @@ def _md_recommendations(ctx: dict) -> str:
 
 
 def _md_methodology(ctx: dict) -> str:
-    interp = ctx.get("interpretation") or {}
     lines = ["## Methodology & Limitations", ""]
-    for lim in interp.get("limitations") or []:
-        lines.append(f"- {lim}")
-    if interp.get("limitations"):
-        lines.append("")
     lines.append(
         "Scores are diagnostic signals, not guarantees of rankings, citations, "
-        "traffic, revenue, or conversion. Automated evidence is distinct from "
-        "manual inputs. AAX is not an interactive browser-agent or transaction test."
+        "traffic, revenue, or conversion. AAX is not an interactive "
+        "browser-agent or transaction test."
     )
     lines.append("")
     return "\n".join(lines)

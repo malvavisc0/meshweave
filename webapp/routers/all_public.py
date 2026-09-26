@@ -178,9 +178,7 @@ def _headline_of(row: Crawl, aax_sc) -> tuple[Any, Any]:
             and row.geo_score is not None
             and aax_sc is not None
         ):
-            interp = interpret_profile(
-                row.aeo_score, row.geo_score, aax_sc, score_basis="auto"
-            )
+            interp = interpret_profile(row.aeo_score, row.geo_score, aax_sc)
             return interp.get("headline"), interp.get("tone")
     except Exception:
         pass

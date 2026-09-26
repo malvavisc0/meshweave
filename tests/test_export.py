@@ -110,20 +110,19 @@ def _stub_row() -> SimpleNamespace:
         score_snapshot=SimpleNamespace(
             aeo_score=72.0,
             geo_score=65.0,
-            aeo_rating="Strong",
-            geo_rating="Visible",
-            has_manual_input=False,
+            aeo_rating="Reliably extractable",
+            geo_rating="Connected",
             ai_analysis_json={"aax": {"summary": "ok"}},
             score_json={
                 "aeo": {
                     "composite": 72.0,
-                    "rating": "Strong",
+                    "rating": "Reliably extractable",
                     "factors": {},
                     "skip_reasons": {},
                 },
                 "geo": {
                     "composite": 65.0,
-                    "rating": "Visible",
+                    "rating": "Connected",
                     "factors": {},
                     "skip_reasons": {},
                 },

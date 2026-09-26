@@ -1,8 +1,8 @@
 """AEO (Answer Engine Optimization) factor scoring functions.
 
 Each factor takes the crawl payload (dict) and returns a dict with:
-  - score: float | None (0-100, or None if not auto-measurable)
-  - weight: float
+  - score: float | None (0-100, or None if not measurable)
+  - weight: float (from the authoritative AEO weight table)
   - auto_measurable: bool
   - raw: dict (diagnostic data)
   - note: str | None (optional)
@@ -13,9 +13,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from meshweave.scoring.composite import AEO_WEIGHTS
+
 
 def score_schema(payload: dict) -> dict:
-    """A1. Schema Implementation (20% weight, auto).
+    """A1. Schema Implementation (auto).
 
     Input: audit.schema_coverage, faq_analysis
     """
@@ -34,7 +36,7 @@ def score_schema(payload: dict) -> dict:
         "score": _schema_score(
             coverage_pct, has_faq, has_howto, faq_count, faq_in_optimal
         ),
-        "weight": 0.20,
+        "weight": AEO_WEIGHTS["schema"],
         "auto_measurable": True,
         "raw": _schema_raw(
             schema_cov, coverage_pct, schema_types, has_faq, has_howto, faq_in_optimal
@@ -85,7 +87,7 @@ def _schema_raw(
 
 
 def score_content_structure(payload: dict) -> dict:
-    """A2. Content Structure Quality (20% weight, auto).
+    """A2. Content Structure Quality (auto).
 
     Per-page scoring, then averaged across all pages.
     """
@@ -95,7 +97,7 @@ def score_content_structure(payload: dict) -> dict:
     if not pages_data:
         return {
             "score": None,
-            "weight": 0.20,
+            "weight": AEO_WEIGHTS["content_structure"],
             "auto_measurable": True,
             "raw": {"per_page_scores": {}, "site_average": 0, "pages_evaluated": 0},
         }
@@ -114,7 +116,7 @@ def score_content_structure(payload: dict) -> dict:
 
     return {
         "score": min(100.0, avg),
-        "weight": 0.20,
+        "weight": AEO_WEIGHTS["content_structure"],
         "auto_measurable": True,
         "raw": {
             "per_page_scores": per_page_scores,
@@ -234,7 +236,7 @@ def _page_headings_metrics(page_data: dict) -> tuple[dict, dict]:
 
 
 def score_freshness(payload: dict) -> dict:
-    """A3. Freshness (5% weight, partial auto).
+    """A3. Freshness (auto).
 
     Uses datePublished/dateModified from JSON-LD articles.
     Fallback: use crawl.updated_at or metadata dates.
@@ -259,7 +261,7 @@ def score_freshness(payload: dict) -> dict:
     if not dates:
         return {
             "score": None,  # excluded from composite when no date data
-            "weight": 0.05,
+            "weight": AEO_WEIGHTS["freshness"],
             "auto_measurable": True,
             "raw": {
                 "newest_date": None,
@@ -279,7 +281,7 @@ def score_freshness(payload: dict) -> dict:
 
     return {
         "score": score,
-        "weight": 0.05,
+        "weight": AEO_WEIGHTS["freshness"],
         "auto_measurable": True,
         "raw": {
             "newest_date": max(dates).isoformat(),
@@ -366,50 +368,3 @@ def _freshness_score(avg_days: float) -> float:
     if avg_days <= 365:
         return 40.0
     return 20.0
-
-
-def score_capture_rate(user_input: float | None = None) -> dict:
-    """A4. Snippet / AI Overview Capture Rate (30%, NOT auto)."""
-    return {
-        "score": user_input,
-        "weight": 0.30,
-        "auto_measurable": False,
-        "manual_input_guidance": (
-            "Enter the % of your target keywords where you appear in "
-            "featured snippets or AI Overviews. Check Google Search Console "
-            "→ Performance → Search Appearance."
-        ),
-        "user_value": user_input,
-        "raw": None,
-    }
-
-
-def score_query_match(user_input: float | None = None) -> dict:
-    """A5. Query Match Precision (15%, NOT auto)."""
-    return {
-        "score": user_input,
-        "weight": 0.15,
-        "auto_measurable": False,
-        "manual_input_guidance": (
-            "Estimate how closely your content matches the natural language "
-            "questions your audience asks. Check 'People Also Ask' for your "
-            "target keywords."
-        ),
-        "user_value": user_input,
-        "raw": None,
-    }
-
-
-def score_voice_rate(user_input: float | None = None) -> dict:
-    """A6. Voice Selection Rate (10%, NOT auto)."""
-    return {
-        "score": user_input,
-        "weight": 0.10,
-        "auto_measurable": False,
-        "manual_input_guidance": (
-            "Test your target queries on Google Assistant, Siri, and Alexa. "
-            "Enter the % where your content is the answer."
-        ),
-        "user_value": user_input,
-        "raw": None,
-    }

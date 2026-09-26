@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from meshweave.scoring.engine import AAX_WEIGHTS, compute_aax_score
+from meshweave.scoring.composite import (
+    AEO_WEIGHTS,
+    expected_lens_delta,
+    weighted_composite,
+)
+from meshweave.scoring.engine import AAX_WEIGHTS, compute_aax_score, compute_scores
 from meshweave.scoring.ratings import aax_rating
 from meshweave.scoring.recommendations import (
     _content_delta_rec,
@@ -50,10 +55,6 @@ class TestAAXCompositeFormula:
                     "coherence": "consistent",
                     "completeness": "comprehensive",
                 },
-                "llms_txt": {
-                    "llms_txt": {"exists": True},
-                    "llms_full_txt": {"exists": True},
-                },
                 "email_validation": {
                     "valid_contacts": [
                         {"email": "sales@acme.com", "contact_type": "sales"},
@@ -62,7 +63,7 @@ class TestAAXCompositeFormula:
                     "confidence": "high",
                 },
                 "contactability": {"score": 100.0, "email_count": 1},
-                "tests_completed": 6,
+                "tests_completed": 5,
                 "tests_skipped": 0,
             }
         )
@@ -129,10 +130,6 @@ class TestMetaOptimizationRebalance:
                     "coherence": "consistent",
                     "completeness": "comprehensive",
                 },
-                "llms_txt": {
-                    "llms_txt": {"exists": True},
-                    "llms_full_txt": {"exists": True},
-                },
                 "email_validation": {
                     "valid_contacts": [
                         {"email": "sales@acme.com", "contact_type": "sales"},
@@ -141,7 +138,7 @@ class TestMetaOptimizationRebalance:
                     "confidence": "high",
                 },
                 "contactability": {"score": 100.0, "email_count": 1},
-                "tests_completed": 6,
+                "tests_completed": 5,
                 "tests_skipped": 0,
             }
         )
@@ -292,7 +289,7 @@ class TestGroupRecommendationsByPillar:
         recs = [
             {"factor": "schema", "pillar": "aeo", "priority": "high"},
             {"factor": "eeat", "pillar": "geo", "priority": "medium"},
-            {"factor": "llms_txt", "pillar": "aax", "priority": "low"},
+            {"factor": "contactability", "pillar": "aax", "priority": "low"},
         ]
         groups = group_recommendations_by_pillar(recs)
         assert len(groups["aeo"]) == 1
@@ -333,3 +330,48 @@ class TestGroupRecommendationsByPillar:
         assert len(groups["geo"]) == 2
         assert groups["geo"][0]["priority"] == "high"
         assert groups["geo"][1]["priority"] == "low"
+
+
+class TestAeoAnswerabilitySlot:
+    """Pin the reserved answerability slot's renormalization interim.
+
+    Answerability joins AEO at 0.40 when its grounded test lands. Until
+    then the composite must re-normalize across the computed factors —
+    an uncomputed slot is excluded, never scored as zero — and
+    expected-point predictions must share that basis so a fix's promised
+    delta matches the observed one.
+    """
+
+    def test_slot_is_reserved_at_material_weight(self):
+        assert AEO_WEIGHTS["answerability"] == 0.40
+
+    def test_uncomputed_slot_is_excluded_from_the_composite(self):
+        scores = compute_scores({})
+        factors = scores["aeo"]["factors"]
+        assert "answerability" not in factors
+        assert scores["aeo"]["composite"] == weighted_composite(factors, AEO_WEIGHTS)
+
+    def test_absent_slot_is_not_a_zero_score(self):
+        factors = {
+            "schema": {"score": 50.0},
+            "content_structure": {"score": 50.0},
+            "freshness": {"score": 50.0},
+        }
+        absent = weighted_composite(factors, AEO_WEIGHTS)
+        zeroed = weighted_composite(
+            {**factors, "answerability": {"score": 0.0}}, AEO_WEIGHTS
+        )
+        assert absent is not None and zeroed is not None
+        assert absent > zeroed
+
+    def test_expected_delta_matches_the_applied_fix(self):
+        factors = {
+            "schema": {"score": 50.0},
+            "content_structure": {"score": 50.0},
+            "freshness": {"score": 50.0},
+        }
+        predicted = expected_lens_delta("aeo", factors, "schema", 100.0)
+        observed = weighted_composite(
+            {**factors, "schema": {"score": 100.0}}, AEO_WEIGHTS
+        ) - weighted_composite(factors, AEO_WEIGHTS)
+        assert predicted == round(observed, 1)

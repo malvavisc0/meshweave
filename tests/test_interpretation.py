@@ -69,17 +69,7 @@ class TestInterpretProfile:
     def test_all_none(self):
         result = interpret_profile(None, None, None)
         assert result["profile_shape"] == "incomplete"
-        assert result["limitations"]  # auto-only has limitations
-
-    def test_score_basis_full(self):
-        result = interpret_profile(80.0, 70.0, 75.0, score_basis="full")
-        assert result["score_basis"] == "full"
-        assert result["limitations"] == []
-
-    def test_score_basis_auto(self):
-        result = interpret_profile(80.0, 70.0, 75.0, score_basis="auto")
-        assert result["score_basis"] == "auto"
-        assert len(result["limitations"]) > 0
+        assert result["next_step"]
 
     def test_next_step_always_present(self):
         result = interpret_profile(80.0, 70.0, 75.0)
@@ -235,13 +225,13 @@ class TestLensSpecificLabels:
         result = interpret_profile(30.0, 72.0, 80.0)
         assert result["weakest_lens"] == "AEO"
         label = result["profile_label"].lower()
-        assert "answer" in label or "citation" in label
+        assert "answer" in label
 
     def test_geo_weakest_label(self):
         result = interpret_profile(72.0, 30.0, 80.0)
         assert result["weakest_lens"] == "GEO"
         label = result["profile_label"].lower()
-        assert "trust" in label or "recommend" in label
+        assert "context" in label
 
     def test_aax_weakest_label(self):
         result = interpret_profile(72.0, 80.0, 30.0)
@@ -267,8 +257,6 @@ class TestReturnStructure:
             "bands",
             "profile_shape",
             "lens_details",
-            "score_basis",
-            "limitations",
             "next_step",
         ]
         for field in required_fields:
@@ -298,10 +286,10 @@ class TestCapitalization:
     """Test that profile labels always start with an uppercase letter."""
 
     def test_developing_with_strong_geo_capitalized(self):
-        """The bug: GEO exposure 'recommendation signals' was lowercase."""
+        """The bug: lens exposure labels were lowercase."""
         result = interpret_profile(82.3, 62.0, 77.1)
         assert result["profile_label"][0].isupper()
-        assert result["profile_label"] == "Trust signals needs work"
+        assert result["profile_label"] == "Machine context needs work"
 
     def test_developing_with_strong_aeo_capitalized(self):
         result = interpret_profile(62.0, 82.0, 77.0)
@@ -414,10 +402,10 @@ class TestDiagnosisContent:
             )
             assert len(result["diagnosis"]) > 0, f"Empty diagnosis for {expected_shape}"
 
-    def test_geo_diagnosis_mentions_recommendation(self):
+    def test_geo_diagnosis_mentions_site_context(self):
         result = interpret_profile(82.0, 62.0, 77.0)
         assert result["weakest_lens"] == "GEO"
-        assert "trust" in result["diagnosis"].lower()
+        assert "context" in result["diagnosis"].lower()
 
     def test_aeo_diagnosis_mentions_answer(self):
         result = interpret_profile(30.0, 72.0, 80.0)
@@ -433,7 +421,7 @@ class TestHeadlineInterpolation:
         result = interpret_profile(82.0, 62.0, 77.0)
         assert result["profile_shape"] == "developing_with_strong"
         assert "{lens}" not in result["headline"]
-        assert "trust signals" in result["headline"]
+        assert "machine context" in result["headline"]
 
     def test_rule7_aeo_headline(self):
         result = interpret_profile(62.0, 82.0, 77.0)
@@ -463,11 +451,12 @@ class TestLensDetailsLabels:
             assert label.lower() == band
 
     def test_geo_broken_meaning_is_lens_specific(self):
-        # GEO broken is a trust failure, not an unparsable-content claim.
+        # GEO broken is a site-context failure, not an
+        # unparsable-content claim.
         result = interpret_profile(15.0, 22.0, 71.2)
         meaning = result["lens_details"]["GEO"]["meaning"].lower()
         assert "parse" not in meaning
-        assert "recommend" in meaning
+        assert "reconcile" in meaning or "reach" in meaning
 
     def test_aax_broken_meaning_keeps_parsing_claim(self):
         result = interpret_profile(15.0, 22.0, 25.0)
@@ -477,10 +466,6 @@ class TestLensDetailsLabels:
 
 class TestIncompleteVariants:
     """Additional incomplete/None edge cases."""
-
-    def test_incomplete_full_basis_no_limitations(self):
-        result = interpret_profile(None, 62.0, 77.0, score_basis="full")
-        assert result["limitations"] == []
 
     def test_single_none_first(self):
         result = interpret_profile(None, 80.0, 80.0)

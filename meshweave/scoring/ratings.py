@@ -9,19 +9,19 @@ AAX_RATINGS: list[tuple[int, int, str]] = [
 ]
 
 AEO_RATINGS: list[tuple[int, int, str]] = [
-    (0, 25, "Poor"),
-    (26, 45, "Below Average"),
-    (46, 65, "Average"),
-    (66, 85, "Strong"),
-    (86, 100, "Excellent"),
+    (0, 25, "Not extractable"),
+    (26, 45, "Limited extractability"),
+    (46, 65, "Partially extractable"),
+    (66, 85, "Reliably extractable"),
+    (86, 100, "Fully extractable"),
 ]
 
 GEO_RATINGS: list[tuple[int, int, str]] = [
-    (0, 25, "Invisible"),
-    (26, 45, "Emerging"),
-    (46, 65, "Visible"),
-    (66, 85, "Authoritative"),
-    (86, 100, "Dominant"),
+    (0, 25, "Unreachable"),
+    (26, 45, "Fragmented"),
+    (46, 65, "Reachable"),
+    (66, 85, "Connected"),
+    (86, 100, "Fully connected"),
 ]
 
 
@@ -33,7 +33,7 @@ def aeo_rating(score: float | None) -> str | None:
     for lo, hi, label in AEO_RATINGS:
         if lo <= s <= hi:
             return label
-    return "Excellent"
+    return "Fully extractable"
 
 
 def geo_rating(score: float | None) -> str | None:
@@ -44,7 +44,7 @@ def geo_rating(score: float | None) -> str | None:
     for lo, hi, label in GEO_RATINGS:
         if lo <= s <= hi:
             return label
-    return "Dominant"
+    return "Fully connected"
 
 
 def aax_rating(score: float | None) -> str | None:

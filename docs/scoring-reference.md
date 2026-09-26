@@ -14,14 +14,13 @@ All three scores use the same weighted composite function with **re-normalizatio
 composite = Σ(score_i × weight_i) / Σ(weight_i)    # only for factors with non-None scores
 ```
 
-- Factors with `score: None` (e.g. manual inputs not yet provided, or freshness with no dates) are **excluded** and their weight is redistributed proportionally among available factors.
+- Factors with `score: None` (e.g. freshness with no dates) are **excluded** and their weight is redistributed proportionally among available factors.
 - A **calibration curve** is applied after the weighted average to compress the upper range and prevent score inflation for average sites:
   ```python
   calibrated = 100.0 * (composite / 100.0) ** 1.15
   ```
   This pulls 80→77, 70→66, 60→56, 50→45, 40→35 while leaving 100 untouched. Compress more by raising the exponent (e.g. 1.4 gives 80→73, 70→61).
 - The result is capped at 100 and rounded to 1 decimal place.
-- Each score also produces an **auto-only composite** that excludes manual-input factors.
 
 **Source:** `meshweave/scoring/engine.py` → `_weighted_composite()`
 
@@ -29,18 +28,19 @@ composite = Σ(score_i × weight_i) / Σ(weight_i)    # only for factors with no
 
 ## AEO — Answer Engine Optimization
 
-**Purpose:** How well content is structured for AI answer engines (featured snippets, AI Overviews, voice assistants).
+**Purpose:** How well content is structured so AI agents can extract direct, supported answers from it.
 
-**Composite = 100%, 6 factors:**
+**Composite = 100%, 4 factors:**
 
 | # | Factor | Weight | Auto? | Source |
 |---|--------|--------|-------|--------|
-| A4 | Capture Rate | 30% | ❌ Manual | User enters % of keywords in featured snippets/AI Overviews |
+| A7 | Answerability | 40% | — | Grounded answer test (rollout pending) |
+| A2 | Content Structure | 25% | ✅ Auto | `aeo.score_content_structure()` |
 | A1 | Schema Implementation | 20% | ✅ Auto | `aeo.score_schema()` |
-| A2 | Content Structure | 20% | ✅ Auto | `aeo.score_content_structure()` |
-| A5 | Query Match | 15% | ❌ Manual | User estimates content-to-query alignment |
-| A6 | Voice Rate | 10% | ❌ Manual | User tests voice assistant responses |
-| A3 | Freshness | 5% | ✅ Auto | `aeo.score_freshness()` |
+| A3 | Freshness | 15% | ✅ Auto | `aeo.score_freshness()` |
+
+The answerability slot is part of the model but not yet computed; until its
+grounded test lands, the composite re-normalizes across the computed factors.
 
 ### A1. Schema Implementation (20%)
 
@@ -57,7 +57,7 @@ A single in-range answer among many is not "FAQ quality" — the bonus requires 
 
 **Source:** `meshweave/scoring/aeo.py` → `score_schema()`
 
-### A2. Content Structure Quality (20%)
+### A2. Content Structure Quality (25%)
 
 Per-page scoring (0-100), then **averaged across all pages**:
 
@@ -75,7 +75,7 @@ Per-page scoring (0-100), then **averaged across all pages**:
 
 **Source:** `meshweave/scoring/aeo.py` → `score_content_structure()`, `_score_single_page()`
 
-### A3. Freshness (5%)
+### A3. Freshness (15%)
 
 Extracts `datePublished` / `dateModified` / `dateCreated` from JSON-LD across all unique pages (the start page is counted once — it appears both in `page` and in `markdowns` for site crawls, so dates are deduplicated by URL). Future-dated content is clamped to 0 days old so scheduled posts can't inflate the score.
 
@@ -94,63 +94,58 @@ Extracts `datePublished` / `dateModified` / `dateCreated` from JSON-LD across al
 
 | Range | Label |
 |-------|-------|
-| 0–25 | Poor |
-| 26–45 | Below Average |
-| 46–65 | Average |
-| 66–85 | Strong |
-| 86–100 | Excellent |
+| 0–25 | Not extractable |
+| 26–45 | Limited extractability |
+| 46–65 | Partially extractable |
+| 66–85 | Reliably extractable |
+| 86–100 | Fully extractable |
 
 ---
 
 ## GEO — Generative Engine Optimization
 
-**Purpose:** How well content is positioned to be cited/referenced by LLMs (ChatGPT, Claude, Perplexity).
+**Purpose:** Site-wide machine context — whether AI agents can reach the relevant material and reconcile the business identity, evidence, and claims across the site.
 
-**Composite = 100%, 6 factors:**
+**Composite = 100%, 5 factors:**
 
 | # | Factor | Weight | Auto? | Source |
 |---|--------|--------|-------|--------|
-| G1 | Citation | 30% | ❌ Manual | User estimates citation frequency across LLMs |
-| G2 | Topical Authority | 20% | ✅ Auto | `geo.score_topical_authority()` |
+| G4 | Crawl Access | 30% | ✅ Auto | `geo.score_crawl_access()` |
+| G6 | Entity Consistency | 20% | ✅ Auto | `geo.score_entity_consistency()` |
+| G5 | Content Depth | 20% | ✅ Auto | `geo.score_content_depth()` |
+| G2 | Topical Authority | 15% | ✅ Auto | `geo.score_topical_authority()` |
 | G3 | E-E-A-T Signals | 15% | ✅ Auto | `geo.score_eeat()` |
-| G4 | Crawl Access | 15% | ✅ Auto | `geo.score_crawl_access()` |
-| G5 | Content Depth | 10% | ✅ Auto | `geo.score_content_depth()` |
-| G6 | Entity Consistency | 10% | ✅ Auto | `geo.score_entity_consistency()` |
 
-### G2. Topical Authority (20%)
+### G2. Topical Authority (15%)
 
-Weighted blend of 6 sub-factors:
+Weighted blend of site-wide evidence (sameAs is raw evidence only — not a score driver):
 
 | Sub-factor | Sub-weight | Calculation |
 |-----------|------------|-------------|
-| Schema coverage % | 0.30 | Direct from `schema_coverage.coverage_pct` |
-| Schema type diversity | 0.20 | `min(unique_types / 10, 1.0) × 100` |
+| Schema coverage % | 0.35 | Direct from `schema_coverage.coverage_pct` |
+| Schema type diversity | 0.25 | `min(unique_types / 10, 1.0) × 100` |
 | Entity name consistent | 0.15 | 100 if consistent, else 0 |
 | Description consistent | 0.15 | 100 if consistent, else 0 |
-| sameAs link count | 0.10 | 0 links=0, 1-2=40, 3-5=70, 6+=100 |
 | Content page ratio | 0.10 | Pages with >300 words / total pages × 100 |
 
 **Source:** `meshweave/scoring/geo.py` → `score_topical_authority()`
 
 ### G3. E-E-A-T Signals (15%)
 
-Additive scoring:
+Additive scoring on site-side evidence (review, video, and sameAs signals are raw evidence only — not score drivers):
 
 | Signal | Points |
 |--------|--------|
-| Organization schema present | +15 |
-| Author info in articles | +15 |
-| Review/rating schema | +15 |
-| sameAs links (social profiles) | +10 |
-| Contact page exists | +8 |
-| Privacy/terms pages exist | +7 |
-| Video content schema | +5 |
+| Organization schema present | +30 |
+| Author info in articles | +30 |
+| Contact page exists | +20 |
+| Privacy/terms pages exist | +20 |
 
 **Cap:** 100. Schema type matching is case-insensitive.
 
 **Source:** `meshweave/scoring/geo.py` → `score_eeat()`
 
-### G4. LLM Crawl Accessibility (15%)
+### G4. LLM Crawl Accessibility (30%)
 
 Additive scoring from robots.txt and llms.txt data:
 
@@ -166,11 +161,11 @@ Additive scoring from robots.txt and llms.txt data:
 
 **Cap:** 100. Returns `None` if robots/llms data is placeholder (page-scope crawl).
 
-Bot status matching: a status of exactly `allowed` earns full points; a partially-restricted status (allowed site-wide except specific paths) earns **half credit** (GPTBot 7, ClaudeBot 6, PerplexityBot 6). The structural maximum is 77 — the remaining 23 points don't exist to be earned, so the auto-only GEO composite tops out near "Authoritative" by design.
+Bot status matching: a status of exactly `allowed` earns full points; a partially-restricted status (allowed site-wide except specific paths) earns **half credit** (GPTBot 7, ClaudeBot 6, PerplexityBot 6). The structural maximum is 77 — the remaining 23 points don't exist to be earned. Optional llms.txt evidence is scored here only, once.
 
 **Source:** `meshweave/scoring/geo.py` → `score_crawl_access()`
 
-### G5. Content Depth & Originality (10%)
+### G5. Content Depth & Originality (20%)
 
 Weighted blend:
 
@@ -186,7 +181,7 @@ Pages come from `markdowns`; the derived `pages` view is only used as a fallback
 
 **Source:** `meshweave/scoring/geo.py` → `score_content_depth()`
 
-### G6. Entity Consistency (10%)
+### G6. Entity Consistency (20%)
 
 Additive scoring:
 
@@ -199,7 +194,7 @@ Additive scoring:
 | sameAs links: 3–5 | +28 |
 | sameAs links: 6+ | +40 |
 
-**Cap:** 100. The sameAs points use the shared `_same_as_score` scale (0/40/70/100 — same buckets as topical authority) scaled by 0.4, so one signal can't be "good" in one factor and "mediocre" in another. Auto-measurable maximum is 75 — a full 40 for sameAs requires 6+ org profiles.
+**Cap:** 100. The sameAs points use the shared `_same_as_score` scale (0/40/70/100) scaled by 0.4, so one signal can't be "good" in one factor and "mediocre" in another.
 
 **Source:** `meshweave/scoring/geo.py` → `score_entity_consistency()`
 
@@ -207,28 +202,27 @@ Additive scoring:
 
 | Range | Label |
 |-------|-------|
-| 0–25 | Invisible |
-| 26–45 | Emerging |
-| 46–65 | Visible |
-| 66–85 | Authoritative |
-| 86–100 | Dominant |
+| 0–25 | Unreachable |
+| 26–45 | Fragmented |
+| 46–65 | Reachable |
+| 66–85 | Connected |
+| 86–100 | Fully connected |
 
 ---
 
 ## AAX — AI Agent Experience
 
-**Purpose:** How well an AI agent can understand, evaluate, and recommend a website. Computed from LLM-powered analysis tests (requires `--ai-analysis` flag or `AAX_ENABLED=true`).
+**Purpose:** Whether an agent can understand the offer and a credible next step. Computed from LLM-powered analysis tests (requires `--ai-analysis` flag or `AAX_ENABLED=true`).
 
 **Composite = 100%, 5 factors:**
 
 | # | Factor | Weight | Auto? | Source |
 |---|--------|--------|-------|--------|
 | T2 | Homepage Comprehension | 35% | ✅ Auto | LLM reads homepage markdown |
-| T3 | Meta Optimization | 20% | ✅ Auto | LLM reads meta tags only |
-| T5 | Content Delta | 20% | ✅ Auto | LLM reads multiple pages |
-| T4 | llms.txt | 5% | ✅ Auto | Heuristic (no LLM) |
+| T5 | Content Delta | 25% | ✅ Auto | LLM reads multiple pages |
+| T3 | Meta Optimization | 15% | ✅ Auto | LLM reads meta tags only |
+| T6 | Contactability | 15% | ✅ Auto | Heuristic (no LLM) |
 | T7 | Email Validation | 10% | ✅ Auto | LLM validates email addresses |
-| T6 | Contactability | 10% | ✅ Auto | Heuristic (no LLM) |
 
 ### T2. Homepage Comprehension (35%)
 
@@ -246,7 +240,7 @@ field_completeness × 0.4    # how many of {brand, product, audience, CTA} were 
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `homepage_comprehension_prompt()`
 
-### T3. Meta Optimization (20%)
+### T3. Meta Optimization (15%)
 
 LLM reads only the meta tags (title, description, OG tags, JSON-LD summary) and evaluates completeness, clarity, and LLM optimization.
 
@@ -262,7 +256,7 @@ field_completeness × 0.4    # how many of {brand, product, audience} were extra
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `meta_optimization_prompt()`
 
-### T5. Content Delta (20%)
+### T5. Content Delta (25%)
 
 LLM reads multiple pages (selected by `select_pages_for_analysis()` within a token budget) and produces a comprehensive summary.
 
@@ -275,22 +269,6 @@ info_richness × 0.4         # how many of 7 fields extracted (company name, pro
 ```
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `content_delta_prompt()`, `select_pages_for_analysis()`
-
-### T4. llms.txt (5%)
-
-Pure heuristic — no LLM call. Weighted lightly by design: llms.txt is an
-optional, emerging convention that most AI crawlers do not consume yet,
-and its presence already earns points in GEO's Crawl Access factor — so
-the AAX weight stays small enough that a missing file never dominates
-the agent-experience verdict.
-
-| Condition | Score |
-|-----------|-------|
-| Both llms.txt and llms-full.txt exist | 100 |
-| Either one exists | 60 |
-| Neither exists | 0 |
-
-**Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`
 
 ### T7. Email Validation (10%)
 
@@ -310,9 +288,9 @@ Presence saturates quickly: one contact earns most of the presence points, a sec
 
 **Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `email_validation_prompt()`
 
-### T6. Contactability (10%)
+### T6. Contactability (15%)
 
-A 0–100 heuristic score based on crawl data, weighted into the AAX composite (10%):
+A 0–100 heuristic score based on crawl data, weighted into the AAX composite (15%):
 
 | Signal | Points |
 |--------|--------|
@@ -381,17 +359,15 @@ The CLI never touches the database — `ScoreSnapshot` persistence happens in th
 ### Webapp (`webapp/services/scoring.py`)
 
 ```
-score_crawl(crawl_id, payload, manual_inputs)
-  → compute_scores(payload, manual_inputs)
+score_crawl(crawl_id, payload)
+  → compute_scores(payload)
   → re-generate recommendations if AAX results are in the payload
-  → persist Crawl score columns + ScoreSnapshot (score_json, has_manual_input)
+  → persist Crawl score columns + ScoreSnapshot (score_json)
 
 run_aax_for_crawl(crawl_id, payload)
   → run_aax_analysis(payload, trace_user_id, trace_session_id)
   → compute_aax_score() → merge into snapshot score_json + payload_json
   → re-generate recommendations with AAX factors + contactability
-
-update_manual_inputs(crawl_id, inputs) → re-score with manual factor values
 ```
 
 ### Key Entry Points
@@ -404,7 +380,6 @@ update_manual_inputs(crawl_id, inputs) → re-score with manual factor values
 | `_weighted_composite()` | `meshweave/scoring/engine.py` | Shared weighted average with re-normalization |
 | `score_crawl()` | `webapp/services/scoring.py` | Webapp scoring entry point with DB persistence |
 | `run_aax_for_crawl()` | `webapp/services/scoring.py` | Webapp AAX orchestration with DB persistence |
-| `update_manual_inputs()` | `webapp/services/scoring.py` | Re-scores a crawl with manual factor inputs |
 
 ---
 
@@ -414,16 +389,12 @@ update_manual_inputs(crawl_id, inputs) → re-score with manual factor values
 {
   "aeo": {
     "composite": 55.0,
-    "auto_only_composite": 72.3,
-    "rating": "Average",
-    "auto_rating": "Strong",
+    "rating": "Partially extractable",
     "factors": { ... }
   },
   "geo": {
     "composite": 48.5,
-    "auto_only_composite": 65.2,
-    "rating": "Emerging",
-    "auto_rating": "Visible",
+    "rating": "Fragmented",
     "factors": { ... }
   },
   "aax": {

@@ -138,7 +138,6 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
         content_delta=results.get("content_delta"),
         contactability=contactability,
         email_validation=email_validation,
-        llms_txt=payload.get("llms_txt"),
         citation_sim=(
             CitationSimulationResult(**citation_sim) if citation_sim else None
         ),
