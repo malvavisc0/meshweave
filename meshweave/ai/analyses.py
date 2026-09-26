@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from meshweave.ai.models import (
     AAXAnalysisResult,
-    CitationSimulationResult,
+    AnswerabilityResult,
     ContactabilityResult,
     ContentDeltaResult,
     EmailValidationResult,
@@ -116,10 +116,10 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
     email_validation = await email_task
     summary_text = await summary_task
 
-    # Citation simulation: grounded check that the brand is mentionable
-    # and citable from the crawled pages. Fails soft — a skipped or
-    # failed simulation never fails the AAX analysis.
-    citation_sim = await _run_citation_simulation_task(payload)
+    # Grounded answerability test: fixed decision-critical benchmark
+    # over the crawled pages. Fails soft — a skipped or failed test
+    # never fails the AAX analysis.
+    answerability = await _run_answerability_task(payload)
 
     # Test 6: Contactability (heuristic — no LLM)
     contactability = _compute_contactability(payload)
@@ -138,9 +138,7 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
         content_delta=results.get("content_delta"),
         contactability=contactability,
         email_validation=email_validation,
-        citation_sim=(
-            CitationSimulationResult(**citation_sim) if citation_sim else None
-        ),
+        answerability=(AnswerabilityResult(**answerability) if answerability else None),
         summary=summary_text,
         skip_reasons=skip_reasons,
     )
@@ -148,14 +146,14 @@ async def _run_aax_analysis(payload: dict) -> dict[str, Any]:
     return result.model_dump(mode="json")
 
 
-async def _run_citation_simulation_task(payload: dict) -> dict | None:
-    """Run the citation simulation, logging — never raising — failures."""
-    from meshweave.ai.citation import run_citation_simulation
+async def _run_answerability_task(payload: dict) -> dict | None:
+    """Run the answerability test, logging — never raising — failures."""
+    from meshweave.ai.answerability import run_answerability_test
 
     try:
-        return await run_citation_simulation(payload)
+        return await run_answerability_test(payload)
     except Exception as e:
-        logger.warning("Citation simulation failed: %s", e)
+        logger.warning("Answerability test failed: %s", e)
         return None
 
 

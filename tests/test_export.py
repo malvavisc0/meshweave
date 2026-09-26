@@ -179,6 +179,7 @@ def test_context_has_exactly_documented_keys() -> None:
         "report_date",
         "scores",
         "interpretation",
+        "answerability",
         "recommendations",
         "consultation_email",
     }
@@ -263,5 +264,77 @@ def test_markdown_table_cells_escape_pipes_and_newlines() -> None:
     ctx["scores"]["aax"]["rating"] = "Strong | Fluent\nmulti-line"
     md = render_export_markdown(ctx)
     assert "Strong \\| Fluent multi-line" in md
+
+
+# --------------------------------------------------------------------------
+# Answerability evidence (phase 2: the report carries the grounded answers)
+# --------------------------------------------------------------------------
+def _answerability_score_json() -> dict:
+    return {
+        "aeo": {
+            "composite": 60.0,
+            "rating": "Partially extractable",
+            "factors": {
+                "answerability": {
+                    "score": 50.0,
+                    "raw": {
+                        "questions": [
+                            {
+                                "question_id": "offer",
+                                "question": "What does this company offer?",
+                                "answer": "A | widget\nkit",
+                                "verdict": "supported",
+                                "source_pages": ["https://example.com/"],
+                                "missing_facts": [],
+                            },
+                            {
+                                "question_id": "scope",
+                                "question": "What are the scope and constraints?",
+                                "answer": "",
+                                "verdict": "unsupported",
+                                "source_pages": [],
+                                "missing_facts": ["pricing or a quote route"],
+                            },
+                        ]
+                    },
+                }
+            },
+            "skip_reasons": {},
+        },
+        "geo": {"composite": 65.0, "rating": "Connected", "factors": {}},
+        "aax": {"composite": 80.0, "rating": "Fluent", "factors": {}},
+    }
+
+
+def test_context_carries_bounded_answerability_evidence() -> None:
+    row = _stub_row()
+    row.score_snapshot.score_json = _answerability_score_json()
+    ctx = build_export_context(row, site_name="s", contact_email="e")
+    qs = ctx["answerability"]
+    assert [q["question_id"] for q in qs] == ["offer", "scope"]
+    assert qs[0]["answer"] == "A | widget\nkit"
+    assert qs[0]["source_pages"] == ["https://example.com/"]
+    assert qs[1]["verdict"] == "unsupported"
+    assert qs[1]["missing_facts"] == ["pricing or a quote route"]
+    assert qs[1]["answer"] == ""
+
+
+def test_markdown_contains_answerability_evidence() -> None:
+    row = _stub_row()
+    row.score_snapshot.score_json = _answerability_score_json()
+    ctx = build_export_context(row, site_name="s", contact_email="e")
+    md = render_export_markdown(ctx)
+    assert "## Answerability Evidence" in md
+    assert "What does this company offer?" in md
+    assert "**Verdict:** supported" in md
+    assert "A \\| widget kit" in md
+    assert "pricing or a quote route" in md
+    assert "https://example.com/" in md
+
+
+def test_markdown_answerability_empty_state() -> None:
+    md = render_export_markdown(_build())
+    assert "## Answerability Evidence" in md
+    assert "did not run" in md
     # The raw pipe must not survive unescaped inside a cell.
     assert "Strong | Fluent" not in md

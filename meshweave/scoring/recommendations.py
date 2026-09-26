@@ -146,11 +146,73 @@ def _factor_raw(factors: dict[str, dict], key: str) -> dict:
 
 
 def _aeo_recommendations(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
-    """Recommendations for AEO factors (schema, content structure)."""
+    """Recommendations for AEO factors (answerability, schema, structure)."""
     recs: list[dict[str, Any]] = []
+    recs.extend(_answerability_recs(aeo_factors))
     recs.extend(_schema_coverage_recs(aeo_factors))
     recs.extend(_content_structure_recs(aeo_factors))
     return recs
+
+
+# Finding titles per benchmark question. Unsupported and contradictory
+# answers become findings in the existing shape and flow through
+# expected_points like any other finding.
+_ANSWERABILITY_FINDING_TITLES: dict[str, str] = {
+    "offer": "Missing offer",
+    "audience": "Missing audience",
+    "use_case": "Missing use case",
+    "differentiation": "Unsubstantiated claim",
+    "scope": "Absent constraint",
+    "next_step": "Next step not locatable",
+}
+
+_ANSWERABILITY_FAILING_VERDICTS = ("unsupported", "contradictory")
+
+
+def _answerability_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
+    """One finding per unsupported or contradictory benchmark answer."""
+    questions = _factor_raw(aeo_factors, "answerability").get("questions") or []
+    applicable = [q for q in questions if _answerable_question(q)]
+    failing = [
+        q for q in applicable if q.get("verdict") in _ANSWERABILITY_FAILING_VERDICTS
+    ]
+    if not failing:
+        return []
+    # Fixing one failing question moves it from 0 to full question points
+    # on the factor's mean scale.
+    gain = 100.0 / len(applicable)
+    current = _factor_score(aeo_factors, "answerability")
+    return [
+        {
+            "factor": "answerability",
+            "priority": "high",
+            "title": _ANSWERABILITY_FINDING_TITLES.get(
+                str(q.get("question_id")), "Answerability gap"
+            ),
+            "detail": _answerability_finding_detail(q),
+            "impact": "AEO +2-6 points estimated",
+            "_target_score": target(current, gain),
+        }
+        for q in failing
+    ]
+
+
+def _answerable_question(question: dict) -> bool:
+    """True when the question record counts toward findings."""
+    return not question.get("error") and question.get("verdict") != "not_applicable"
+
+
+def _answerability_finding_detail(question: dict) -> str:
+    """Finding detail naming the failure and the missing facts."""
+    text = str(question.get("question", ""))
+    if question.get("verdict") == "contradictory":
+        lead = f"The crawled pages make conflicting claims about: {text}"
+    else:
+        lead = f"The crawled pages cannot support an answer to: {text}"
+    missing = [str(f) for f in (question.get("missing_facts") or []) if f]
+    if missing:
+        return f"{lead} Missing: {'; '.join(missing[:3])}."
+    return f"{lead}."
 
 
 def _schema_coverage_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
@@ -858,6 +920,19 @@ def _get_guidance(title: str, factor: str) -> str:
 # Guidance strings keyed on exact recommendation title.
 # Low-priority positive callouts get no guidance.
 _GUIDANCE: dict[str, str] = {
+    "Missing offer": ("State plainly on the site what this company offers."),
+    "Missing audience": ("Name who the offer is for, where a visitor can see it."),
+    "Missing use case": (
+        "Describe the core use case: why and when someone would use this."
+    ),
+    "Unsubstantiated claim": ("Back the claim with evidence on the site, or drop it."),
+    "Absent constraint": (
+        "State scope, constraints, and pricing: a price, a pricing "
+        "model, or a clear route to get a quote."
+    ),
+    "Next step not locatable": (
+        "Make the next step locatable: a clear start, buy, or contact path."
+    ),
     "Add structured data (JSON-LD) to more pages": (
         "Add FAQPage, HowTo, or Article JSON-LD to key pages."
     ),

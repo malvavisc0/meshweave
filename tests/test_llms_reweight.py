@@ -103,7 +103,7 @@ class TestWeightPins:
         assert "llms_txt" not in AAX_WEIGHTS
 
     def test_scoring_version_pin(self):
-        assert SCORING_VERSION == "1.2"
+        assert SCORING_VERSION == "1.3"
 
 
 class TestLlmsCountedOnce:

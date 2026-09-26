@@ -13,6 +13,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from meshweave.scoring.composite import SCORING_VERSION
@@ -405,41 +406,53 @@ def _apply_aax_to_score_snapshot(
         if aax_score_json and snap.score_json:
             snap.score_json["aax"] = aax_score_json
 
-            # Re-generate recommendations now that AAX is available
+            # Re-score AEO (the grounded answerability result lands with
+            # the AAX analysis) and re-generate recommendations.
             try:
-                _regenerate_aax_recommendations(
-                    snap, payload, aax_result, aax_score_json
-                )
+                _rescore_with_aax(snap, payload, aax_result, aax_score_json)
             except Exception:
-                logger.debug(
-                    "Failed to re-generate AAX recommendations",
-                    exc_info=True,
-                )
+                logger.debug("Failed to re-score with AAX results", exc_info=True)
 
             flag_modified(snap, "score_json")
+            _sync_crawl_aeo(s, crawl_id, snap)
 
 
-def _regenerate_aax_recommendations(
+def _rescore_with_aax(
     snap: ScoreSnapshot,
     payload: dict[str, Any] | None,
     aax_result: dict[str, Any],
     aax_score_json: dict[str, Any],
 ) -> None:
-    """Re-generate recommendations with AAX factors and store them."""
-    from meshweave.scoring.engine import compute_scores
+    """Recompute AEO and recommendations now that the AAX results landed.
+
+    Merges the AAX result into the payload so the answerability factor
+    computes into the AEO composite at its full weight.
+    """
     from meshweave.scoring.recommendations import generate_recommendations
 
-    base = compute_scores(payload or {})
+    merged = {**(payload or {}), "aax": aax_result}
+    base = compute_scores(merged)
     aeo_f = base.get("aeo", {}).get("factors", {})
     geo_f = base.get("geo", {}).get("factors", {})
     all_recs = generate_recommendations(
         aeo_f,
         geo_f,
-        payload=payload,
+        payload=merged,
         aax_factors=aax_score_json.get("factors"),
         contactability=aax_result.get("contactability"),
     )
+    snap.score_json["aeo"] = base.get("aeo", {})
     snap.score_json["recommendations"] = all_recs
+    snap.aeo_score = base.get("aeo", {}).get("composite")
+    snap.aeo_rating = aeo_rating(snap.aeo_score)
+
+
+def _sync_crawl_aeo(s: Session, crawl_id: str, snap: ScoreSnapshot) -> None:
+    """Mirror the snapshot's AEO composite onto the Crawl row."""
+    row = s.get(Crawl, crawl_id)
+    if row:
+        row.aeo_score = snap.aeo_score
+        row.aeo_rating = snap.aeo_rating
 
 
 def _parse_payload_dict(raw: Any) -> dict[str, Any]:

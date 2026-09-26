@@ -37,6 +37,7 @@ from webapp.utils.diff import (
     find_previous_revision,
 )
 from webapp.utils.export import (
+    answerability_movement,
     build_export_context,
     render_export_markdown,
     safe_filename,
@@ -485,6 +486,28 @@ def _md_resolved_fixes(resolved: list) -> list[str]:
     return lines
 
 
+def _md_answerability_movement(row: Crawl, old_row: Crawl) -> list[str]:
+    """Per-question verdict movement (the answerability re-check evidence)."""
+    rows = answerability_movement(
+        getattr(getattr(old_row, "score_snapshot", None), "score_json", None),
+        getattr(getattr(row, "score_snapshot", None), "score_json", None),
+    )
+    if not rows:
+        return []
+    lines = ["## Answerability evidence (per question)", ""]
+    for r in rows:
+        before = r["verdict_before"] or "not measured"
+        lines.append(
+            f"- **{_md_cell_text(r['question'])}** — {before} → {r['verdict_after']}"
+        )
+    lines.append("")
+    return lines
+
+
+def _md_cell_text(value) -> str:
+    return str(value or "").replace("|", "\\|").replace("\n", " ")
+
+
 def _render_diff_markdown(payload: dict, row: Crawl, old_row: Crawl | None) -> str:
     """Serialize the diff as a clean Markdown evidence pack."""
     lines = [f"# AI Visibility Progress Report — {row.domain}", ""]
@@ -499,6 +522,7 @@ def _render_diff_markdown(payload: dict, row: Crawl, old_row: Crawl | None) -> s
     lines.append("")
     composites = (payload.get("score_diff") or {}).get("composites") or {}
     lines.extend(_md_score_table(composites))
+    lines.extend(_md_answerability_movement(row, old_row))
     resolved = (payload.get("findings_diff") or {}).get("resolved") or []
     lines.extend(_md_resolved_fixes(resolved))
     lines.append("")

@@ -414,30 +414,37 @@ else 'n/a') ~
         </div>
         <div class="lens-breakdown-detail">
           <h3 class="breakdown-col-header">AAX signals and fixes</h3>
-          {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.citation_sim
-            and score_snapshot.aax_analysis.citation_sim.status == 'completed' %}
-          {% set csim = score_snapshot.aax_analysis.citation_sim %}
-          <div class="citation-sim" role="region" aria-label="Citation simulation">
-            <h4 class="citation-sim-header">Citation simulation</h4>
-            <p class="citation-sim-lede small">
-              An AI model answered {{ csim.query_count }} buyer questions about your category using
-              <strong>only your crawled pages</strong>. Mention rate: <strong>{{ (csim.mention_rate * 100) | round(0) }}%</strong>
-              — citation rate: <strong>{{ (csim.citation_rate * 100) | round(0) }}%</strong>.
-              Simulated — grounded in this crawl only, not a live answer-engine measurement.
+          {% if score_snapshot.aax_analysis and score_snapshot.aax_analysis.answerability
+            and score_snapshot.aax_analysis.answerability.status == 'completed' %}
+          {% set ans = score_snapshot.aax_analysis.answerability %}
+          <div class="answerability" role="region" aria-label="Answerability test">
+            <h4 class="answerability-header">Answerability test</h4>
+            <p class="answerability-lede small">
+              A grounded answer test answered {{ ans.question_count }} decision questions using
+              <strong>only your crawled pages</strong>. Answer support: <strong>{{ (ans.answer_support * 100) | round(0) }}%</strong>
+              — evidence coverage: <strong>{{ (ans.evidence_coverage * 100) | round(0) }}%</strong>.
+              Grounded in this crawl only.
             </p>
-            <details class="citation-sim-details">
+            <details class="answerability-details">
               <summary>See the questions and answers</summary>
-              <ul class="citation-sim-list">
-                {% for q in csim.queries %}
-                <li class="citation-sim-item">
-                  <span class="citation-sim-query">{{ q.query }}</span>
-                  {% if q.answer %}<span class="citation-sim-answer small">{{ q.answer }}</span>{% endif %}
-                  <span class="citation-sim-verdict small
-                    {% if q.brand_mentioned and q.cited_urls %}citation-sim-verdict--good
-                    {% elif q.brand_mentioned or q.cited_urls %}citation-sim-verdict--ok
-                    {% else %}citation-sim-verdict--bad{% endif %}">
-                    {% if q.brand_mentioned %}Brand mentioned{% else %}Brand not mentioned{% endif %}
-                    {% if q.cited_urls %} · cited: {{ q.cited_urls | length }} page(s){% else %} · no pages cited{% endif %}
+              <ul class="answerability-list">
+                {% for q in ans.questions %}
+                <li class="answerability-item">
+                  <span class="answerability-question">{{ q.question }}</span>
+                  {% if q.answer %}<span class="answerability-answer small">{{ q.answer }}</span>{% endif %}
+                  {% if q.missing_facts %}<span class="answerability-missing small">Missing: {{ q.missing_facts | join('; ') }}</span>{% endif %}
+                  {% if q.source_pages %}<span class="answerability-sources small">Sources: {{ q.source_pages | join(', ') }}</span>{% endif %}
+                  <span class="answerability-verdict small
+                    {% if q.error %}answerability-verdict--bad
+                    {% elif q.verdict == 'supported' %}answerability-verdict--good
+                    {% elif q.verdict == 'partially_supported' %}answerability-verdict--ok
+                    {% elif q.verdict in ('unsupported', 'contradictory') %}answerability-verdict--bad{% endif %}">
+                    {% if q.error %}Not measured — test error
+                    {% elif q.verdict == 'supported' %}Supported
+                    {% elif q.verdict == 'partially_supported' %}Partially supported
+                    {% elif q.verdict == 'unsupported' %}Unsupported
+                    {% elif q.verdict == 'contradictory' %}Contradictory
+                    {% else %}Not applicable{% endif %}
                   </span>
                 </li>
                 {% endfor %}

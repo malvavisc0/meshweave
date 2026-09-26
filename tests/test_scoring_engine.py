@@ -332,26 +332,24 @@ class TestGroupRecommendationsByPillar:
         assert groups["geo"][1]["priority"] == "low"
 
 
-class TestAeoAnswerabilitySlot:
-    """Pin the reserved answerability slot's renormalization interim.
+class TestAeoAnswerabilityFactor:
+    """Pin the landed answerability factor's composite behaviour.
 
-    Answerability joins AEO at 0.40 when its grounded test lands. Until
-    then the composite must re-normalize across the computed factors —
-    an uncomputed slot is excluded, never scored as zero — and
-    expected-point predictions must share that basis so a fix's promised
-    delta matches the observed one.
+    Answerability computes into AEO at 0.40 when the grounded test
+    completes. Unmeasured, it is excluded — never scored as zero — and
+    the composite re-normalizes across the remaining factors.
     """
 
     def test_slot_is_reserved_at_material_weight(self):
         assert AEO_WEIGHTS["answerability"] == 0.40
 
-    def test_uncomputed_slot_is_excluded_from_the_composite(self):
+    def test_unmeasured_slot_is_excluded_from_the_composite(self):
         scores = compute_scores({})
         factors = scores["aeo"]["factors"]
-        assert "answerability" not in factors
+        assert factors["answerability"]["score"] is None
         assert scores["aeo"]["composite"] == weighted_composite(factors, AEO_WEIGHTS)
 
-    def test_absent_slot_is_not_a_zero_score(self):
+    def test_unmeasured_slot_is_not_a_zero_score(self):
         factors = {
             "schema": {"score": 50.0},
             "content_structure": {"score": 50.0},
@@ -363,6 +361,33 @@ class TestAeoAnswerabilitySlot:
         )
         assert absent is not None and zeroed is not None
         assert absent > zeroed
+
+    def test_landed_result_computes_at_full_weight(self):
+        payload = {
+            "aax": {
+                "answerability": {
+                    "status": "completed",
+                    "question_count": 1,
+                    "answer_support": 1.0,
+                    "evidence_coverage": 1.0,
+                    "questions": [
+                        {
+                            "question_id": "offer",
+                            "question": "What does this company offer?",
+                            "answer": "Widgets.",
+                            "verdict": "supported",
+                            "source_pages": ["https://example.com/"],
+                        }
+                    ],
+                }
+            }
+        }
+        scores = compute_scores(payload)
+        factor = scores["aeo"]["factors"]["answerability"]
+        assert factor["score"] == 100.0
+        assert scores["aeo"]["composite"] == weighted_composite(
+            scores["aeo"]["factors"], AEO_WEIGHTS
+        )
 
     def test_expected_delta_matches_the_applied_fix(self):
         factors = {

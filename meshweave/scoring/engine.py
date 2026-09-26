@@ -48,10 +48,11 @@ def compute_scores(
         Full score_json dict.
     """
     # --- AEO factors ---
-    # The answerability factor is part of the model but not yet computed;
-    # the composite re-normalizes across the factors below until its
-    # grounded test lands.
+    # The answerability factor reads the grounded test result when the
+    # AAX analysis carries one; unmeasured, it is excluded and the
+    # composite re-normalizes across the remaining factors.
     aeo_factors: dict[str, dict] = {
+        "answerability": aeo_mod.score_answerability(payload),
         "schema": aeo_mod.score_schema(payload),
         "content_structure": aeo_mod.score_content_structure(payload),
         "freshness": aeo_mod.score_freshness(payload),

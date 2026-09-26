@@ -371,21 +371,27 @@ async def _run_aax_for_cli(payload: dict) -> None:
 
 
 def _merge_aax_into_scores(payload: dict, aax_result: dict) -> None:
-    """Compute the AAX composite and regenerate recommendations."""
-    from meshweave.scoring.engine import compute_aax_score
+    """Compute the AAX composite and regenerate recommendations.
+
+    AEO is recomputed after the AAX result lands so the grounded
+    answerability factor composites into it at full weight.
+    """
+    from meshweave.scoring.engine import compute_aax_score, compute_scores
 
     aax_score = compute_aax_score(aax_result)
     if not (aax_score and payload.get("scores")):
         return
     payload["scores"]["aax"] = aax_score
 
-    # Re-generate recommendations now that AAX factors
-    # (and contactability) are available, so CLI output
+    # Re-score AEO now that the answerability result landed with the
+    # AAX analysis, and re-generate recommendations so CLI output
     # matches what the webapp would show.
     from meshweave.scoring.recommendations import generate_recommendations
 
+    base = compute_scores(payload)
+    payload["scores"]["aeo"] = base["aeo"]
     payload["scores"]["recommendations"] = generate_recommendations(
-        payload["scores"]["aeo"]["factors"],
+        base["aeo"]["factors"],
         payload["scores"]["geo"]["factors"],
         payload=payload,
         aax_factors=aax_score.get("factors"),

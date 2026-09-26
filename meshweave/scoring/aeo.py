@@ -15,6 +15,74 @@ from typing import Any
 
 from meshweave.scoring.composite import AEO_WEIGHTS
 
+# Verdict → factor points. Grounding is required: an answer with no
+# supporting crawled pages scores nothing regardless of its verdict.
+_ANSWERABILITY_VERDICT_POINTS: dict[str, float] = {
+    "supported": 100.0,
+    "partially_supported": 50.0,
+    "unsupported": 0.0,
+    "contradictory": 0.0,
+}
+
+
+def score_answerability(payload: dict) -> dict:
+    """A0. Grounded answerability to the fixed benchmark (auto).
+
+    Input: the answerability exercise result persisted on the AAX
+    analysis (``payload["aax"]["answerability"]``). Score is None —
+    excluded from the composite, never scored as zero — when the test
+    did not complete or no question was applicable.
+    """
+    result = _answerability_result(payload)
+    questions = _answerability_questions(result)
+    applicable = [q for q in questions if _answerability_applicable(q)]
+    return {
+        "score": _answerability_score(result, applicable),
+        "weight": AEO_WEIGHTS["answerability"],
+        "auto_measurable": True,
+        "raw": _answerability_raw(result, questions),
+    }
+
+
+def _answerability_result(payload: dict) -> dict:
+    """The persisted answerability exercise result, defaulted to empty."""
+    result = (payload.get("aax") or {}).get("answerability")
+    return result if isinstance(result, dict) else {}
+
+
+def _answerability_questions(result: dict) -> list[dict]:
+    """Question records from the result."""
+    return [q for q in result.get("questions") or [] if isinstance(q, dict)]
+
+
+def _answerability_score(result: dict, applicable: list[dict]) -> float | None:
+    """Mean verdict points over applicable questions, or None."""
+    if result.get("status") != "completed" or not applicable:
+        return None
+    return sum(_answerability_points(q) for q in applicable) / len(applicable)
+
+
+def _answerability_raw(result: dict, questions: list[dict]) -> dict:
+    """Raw diagnostics for the answerability factor."""
+    return {
+        "answer_support": result.get("answer_support") or 0.0,
+        "evidence_coverage": result.get("evidence_coverage") or 0.0,
+        "question_count": result.get("question_count") or len(questions),
+        "questions": questions,
+    }
+
+
+def _answerability_applicable(question: dict) -> bool:
+    """True when the question counts toward the factor."""
+    return not question.get("error") and question.get("verdict") != "not_applicable"
+
+
+def _answerability_points(question: dict) -> float:
+    """Verdict points for one question; grounding is required."""
+    if not question.get("source_pages"):
+        return 0.0
+    return _ANSWERABILITY_VERDICT_POINTS.get(question.get("verdict", ""), 0.0)
+
 
 def score_schema(payload: dict) -> dict:
     """A1. Schema Implementation (auto).

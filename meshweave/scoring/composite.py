@@ -13,9 +13,9 @@ from __future__ import annotations
 import logging
 
 # AEO: answer extractability. The answerability slot carries material
-# weight; its grounded test lands in a later phase — until then it is
-# not computed and the composite re-normalizes across the remaining
-# factors.
+# weight and is computed by the grounded answerability test; until that
+# test completes for a crawl, the composite re-normalizes across the
+# remaining factors.
 AEO_WEIGHTS: dict[str, float] = {
     "answerability": 0.40,
     "content_structure": 0.25,
@@ -49,7 +49,8 @@ AAX_WEIGHTS: dict[str, float] = {
 # flag cross-version comparisons. 1.2: site-side scoring model reset —
 # manual external factors removed, AAX llms.txt factor removed,
 # GEO topical-authority/E-E-A-T rewritten, AEO answerability slot added.
-SCORING_VERSION = "1.2"
+# 1.3: grounded answerability test computes into AEO.
+SCORING_VERSION = "1.3"
 
 LENS_WEIGHTS: dict[str, dict[str, float]] = {
     "aeo": AEO_WEIGHTS,

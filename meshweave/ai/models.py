@@ -10,7 +10,7 @@ because "not found on the page" is a legitimate answer.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -113,36 +113,54 @@ class EmailValidationResult(BaseModel):
     confidence: Literal["high", "medium", "low"]
 
 
-# --- Citation Simulation ---
+# --- Grounded Answerability Test ---
 
 
-class CitationQueriesResult(BaseModel):
-    """Buyer queries generated from the crawled content."""
+AnswerabilityVerdict = Literal[
+    "supported",
+    "partially_supported",
+    "unsupported",
+    "contradictory",
+    "not_applicable",
+]
 
-    queries: list[str] = Field(default_factory=list, min_length=1)
 
+class AnswerabilityAnswerResult(BaseModel):
+    """One grounded answer attempt for a benchmark question.
 
-class CitationAnswerResult(BaseModel):
-    """One simulated answer-engine response for a buyer query.
-
-    The model answers using ONLY the provided pages and reports
-    whether the brand was mentioned and which URLs it would cite.
+    The model answers using ONLY the crawled pages and reports the
+    supporting pages and one verdict. The answer is stored downstream
+    only when it is grounded in the crawl (see the answerability
+    orchestrator).
     """
 
     answer: str = ""
-    brand_mentioned: bool = False
-    cited_urls: list[str] = Field(default_factory=list)
+    verdict: AnswerabilityVerdict
+    source_pages: list[str] = Field(default_factory=list)
+    missing_facts: list[str] = Field(default_factory=list)
 
 
-class CitationSimulationResult(BaseModel):
-    """Aggregate simulated-citation check over the crawled pages."""
+class AnswerabilityQuestionResult(BaseModel):
+    """Stored per-question record of the answerability exercise."""
+
+    question_id: str
+    question: str
+    answer: str = ""
+    verdict: AnswerabilityVerdict
+    source_pages: list[str] = Field(default_factory=list)
+    missing_facts: list[str] = Field(default_factory=list)
+    error: str = ""
+
+
+class AnswerabilityResult(BaseModel):
+    """Aggregate grounded answerability test over the crawled pages."""
 
     status: Literal["completed", "skipped", "failed"] = "skipped"
     skip_reason: str = ""
-    query_count: int = 0
-    mention_rate: float = 0.0
-    citation_rate: float = 0.0
-    queries: list[dict[str, Any]] = Field(default_factory=list)
+    question_count: int = 0
+    answer_support: float = 0.0
+    evidence_coverage: float = 0.0
+    questions: list[AnswerabilityQuestionResult] = Field(default_factory=list)
 
 
 # --- AAX Aggregate ---
@@ -166,6 +184,6 @@ class AAXAnalysisResult(BaseModel):
     content_delta: ContentDeltaResult | None = None
     contactability: ContactabilityResult | None = None
     email_validation: EmailValidationResult | None = None
-    citation_sim: CitationSimulationResult | None = None
+    answerability: AnswerabilityResult | None = None
     summary: str = ""
     skip_reasons: dict[str, str] = Field(default_factory=dict)

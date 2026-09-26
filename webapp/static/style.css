@@ -5265,9 +5265,9 @@ p.card-meta {
   }
 }
 
-/* ── Citation simulation (AAX owner panel) ─────────────────────────── */
+/* ── Answerability test (grounded benchmark panel) ─────────────────── */
 
-.citation-sim {
+.answerability {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md, 8px);
   padding: var(--space-md);
@@ -5275,25 +5275,25 @@ p.card-meta {
   background: var(--color-surface-raised, var(--color-bg));
 }
 
-.citation-sim-header {
+.answerability-header {
   font-size: 14px;
   font-weight: 600;
   margin: 0 0 var(--space-xs);
   color: var(--color-ink);
 }
 
-.citation-sim-lede {
+.answerability-lede {
   margin: 0 0 var(--space-sm);
   color: var(--color-ink-muted);
 }
 
-.citation-sim-details summary {
+.answerability-details summary {
   cursor: pointer;
   font-size: 13px;
   color: var(--color-ink-muted);
 }
 
-.citation-sim-list {
+.answerability-list {
   list-style: none;
   margin: var(--space-sm) 0 0;
   padding: 0;
@@ -5301,7 +5301,7 @@ p.card-meta {
   gap: var(--space-sm);
 }
 
-.citation-sim-item {
+.answerability-item {
   display: grid;
   gap: 2px;
   padding: var(--space-sm);
@@ -5309,25 +5309,27 @@ p.card-meta {
   border-radius: var(--radius-sm, 6px);
 }
 
-.citation-sim-query {
+.answerability-question {
   font-weight: 600;
   font-size: 13px;
   color: var(--color-ink);
 }
 
-.citation-sim-answer {
+.answerability-answer,
+.answerability-missing,
+.answerability-sources {
   color: var(--color-ink-muted);
 }
 
-.citation-sim-verdict--good {
+.answerability-verdict--good {
   color: var(--color-semantic-success);
 }
 
-.citation-sim-verdict--ok {
+.answerability-verdict--ok {
   color: var(--color-semantic-warning);
 }
 
-.citation-sim-verdict--bad {
+.answerability-verdict--bad {
   color: var(--color-semantic-danger);
 }
 

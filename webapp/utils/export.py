@@ -34,6 +34,60 @@ def export_recommendation(rec: dict) -> dict:
     }
 
 
+def export_answerability_question(q: dict) -> dict:
+    """Serialize one answerability record to the export allowlist.
+
+    Keeps the question, its verdict, the grounded answer, the missing
+    facts, and the source pages — the evidence a reader needs to see why
+    an answer fails. Length bounds are the defense against a saved
+    artifact rendering an unbounded blob.
+    """
+    return {
+        "question_id": str(q.get("question_id") or "")[:40],
+        "question": str(q.get("question") or "")[:300],
+        "verdict": str(q.get("verdict") or "")[:32],
+        "answer": str(q.get("answer") or "")[:2000],
+        "missing_facts": [str(f)[:300] for f in (q.get("missing_facts") or [])[:10]][
+            :10
+        ],
+        "source_pages": [str(u)[:300] for u in (q.get("source_pages") or [])[:20]][:20],
+    }
+
+
+def answerability_questions(score_json: dict | None) -> list[dict]:
+    """Per-question answerability evidence from the stored factor raw.
+
+    Reads only ``score_json`` (a snapshot column) — never the payload or
+    the AI analysis blob.
+    """
+    factors = ((score_json or {}).get("aeo") or {}).get("factors") or {}
+    raw = (factors.get("answerability") or {}).get("raw") or {}
+    return [
+        export_answerability_question(q)
+        for q in (raw.get("questions") or [])
+        if isinstance(q, dict)
+    ]
+
+
+def answerability_movement(
+    old_score_json: dict | None, new_score_json: dict | None
+) -> list[dict]:
+    """Per-question verdict movement between two runs (re-check evidence)."""
+    old = {q["question_id"]: q for q in answerability_questions(old_score_json)}
+    rows: list[dict] = []
+    for q in answerability_questions(new_score_json):
+        before = (old.get(q["question_id"]) or {}).get("verdict") or ""
+        rows.append(
+            {
+                "question_id": q["question_id"],
+                "question": q["question"],
+                "verdict_before": before,
+                "verdict_after": q["verdict"],
+            }
+        )
+    return rows
+
+
 def safe_filename(domain: str | None) -> str:
     """Sanitize a domain for use in a ``Content-Disposition`` filename.
 
@@ -59,10 +113,13 @@ def build_export_context(row, *, site_name: str, contact_email: str) -> dict:
     Reads only column attributes and the eager-loaded ``score_snapshot``; never
     ``payload``, the crawl UUID, ``ai_analysis_json``, ``score_data``, or
     ``aax_analysis``. ``interpretation`` passes through whole; recommendations
-    are serialized through :func:`export_recommendation` in sorted order.
+    are serialized through :func:`export_recommendation` in sorted order and
+    answerability evidence through :func:`export_answerability_question` from
+    the snapshot's ``score_json`` factor raw.
     """
     score_ctx = build_score_snapshot_context(row) or {}
     sorted_recs = _sorted_recommendations(score_ctx)
+    snap = getattr(row, "score_snapshot", None)
 
     return {
         "site_name": str(site_name),
@@ -79,6 +136,7 @@ def build_export_context(row, *, site_name: str, contact_email: str) -> dict:
             for lens in ("aeo", "geo", "aax")
         },
         "interpretation": score_ctx.get("interpretation") or {},
+        "answerability": answerability_questions(getattr(snap, "score_json", None)),
         "recommendations": [export_recommendation(r) for r in sorted_recs],
         "consultation_email": str(contact_email),
     }
@@ -148,6 +206,27 @@ def _md_scores(ctx: dict) -> str:
     return "\n".join(lines)
 
 
+def _md_answerability(ctx: dict) -> str:
+    questions = ctx.get("answerability") or []
+    lines: list[str] = ["## Answerability Evidence", ""]
+    if not questions:
+        lines.append("_The grounded answer test did not run for this crawl._")
+        lines.append("")
+        return "\n".join(lines)
+    for q in questions:
+        lines.append(f"### {q.get('question') or 'Question'}")
+        lines.append("")
+        lines.append(f"- **Verdict:** {q.get('verdict') or '—'}")
+        if q.get("answer"):
+            lines.append(f"- **Answer:** {_md_cell(q['answer'])}")
+        if q.get("missing_facts"):
+            lines.append(f"- **Missing:** {_md_cell('; '.join(q['missing_facts']))}")
+        if q.get("source_pages"):
+            lines.append(f"- **Sources:** {_md_cell(', '.join(q['source_pages']))}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def _md_recommendations(ctx: dict) -> str:
     recs = ctx.get("recommendations") or []
     lines = ["## Recommendations", ""]
@@ -200,6 +279,7 @@ def render_export_markdown(ctx: dict) -> str:
         _md_header(ctx),
         _md_executive_summary(ctx),
         _md_scores(ctx),
+        _md_answerability(ctx),
         _md_recommendations(ctx),
         _md_methodology(ctx),
         _md_next_step(ctx),

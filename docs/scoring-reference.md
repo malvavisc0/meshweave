@@ -34,13 +34,14 @@ composite = Σ(score_i × weight_i) / Σ(weight_i)    # only for factors with no
 
 | # | Factor | Weight | Auto? | Source |
 |---|--------|--------|-------|--------|
-| A7 | Answerability | 40% | — | Grounded answer test (rollout pending) |
+| A7 | Answerability | 40% | ✅ Auto | `aeo.score_answerability()` |
 | A2 | Content Structure | 25% | ✅ Auto | `aeo.score_content_structure()` |
 | A1 | Schema Implementation | 20% | ✅ Auto | `aeo.score_schema()` |
 | A3 | Freshness | 15% | ✅ Auto | `aeo.score_freshness()` |
 
-The answerability slot is part of the model but not yet computed; until its
-grounded test lands, the composite re-normalizes across the computed factors.
+The answerability factor scores the grounded answer test over the crawl's
+pages; when that test did not run, the factor is excluded and the composite
+re-normalizes across the computed factors.
 
 ### A1. Schema Implementation (20%)
 
@@ -350,7 +351,8 @@ Used by the AAX scoring engine to convert LLM categorical responses to 0–100 s
 3. If --ai-analysis: run_aax_analysis(payload) → AAX results
                      compute_aax_score(aax_result) → AAX score
                      Merge into payload["scores"]["aax"]
-                     Re-generate recommendations with AAX factors + contactability
+                     Re-score AEO (answerability lands here) and
+                     re-generate recommendations
 4. Write per-page markdown files, then JSON payload to --output/-o (required)
 ```
 
@@ -367,7 +369,7 @@ score_crawl(crawl_id, payload)
 run_aax_for_crawl(crawl_id, payload)
   → run_aax_analysis(payload, trace_user_id, trace_session_id)
   → compute_aax_score() → merge into snapshot score_json + payload_json
-  → re-generate recommendations with AAX factors + contactability
+  → re-score AEO (answerability lands here) and re-generate recommendations
 ```
 
 ### Key Entry Points

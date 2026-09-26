@@ -81,8 +81,6 @@ can find and reuse a clear answer. It looks at:
 - Heading hierarchy and single-H1 structure
 - Lists, tables, paragraphs, word count, and image alt text
 - Published and modified dates
-- Optional human observations about query match, voice results, and capture
-  rate
 
 **A low AEO result usually means:** the answer may be present, but it is hard to
 locate, interpret, or quote cleanly.
@@ -90,7 +88,8 @@ locate, interpret, or quote cleanly.
 **A useful response is:** make important answers more direct, organize pages
 with meaningful headings, add the right structured data, and remove ambiguity.
 
-AEO ratings are `Poor`, `Below Average`, `Average`, `Strong`, and `Excellent`.
+AEO ratings are `Not extractable`, `Limited extractability`, `Partially
+extractable`, `Reliably extractable`, and `Fully extractable`.
 
 ### GEO: Does the Site Look Credible and Consistent?
 
@@ -103,15 +102,15 @@ decides whether a business belongs in a recommendation. It looks at:
 - Access for GPTBot, ClaudeBot, PerplexityBot, and other declared crawlers
 - `robots.txt`, XML sitemaps, `llms.txt`, and `llms-full.txt`
 - Content depth and the number of connected external identity profiles
-- Optional human observation of citation frequency in LLM products
 
-A simulated citation check runs alongside the AAX analysis: buyer questions are
-generated for the site's category, then an LLM answers each using only the
-crawled pages, and the result reports how often the brand was mentioned and
-which pages were cited. It is a grounded simulation of content extractability —
-labeled as simulated, kept separate from the manual citation input, and
-comparable across revisions so it serves as before/after evidence for the
-re-check loop.
+A grounded answerability test runs alongside the AAX analysis: one fixed,
+decision-critical benchmark (offer, audience, core use case, evidence and
+differentiation, scope and constraints including pricing, and a viable next
+step) is answered using only the crawled pages, and each answer is stored only
+when it is grounded in those pages, with the supporting pages and one verdict.
+The measurements are answer support and evidence coverage. The benchmark is
+identical on every crawl and re-check, so it serves as before/after evidence
+for the re-check loop.
 
 **A low GEO result usually means:** the site does not provide enough consistent,
 credible, or accessible evidence for an agent to confidently represent it.
@@ -119,8 +118,8 @@ credible, or accessible evidence for an agent to confidently represent it.
 **A useful response is:** clarify the organization identity, publish supporting
 proof, keep descriptions aligned, and make legitimate AI crawler access explicit.
 
-GEO ratings are `Invisible`, `Emerging`, `Visible`, `Authoritative`, and
-`Dominant`.
+GEO ratings are `Unreachable`, `Fragmented`, `Reachable`, `Connected`, and
+`Fully connected`.
 
 ### AAX: Can the Agent Understand the Offer and Take the Next Step?
 
