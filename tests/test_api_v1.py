@@ -131,7 +131,7 @@ def _install_fastapi_stub() -> None:
 
 _install_fastapi_stub()
 
-from webapp.models import ApiKey, Base, Crawl, User  # noqa: E402
+from webapp.models import ApiKey, Base, Crawl, ScoreSnapshot, User  # noqa: E402
 
 
 def _load_api_v1_module():
@@ -167,6 +167,8 @@ api_v1 = _load_api_v1_module()
 
 HTTPException = sys.modules["fastapi"].HTTPException
 Request = sys.modules["fastapi"].Request
+
+from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 
 
 @pytest.fixture
@@ -287,6 +289,7 @@ def _crawl(
     query="",
     params=None,
     minutes_ago=120,
+    scoring_version=SCORING_VERSION,
 ):
     ts = datetime.now(UTC) - timedelta(minutes=minutes_ago)
     cid = str(uuid.uuid4())
@@ -304,6 +307,7 @@ def _crawl(
                 user_id=user_id,
                 crawl_params=params,
                 payload_json={"ok": True} if status == "succeeded" else None,
+                scoring_version=scoring_version,
                 created_at=ts,
                 updated_at=ts,
             )
@@ -545,3 +549,206 @@ class TestDiff:
         cid = _crawl(factory, user_id=uid)
         resp = await api_v1.get_diff_markdown(_bearer_request(token), cid)
         assert "No previous revision" in resp.content
+
+    @pytest.mark.asyncio
+    async def test_cross_version_diff_refused_with_409(self, sessions):
+        """Cross-version comparison is a hard refusal, never an annotation."""
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        old_id = _crawl(
+            factory,
+            user_id=uid,
+            domain="series.com",
+            minutes_ago=180,
+            scoring_version="1.2",
+        )
+        new_id = _crawl(
+            factory,
+            user_id=uid,
+            domain="series.com",
+            minutes_ago=5,
+            scoring_version=SCORING_VERSION,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await api_v1.get_diff(_bearer_request(token), new_id, vs=old_id)
+        assert exc.value.status_code == 409
+        assert "scoring version" in str(exc.value.detail)
+        with pytest.raises(HTTPException) as exc_md:
+            await api_v1.get_diff_markdown(_bearer_request(token), new_id, vs=old_id)
+        assert exc_md.value.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_cross_version_default_compare_also_refused(self, sessions):
+        """The default previous-revision compare refuses too."""
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        _crawl(
+            factory,
+            user_id=uid,
+            domain="series.com",
+            minutes_ago=180,
+            scoring_version="1.2",
+        )
+        new_id = _crawl(
+            factory,
+            user_id=uid,
+            domain="series.com",
+            minutes_ago=5,
+            scoring_version=SCORING_VERSION,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await api_v1.get_diff(_bearer_request(token), new_id)
+        assert exc.value.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_same_version_diff_carries_no_notes(self, sessions):
+        """A comparable pair diffs without any annotation fields."""
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        old_id = _crawl(factory, user_id=uid, domain="series.com", minutes_ago=180)
+        new_id = _crawl(factory, user_id=uid, domain="series.com", minutes_ago=5)
+        resp = await api_v1.get_diff(_bearer_request(token), new_id, vs=old_id)
+        assert resp["vs_crawl_id"] == old_id
+        assert "comparison_notes" not in resp
+        assert "notes" not in resp
+
+
+class TestAnalysisContract:
+    def _snapshot_json(self) -> dict:
+        return {
+            "aeo": {
+                "composite": 62.0,
+                "rating": "Partially extractable",
+                "factors": {
+                    "answerability": {
+                        "score": 50.0,
+                        "weight": 0.35,
+                        "auto_measurable": True,
+                        "raw": {
+                            "answer_support": 0.5,
+                            "evidence_coverage": 0.4,
+                            "question_count": 2,
+                            "questions": [
+                                {
+                                    "question_id": "offer",
+                                    "question": "What does this company offer?",
+                                    "answer": "A widget kit",
+                                    "verdict": "supported",
+                                    "source_pages": ["https://example.com/"],
+                                    "missing_facts": [],
+                                }
+                            ],
+                        },
+                    },
+                    "schema": {
+                        "score": 40.0,
+                        "weight": 0.3,
+                        "auto_measurable": True,
+                        "raw": {},
+                    },
+                },
+            },
+            "geo": {
+                "composite": 55.0,
+                "rating": "Fragmented",
+                "factors": {
+                    "crawl_access": {
+                        "score": 70.0,
+                        "weight": 0.3,
+                        "auto_measurable": True,
+                        "raw": {},
+                    }
+                },
+            },
+            "aax": {
+                "composite": 80.0,
+                "rating": "Fluent",
+                "factors": {
+                    "contactability": {
+                        "score": 100.0,
+                        "weight": 0.25,
+                        "auto_measurable": True,
+                        "raw": {},
+                    }
+                },
+            },
+            "recommendations": [
+                {
+                    "factor": "answerability",
+                    "pillar": "aeo",
+                    "priority": "high",
+                    "title": "Fix the audience answer",
+                    "detail": "Name the audience",
+                    "expected_points": 2.5,
+                }
+            ],
+        }
+
+    def _scored_crawl(self, factory, user_id: str) -> str:
+        cid = _crawl(factory, user_id=user_id, domain="contract.com", minutes_ago=30)
+        with factory() as s:
+            row = s.get(Crawl, cid)
+            row.aeo_score = 62.0
+            row.geo_score = 55.0
+            row.aeo_rating = "Partially extractable"
+            row.geo_rating = "Fragmented"
+            s.add(
+                ScoreSnapshot(
+                    crawl_id=cid,
+                    user_id=user_id,
+                    domain="contract.com",
+                    aeo_score=62.0,
+                    geo_score=55.0,
+                    aeo_rating="Partially extractable",
+                    geo_rating="Fragmented",
+                    score_json=self._snapshot_json(),
+                    scoring_version=SCORING_VERSION,
+                )
+            )
+            s.commit()
+        return cid
+
+    @pytest.mark.asyncio
+    async def test_contract_carries_site_side_model_only(self, sessions):
+        import json as _json
+
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = self._scored_crawl(factory, uid)
+        resp = await api_v1.get_analysis(_bearer_request(token), cid)
+        body = resp.content
+        assert body["scoring_version"] == SCORING_VERSION
+        # Factors with weights and lens ratings
+        assert body["scores"]["aeo"]["factors"]["answerability"] == {
+            "score": 50.0,
+            "weight": 0.35,
+        }
+        assert body["scores"]["aeo"]["rating"] == "Partially extractable"
+        assert body["scores"]["geo"]["factors"]["crawl_access"]["weight"] == 0.3
+        assert body["scores"]["aax"]["score"] == 80.0
+        # Interpretation text
+        assert body["interpretation"]["profile_label"]
+        assert body["interpretation"]["headline"]
+        # Answerability evidence
+        questions = body["answerability"]["questions"]
+        assert questions[0]["question_id"] == "offer"
+        assert questions[0]["answer"] == "A widget kit"
+        assert questions[0]["source_pages"] == ["https://example.com/"]
+        assert questions[0]["verdict"] == "supported"
+        # No simulation or manual-input fields, no crawl payload internals
+        blob = _json.dumps(body)
+        for banned in (
+            "citation_sim",
+            "citation_rate",
+            "mention_rate",
+            "capture_rate",
+            "query_match",
+            "voice_rate",
+            "score_basis",
+            "has_manual_input",
+            "manual_input",
+            "faqs_optimal",
+        ):
+            assert banned not in blob
+        assert "markdown" not in body
+        assert "emails" not in body

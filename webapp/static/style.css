@@ -4950,20 +4950,6 @@ p.card-meta {
   flex-shrink: 0;
 }
 
-/* Comparison notes banners */
-.diff-notes {
-  margin-bottom: var(--space-lg);
-}
-
-.diff-note-banner {
-  border-left: 3px solid var(--color-semantic-warning);
-  padding: var(--space-sm) var(--space-md);
-  margin: 0 0 var(--space-sm);
-  background: var(--color-surface-1);
-  font: var(--font-body-sm);
-  color: var(--color-ink);
-}
-
 /* Section titles shared across the diff layers */
 .diff-section-title {
   font: var(--font-card-title);

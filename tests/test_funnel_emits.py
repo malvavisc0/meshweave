@@ -42,6 +42,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 from webapp.models import (  # noqa: E402
     Base,
     Crawl,
@@ -124,7 +125,7 @@ def _add_crawl(
                 user_id=user_id,
                 created_at=created_at or datetime.now(UTC),
                 updated_at=datetime.now(UTC),
-                scoring_version="1.0",
+                scoring_version=SCORING_VERSION,
                 is_latest=True,
             )
         )

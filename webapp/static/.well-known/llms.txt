@@ -88,10 +88,11 @@ GET {base}/api/v1/analyses/{crawl_id}
 Authorization: Bearer mw_live_...
 ```
 
-The key must belong to the owner of the analysis. Returns the full private
-payload (complete factors, recommendations, score snapshots); `202` with
-status while the crawl is still running. (Legacy alias:
-`GET /api/analysis/private/{crawl_id}` — same payload, also accepts the
+The key must belong to the owner of the analysis. Returns the site-side
+contract (per-lens scores and ratings, current factors with weights,
+interpretation text, answerability evidence); `202` with
+status while the crawl is still running. (Legacy alias for the full crawl
+payload: `GET /api/analysis/private/{crawl_id}` — also accepts the
 owner's browser session.)
 
 ### Bulk submit analyses (API key)

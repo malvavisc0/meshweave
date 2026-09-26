@@ -50,6 +50,7 @@ if "prometheus_client" not in sys.modules:
     _fake_prom.generate_latest = lambda: b""
     sys.modules["prometheus_client"] = _fake_prom
 
+from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 from webapp.models import Base, Crawl, ScoreSnapshot, User  # noqa: E402
 from webapp.utils.revisions import replace_succeeded_crawl  # noqa: E402
 from webapp.utils.times import ensure_utc  # noqa: E402
@@ -117,7 +118,7 @@ def _make_succeeded_crawl(
         payload_json={"markdown": "old content"},
         user_id=user_id,
         crawl_params=crawl_params,
-        scoring_version="1.0",
+        scoring_version=SCORING_VERSION,
         listed=True,
         is_latest=True,
         created_at=ts,
@@ -130,8 +131,16 @@ def _make_succeeded_crawl(
             crawl_id=row.id,
             user_id=user_id,
             domain=domain,
-            score_json={"aeo": {"composite": 50.0}},
-            scoring_version="1.0",
+            score_json={
+                "aeo": {
+                    "composite": 50.0,
+                    "rating": "Partially extractable",
+                    "factors": {},
+                },
+                "geo": {"composite": 44.0, "rating": "Fragmented", "factors": {}},
+                "recommendations": [],
+            },
+            scoring_version=SCORING_VERSION,
             created_at=ts,
             updated_at=ts,
         )
@@ -153,7 +162,7 @@ def _make_failed_crawl(s, *, user_id: str, domain: str = "failed.com") -> Crawl:
         status="failed",
         error="boom",
         user_id=user_id,
-        scoring_version="1.0",
+        scoring_version=SCORING_VERSION,
         listed=True,
         is_latest=True,
         created_at=datetime(2026, 8, 1, tzinfo=UTC),
@@ -184,7 +193,7 @@ class TestReplaceSucceededCrawl:
             assert old.key is None
             assert old.payload_json == {"markdown": "old content"}
             assert old.score_snapshot is not None
-            assert old.score_snapshot.score_json == {"aeo": {"composite": 50.0}}
+            assert old.score_snapshot.score_json["aeo"]["composite"] == 50.0
 
             assert new.status == "pending"
             assert new.is_latest is True

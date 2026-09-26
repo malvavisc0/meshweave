@@ -14,6 +14,7 @@ from html import escape
 from sqlalchemy import String, cast
 from sqlalchemy.orm import Session, joinedload
 
+from meshweave.scoring.composite import LENS_WEIGHTS
 from webapp.db import get_session
 from webapp.models import Crawl, ScoreSnapshot
 from webapp.utils.payload_counts import json_ld_count as counts_for
@@ -184,8 +185,8 @@ def _factors_by_pillar(ss: ScoreSnapshot | None) -> dict[str, dict]:
 
 
 def _factor_display_name(key: str) -> str:
-    """Human-readable factor name via the display map, with a title() fallback."""
-    return FACTOR_DISPLAY_NAMES.get(key, key.replace("_", " ").title())
+    """Human-readable factor name via the display map."""
+    return FACTOR_DISPLAY_NAMES[key]
 
 
 def _factor_status_change(old_score: float | None, new_score: float | None) -> str:
@@ -206,17 +207,24 @@ def _factor_status_change(old_score: float | None, new_score: float | None) -> s
 def _build_factor_rows(
     old_ss: ScoreSnapshot | None, new_ss: ScoreSnapshot | None
 ) -> list[dict]:
-    """Union of factor keys across both snapshots, one diff row per factor."""
+    """One diff row per current-mix factor, in weight-table order.
+
+    Only the factor keys of the current mix are compared: removed factors
+    are gone from the stored breakdown and a cross-version pair is
+    refused before it reaches here. A factor absent on one side (not
+    scored in that run) is compared as None.
+    """
     old_factors = _factors_by_pillar(old_ss)
     new_factors = _factors_by_pillar(new_ss)
     rows: list[dict] = []
     for pillar in PILLARS:
-        keys = set(old_factors.get(pillar, {})) | set(new_factors.get(pillar, {}))
-        for key in sorted(keys):
-            old_factor = old_factors.get(pillar, {}).get(key) or {}
-            new_factor = new_factors.get(pillar, {}).get(key) or {}
-            old_score = old_factor.get("score")
-            new_score = new_factor.get("score")
+        for key in LENS_WEIGHTS[pillar]:
+            old_factor = old_factors.get(pillar, {}).get(key)
+            new_factor = new_factors.get(pillar, {}).get(key)
+            if old_factor is None and new_factor is None:
+                continue
+            old_score = (old_factor or {}).get("score")
+            new_score = (new_factor or {}).get("score")
             rows.append(
                 {
                     "pillar": pillar,
@@ -489,27 +497,44 @@ def _scoring_version(ss: ScoreSnapshot | None, row: Crawl | None) -> str | None:
     return getattr(row, "scoring_version", None)
 
 
-def build_comparison_notes(
+class CrossVersionComparisonError(ValueError):
+    """Two runs were scored under different scoring versions.
+
+    A comparison across scoring versions reflects algorithm changes, not
+    site changes, so it is refused outright instead of rendered as
+    evidence with a caveat.
+    """
+
+
+def ensure_same_scoring_version(
     old_row: Crawl | None,
     new_row: Crawl | None,
-    old_ss: ScoreSnapshot | None,
-    new_ss: ScoreSnapshot | None,
-) -> list[str]:
-    """Return honest-comparison banners when the two runs are not apples-to-apples.
+    old_ss: ScoreSnapshot | None = None,
+    new_ss: ScoreSnapshot | None = None,
+) -> None:
+    """Refuse a cross-version comparison outright.
 
-    Flags a scoring_version mismatch (factor comparison may reflect algorithm
-    changes, not page changes).
+    Raises :class:`CrossVersionComparisonError` when the two runs carry
+    different ``scoring_version`` values; passes otherwise. This replaces
+    the former annotation-only note: callers surface it as a hard
+    refusal, never as a diff with a caveat.
     """
-    notes: list[str] = []
-    old_version = _scoring_version(old_ss, old_row)
-    new_version = _scoring_version(new_ss, new_row)
+    if old_row is None or new_row is None:
+        return
+    old_version = _scoring_version(
+        old_ss if old_ss is not None else getattr(old_row, "score_snapshot", None),
+        old_row,
+    )
+    new_version = _scoring_version(
+        new_ss if new_ss is not None else getattr(new_row, "score_snapshot", None),
+        new_row,
+    )
     if (
         old_version is not None
         and new_version is not None
         and old_version != new_version
     ):
-        notes.append(
-            "Scores were computed with different scoring versions; factor-level "
-            "comparison may not reflect page changes alone."
+        raise CrossVersionComparisonError(
+            "Comparison refused: these runs were scored with different "
+            f"scoring versions ({old_version} vs {new_version})."
         )
-    return notes

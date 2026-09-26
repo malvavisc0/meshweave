@@ -37,6 +37,7 @@ if "prometheus_client" not in sys.modules:
     _fake_prom.generate_latest = lambda: b""
     sys.modules["prometheus_client"] = _fake_prom
 
+from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 from webapp.models import Base, Crawl, ScoreSnapshot, User  # noqa: E402
 from webapp.utils.diff import build_findings_diff, find_previous_revision  # noqa: E402
 
@@ -95,7 +96,7 @@ def _seed_series(s, *, aeo_old=50.0, aeo_new=60.0, geo_old=40.0, geo_new=44.0):
             status="succeeded",
             payload_json={"page": {}},
             user_id=user_id,
-            scoring_version="1.0",
+            scoring_version=SCORING_VERSION,
             is_latest=False,
             created_at=created_at,
             updated_at=created_at,
@@ -111,9 +112,20 @@ def _seed_series(s, *, aeo_old=50.0, aeo_new=60.0, geo_old=40.0, geo_new=44.0):
                 aeo_rating="Partially extractable",
                 geo_rating="Fragmented",
                 score_json={
+                    "aeo": {
+                        "composite": aeo,
+                        "rating": "Partially extractable",
+                        "factors": {},
+                    },
+                    "geo": {
+                        "composite": geo,
+                        "rating": "Fragmented",
+                        "factors": {},
+                    },
                     "aax": {"composite": aax} if aax is not None else {},
                     "recommendations": recs,
                 },
+                scoring_version=SCORING_VERSION,
                 created_at=created_at,
             )
         )
@@ -172,7 +184,7 @@ class TestFindingsDiffPredictions:
                 status="succeeded",
                 payload_json={},
                 user_id=user_id,
-                scoring_version="1.0",
+                scoring_version=SCORING_VERSION,
                 is_latest=True,
                 created_at=ts,
                 updated_at=ts,
@@ -186,6 +198,16 @@ class TestFindingsDiffPredictions:
                     aeo_score=10.0,
                     geo_score=10.0,
                     score_json={
+                        "aeo": {
+                            "composite": 10.0,
+                            "rating": "Not extractable",
+                            "factors": {},
+                        },
+                        "geo": {
+                            "composite": 10.0,
+                            "rating": "Unreachable",
+                            "factors": {},
+                        },
                         "recommendations": [
                             {
                                 "factor": "schema",
@@ -196,6 +218,7 @@ class TestFindingsDiffPredictions:
                             }
                         ],
                     },
+                    scoring_version=SCORING_VERSION,
                     created_at=ts,
                 )
             )
@@ -241,7 +264,7 @@ class TestPreviousRevision:
                 status="succeeded",
                 payload_json={},
                 user_id=user_id,
-                scoring_version="1.0",
+                scoring_version=SCORING_VERSION,
                 is_latest=True,
                 created_at=ts,
                 updated_at=ts,

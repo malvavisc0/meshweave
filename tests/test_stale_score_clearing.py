@@ -51,6 +51,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 import webapp.services.crawling as crawling_svc  # noqa: E402
 import webapp.services.site_crawling as site_svc  # noqa: E402
+from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 from webapp.models import Base, Crawl, ScoreSnapshot  # noqa: E402
 
 
@@ -85,7 +86,7 @@ def sqlite_sessions(monkeypatch):
 
 
 def _make_scored_crawl(s) -> Crawl:
-    """A previously-succeeded crawl with scores and a snapshot."""
+    """A previously-succeeded crawl with scores and a current-shape snapshot."""
     row = Crawl(
         id=str(uuid.uuid4()),
         url="https://example.com/",
@@ -95,7 +96,7 @@ def _make_scored_crawl(s) -> Crawl:
         canonical_url="https://example.com/",
         visibility="public",
         status="succeeded",
-        scoring_version="1.0",
+        scoring_version=SCORING_VERSION,
         listed=True,
         is_latest=True,
         created_at=datetime.now(UTC),
@@ -114,8 +115,16 @@ def _make_scored_crawl(s) -> Crawl:
             geo_score=60.0,
             aeo_rating="Reliably extractable",
             geo_rating="Connected",
-            score_json={"aeo": {"composite": 75.0}},
-            scoring_version="1.0",
+            score_json={
+                "aeo": {
+                    "composite": 75.0,
+                    "rating": "Reliably extractable",
+                    "factors": {},
+                },
+                "geo": {"composite": 60.0, "rating": "Connected", "factors": {}},
+                "recommendations": [],
+            },
+            scoring_version=SCORING_VERSION,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
@@ -160,7 +169,7 @@ class TestPersistFailedClearsStaleScores:
                 canonical_url="https://example.com/",
                 visibility="public",
                 status="running",
-                scoring_version="1.0",
+                scoring_version=SCORING_VERSION,
                 listed=True,
                 is_latest=True,
                 created_at=datetime.now(UTC),

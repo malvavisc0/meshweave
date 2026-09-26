@@ -7,7 +7,7 @@ resources are owner-scoped: a key only ever sees its owner's crawls.
 Endpoints:
 - POST /api/v1/analyses — bulk submit (page or site), durable queue
 - GET  /api/v1/analyses — the caller's crawl list, cursor-paginated
-- GET  /api/v1/analyses/{crawl_id} — full private payload
+- GET  /api/v1/analyses/{crawl_id} — site-side contract (202 while in progress)
 - GET  /api/v1/analyses/{crawl_id}/report.md — unbranded client-ready report
 - GET  /api/v1/analyses/{crawl_id}/diff[.md] — proof-of-work diff
 """
@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from meshweave.scoring.interpretation import interpret_profile
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.routers.api import _bearer_user_id
@@ -32,12 +33,15 @@ from webapp.routers.submissions import (
 )
 from webapp.services import funnel
 from webapp.utils.diff import (
+    CrossVersionComparisonError,
     build_findings_diff,
     build_score_diff,
+    ensure_same_scoring_version,
     find_previous_revision,
 )
 from webapp.utils.export import (
     answerability_movement,
+    answerability_questions,
     build_export_context,
     render_export_markdown,
     safe_filename,
@@ -110,6 +114,73 @@ def _crawl_summary(row: Crawl) -> dict[str, Any]:
         "aeo_rating": row.aeo_rating,
         "geo_rating": row.geo_rating,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _contract_factors(score_json: dict, lens: str) -> dict[str, dict]:
+    """Current-mix factor map for one lens: score and weight per factor."""
+    factors = (score_json.get(lens) or {}).get("factors") or {}
+    return {
+        key: {"score": factor.get("score"), "weight": factor.get("weight")}
+        for key, factor in factors.items()
+        if isinstance(factor, dict)
+    }
+
+
+def _contract_lens_scores(row: Crawl, score_json: dict) -> dict[str, dict]:
+    """Per-lens score, rating, and factors for the site-side contract."""
+    aax_composite = (score_json.get("aax") or {}).get("composite")
+    scores = {"aeo": row.aeo_score, "geo": row.geo_score, "aax": aax_composite}
+    return {
+        lens: {
+            "score": scores[lens],
+            "rating": (score_json.get(lens) or {}).get("rating"),
+            "factors": _contract_factors(score_json, lens),
+        }
+        for lens in ("aeo", "geo", "aax")
+    }
+
+
+def _contract_answerability(score_json: dict) -> dict[str, Any]:
+    """Answerability evidence: metrics plus per-question grounded answers."""
+    factors = (score_json.get("aeo") or {}).get("factors") or {}
+    raw = (factors.get("answerability") or {}).get("raw") or {}
+    return {
+        "answer_support": raw.get("answer_support") or 0.0,
+        "evidence_coverage": raw.get("evidence_coverage") or 0.0,
+        "question_count": raw.get("question_count") or 0,
+        "questions": answerability_questions(score_json),
+    }
+
+
+def _analysis_contract(row: Crawl) -> dict[str, Any]:
+    """The site-side contract for one succeeded analysis.
+
+    Factors with weights, lens scores and ratings, interpretation text,
+    and answerability evidence — and nothing else: no crawl payload
+    internals and no legacy simulation or manual-input fields.
+    """
+    snap = getattr(row, "score_snapshot", None)
+    score_json = (snap.score_json if snap is not None else None) or {}
+    aax_composite = (score_json.get("aax") or {}).get("composite")
+    return {
+        "id": row.id,
+        "url": row.url,
+        "domain": row.domain,
+        "path": row.path,
+        "query": row.query,
+        "scope": "site" if row.crawl_params is not None else "page",
+        "status": row.status,
+        "scoring_version": (
+            getattr(snap, "scoring_version", None) or row.scoring_version
+        ),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "scores": _contract_lens_scores(row, score_json),
+        "interpretation": interpret_profile(
+            row.aeo_score, row.geo_score, aax_composite
+        ),
+        "answerability": _contract_answerability(score_json),
     }
 
 
@@ -329,7 +400,13 @@ async def list_analyses(request: Request, cursor: str = "", limit: int = 50) -> 
 
 @router.get("/api/v1/analyses/{crawl_id}")
 async def get_analysis(request: Request, crawl_id: str) -> JSONResponse:
-    """Full private payload for an owned crawl (202 while in progress)."""
+    """Site-side contract for an owned crawl (202 while in progress).
+
+    The succeeded response carries only the site-side contract: current
+    factors with weights, lens ratings, interpretation text, and
+    answerability evidence. No crawl payload internals and no legacy
+    simulation or manual-input fields.
+    """
     user_id = _require_bearer_user(request)
     row = _owned_crawl(user_id, crawl_id)
     if row.status != "succeeded" or not row.payload_json:
@@ -343,7 +420,7 @@ async def get_analysis(request: Request, crawl_id: str) -> JSONResponse:
             },
             status_code=202,
         )
-    resp = JSONResponse(content=row.payload_json or {})
+    resp = JSONResponse(content=_analysis_contract(row))
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
 
@@ -381,7 +458,12 @@ async def get_report_markdown(request: Request, crawl_id: str) -> PlainTextRespo
 
 def _resolve_vs_owned(user_id: str, row: Crawl, vs: str) -> Crawl | None:
     """Resolve the comparison row: explicit ``?vs=`` (owned, succeeded, same
-    series) or the default previous revision. None collapses to 404."""
+    series) or the default previous revision. None collapses to 404.
+
+    A resolved pair scored under different scoring versions is refused
+    with 409 — cross-version comparison is never rendered, annotated or
+    not.
+    """
     if vs:
         vs_row = _owned_crawl(user_id, vs)
         if vs_row.status != "succeeded":
@@ -393,11 +475,23 @@ def _resolve_vs_owned(user_id: str, row: Crawl, vs: str) -> Crawl | None:
             or bool(vs_row.crawl_params) != bool(row.crawl_params)
         ):
             raise HTTPException(status_code=404, detail="Not found")
-        return vs_row
-    old_row: Crawl | None = find_previous_revision(row)
-    if old_row and old_row.user_id != user_id:
-        old_row = None
+        old_row: Crawl | None = vs_row
+    else:
+        old_row = find_previous_revision(row)
+        if old_row and old_row.user_id != user_id:
+            old_row = None
+    _refuse_cross_version(row, old_row)
     return old_row
+
+
+def _refuse_cross_version(row: Crawl, old_row: Crawl | None) -> None:
+    """Raise 409 when the two runs carry different scoring versions."""
+    if old_row is None:
+        return
+    try:
+        ensure_same_scoring_version(old_row, row)
+    except CrossVersionComparisonError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _diff_payload(row: Crawl, old_row: Crawl | None) -> dict[str, Any]:

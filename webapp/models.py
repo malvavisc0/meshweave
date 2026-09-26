@@ -22,6 +22,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, relationship
 
+from meshweave.scoring.composite import SCORING_VERSION
+
 
 class Base(DeclarativeBase):
     pass
@@ -300,7 +302,6 @@ class Crawl(Base):
     geo_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     aeo_rating: Mapped[str | None] = mapped_column(String(32), nullable=True)
     geo_rating: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    ai_analysis_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # AAX queue state: "pending" | "running" | "completed" | "failed" | "disabled"
     aax_status: Mapped[str] = mapped_column(
@@ -321,7 +322,7 @@ class Crawl(Base):
     )
 
     scoring_version: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="1.0"
+        String(16), nullable=False, default=SCORING_VERSION
     )
 
     listed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -467,7 +468,7 @@ class ScoreSnapshot(Base):
 
     # Scoring metadata
     scoring_version: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="1.0"
+        String(16), nullable=False, default=SCORING_VERSION
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -30,20 +30,23 @@
     </div>
   </header>
 
-  {% if has_old %}
+  {% if comparison_refused %}
+
+    {# Hard refusal: cross-version pairs are never compared or annotated. #}
+    <section class="panel diff-empty" role="alert" aria-label="Comparison refused">
+      <h2 class="diff-empty-title">Comparison refused</h2>
+      <p class="diff-empty-text">{{ comparison_refused }}</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="/analysis/{{ new.id }}">Back to this analysis</a>
+      </div>
+    </section>
+
+  {% elif has_old %}
 
     {# Revision selector (compare mode). #}
     {% with mode = "compare", current_id = new.id, old_id = old.id, diff_base = new.id %}
     {% include "partials/revision_strip.html" %}
     {% endwith %}
-
-      {% if comparison_notes %}
-      <div class="diff-notes">
-        {% for note in comparison_notes %}
-        <div class="panel panel--warning diff-note-banner">{{ note }}</div>
-        {% endfor %}
-      </div>
-      {% endif %}
 
     {# Composite scores. #}
     <section class="panel result-section diff-scores" role="region" aria-label="Score comparison">

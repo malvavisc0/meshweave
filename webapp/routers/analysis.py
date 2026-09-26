@@ -13,10 +13,11 @@ from webapp.models import Crawl
 from webapp.services import nudges as nudges_svc
 from webapp.utils.auth import require_ownership
 from webapp.utils.diff import (
-    build_comparison_notes,
+    CrossVersionComparisonError,
     build_content_diff,
     build_findings_diff,
     build_score_diff,
+    ensure_same_scoring_version,
     find_previous_revision,
     list_revision_series,
 )
@@ -763,36 +764,22 @@ def _diff_row_view(row: Crawl) -> dict:
     }
 
 
-def _build_diff_context(
+def _diff_header_context(
     request: Request, row: Crawl, old_row: Crawl | None, is_default_compare: bool
 ) -> dict:
-    """Build the template context for the diff page (empty state or full diff)."""
+    """Shared diff-page context: run headers, page chrome, empty diff fields."""
     site_name = os.getenv("SITE_NAME", "MeshWeave")
     domain = (row.domain or "").strip()
     path = (row.path or "").strip() or "/"
-    has_old = old_row is not None and old_row.id != row.id
-
-    score_diff = None
-    findings_diff = None
-    content_diff = None
-    comparison_notes: list[str] = []
-    if has_old and old_row is not None:
-        old_ss = getattr(old_row, "score_snapshot", None)
-        new_ss = getattr(row, "score_snapshot", None)
-        score_diff = build_score_diff(old_ss, new_ss, old_row, row)
-        findings_diff = build_findings_diff(old_ss, new_ss)
-        content_diff = build_content_diff(old_row.payload_json, row.payload_json)
-        comparison_notes = build_comparison_notes(old_row, row, old_ss, new_ss)
-
     return {
         "new": _diff_row_view(row),
         "old": _diff_row_view(old_row) if old_row else None,
-        "has_old": has_old,
+        "has_old": old_row is not None and old_row.id != row.id,
         "is_default_compare": is_default_compare,
-        "score_diff": score_diff,
-        "findings_diff": findings_diff,
-        "content_diff": content_diff,
-        "comparison_notes": comparison_notes,
+        "score_diff": None,
+        "findings_diff": None,
+        "content_diff": None,
+        "comparison_refused": None,
         "revisions": list_revision_series(row),
         "page_title": f"Revision diff — {domain}{path} — {site_name}",
         "site_name": site_name,
@@ -802,6 +789,31 @@ def _build_diff_context(
         "canonical_url": row.canonical_url,
         "abs_ref_url": _abs_url(request, f"/analysis/{row.id}"),
     }
+
+
+def _build_diff_context(
+    request: Request, row: Crawl, old_row: Crawl | None, is_default_compare: bool
+) -> dict:
+    """Build the template context for the diff page.
+
+    Three states: empty (no comparison run), full diff, and a hard
+    refusal when the two runs were scored under different scoring
+    versions — a cross-version pair is an error state, never a diff with
+    an annotation.
+    """
+    ctx = _diff_header_context(request, row, old_row, is_default_compare)
+    if not ctx["has_old"] or old_row is None:
+        return ctx
+    old_ss = getattr(old_row, "score_snapshot", None)
+    new_ss = getattr(row, "score_snapshot", None)
+    try:
+        ensure_same_scoring_version(old_row, row, old_ss, new_ss)
+    except CrossVersionComparisonError as exc:
+        return {**ctx, "comparison_refused": str(exc), "revisions": []}
+    ctx["score_diff"] = build_score_diff(old_ss, new_ss, old_row, row)
+    ctx["findings_diff"] = build_findings_diff(old_ss, new_ss)
+    ctx["content_diff"] = build_content_diff(old_row.payload_json, row.payload_json)
+    return ctx
 
 
 @router.get("/analysis/{ref}/diff", response_class=HTMLResponse)

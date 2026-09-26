@@ -73,7 +73,7 @@ Content-Type: application/json
 # List your analyses, newest-first (keyset pagination via next_cursor)
 GET https://meshweaveai.com/api/v1/analyses?limit=50&cursor={last_id}
 
-# Full private payload for one owned analysis (202 while running)
+# Site-side contract for one owned analysis (202 while running)
 GET https://meshweaveai.com/api/v1/analyses/{crawl_id}
 
 # Unbranded, client-ready Markdown audit report
@@ -87,8 +87,9 @@ GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff.md
 GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff?vs={crawl_id}
 ```
 
-Private responses include the complete crawl payload, score factors,
-recommendations, and score snapshots. (Legacy alias for the private payload:
+Private responses include per-lens scores and ratings, the current factor
+breakdown with weights, interpretation text, and answerability evidence.
+(Legacy alias for the full crawl payload:
 `GET /api/analysis/private/{crawl_id}`, which also accepts the owner's
 browser session.) Contact `hello@meshweaveai.com` for bulk, commercial, or
 expert-guided integrations.
