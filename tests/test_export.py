@@ -63,7 +63,8 @@ def test_serializer_defaults_for_missing_keys() -> None:
 
 def test_serializer_normalizes_pillar_and_priority_case() -> None:
     rec = export_recommendation({"pillar": "aax", "priority": "High"})
-    assert rec["pillar"] == "AAX"
+    # Score-group keys cross the export boundary as public check labels.
+    assert rec["pillar"] == "Actionable"
     assert rec["priority"] == "high"
 
 
@@ -220,8 +221,8 @@ def test_context_scores_and_sorted_recommendations() -> None:
     assert set(ctx["scores"]) == {"aeo", "geo", "aax"}
     assert ctx["scores"]["aax"]["rating"] == "Fluent"
     assert ctx["scores"]["aax"]["score"] == 80.0
-    # High-priority AAX recommendation sorts first.
-    assert [r["pillar"] for r in ctx["recommendations"]] == ["AAX", "AEO"]
+    # High-priority Actionable recommendation sorts first.
+    assert [r["pillar"] for r in ctx["recommendations"]] == ["Actionable", "Answerable"]
 
 
 # --------------------------------------------------------------------------
@@ -229,7 +230,7 @@ def test_context_scores_and_sorted_recommendations() -> None:
 # --------------------------------------------------------------------------
 def test_markdown_contains_all_sections_and_identifiers() -> None:
     md = render_export_markdown(_build())
-    assert md.startswith("# MeshWeave — AI Visibility Report")
+    assert md.startswith("# MeshWeave — AI-Friendly Website Report")
     assert "## Executive Summary" in md
     assert "## Scores" in md
     assert "## Recommendations" in md
@@ -237,7 +238,7 @@ def test_markdown_contains_all_sections_and_identifiers() -> None:
     assert "## Next Step" in md
     assert "example.com" in md
     assert "ops@meshweaveai.com" in md
-    assert "AAX" in md and "AEO" in md and "GEO" in md
+    assert "Actionable" in md and "Answerable" in md and "Reachable" in md
 
 
 def test_markdown_lists_recommendations_in_order() -> None:

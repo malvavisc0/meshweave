@@ -2074,7 +2074,7 @@ p.card-meta {
   margin-top: var(--space-xxs);
 }
 
-/* AI visibility risk summary — risk console layout */
+/* Result summary — risk console layout */
 .risk-summary {
   padding: 0;
   overflow: hidden;
@@ -2431,7 +2431,7 @@ p.card-meta {
 }
 
 /* -----------------------------------------------------------------------
-   PHASE 4: AAX AI AGENT DIAGNOSTICS
+   PHASE 4: AGENT ACTIONABILITY DIAGNOSTICS
    ----------------------------------------------------------------------- */
 .aax-ai-quote {
   border-left: 2px solid var(--color-hairline-strong);

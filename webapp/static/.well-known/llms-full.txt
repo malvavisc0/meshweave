@@ -1,121 +1,59 @@
 # MeshWeave
 
-> AI visibility risk analysis for citation, discovery, and agent trust.
+## What It Does
 
-MeshWeave audits how AI systems crawl, understand, and cite websites. It identifies structural weaknesses that limit visibility, citation confidence, generative discovery, and AI agent trust — then delivers a prioritized remediation roadmap. This file is a fuller reference for AI agents and LLMs that want to understand MeshWeave and link to it accurately.
+Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable. Each report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
-## What MeshWeave does
+Unlike traditional SEO tools, MeshWeave measures whether the website itself works for AI agents, not keyword rankings. The output is a diagnostic report and a prioritized fix list; it makes no claims about outside outcomes.
 
-When buyers ask AI tools what to buy, the AI quotes, recommends, and acts on the sites it can understand. MeshWeave finds the gaps that make a brand invisible, untrusted, or unusable to those systems, and turns them into concrete fixes.
+## Three Checks
 
-It scores a site across three independent risk lenses and produces a prioritized list of changes ordered by revenue impact.
+1. Reachable — machine context: whether agents can reach the content and reconcile the business identity, evidence, and claims across the site. Includes AI crawler access audit (GPTBot, ClaudeBot, PerplexityBot and friends), entity consistency (same business name and description across pages), evidence depth (how much supporting material exists across the site), and cross-page coherence. API fields: `geo_score`, `geo_rating`.
 
-## Core Capabilities
+2. Answerable — answer extractability: whether the site provides clear, supported answers agents can extract. Includes extractable answer blocks, content-to-schema alignment, trust signals, question coverage, FAQ depth, and a grounded answerability test — a fixed decision-critical benchmark over the crawled pages that scores only answers those pages support. API fields: `aeo_score`, `aeo_rating`.
 
-- AI visibility risk analysis across three lenses: AEO, GEO, AAX
-- Citation-readiness diagnostics (can AI quote your content by name?)
-- Generative discovery optimization (does AI recommend you over competitors?)
-- AI agent experience auditing (can AI navigate and act on your site?)
-- Entity consistency and crawl-access auditing
-- Prioritized, concrete remediation roadmap
-- Private report history for signed-in users
-- Personal API keys for programmatic access to owned private reports
+3. Actionable — agent actionability: whether agents can identify the offer, understand the content, and find a credible next step. Includes structure and schema audit (list and table density, JSON-LD/WebPage/WebSite/Organization coverage), information architecture (heading hierarchy and page depth), actionability analysis (what the brand is, who it serves, what it offers, what the next step is), and contactability (email, contact page, ContactPoint schema). API fields: `aax_score`, `aax_rating`. This check does not test transactions or operate an interactive browser agent.
 
-## Three Risk Lenses
+## Scoring
 
-MeshWeave scores each lens on a 0–100 scale. Factors with no measured score are excluded and the remaining weights are renormalized, then the composite is calibrated to compress inflated upper-range scores.
+All three checks use a weighted composite with re-normalization: factors with no score are excluded and remaining weights are redistributed. The composite is calibrated to compress inflated upper-range scores. Output is a 0-100 score and a band label:
 
-- **AEO (Answer Engine Optimization)**: Whether AI can extract clear, trustworthy answers from your content. Failure means your brand is not quoted when buyers ask questions; competitors own the answer.
-  Factors: Capture Rate (30%), Schema Implementation (20%), Content Structure (20%), Query Match (15%), Voice Rate (10%), Freshness (5%).
-- **GEO (Generative Engine Optimization)**: Whether AI systems see sufficient authority, trust, and entity signals. Failure means your brand is overlooked or replaced in recommendations.
-  Factors: Citation (30%), Topical Authority (20%), E-E-A-T Signals (15%), Crawl Access (15%), Content Depth (10%), Entity Consistency (10%).
-- **AAX (AI Agent Experience)**: Whether AI agents can understand, assess, and act on your site reliably. Failure means agent-mediated buyers abandon before conversion.
-  Factors: Homepage Comprehension (35%), Meta Optimization (20%), Content Delta (20%), llms.txt (5%), Email Validation (10%), Contactability (10%).
+- Reachable: Unreachable -> Fragmented -> Reachable -> Connected -> Fully connected
+- Answerable: Not extractable -> Limited extractability -> Partially extractable -> Reliably extractable -> Fully extractable
+- Actionable: Opaque -> Unclear -> Readable -> Clear -> Fluent
 
-### Score ratings
+Scores are diagnostic measures of the website itself, not guarantees of outside outcomes. The actionability check is not an interactive browser-agent or transaction test.
 
-- AEO / GEO: 0–25 Poor or Invisible, 26–45 Below Average or Emerging, 46–65 Average or Visible, 66–85 Strong or Authoritative, 86–100 Excellent or Dominant.
-- AAX: 0–24 Opaque, 25–39 Unclear, 40–59 Readable, 60–79 Clear, 80–100 Fluent.
+## API Endpoints
 
-Scores are diagnostic signals, not guarantees of ranking, traffic, or conversion.
+Browser UI (session auth):
+- `POST /api/submit` — start an analysis
+- `GET /api/status/{id}` — job status (public for public analyses)
 
-## API
+Public summary without authentication:
+- `GET /api/analysis/public/{key}` — JSON summary with scores and ratings
 
-Public analysis previews do not require authentication:
+v1 API (Bearer key, owner-scoped):
+- `POST /api/v1/analyses` — bulk submit up to 25 pages or sites (durable queue)
+- `GET /api/v1/analyses` — list your analyses, cursor-paginated
+- `GET /api/v1/analyses/{crawl_id}` — site-side contract (factors, weights, ratings, interpretation)
+- `GET /api/v1/analyses/{crawl_id}/report.md` — unbranded client-ready report (agent-readable Markdown)
+- `GET /api/v1/analyses/{crawl_id}/diff` — proof-of-work diff vs the previous revision
+- `GET /api/v1/analyses/{crawl_id}/diff.md` — the same diff as Markdown
 
-```http
-GET https://meshweaveai.com/api/analysis/public/{key}
-GET https://meshweaveai.com/api/analysis/public/{key}/summary
-GET https://meshweaveai.com/api/domain/{domain}
-GET https://meshweaveai.com/api/status/{crawl_id}
-```
+## Standard Paths
 
-Signed-in users create API keys on `/profile`. The complete secret is returned
-only once by `POST /api/keys`; keys can be listed by prefix and revoked from
-`/profile`. A key cannot read another user's resources.
+- `/` — free site review (core experience: enter a domain or URL)
+- `/scoring` — methodology page
+- `/browse` — community analyses
+- `/dashboard` — signed-in overview
+- `/api` — API access (create Bearer keys)
+- `/contact` — contact page
+- `/privacy`, `/terms` — legal pages
 
-### v1 API (Bearer key)
+## AI-Discoverable Files
 
-All v1 endpoints are authenticated with `Authorization: Bearer mw_live_...`
-and scoped to the key owner:
-
-```http
-# Bulk-submit up to 25 URLs (scope: "page" | "site"); each URL is admitted
-# or rejected independently: queued | cooldown | quota | invalid.
-# Queued crawls run on a durable queue and are private to the key owner.
-# Targets on private/loopback/metadata networks (e.g. localhost, 127.0.0.1,
-# 169.254.169.254) are rejected as invalid.
-POST https://meshweaveai.com/api/v1/analyses
-Content-Type: application/json
-
-{"urls": ["https://example.com", "https://other.com"], "scope": "page"}
-
-# List your analyses, newest-first (keyset pagination via next_cursor)
-GET https://meshweaveai.com/api/v1/analyses?limit=50&cursor={last_id}
-
-# Site-side contract for one owned analysis (202 while running)
-GET https://meshweaveai.com/api/v1/analyses/{crawl_id}
-
-# Unbranded, client-ready Markdown audit report
-GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/report.md
-
-# Progress diff vs the previous revision (JSON or Markdown):
-# score deltas per lens + resolved findings. Predicted changes are per fix;
-# observed changes are per lens (aggregate).
-GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff
-GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff.md
-GET https://meshweaveai.com/api/v1/analyses/{crawl_id}/diff?vs={crawl_id}
-```
-
-Private responses include per-lens scores and ratings, the current factor
-breakdown with weights, interpretation text, and answerability evidence.
-(Legacy alias for the full crawl payload:
-`GET /api/analysis/private/{crawl_id}`, which also accepts the owner's
-browser session.) Contact `hello@meshweaveai.com` for bulk, commercial, or
-expert-guided integrations.
-
-## How to be more visible to AI
-
-- Put clear, factual claims about your product near the top of each page.
-- Add structured data (JSON-LD schema) for your organization, products, and FAQs.
-- Maintain an `llms.txt` and a `robots.txt` that allow crawling.
-- Keep entity names, addresses, and contact details consistent across the site.
-- Write in short, declarative sentences that name the actor and the benefit.
-
-## Key Pages
-
-- Homepage: https://meshweaveai.com/
-- Browse analyses: https://meshweaveai.com/browse
-- Methodology: https://meshweaveai.com/methodology
-- Privacy: https://meshweaveai.com/privacy
-- Terms: https://meshweaveai.com/terms
-- Contact: https://meshweaveai.com/contact
-
-## Built For
-
-SEO & Content Teams · Product & Web Teams · Marketing & Growth Teams · Founders & Operators · Agencies & Consultants
-
-## Contact
-
-- Email: hello@meshweaveai.com
-- Open source: https://github.com/malvavisc0/meshweave
+- `/robots.txt` — crawler directives
+- `/sitemap.xml` — sitemap
+- `/.well-known/llms.txt` — this project summary
+- `/.well-known/llms-full.txt` — this document (full methodology)

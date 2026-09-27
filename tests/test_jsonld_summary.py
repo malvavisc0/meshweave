@@ -66,14 +66,20 @@ def test_software_application_details_visible():
             "@type": "SoftwareApplication",
             "name": "MeshWeave",
             "applicationCategory": "DataExtraction",
-            "featureList": ["AI visibility risk analysis", "Citation diagnostics"],
+            "featureList": [
+                "AI-friendly website analysis",
+                "Answer-extractability diagnostics",
+            ],
             "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
             "dateModified": "2026-08-27",
             "author": {"@type": "Organization", "name": "MeshWeave"},
         }
     ]
     out = json.loads(summarize_jsonld(jsonld))[0]
-    assert out["featureList"] == ["AI visibility risk analysis", "Citation diagnostics"]
+    assert out["featureList"] == [
+        "AI-friendly website analysis",
+        "Answer-extractability diagnostics",
+    ]
     assert out["offers"]["price"] == "0"
     assert out["dateModified"] == "2026-08-27"
     assert out["author"] == "MeshWeave"

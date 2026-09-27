@@ -4,6 +4,12 @@ Pure, dependency-free helpers (stdlib plus ``webapp.utils.scoring``) that turn a
 detached ``Crawl`` row into a shareable consultation artifact. Kept free of
 fastapi / sqlalchemy / prometheus_client imports so the logic is unit-testable
 without the webapp runtime stack installed.
+
+Rendered artifacts carry the deliverable name, never external-outcome
+positioning: the report is the "AI-Friendly Website Report" and the diff is the
+"AI-Friendly Progress Report". Internal score-group keys stay in context
+keys; rendered copy only shows the public check labels (Reachable, Answerable,
+Actionable).
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from datetime import datetime
 from webapp.utils.scoring import (
     _sorted_recommendations,
     build_score_snapshot_context,
+    lens_label,
 )
 from webapp.utils.times import ensure_utc
 
@@ -24,10 +31,11 @@ def export_recommendation(rec: dict) -> dict:
     Keeps only ``pillar``, ``priority``, ``title``, and ``detail``. ``guidance``
     and every other field are dropped — they carry internal remediation
     instructions. Length bounds are the defense against a saved artifact
-    rendering an unbounded blob.
+    rendering an unbounded blob. ``pillar`` crosses the boundary as the public
+    check label.
     """
     return {
-        "pillar": str(rec.get("pillar") or "").upper()[:12],
+        "pillar": str(lens_label(rec.get("pillar")))[:12],
         "priority": str(rec.get("priority") or "info").lower()[:12],
         "title": str(rec.get("title") or "")[:200],
         "detail": str(rec.get("detail") or "")[:500],
@@ -157,9 +165,9 @@ def _md_cell(value) -> str:
 def _md_header(ctx: dict) -> str:
     site_name = (ctx.get("site_name") or "").strip()
     title = (
-        f"# {site_name} — AI Visibility Report"
+        f"# {site_name} — AI-Friendly Website Report"
         if site_name
-        else f"# AI Visibility Report — {ctx['domain']}"
+        else f"# AI-Friendly Website Report — {ctx['domain']}"
     )
     lines = [
         title,
@@ -193,13 +201,13 @@ def _md_scores(ctx: dict) -> str:
     lines = [
         "## Scores",
         "",
-        "| Lens | Score | Rating | Implication |",
+        "| Check | Score | Rating | Implication |",
         "| --- | --- | --- | --- |",
     ]
-    for lens in ("aax", "aeo", "geo"):
+    for lens in ("geo", "aeo", "aax"):
         s = scores.get(lens) or {}
         lines.append(
-            f"| {lens.upper()} | {_fmt_score(s.get('score'))} "
+            f"| {lens_label(lens)} | {_fmt_score(s.get('score'))} "
             f"| {_md_cell(s.get('rating'))} | {_md_cell(s.get('implication'))} |"
         )
     lines.append("")
@@ -238,7 +246,7 @@ def _md_recommendations(ctx: dict) -> str:
         priority = str(rec.get("priority") or "").title()
         lines.append(f"### [{priority}] {rec.get('title') or 'Untitled'}")
         lines.append("")
-        lines.append(f"- **Lens:** {rec.get('pillar') or 'Unknown'}")
+        lines.append(f"- **Check:** {rec.get('pillar') or 'Unknown'}")
         if rec.get("detail"):
             lines.append(f"- **Detail:** {rec['detail']}")
         lines.append("")
@@ -248,9 +256,9 @@ def _md_recommendations(ctx: dict) -> str:
 def _md_methodology(ctx: dict) -> str:
     lines = ["## Methodology & Limitations", ""]
     lines.append(
-        "Scores are diagnostic signals, not guarantees of rankings, citations, "
-        "traffic, revenue, or conversion. AAX is not an interactive "
-        "browser-agent or transaction test."
+        "Scores are diagnostic signals for the website itself, not "
+        "guarantees of outside outcomes. The actionability check is not an "
+        "interactive browser-agent or transaction test."
     )
     lines.append("")
     return "\n".join(lines)
@@ -285,3 +293,96 @@ def render_export_markdown(ctx: dict) -> str:
         _md_next_step(ctx),
     ]
     return "\n\n".join(block for block in blocks if block).rstrip() + "\n"
+
+
+# ── Diff evidence pack (proof-of-work between two revisions) ─────────
+
+
+def _fmt_delta(v) -> str:
+    if v is None:
+        return "—"
+    f = float(v)
+    return f"+{round(f, 1)}" if f > 0 else str(round(f, 1))
+
+
+def _fmt_date(dt) -> str:
+    try:
+        return str(dt.strftime("%Y-%m-%d"))
+    except Exception:
+        return ""
+
+
+def _diff_score_table(composites: dict) -> list[str]:
+    """The before/after score table rows (observed per check)."""
+    lines = [
+        "## Scores (observed per check)",
+        "",
+        "| Check | Before | After | Δ |",
+        "| --- | --- | --- | --- |",
+    ]
+    for lens in ("geo", "aeo", "aax"):
+        d = composites.get(lens) or {}
+        lines.append(
+            f"| {lens_label(lens)} | {_fmt_score(d.get('old'))} "
+            f"| {_fmt_score(d.get('new'))} | {_fmt_delta(d.get('delta'))} |"
+        )
+    lines.append("")
+    return lines
+
+
+def _diff_resolved_fixes(resolved: list) -> list[str]:
+    """The resolved-findings list (predicted per fix)."""
+    lines = ["## Resolved fixes (predicted per fix)", ""]
+    if not resolved:
+        lines.append("_No resolved findings in this comparison._")
+        return lines
+    for rec in resolved:
+        title = rec.get("title") or "Untitled"
+        exp = rec.get("expected_points")
+        exp_txt = f" (+{exp} predicted)" if exp is not None else ""
+        lines.append(f"- **{title}**{exp_txt}")
+    return lines
+
+
+def _diff_answerability_movement(row, old_row) -> list[str]:
+    """Per-question verdict movement (the answerability re-check evidence)."""
+    rows = answerability_movement(
+        getattr(getattr(old_row, "score_snapshot", None), "score_json", None),
+        getattr(getattr(row, "score_snapshot", None), "score_json", None),
+    )
+    if not rows:
+        return []
+    lines = ["## Answerability evidence (per question)", ""]
+    for r in rows:
+        before = r["verdict_before"] or "not measured"
+        lines.append(
+            f"- **{_md_cell(r['question'])}** — {before} → {r['verdict_after']}"
+        )
+    lines.append("")
+    return lines
+
+
+def render_diff_markdown(payload: dict, row, old_row) -> str:
+    """Serialize the diff as a clean Markdown evidence pack."""
+    lines = [f"# AI-Friendly Progress Report — {row.domain}", ""]
+    if not old_row:
+        lines.append("_No previous revision to compare against yet._")
+        lines.append("")
+        return "\n".join(lines)
+    lines.append(
+        f"Comparing run `{old_row.id[:8]}` → `{row.id[:8]}` "
+        f"({_fmt_date(old_row.created_at)} → {_fmt_date(row.created_at)})."
+    )
+    lines.append("")
+    composites = (payload.get("score_diff") or {}).get("composites") or {}
+    lines.extend(_diff_score_table(composites))
+    lines.extend(_diff_answerability_movement(row, old_row))
+    resolved = (payload.get("findings_diff") or {}).get("resolved") or []
+    lines.extend(_diff_resolved_fixes(resolved))
+    lines.append("")
+    lines.append(
+        "_Predicted score changes are estimated per fix; observed changes"
+        " are measured per check (aggregate across all fixes in that check)._"
+    )
+    lines.append("")
+    return "\n".join(lines)

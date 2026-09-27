@@ -45,22 +45,22 @@
   <p class="card-meta small">
     {% if item.aeo_score is not none or item.geo_score is not none or item.aax_score is not none %}
     <span class="card-scores">
-      {% if item.aax_score is not none %}
+      {% if item.geo_score is not none %}
       <span class="card-score">
-        <span class="gauge-pillar gauge-pillar--aax {{ item.aax_rating|rating_class }}">AAX</span>
-        <strong class="score-value">{{ item.aax_score|int }}</strong>
+        <span class="gauge-pillar gauge-pillar--geo {{ item.geo_rating|rating_class }}">Reachable</span>
+        <strong class="score-value">{{ item.geo_score|int }}</strong>
       </span>
       {% endif %}
       {% if item.aeo_score is not none %}
       <span class="card-score">
-        <span class="gauge-pillar gauge-pillar--aeo {{ item.aeo_rating|rating_class }}">AEO</span>
+        <span class="gauge-pillar gauge-pillar--aeo {{ item.aeo_rating|rating_class }}">Answerable</span>
         <strong class="score-value">{{ item.aeo_score|int }}</strong>
       </span>
       {% endif %}
-      {% if item.geo_score is not none %}
+      {% if item.aax_score is not none %}
       <span class="card-score">
-        <span class="gauge-pillar gauge-pillar--geo {{ item.geo_rating|rating_class }}">GEO</span>
-        <strong class="score-value">{{ item.geo_score|int }}</strong>
+        <span class="gauge-pillar gauge-pillar--aax {{ item.aax_rating|rating_class }}">Actionable</span>
+        <strong class="score-value">{{ item.aax_score|int }}</strong>
       </span>
       {% endif %}
     </span>

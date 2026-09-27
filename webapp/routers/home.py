@@ -36,7 +36,8 @@ async def llms_txt(request: Request):
         return (
             f"Site: {base}\n"
             "Product: MeshWeave\n"
-            "Summary: AI visibility risk analysis for citation, discovery, and agent trust.\n"
+            "Summary: AI-friendly website analysis \u2014 can AI agents reach, "
+            "answer from, and act on the site.\n"
         )
 
 
@@ -407,13 +408,14 @@ def _build_json_ld(request: Request, site_name: str, abs_page_url: str) -> str |
             "dateModified": "2026-08-27",
             "provider": {"@type": "Organization", "name": site_name},
             "description": (
-                "MeshWeave audits how AI systems crawl, understand, and cite "
-                "websites, then identifies the technical weaknesses that "
-                "limit visibility and trust."
+                "Find what prevents AI agents from reading your website correctly. "
+                "MeshWeave diagnoses inaccessible content and empty or "
+                "ambiguous copy, then prioritizes the fixes that make the "
+                "site usable."
             ),
             "featureList": [
-                "AI visibility risk analysis",
-                "Citation-readiness diagnostics",
+                "AI-friendly website analysis",
+                "Answer-extractability diagnostics",
                 "Entity consistency and crawl-access auditing",
                 "Prioritized remediation roadmap",
             ],
@@ -447,12 +449,11 @@ def _session_params(request: Request) -> tuple[str, str, bool]:
 
 
 def _seo_params(site_name: str) -> tuple[str, str]:
-    page_title = (
-        f"{site_name} — AI Agent Visibility Audit: See How Agents Read Your Site"
-    )
+    page_title = f"{site_name} — Find what prevents AI agents from reading your website correctly"
     meta_description = (
-        "Run a free AI agent visibility audit. MeshWeave checks the website "
-        "signals agents can observe and shows what to fix first."
+        "Run a free AI-friendly website analysis. MeshWeave diagnoses inaccessible "
+        "content and empty or ambiguous copy, then prioritizes the fixes that "
+        "make the site usable."
     )
     return page_title, meta_description
 

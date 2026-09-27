@@ -1,193 +1,195 @@
-# Product Overview — MeshWeave
+# MeshWeave Product Overview
 
-MeshWeave is an AI visibility audit service. We show companies how well their website can be crawled, understood, cited, and acted on by answer engines, LLMs, and AI agents — then we tell them exactly what to fix first.
+Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable. Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
-Every audit is built around three diagnostic lenses:
+MeshWeave occupies the site side of AI search exclusively. It measures what the website itself makes possible for AI agents and ranks the fixes by expected score impact. Everything that happens inside third-party answer engines — tracking answers, brand mentions, share of voice — is out of scope by design.
 
-- **AEO** — Answer Engine Optimization
-- **GEO** — Generative Engine Optimization
-- **AAX** — AI Agent Experience
+## The Problem
 
-Together, these lenses help teams find the structural weaknesses that reduce AI discoverability, citation confidence, recommendation likelihood, and agent usability.
+Buyers increasingly ask AI agents instead of typing keywords into a search box. Whether your brand appears in those synthesized answers depends on **agent legibility** — whether the agent can reach your content, extract a supported answer from it, and identify a credible next step.
 
-## 1) Service Summary
+Today, no tool answers the real questions an owner has after AI search becomes part of the market's default research behavior:
 
-- **Category:** AI visibility audit service
-- **Core job:** Diagnose how AI systems interpret a website and deliver prioritized recommendations, with optional expert guidance
-- **Primary deliverable:** A structured automated analysis showing where AI visibility breaks down across extraction, authority, and agent usability — with clear guidance on what to fix first; expert-guided review is an optional follow-up
-- **Who we serve:**
-  - Marketing and growth teams
-  - SEO and content teams
-  - Founders and operators
-  - Agencies and consultants
-  - Product and web teams responsible for site structure
+1. Can AI agents **reach** my site and reconcile my business identity and evidence?
+2. Can AI agents **answer** buyers' questions from my content?
+3. Can AI agents **act** — identify my offer and find a credible next step?
 
-## 2) Problem MeshWeave Solves
+MeshWeave answers all three with a score, evidence, and a prioritized fix plan.
 
-Traditional analytics and SEO tools do not answer the questions teams now care about:
+## The Product
 
-- Can AI systems extract trusted answers from our pages?
-- Can LLMs understand what we do and cite us accurately?
-- Can AI systems identify a credible next step from our site?
-- Which technical or content issues most reduce AI visibility?
-- What should we fix first to improve citation, recommendation, and discoverability?
+**Free site review** (core experience): enter a domain or URL, receive three check scores with factor breakdowns and a prioritized fix list.
 
-Most teams don't have the expertise or tooling to answer these questions on their own. MeshWeave provides the analysis, the framework, and the expert interpretation to answer them directly.
+**Scoring model** — three checks in the agent's journey order. Public copy uses only these names; internal code and API score-group keys keep `geo`, `aeo`, and `aax`:
 
-## 3) How We Evaluate
+| Check | Internal key | Scores | Output |
+| --- | --- | --- | --- |
+| **Reachable** | `geo` | Site-wide machine context — whether agents can reach the content and reconcile the business identity, evidence, and claims across the site | Score, rating band, evidence samples |
+| **Answerable** | `aeo` | Answer extractability — whether the site provides clear, supported answers agents can extract | Score, rating band, evidence samples |
+| **Actionable** | `aax` | Agent actionability — whether agents can identify the offer, understand the content, and find a credible next step | Score, rating band, agent-readable summary |
 
-MeshWeave analyzes a website across three diagnostic lenses, each measuring a different dimension of AI visibility risk.
+Full factor definitions, weights, and band thresholds: [docs/scoring-reference.md](scoring-reference.md).
 
-### A) AEO — Answer Engine Optimization
+**Every finding includes:**
+- The signal that triggered it (with observed evidence)
+- Expected point impact — the estimated score gain if fixed
+- A short remediation instruction
 
-AEO measures how well a site is structured for answer extraction by systems such as featured snippets, AI Overviews, and voice assistants.
+**A grounded answerability test** runs a fixed decision-critical benchmark over the crawled pages and scores only answers those pages support (supported, partially supported, unsupported, contradictory), with source pages and missing facts as evidence.
 
-We evaluate signals including:
+**Re-check workflow:** run the same analysis after making changes to see resolved findings and observed per-check movement. The proof-of-work diff compares two runs and shows exactly which findings were resolved and how the observed per-check scores moved. This is the renewal artifact for agencies and the "look what we shipped" slide for in-house teams.
 
-- Schema implementation
-- Content structure quality
-- Freshness
-- Capture rate
-- Query match
-- Voice response readiness
+Scores are diagnostic measures of the website itself, not guarantees of outside outcomes. The actionability check is not an interactive browser-agent or transaction test.
 
-What it means for the business:
+## The Funnel
 
-- Low AEO suggests AI systems may struggle to extract concise, trusted answers
-- High AEO suggests content is easier for answer engines to parse and reuse
+Full detail: [docs/funnel.md](funnel.md) and [docs/funnels/30-questions.md](funnels/30-questions.md).
 
-### B) GEO — Generative Engine Optimization
+| Stage | Target | Funnel |
+| --- | --- | --- |
+| **Attract** | SEO consultants, agencies, in-house marketers | [funnels/30-questions.md](funnels/30-questions.md) (16 core questions + funnel.md's 30); 5 pillars |
+| **Capture** | Anonymous user | Site review form (core experience); unclaimed result page claim CTA gated by sign-in |
+| **Convert** | Known user | CTA on every completed report: *"Get expert help — let our team walk you through the fix plan"*; nudge after 3rd result for agency segment |
+| **Retain** | Signed-in user | Dashboard + score history; per-domain score history and run-diff; Re-check with cooldown; revision strip |
+| **Expand** | Agency / consultant | Bulk site review (API tier, 25 per call); white-label reports (unbranded `report.md` export); proof-of-work diff exports (`diff.md`) |
 
-GEO measures how well a site is positioned to be cited or recommended by LLM-driven systems such as ChatGPT, Claude, and Perplexity.
+### Lead Capture Logic
 
-We evaluate signals including:
+| Surface | Visitor type | Trigger | Capture |
+| --- | --- | --- | --- |
+| Result page | Anonymous | Result complete + unclaimed | **Sign-in-to-claim CTA** (replaces email capture) |
+| Result page | Signed-in (report owner) | Report complete | **Expert-audit mailto CTA** (`report_cta_bottom` — "Need help turning these findings into a plan?") |
+| Result page | Signed-in (report owner) | 3rd+ result, agency-ish | **Nudge** (`bulk_gate`) — "Audit multiple domains at once" → API tier waitlist |
+| Result page | Signed-in (report owner) | 3rd+ result, any segment | **Nudge** (`offer_services`) — "Want the fixes done for you?" → contact |
+| Nth result | Any | 1st, 3rd, 5th, 10th, 25th | `nth_result` milestone nudge (soft sell) |
+| Historical result | Signed-in (report owner) | 7+ days after last activity | `comeback` re-engagement nudge |
+| `/browse`, `/all`, `/d/{domain}` | Any | Card click | Result page (not gated) |
+| Bottom CTA (home) | Anonymous | End of marketing page | "Analyze Your Website" |
+| Bottom CTA (home) | Signed-in | End of marketing page | "Open Your Dashboard" |
 
-- Citation presence
-- Topical authority
-- E-E-A-T signals
-- Crawl accessibility for LLM bots
-- Content depth
-- Entity consistency
+### Funnel Events (emitted, stored)
 
-What it means for the business:
+| Event | When | Key properties |
+| --- | --- | --- |
+| `report_viewed` | Result page served (200, result view) | `crawl_id`, `surface`, `viewer_role` |
+| `report_cta_rendered` | CTA block rendered on result page | `crawl_id`, `cta_kind` |
+| `report_cta_clicked` | CTA interaction (mail link, expert contact) | `crawl_id`, `cta_kind`, `surface` |
+| `contact_clicked` | Contact CTA click anywhere (footer, contact page, CTA) | `surface`, `crawl_id?`, `viewer_role` |
+| `report_saved` | Anonymous user saves a result to a new account | `crawl_id`, `surface`, `viewer_role`, `segment` |
+| `nudge_viewed` | Nudge panel rendered | `nudge_kind`, `surface`, `viewer_role`, `segment` |
+| `nudge_clicked` | Nudge CTA clicked | `nudge_kind`, `surface`, `viewer_role`, `segment` |
+| `nudge_dismissed` | Nudge "No thanks" clicked | `nudge_kind`, `surface`, `viewer_role`, `segment` |
+| `report_exported` | Owner exports report.md | `crawl_id`, `format` |
+| `report_claimed` | Anonymous claim becomes a save | `crawl_id`, `surface`, `viewer_role` |
+| `diff_exported` | Owner exports diff.md | `crawl_id`, `format` |
+| `user_upgraded` | API key created | `provider` |
+| `rec_recheck` | Re-check action | `crawl_id`, `surface` |
 
-- Low GEO suggests weak authority, weak machine-readable trust signals, or crawl limitations
-- High GEO suggests the site is more likely to be cited, referenced, or recommended in generative experiences
+Anonymous activity (submission volume, crawl failures, CTA impressions/clicks) is Prometheus aggregate counters (`meshweave_cta_clicks_total`, `meshweave_nudge_shown_total`, `meshweave_funnel_events_total`), never per-identity histories.
 
-### C) AAX — AI Agent Experience
+Retention: 90-day rolling window (configurable via `ANALYTICS_RETENTION_DAYS`).
 
-AAX measures how well an AI system can understand, evaluate, and recommend a
-website from its crawled content and metadata. It is not an interactive browser
-agent and does not test checkout, form submission, or other transactions.
+### Segment Model
 
-We evaluate signals including:
+`funnel_events.segment` is coarse and only exists on known users.
 
-- Homepage comprehension from rendered homepage content
-- Metadata optimization from title, description, Open Graph, Twitter, canonical, and JSON-LD data
-- Cross-page content understanding and coherence
-- `llms.txt` and `llms-full.txt` availability
-- Email validation and heuristic contactability
+| Segment | Definition | Primary use |
+| --- | --- | --- |
+| `smb` | Default for a new known user | General SMB copy |
+| `agency` | ≥5 distinct domains analyzed in 30d, or ≥2 public reports with ≥2 unique domains | Bulk offer; white-label export; proof-of-work diff |
 
-What it means for the business:
+### Nudge Triggers (implementable)
 
-- Low AAX suggests AI systems may struggle to understand the offer, locate the right information, or identify a credible next step
-- High AAX suggests the site is easier for AI systems to interpret and recommend
+| Trigger | Condition | Nudge | Surface |
+|---|---|---|---|
+| `first_call_hint` | First API call completed | `bulk_gate` → "Audit multiple domains at once" | Result page |
+| `nth_result` | 1st, 3rd, 5th, 10th, 25th result view (known user) | `bulk_gate` (agency) or `services_offer` (smb) | Result page |
+| `services_offer` | 3rd+ result view, any segment | `offer_services` → "Want the fixes done for you?" | Result page |
+| `comeback` | 7+ days since last funnel event | `comeback` → "Track how AI-friendly your site becomes" | Dashboard |
+| `export_never_used` | Known user, 3+ result views, `report_exported` in 30d | `export_never_used` → "Download the report" | Result page |
+| `bulk_never_used` | Known user, 3+ result views, `bulk_submit` in 30d | `bulk_never_used` → "Run multiple domains" | Result page |
 
-## 4) How the Scores Work
+### Exit Capture (known user)
 
-All three scores use a weighted composite model.
+Trigger: user clicks an outbound link from a result page (site, pricing, docs, or mailto) and has not dismissed a nudge this session.
 
-- Each factor contributes according to a defined weight
-- Missing manual inputs are excluded and weights are re-normalized across available factors
-- A calibration curve compresses inflated mid-range scores
-- Final outputs are capped at 100 and rounded
+Surface: bottom CTA panel. Copy: *"Before you go — want the fix plan for [domain]?"* with two buttons: **Download report** (`report.md`) and **Get expert help** (mailto).
 
-This allows our team to combine automated scanning with deeper manual evaluation where machine-only analysis is incomplete.
+Emits `report_cta_clicked` with `cta_kind=exit_intent`.
 
-## 5) What Clients Get
+## Customer Pains
 
-Every MeshWeave audit delivers:
+The 16 decision-stage questions ([docs/funnels/30-questions.md](funnels/30-questions.md)) map to four failure modes MeshWeave diagnoses:
 
-- AEO, GEO, and AAX scores with factor-level breakdowns
-- Plain-language ratings that translate raw scores into clear performance bands
-- Prioritized recommendations on what to fix first
-- A clear view of where AI visibility is strongest and weakest
-- Expert interpretation explaining what the findings mean for the business
+| Failure mode | What the owner feels | Questions |
+|---|---|---|
+| **Inaccessible content** | "AI agents can't reach the pages that matter." | Q4–Q7 |
+| **Unsupported answers** | "AI gets our story wrong" / "AI can't extract clean answers from our pages" / "We never come up in AI answers" / "Other sites show up in AI answers and we don't" | Q8–Q14 |
+| **Inconsistent site context** | "AI says things about us we can't verify" / "We have no idea if any of this is working" | Q15–Q22 |
+| **Missing action path** | "AI agents can't find our offer or next step" | Q23–Q30 |
 
-In practical terms, our audits help teams:
+The top four by frequency: **"Other sites show up in AI answers and we don't"** (70%), **"We can't tell if our AI optimization is working"** (62%), **"AI gets our story wrong"** (55%), **"I don't know what to fix first"** (55%).
 
-- Stop losing citations to competitors
-- Improve recommendation confidence in generative interfaces
-- Increase AI discoverability
-- Reduce structural ambiguity that confuses AI systems
-- Prepare sites for AI-assisted commerce and agent interaction
+MeshWeave's answer to all four is the same deliverable: a score, evidence, and a prioritized fix plan. The website is the controllable prerequisite — MeshWeave fixes the surface the client controls rather than measuring what answer engines say.
 
-## 6) How the Engagement Works
+## Content Pillars
 
-```mermaid
-flowchart TD
-  A[Free analysis request] --> B[MeshWeave analyzes AI visibility signals]
-  B --> C[Compute AEO]
-  B --> D[Compute GEO]
-  B --> E[Compute AAX when enabled]
-  C --> F[Generate factor breakdowns]
-  D --> F
-  E --> F
-  F --> G[Deliver automated report and prioritized recommendations]
-  G --> H[Optional expert review and guided consultation]
-```
+| Pillar | Angle | Funnel stage | Target segment |
+|---|---|---|---|
+| AI Search | How AI-mediated research changes discovery | Attract | Marketer |
+| Answer Extractability | Structure answers agents can extract | Attract | Content |
+| Machine Context | Make your site legible to machines | Attract | Web/Dev |
+| Agent Actionability | Give agents a next step | Attract | Product/Marketing |
+| Proof-of-work | Re-check and show what changed | Retain | In-house, Agency |
 
-## 7) Positioning
+Full detail: [docs/funnel.md](funnel.md) §5.
 
-MeshWeave is not a traditional SEO tool. It provides an automated analysis and
-prioritized findings, with optional expert-guided interpretation.
+## Differentiation
 
-It is an AI visibility analysis service focused on whether machines can:
+The buyer's working category centers on presence in AI answers, but MeshWeave occupies the site side of it exclusively.
 
-- crawl the site
-- understand the brand and offering
-- extract useful answers
-- trust the entity signals
-- recommend the business in generative interfaces
-- identify a credible next step from the site
+**The website is the controllable prerequisite.** Off-site visibility depends on models, indexes, and vendors nobody controls; the website is the only surface the client fully controls, and it is the surface every answer is grounded in. MeshWeave measures and fixes that surface.
 
-The product performs the automated analysis and explains what to fix and why it
-matters. Expert review is available when teams need additional interpretation.
+MeshWeave is a diagnostic pill for site-side pains only: misdiagnosis, fix prioritization via expected_points, and proof-of-work diff exports. It deliberately does not address off-site visibility and is not an answer-engine tracker or tracker alternative.
 
-## 8) Core Messaging
+### What We Sell
 
-The service messaging is centered on AI visibility risk and expert-guided clarity.
+1. **A diagnosis.** A score and a named problem: "your agent legibility is 47/100 because your entity description is inconsistent across 8 pages and you have no extractable answer blocks."
+2. **A plan.** A prioritized, expected-points-ranked remediation list that a content writer or developer can start on this week.
+3. **Proof-of-work.** A diff between two runs showing exactly which findings were resolved and how the observed per-check scores moved.
 
-Core themes:
+### Three Customer Fears (positioning)
 
-- Your AI profile can become a business liability
-- AI systems may be misunderstanding or ignoring important parts of your site
-- Visibility problems can be measured — but interpreting them requires expertise
-- Structural weaknesses can be prioritized based on business impact
-- The goal is to move from invisible to cited
+| Fear | Objection | Positioning |
+|---|---|---|
+| Being unreadable to AI agents | "I don't know if AI can even find me." | Scores + evidence show exactly what agents can reach on the site today. |
+| Losing the answer slot to others | "Other sites get answered and we don't." | The differentiator isn't tracking answers — it's fixing the website. MeshWeave makes your site the one agents can read. |
+| No measurable progress | "I fixed some content — did it work?" | Re-check shows resolved findings and observed score movement. The proof-of-work diff is the evidence. |
 
-The service promise: we show exactly how AI systems read your site, where they fail, and what to fix first — so you don't have to figure it out alone.
+## Roadmap
 
-## 9) Ideal Use Cases
+| Phase | Deliverable | Status |
+|---|---|---|
+| 1 | Crawler + 4 AI check groups + scoring + dashboard | ✅ Shipped |
+| 2 | Agency API (bulk site review, 25/call) + report export | ✅ Shipped |
+| 3 | White-label reports (unbranded report.md export) | ✅ Shipped |
+| 4 | Score history + trend charts + run-diff | ✅ Shipped |
+| 5 | Expert-guided audit (services layer) | 🔲 Planned |
+| 6 | Scheduled re-crawl + weekly delta email | ✅ Dropped (project-shaped agency lifecycle; monitoring is dead) |
 
-MeshWeave is well suited for:
+## Open Questions
 
-- Auditing a marketing site for AI discoverability before a launch or rebrand
-- Diagnosing why a brand is not being cited in AI-generated answers
-- Improving trust and authority signals for LLMs with expert guidance
-- Making a website easier for AI agents to navigate and use
-- Getting a prioritized action plan based on AI-readability impact
-- Providing clients or leadership with a clear AI visibility assessment and next steps
+1. What is the right free/paid boundary for the agency tier?
+2. Does the white-label export need agency branding (logo + name), or is a plain unbranded report sufficient for v1?
+3. What is the minimum score history depth before trend charts are useful (3 runs? 5?)
+4. Should the proof-of-work diff be a scheduled weekly export or on-demand only?
 
-## 10) Differentiators
+## Related Docs
 
-- Expert-led service, not a self-service tool — we do the work and explain the results
-- Purpose-built for AI visibility rather than legacy SEO reporting
-- Separates answer extraction, generative authority, and agent usability into distinct diagnostic lenses
-- Combines automated scoring with manual expert evaluation where machine-only analysis falls short
-- Delivers recommendations tied directly to score factors and business impact
-- Frames everything in business terms: citation risk, recommendation confidence, and agent readiness
-
-## 11) Short Pitch
-
-MeshWeave helps teams understand how AI systems crawl, interpret, cite, and act on their websites. We do the analysis, prioritize the fixes, and guide you through what matters most — so your site stops being invisible to the machines that are shaping how buyers discover and choose vendors.
+- [docs/product.md](product.md) — full product definition (problem, audience, scoring, pricing)
+- [docs/funnel.md](funnel.md) — the 30-question acquisition funnel
+- [docs/funnels/30-questions.md](funnels/30-questions.md) — the 16-question decision-stage detail
+- [docs/scoring-reference.md](scoring-reference.md) — scoring factors, weights, and bands
+- [docs/conversion-funnel.md](conversion-funnel.md) — conversion funnel and lead-capture design
+- [docs/market-research.md](market-research.md) — market research, ICP, competitive landscape
+- [docs/style-guide.md](style-guide.md) — UI style guide and copy rules

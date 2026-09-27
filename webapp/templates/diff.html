@@ -52,16 +52,16 @@
     <section class="panel result-section diff-scores" role="region" aria-label="Score comparison">
       <h2 class="diff-section-title">Scores</h2>
       <div class="diff-score-rows">
-        {% for pillar in ["aeo", "geo", "aax"] %}
+        {% for pillar in ["geo", "aeo", "aax"] %}
         {% set c = score_diff.composites[pillar] %}
         <div class="diff-score-row">
-          <span class="diff-score-label">{{ pillar | title }}</span>
+          <span class="diff-score-label">{{ pillar | lens_label }}</span>
           <span class="diff-score-value">{{ c.old | round(0) | int if c.old is not none else '—' }}</span>
           <span class="diff-run-arrow" aria-hidden="true">&#8594;</span>
           <span class="diff-score-value">{{ c.new | round(0) | int if c.new is not none else '—' }}</span>
           {% if c.delta is not none %}
           <span class="diff-delta {{ 'diff-delta--up' if c.delta > 0 else 'diff-delta--down' }}"
-                role="img" aria-label="{{ pillar }} change {{ '+' if c.delta > 0 }}{{ c.delta }}">
+                role="img" aria-label="{{ pillar | lens_label }} change {{ '+' if c.delta > 0 }}{{ c.delta }}">
             {% if c.delta > 0 %}+{% endif %}{{ c.delta }}
           </span>
           {% else %}
@@ -119,7 +119,7 @@
     {# Findings. #}
     <section class="panel result-section diff-findings" role="region" aria-label="Findings comparison">
       <h2 class="diff-section-title">Findings</h2>
-      <p class="small">Predicted changes are per fix; observed score changes are per lens (aggregate), so multiple fixes and outside changes mix into one number.</p>
+      <p class="small">Predicted changes are per fix; observed score changes are per check (aggregate), so multiple fixes and outside changes mix into one number.</p>
       <div class="diff-findings-grid">
         <div class="diff-findings-column">
           <h3 class="diff-subsection-title diff-findings-title--resolved">Resolved since last run</h3>
@@ -131,9 +131,9 @@
               {% if rec.detail %}<p class="rec-detail">{{ rec.detail }}</p>{% endif %}
               {% if rec.expected_points is not none and rec.observed_delta is not none %}
               <p class="rec-prediction small">
-                Predicted {{ rec.pillar | upper }} +{{ rec.expected_points }} ·
+                Predicted {{ rec.pillar | lens_label }} +{{ rec.expected_points }} ·
                 observed {{ '+' if rec.observed_delta > 0 }}{{ rec.observed_delta }}
-                (per lens, not per fix)
+                (per check, not per fix)
               </p>
               {% endif %}
             </li>

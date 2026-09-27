@@ -1,187 +1,44 @@
 # MeshWeave
 
-> AI Agent Visibility Audit — see how AI reads your website, and fix what matters first.
+> AI-friendly website analysis: find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable.
 
-MeshWeave helps teams understand what AI agents can make of their website. It crawls a
-site as a machine reader would, checks the signals available to an agent, and turns the
-findings into a prioritized list of improvements.
+MeshWeave answers three questions in the agent's journey order: can AI agents reach your site (Reachable), answer from it (Answerable), and act on it (Actionable).
 
-Free web app: https://meshweaveai.com/ · Free JSON API (see below) · Open source:
-https://github.com/malvavisc0/meshweave
+[API Reference](/api): programmatic access to analyses.
 
-## What problem it solves
+[Methodology](/scoring): scoring model, factor weights, and rating bands.
 
-Search is no longer limited to a list of links. Buyers increasingly ask AI agents to
-explain a category, compare vendors, or suggest what to do next. A site can have good
-search fundamentals and still be difficult for an agent to use: a long marketing paragraph
-may hide the answer, a missing `Organization` schema may leave the business identity
-ambiguous, an email buried on a legal page may not look like a useful next step.
+## Checks
 
-MeshWeave looks at the layer after discovery: whether an AI agent can accurately
-understand, extract, trust, cite, and use what the site says.
+Every report scores three checks in the agent's journey order:
 
-## The three lenses
+- Reachable — machine context: whether agents can reach the content and reconcile the business identity, evidence, and claims across the site (API fields `geo_score`, `geo_rating`; scale 0-100: Unreachable -> Fully connected).
+- Answerable — answer extractability: whether the site provides clear, supported answers agents can extract (API fields `aeo_score`, `aeo_rating`; scale 0-100: Not extractable -> Fully extractable).
+- Actionable — agent actionability: whether agents can identify the offer, understand the content, and find a credible next step (API fields `aax_score`, `aax_rating`; scale 0-100: Opaque -> Fluent).
 
-Each audit answers three questions, scored separately so the fix for one failure mode is
-never confused with another:
+## API
 
-- **AEO — Answer Engine Optimization** (`Poor` → `Excellent`): Can an agent find and
-  extract the answer a buyer needs? Looks at schema coverage, heading hierarchy, content
-  structure, dates, and image alt text.
-- **GEO — Generative Engine Optimization** (`Invisible` → `Dominant`): Does the site
-  give an agent enough consistent, credible evidence to trust and recommend the
-  business? Looks at Organization schema, entity consistency, E-E-A-T signals, AI
-  crawler access (GPTBot, ClaudeBot, PerplexityBot), `robots.txt`, sitemaps, and
-  `llms.txt`.
-- **AAX — AI Agent Experience** (`Opaque` → `Fluent`): Can an agent understand the offer
-  and find a credible next step? Homepage comprehension, meta optimization, cross-page
-  content consistency, email contacts, and contact paths.
+Two API surfaces. The browser UI uses `/api` endpoints with session auth.
 
-## API integration
+- `POST /api/v1/analyses` — bulk submit up to 25 pages or sites (Bearer key, durable queue)
+- `GET /api/v1/analyses` — list your analyses, cursor-paginated (per-check scores and ratings)
+- `GET /api/v1/analyses/{crawl_id}` — site-side contract (factors, weights, ratings, interpretation)
+- `GET /api/v1/analyses/{crawl_id}/report.md` — unbranded client-ready report
+- `GET /api/v1/analyses/{crawl_id}/diff[.md]` — proof-of-work diff vs the previous revision
 
-The public JSON API returns a curated preview of public analyses without a key.
-Signed-in users create a personal API key from `/profile` and use it as a Bearer
-token to read their full private analysis payloads. Keys are hashed at rest, shown
-once at creation, and can be revoked from `/profile`. Contact us before bulk or
-commercial usage.
+Public summary without authentication (same response for owner and anonymous):
 
-### Analyze a site (anonymous submission)
+- `GET /api/analysis/public/{key}` — JSON summary with scores and ratings (key-scoped, unguessable key)
 
-```
-POST {base}/submit
-Content-Type: application/x-www-form-urlencoded
+Internal pages:
+- `/api` — API access (account page; signed-in users create Bearer keys)
+- `/api/status/{id}` — job status (works without sign-in for public analyses)
 
-mode=site&domain=example.com
-```
+Optional pages:
+- `/analysis/public/{key}` — shareable report
+- `/analysis/{id}` — private signed-in report
+- `/analysis/{id}/diff` — comparison with the previous run
+- `/browse` — community analyses
 
-Anonymous submissions are public; max 10 pages, depth 1. Authenticated submissions
-(via browser session) can be private, up to 25 pages by default (250 cap, depth 3).
-
-The response is a redirect to the analysis page — for API use, follow the redirect and
-extract the crawl id or short key, then poll:
-
-### Check analysis status
-
-```
-GET {base}/api/status/{crawl_id}
-```
-
-Returns `{status: "pending"|"running"|"succeeded"|"failed", error, report_url}`. Public
-analyses also include a short `key`. Poll until `succeeded`, then use the key below.
-
-### Get the analysis (public preview)
-
-```
-GET {base}/api/analysis/public/{key}
-GET {base}/api/analysis/public/{key}/summary
-```
-
-Returns headline scores (AEO, GEO, AAX composites + ratings), a risk summary
-(profile, headline, diagnosis), finding count, and counts (pages, emails, links). The
-public payload is intentionally curated: raw emails, full page bodies, recommendation
-guidance, and the full score snapshot are owner-only.
-
-### Get a private analysis (API key)
-
-```
-GET {base}/api/v1/analyses/{crawl_id}
-Authorization: Bearer mw_live_...
-```
-
-The key must belong to the owner of the analysis. Returns the site-side
-contract (per-lens scores and ratings, current factors with weights,
-interpretation text, answerability evidence); `202` with
-status while the crawl is still running. (Legacy alias for the full crawl
-payload: `GET /api/analysis/private/{crawl_id}` — also accepts the
-owner's browser session.)
-
-### Bulk submit analyses (API key)
-
-```
-POST {base}/api/v1/analyses
-Authorization: Bearer mw_live_...
-Content-Type: application/json
-
-{"urls": ["https://a.com", "https://b.com"], "scope": "page"}
-```
-
-`scope` is `"page"` (single page) or `"site"` (whole domain). Up to 25 URLs
-per batch. Each URL is admitted or rejected independently — the response is
-`201` with `{"items": [{"url", "crawl_id", "status"}...]}` where status is
-`queued` | `cooldown` (same target re-run within 60 min) | `quota` |
-`invalid`. Queued crawls run on a durable queue (they survive restarts) and
-are private to the key owner. Poll `GET /api/v1/analyses/{crawl_id}` (or
-`/api/status/{crawl_id}`) until `succeeded`.
-
-### List your analyses (API key)
-
-```
-GET {base}/api/v1/analyses?limit=50&cursor={last_id}
-Authorization: Bearer mw_live_...
-```
-
-Your crawls, newest-first: id, url, domain, scope, status, AEO/GEO scores
-and ratings, created_at. Keyset pagination via `next_cursor` in the
-response.
-
-### Export the client-ready report (API key)
-
-```
-GET {base}/api/v1/analyses/{crawl_id}/report.md
-Authorization: Bearer mw_live_...
-```
-
-An unbranded Markdown audit report — scores per lens, executive summary,
-prioritized recommendations, methodology — ready to hand to a client as-is.
-
-### Export the progress diff (API key)
-
-```
-GET {base}/api/v1/analyses/{crawl_id}/diff[.md][?vs={crawl_id}]
-Authorization: Bearer mw_live_...
-```
-
-Before/after score deltas per lens and resolved findings vs the previous
-revision of the same target (or an explicit `vs` crawl). JSON, or Markdown
-with the `.md` suffix. Predicted changes are estimated per fix; observed
-changes are measured per lens (aggregate).
-
-### Manage keys
-
-Create, list, and revoke keys from `/profile`. The browser
-endpoints are `GET /api/keys`, `POST /api/keys`, and
-`POST /api/keys/{key_id}/revoke`; the create response includes the secret once.
-
-### List analyses for a domain
-
-```
-GET {base}/api/domain/{domain}
-```
-
-Returns up to 100 public entries with keys and status.
-
-### Health
-
-```
-GET {base}/healthz    → {"status": "ok"}
-GET {base}/readyz     → checks DB + OAuth readiness
-```
-
-## Notes for agents and integrators
-
-- Full private payloads (complete factors, recommendations, score snapshots) require a
-  browser-authenticated owner session or an API key belonging to that analysis owner.
-- `robots.txt` at {base} declares AI crawlers welcome; the site serves this
-  `llms.txt` and a fuller `llms-full.txt` at {base}/.well-known/llms-full.txt.
-- Rate limits: anonymous crawls are capped server-side (10 pages default); signed-in
-  users get higher quotas. If you need bulk or commercial usage, email us first.
-
-## Built for
-
-SEO & content teams · marketing & growth teams · founders & operators · agencies and
-consultants · product & web teams
-
-## Contact
-
-- Email: hello@meshweaveai.com
-- Open source: https://github.com/malvavisc0/meshweave
+Optional files (agent-discoverable):
+- `/robots.txt`, `/sitemap.xml`, `/.well-known/llms.txt` (this file), `/.well-known/llms-full.txt` (full methodology)

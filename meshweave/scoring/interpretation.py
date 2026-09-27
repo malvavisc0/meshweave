@@ -461,7 +461,7 @@ _DIAGNOSIS: dict[str, str | dict[str, str]] = {
     ),
     # Incomplete — no lens variant
     "incomplete": (
-        "Need all three scores (AEO, GEO, AAX) for a full picture. "
+        "Need all three scores for a full picture. "
         "Re-run the crawl or check for scoring errors."
     ),
 }
@@ -552,7 +552,7 @@ def interpret_profile(
             "tone": "moderate",
             "headline": "One or more scores couldn't be calculated.",
             "diagnosis": (
-                "We need all three lens scores (AEO, GEO, AAX) for a full picture. "
+                "We need all three scores for a full picture. "
                 "Re-run the crawl or check for scoring errors."
             ),
             "weakest_lens": None,

@@ -512,7 +512,7 @@ def _with_cursor(base_params: dict, nav_dir: str, row: Crawl) -> tuple[str, bool
 
 def _page_title_text(dom: str | None, st: str | None, srt: str, site_name: str) -> str:
     """Build the SEO title for the browse page."""
-    title_bits = ["Public AI search analyses"]
+    title_bits = ["Public AI-friendly website analyses"]
     if dom:
         title_bits.append(f"for {dom}")
     if st:
@@ -526,21 +526,21 @@ def _meta_description_text(dom: str | None, st: str | None) -> str:
     """Build the meta description for the browse page."""
     if dom and st:
         return (
-            f"Explore AEO & GEO scores for {dom} with status {st}. "
-            "See how this site performs for AI search."
+            f"Browse AI-friendly website analyses for {dom} with status {st}. "
+            "See whether agents can reach, answer from, and act on it."
         )
     if dom:
         return (
-            f"Explore AEO & GEO scores for {dom}. See how this site "
+            f"Browse AI-friendly website analyses for {dom}. See how this site "
             "performs across the factors AI engines care about."
         )
     if st:
         return (
-            f"Browse public AI search analyses filtered by status {st}. "
-            "See AEO & GEO scores from the community."
+            f"Browse public AI-friendly website analyses filtered by status {st}. "
+            "See analyses from the community."
         )
     return (
-        "Explore AEO & GEO scores submitted by the community. "
+        "Browse AI-friendly website analyses submitted by the community. "
         "See how sites perform across the factors AI engines care about."
     )
 
@@ -564,7 +564,11 @@ def _items_json_ld(items: list[dict], dom: str | None, request: Request) -> str 
                         "about": str(it.get("domain") or "").strip(),
                         "url": _abs_url(request, f"/analysis/{it.get('key', '')}"),
                         "dateModified": str(it.get("updated_at", ""))[:19],
-                        "keywords": ["AEO", "GEO", "AI search", "optimization"],
+                        "keywords": [
+                            "AI-friendly website",
+                            "site analysis",
+                            "AI agents",
+                        ],
                     }
                 )
             except Exception:

@@ -251,28 +251,56 @@ topnav (56px, dark)
 7. **No inline `style=""` attributes** — use CSS utility classes
 8. **No duplicate class definitions** — use BEM modifiers (`.class--variant`)
 9. **No hardcoded color values** — always use design tokens
-10. **No fear-based marketing copy** — use outcome-measured, performance-focused language
+10. **No fear-based marketing copy** — use concrete, site-side diagnostic language
 
 ---
 
 ## Copy Guidelines
 
+### Canonical Language
+
+MeshWeave's promise is: **Find what prevents AI agents from reading your website correctly.** MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable. Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
+
+The category noun is **AI-friendly website analysis** (artifact names: **AI-Friendly Website Report**, **AI-Friendly Progress Report**). In prose prefer "how AI-friendly your site is" over nominalizations.
+
+Three checks, always in journey order, always phrased as the client's gain:
+
+| Public name | Internal key | Plain-language frame |
+| --- | --- | --- |
+| **Reachable** | `geo` | Machine context |
+| **Answerable** | `aeo` | Answer extractability |
+| **Actionable** | `aax` | Agent actionability |
+
+Customer-facing surfaces use only **Reachable / Answerable / Actionable**. The acronyms `AEO`, `GEO`, `AAX` are internal identifiers: they stay in code, score-group keys, and API field names, and never appear in rendered pages, exports, JSON-LD, or agent-facing documentation.
+
 ### Tone
 - **Authoritative, not conversational** — the product is an engineering tool
 - **Precision over persuasion** — lead with data, not emotion
-- **Active voice** — "Measure how AI systems read your site" not "Your site can be measured"
+- **Active voice** — "Find what prevents AI agents from reading your website correctly" not "Your website can be analyzed"
 
 ### Prohibited Phrases
+
+Do not use external-outcome vocabulary anywhere in public copy:
+
+- The retired phrases: "citation simulation", "quotability", "generative discovery", "recommendability", "AI visibility" (and the expansions "Answer Engine Optimization", "Generative Engine Optimization", "AI Agent Experience"), "agent-readability" (the former category name — say "AI-friendly" instead)
+- Any promise of citations, mentions, recommendations, rankings, competitors, traffic, or conversion
+- The words invisible, visible, cited, recommended, dominant, selected, competitive must never describe a site's standing
 - "Your competitors are showing up…" (fear-based)
 - "Here's what AI agents see…" (AI-narrator voice)
 - "What AI gets right/wrong" (casual, AI-as-character)
 - "Every day you're invisible…" (urgency-fear framing)
 
+The words "recommendations" and "recommendation" remain valid for MeshWeave's own prioritized fix list.
+
 ### Approved Alternatives
-- "Measure how AI systems read, understand, and cite your website."
+- "Find what prevents AI agents from reading your website correctly."
+- "Diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable."
+- "Can AI agents reach your site, answer from it, and act on it?"
+- "Reachable — machine context" / "Answerable — answer extractability" / "Actionable — agent actionability"
 - "Automated site review findings"
 - "Confirmed signals" / "Missing or ambiguous signals"
-- "Track AI visibility over time. Catch regressions before your competitors do."
+- "Track how AI-friendly your site becomes."
+- "Run a free AI-friendly website analysis."
 
 ---
 

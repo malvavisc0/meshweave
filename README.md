@@ -1,219 +1,101 @@
 # MeshWeave
 
-> See how AI reads your website — and fix what matters first.
+Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable.
 
-MeshWeave checks how AI tools — answer engines (Google AI Overviews, ChatGPT), chatbots, and autonomous agents — read your website. It finds the specific problems that make your brand easy to miss or misquote, and gives you a clear list of what to fix first.
+Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
-## Who this is for
+## Three Checks
 
-- **SEO and content teams** who want to know why their brand isn't showing up in AI answers
-- **Marketing and growth teams** protecting brand visibility as discovery shifts to chat and agents
-- **Founders and operators** who own the numbers that depend on being found
-- **Agencies and consultants** reporting to clients on how AI sees their sites
-- **Product and web teams** responsible for site structure and how machines read it
+| Check | Scores | Question |
+| --- | --- | --- |
+| **Reachable** | Site-wide machine context | Can agents reach your content and reconcile your business identity, evidence, and claims? |
+| **Answerable** | Answer extractability | Does your content support direct, structured answers agents can extract? |
+| **Actionable** | Agent actionability | Can agents identify your offer, understand the content, and find a credible next step? |
 
-## What you get
+Scores are diagnostic measures of the website itself, not guarantees of outside outcomes. The actionability check is not an interactive browser-agent or transaction test.
 
-- **A clear read on how AI sees your site today** — what it extracts, cites, and recommends, plus where it gets things wrong
-- **A prioritized fix list ranked by business impact** — so you start with the problems that cost you the most
-- **A baseline to track over time** — catch visibility regressions before they turn into lost citations and clicks
-- **Findings your whole team can act on** — plain-language, not a black box only the tools team understands
+## What You Get
 
-## Three Risk Lenses
+- A free site review (core experience): enter a domain or URL
+- Three check scores with factor breakdowns and rating bands
+- **Prioritized recommendations** — every finding with expected point impact, ordered by priority
+- **A grounded answerability test** — a fixed decision-critical benchmark over your crawled pages, with verdicts and source evidence
+- **A client-ready report** — download as Markdown, share with clients or hand to an AI agent
+- **A proof-of-work diff** — compare two runs to show resolved findings and observed per-check changes
+- **An agency API** — bulk-submit up to 25 domains, fetch results as JSON, and download unbranded Markdown reports to hand to clients ([docs/api-contract.md](docs/api-contract.md))
+- An [llms.txt file](webapp/static/.well-known/llms.txt) exposing this metadata to AI crawlers
 
-MeshWeave looks at AI visibility through three distinct lenses, each measuring a different way AI can fail your brand.
+## Quickstart
 
-| Lens | What It Measures | Business Risk |
-|------|-----------------|---------------|
-| **AEO** — Answer Engine Optimization | Can AI pull a clear, trustworthy answer from your content? | Your brand gets skipped — a competitor answers instead. |
-| **GEO** — Generative Engine Optimization | Does AI see your brand as authoritative and trustworthy? | Your brand gets left out of recommendations. |
-| **AAX** — AI Agent Experience | Can agents navigate your site and do what visitors need? | Buyers who arrive through agents give up before buying. |
+### Prerequisites
 
-## Quick Start
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- Gemini API key (the Actionable check is LLM-powered). Get one at https://aistudio.google.com/
+- Google OAuth credentials (for sign-in). Get them at https://console.cloud.google.com/apis/credentials
 
-### Docker Compose (recommended)
-
-```bash
-cp .env.example .env   # configure OAuth, LLM, base URL
-docker compose up -d
-```
-
-The webapp is available at `http://localhost:8080`.
-
-The local Compose configuration enables authentication and requires Google OAuth
-credentials for the `/readyz` healthcheck. Set `OAUTH_CLIENT_ID` and
-`OAUTH_CLIENT_SECRET` in `.env` before starting the stack. AAX also requires the
-LLM settings; set `AAX_ENABLED=false` if AAX is not configured locally.
-
-### Run database migrations
-
-The Compose file provides a dedicated `alembic` service under the `migration`
-profile. Start the database and apply all pending migrations with:
+### 1. Clone and configure
 
 ```bash
-docker compose --profile migration run --rm alembic
+git clone https://github.com/malvavisc0/meshweave.git
+cd meshweave
+cp .env.example .env
+# Edit .env — set GEMINI_API_KEY (required), Google OAuth, and APP_SECRET_KEY (required for local runs)
 ```
 
-The migration service runs `uv run alembic upgrade head` and waits for the
-PostgreSQL healthcheck before applying migrations. Confirm the current revision
-with:
+Generate a session secret and paste it in `.env` as `APP_SECRET_KEY`:
 
 ```bash
-docker compose --profile migration run --rm alembic current
+uv run python -c 'import secrets; print(secrets.token_hex())'
 ```
 
-The webapp also has `WEBAPP_AUTO_MIGRATE=true` in the local Compose configuration,
-but running the dedicated migration service explicitly is recommended when
-applying schema changes. For local development without Docker, use:
+### 2. Run (SQLite, zero external services)
 
 ```bash
-uv run alembic upgrade head
+make dev          # web UI at http://127.0.0.1:8057
+make dev-worker   # API worker (separate terminal)
+make dev-aax      # agent analysis worker (separate terminal)
 ```
 
-### Local development
-
-Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/):
+### 3. Run (Postgres, Langfuse, production)
 
 ```bash
-uv sync
-uv run uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --reload
-```
-
-Pages are rendered through a remote CDP browser (LightPanda). Set
-`MESHWEAVE_CDP_ENDPOINT` before crawling locally:
-
-```bash
-docker run -d --name lightpanda -p 9222:9222 \
-  lightpanda/browser:nightly lightpanda serve --host 0.0.0.0 --port 9222
-export MESHWEAVE_CDP_ENDPOINT=http://localhost:9222
-```
-
-(Docker Compose already wires this up via the `lightpanda` service.)
-
-## Web App
-
-A full-featured FastAPI web application for submitting URLs and viewing AI visibility analysis results. The local Compose stack runs PostgreSQL, LightPanda, and the webapp.
-
-### Key capabilities
-
-- **Site & page analysis** — Submit URLs for crawling with configurable depth and page limits
-- **AEO / GEO / AAX scoring** — Three risk lenses, each with a score and a plain-language breakdown of what drove it
-- **Real-time progress** — Live status updates for running crawls
-- **Public & private results** — Anonymous runs are public; authenticated users get private reports with shareable URLs
-- **Google OAuth** — Sign in for higher quotas, private results, and persistent history
-- **Browse & compare** — Public analysis gallery sorted by recency, domain, or score
-
-### Architecture
-
-```
-FastAPI (webapp/) ── PostgreSQL 18 ── LightPanda (CDP browser)
-                                        │
-                                 LLM scoring engine
-                              (OpenAI-compatible API)
-```
-
-### Key environment variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | — |
-| `SITE_BASE_URL` | Public base URL for the site | — |
-| `SITE_NAME` | Brand name shown in UI | `MeshWeave` |
-| `OAUTH_CLIENT_ID` | Google OAuth client ID | — |
-| `OAUTH_CLIENT_SECRET` | Google OAuth client secret | — |
-| `LLM_BASE_URL` | OpenAI-compatible LLM endpoint | — |
-| `LLM_API_KEY` | LLM API key | — |
-| `LLM_MODEL` | Model name for scoring | — |
-| `AAX_ENABLED` | Enable AAX scoring lens | — |
-| `MESHWEAVE_CDP_ENDPOINT` | CDP browser endpoint (required for rendering) | — |
-| `MESHWEAVE_CACHE_DIR` | HTML cache directory | `/tmp/meshweave/cache` |
-| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse credentials for AAX LLM tracing (opt-in, see [docs/langfuse.md](docs/langfuse.md)) | — |
-| `FOOTER_CONTACT_EMAIL` | Contact email in footer/legal | `hello@meshweaveai.com` |
-
-See `docker-compose.yaml` for the full set of configuration options.
-
-The webapp defaults to 25 pages and depth 1 for authenticated site crawls, and
-10 pages and depth 1 for anonymous crawls. Limits are capped separately by the
-`AUTH_SITE_*` and `ANON_SITE_*` environment variables in Compose. Successful
-crawls run AAX asynchronously when `AAX_ENABLED=true`; the result page displays
-the crawl result while AAX is pending and adds the AAX score when analysis
-finishes.
-
-## CLI
-
-The CLI provides the `crawl` subcommand. Running `meshweave <url>` without a subcommand defaults to `crawl`. Internal links within the URL's path scope are always crawled (`--max-pages` defaults to 25). `--output/-o` is required. Requires `MESHWEAVE_CDP_ENDPOINT` to be set — the CLI exits early otherwise.
-
-```bash
-# Site crawl within the URL's path scope (default: up to 25 pages)
-meshweave crawl https://example.com -o output.json
-
-# Larger crawl with link depth control
-meshweave crawl https://example.com \
-  --max-pages 50 --max-depth 2 \
-  -o output.json
-
-# Markdown output per page
-meshweave crawl https://example.com \
-  --max-pages 10 \
-  --output-dir ./data/output \
-  -o output.json
-```
-
-Run `meshweave crawl --help` for all options.
-
-## Library Usage
-
-```python
-import asyncio
-from meshweave import crawl
-
-
-async def main():
-    payload = await crawl(
-        url="https://example.com",
-        crawl_max_pages=25,
-        max_depth=1,
-        include_emails=True,
-        deobfuscate_emails=True,
-    )
-    # payload contains: page, markdown, links, metrics,
-    # emails, crawl info, audit, headings, and more
-
-
-asyncio.run(main())
-```
-
-## Development
-
-```bash
-# Install with dev dependencies
-uv sync
-
-# Run tests
-uv run pytest -q
-
-# Run with hot-reload
-uv run uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --reload
-
-# Database migrations without Docker
-uv run alembic upgrade head
-```
-
-### Pre-commit hooks
-
-```bash
-uv run pre-commit install
-uv run pre-commit run --all-files
+cp .env.production.example .env.production   # set DATABASE_URL to your Postgres URL
+make dev-pg        # Postgres backend (requires Docker for the local Postgres container)
+make worker        # API worker
+make worker-aax    # agent analysis worker
+make langfuse-up   # local Langfuse observability stack (optional)
 ```
 
 ## Documentation
 
-- [Product Overview](docs/product-overview.md)
-- [Scoring Reference](docs/scoring-reference.md)
-- [Style Guide](docs/style-guide.md)
-- [Observability](docs/observability.md)
-- [LLM Observability (Langfuse)](docs/langfuse.md)
+| Document | Purpose |
+| --- | --- |
+| [docs/product.md](docs/product.md) | Product definition: problem, audience, positioning, checks, recommendation model |
+| [docs/product-overview.md](docs/product-overview.md) | Product funnel, lead-capture logic, content pillars, and conversion path |
+| [docs/funnel.md](docs/funnel.md) | Canonical acquisition funnel (30 questions across 5 stages) |
+| [docs/funnels/30-questions.md](docs/funnels/30-questions.md) | The 30-question funnel detail |
+| [docs/scoring-reference.md](docs/scoring-reference.md) | Scoring model: factors, weights, bands, compositional semantics |
+| [docs/style-guide.md](docs/style-guide.md) | UI style guide: visual DNA, design tokens, HTML patterns |
+| [docs/conversion-funnel.md](docs/conversion-funnel.md) | Conversion funnel and lead-capture design |
+| [docs/observability.md](docs/observability.md) | LLM and application observability (Langfuse, SerpAPI, metrics) |
+| [docs/market-research.md](docs/market-research.md) | Market research: buyer demand, ICP, competitive landscape, GTM plan |
+| [docs/api-contract.md](docs/api-contract.md) | API contract: endpoints, auth, ownership, unbranded export, bulk limits |
+
+## Architecture
+
+- **`meshweave/`** — core Python library: Playwright-based crawling, screenshot capture, link mapping, page rendering, robots/llms.txt reading, 4 AI factor groups with expected-point remediation, and LLM analysis with normalized JSON schema
+- **`webapp/`** — FastAPI web application with HTMX frontend, template-based UI, custom Litestar-style design system, Langfuse LLM observability, and Prometheus metrics (SQLite or PostgreSQL backend)
+- **`worker/`** — API worker with durable DB-backed queue (resilient to crashes/restarts) and idempotent re-enqueue (a successful analysis refresh does not create a second queue entry)
+- **`worker_aax/`** — agent analysis worker with durable DB-backed queue, idempotent scheduling, and LLM-powered analysis via LiteLLM
+- **`tests/`** — 437 tests with multi-layer stubs for Playwright, Gemini, and FastAPI
+
+See `make help` for all available commands.
+
+## Environment
+
+See [docs/observability.md](docs/observability.md) for Langfuse and metrics configuration.
 
 ## License
 
-MIT
+See [LICENSE](LICENSE).

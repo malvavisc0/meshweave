@@ -40,9 +40,9 @@ from webapp.utils.diff import (
     find_previous_revision,
 )
 from webapp.utils.export import (
-    answerability_movement,
     answerability_questions,
     build_export_context,
+    render_diff_markdown,
     render_export_markdown,
     safe_filename,
 )
@@ -438,7 +438,7 @@ async def get_report_markdown(request: Request, crawl_id: str) -> PlainTextRespo
     # Unbranded: no MeshWeave header branding, no MeshWeave contact footer.
     ctx = build_export_context(row, site_name="", contact_email="")
     body = render_export_markdown(ctx)
-    filename = f"ai-visibility-report-{safe_filename(row.domain)}.md"
+    filename = f"ai-friendly-report-{safe_filename(row.domain)}.md"
     resp = PlainTextResponse(content=body, media_type="text/markdown")
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     with get_session() as s:
@@ -532,8 +532,8 @@ async def get_diff_markdown(
     if row.status != "succeeded":
         raise HTTPException(status_code=409, detail="Analysis not finished")
     old_row = _resolve_vs_owned(user_id, row, vs)
-    body = _render_diff_markdown(_diff_payload(row, old_row), row, old_row)
-    filename = f"ai-visibility-diff-{safe_filename(row.domain)}.md"
+    body = render_diff_markdown(_diff_payload(row, old_row), row, old_row)
+    filename = f"ai-friendly-diff-{safe_filename(row.domain)}.md"
     resp = PlainTextResponse(content=body, media_type="text/markdown")
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     with get_session() as s:
@@ -546,101 +546,3 @@ async def get_diff_markdown(
             format="markdown",
         )
     return resp
-
-
-def _md_score_table(composites: dict) -> list[str]:
-    """The before/after score table rows (observed per lens)."""
-    lines = [
-        "## Scores (observed per lens)",
-        "",
-        "| Lens | Before | After | Δ |",
-        "| --- | --- | --- | --- |",
-    ]
-    for lens in ("aeo", "geo", "aax"):
-        d = composites.get(lens) or {}
-        lines.append(
-            f"| {lens.upper()} | {_fmt_score(d.get('old'))} "
-            f"| {_fmt_score(d.get('new'))} | {_fmt_delta(d.get('delta'))} |"
-        )
-    lines.append("")
-    return lines
-
-
-def _md_resolved_fixes(resolved: list) -> list[str]:
-    """The resolved-findings list (predicted per fix)."""
-    lines = ["## Resolved fixes (predicted per fix)", ""]
-    if not resolved:
-        lines.append("_No resolved findings in this comparison._")
-        return lines
-    for rec in resolved:
-        title = rec.get("title") or "Untitled"
-        exp = rec.get("expected_points")
-        exp_txt = f" (+{exp} predicted)" if exp is not None else ""
-        lines.append(f"- **{title}**{exp_txt}")
-    return lines
-
-
-def _md_answerability_movement(row: Crawl, old_row: Crawl) -> list[str]:
-    """Per-question verdict movement (the answerability re-check evidence)."""
-    rows = answerability_movement(
-        getattr(getattr(old_row, "score_snapshot", None), "score_json", None),
-        getattr(getattr(row, "score_snapshot", None), "score_json", None),
-    )
-    if not rows:
-        return []
-    lines = ["## Answerability evidence (per question)", ""]
-    for r in rows:
-        before = r["verdict_before"] or "not measured"
-        lines.append(
-            f"- **{_md_cell_text(r['question'])}** — {before} → {r['verdict_after']}"
-        )
-    lines.append("")
-    return lines
-
-
-def _md_cell_text(value) -> str:
-    return str(value or "").replace("|", "\\|").replace("\n", " ")
-
-
-def _render_diff_markdown(payload: dict, row: Crawl, old_row: Crawl | None) -> str:
-    """Serialize the diff as a clean Markdown evidence pack."""
-    lines = [f"# AI Visibility Progress Report — {row.domain}", ""]
-    if not old_row:
-        lines.append("_No previous revision to compare against yet._")
-        lines.append("")
-        return "\n".join(lines)
-    lines.append(
-        f"Comparing run `{old_row.id[:8]}` → `{row.id[:8]}` "
-        f"({_fmt_date(old_row.created_at)} → {_fmt_date(row.created_at)})."
-    )
-    lines.append("")
-    composites = (payload.get("score_diff") or {}).get("composites") or {}
-    lines.extend(_md_score_table(composites))
-    lines.extend(_md_answerability_movement(row, old_row))
-    resolved = (payload.get("findings_diff") or {}).get("resolved") or []
-    lines.extend(_md_resolved_fixes(resolved))
-    lines.append("")
-    lines.append(
-        "_Predicted score changes are estimated per fix; observed changes"
-        " are measured per lens (aggregate across all fixes in that lens)._"
-    )
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _fmt_date(dt: Any) -> str:
-    try:
-        return str(dt.strftime("%Y-%m-%d"))
-    except Exception:
-        return ""
-
-
-def _fmt_score(v) -> str:
-    return "—" if v is None else str(round(float(v), 1))
-
-
-def _fmt_delta(v) -> str:
-    if v is None:
-        return "—"
-    f = float(v)
-    return f"+{round(f, 1)}" if f > 0 else str(round(f, 1))

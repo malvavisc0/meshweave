@@ -6,6 +6,16 @@ from typing import Any
 from meshweave.scoring.composite import LENS_WEIGHTS
 from meshweave.scoring.interpretation import interpret_profile
 
+# Public check labels: score-group keys stay internal, customer-facing
+# surfaces only show these names in the agent's journey order.
+JOURNEY_ORDER = ("geo", "aeo", "aax")
+PUBLIC_LENS_LABELS = {"geo": "Reachable", "aeo": "Answerable", "aax": "Actionable"}
+
+
+def lens_label(key: str | None) -> str:
+    """Public check label for a score-group key or lens name (any case)."""
+    return PUBLIC_LENS_LABELS.get(str(key or "").lower(), str(key or ""))
+
 
 def aax_pending(crawl: Any) -> bool:
     """True when AAX is enabled but has not finished for this crawl.
@@ -247,6 +257,13 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "geo_rating_class": rating_class(snapshot.geo_rating),
         "score_data": score_data_enriched,
         "recommendations": score_data_enriched.get("recommendations", []),
+        # Public check meanings (journey order available via JOURNEY_ORDER)
+        "check_meanings": {
+            key: (interp.get("lens_details") or {})
+            .get(key.upper(), {})
+            .get("meaning", "")
+            for key in JOURNEY_ORDER
+        },
         # AAX fields
         "aax_score": aax_composite,
         "aax_rating": aax_section.get("rating", "Unknown"),

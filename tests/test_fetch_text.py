@@ -12,7 +12,7 @@ from meshweave.crawling.fetcher import _unwrap_browser_plaintext
 LIGHTPANDA_LLMS_WRAPPER = (
     '<!DOCTYPE html><html><head><meta charset="utf-8"></head>'
     "<body><pre># MeshWeave\n\n"
-    "&gt; AI visibility risk analysis for citation, discovery, and agent trust.\n\n"
+    "&gt; AI-friendly website analysis \u2014 can AI agents reach, answer from, and act on the site.\n\n"
     "Key pages: https://meshweaveai.com/ &amp; /browse\n"
     "</pre></body></html>"
 )
@@ -37,7 +37,7 @@ LIGHTPANDA_SITEMAP_WRAPPER = (
 def test_unwrap_llms_txt_payload_unescaped():
     text = _unwrap_browser_plaintext(LIGHTPANDA_LLMS_WRAPPER)
     assert text.startswith("# MeshWeave")
-    assert "> AI visibility risk analysis" in text  # &gt; unescaped
+    assert "> AI-friendly website analysis" in text  # &gt; unescaped
     assert "&amp;" not in text  # &amp; unescaped
     assert "<pre>" not in text
     assert "<html>" not in text

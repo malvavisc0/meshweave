@@ -102,7 +102,7 @@
         </div>
         <div class="analyze-inline panel">
             <p class="dash-overview-kicker">Run analysis</p>
-            <p class="analyze-inline-desc">Run a new scan to measure whether your fixes improved AI visibility.</p>
+            <p class="analyze-inline-desc">Run a new scan to measure whether your fixes made the site more AI-friendly.</p>
             {% include "partials/site_crawl_form.html" %}
         </div>
     </div>
@@ -121,7 +121,7 @@
                             <a href="/analysis/{{ s.latest_id }}" class="attention-domain">{{ s.domain }}</a>
                             <span class="attention-reason">
                                 {% if s.latest_status == 'failed' %}Analysis failed{%
-                                elif s.analysis_count < 2 %}No baseline yet{% elif (s.geo_delta or 0) < -5 %}GEO ▼
+                                elif s.analysis_count < 2 %}No baseline yet{% elif (s.geo_delta or 0) < -5 %}Reachable ▼
                                     {{ '%.1f' |format(s.geo_delta) }} since last run{% else %}Needs attention{% endif %}
                                     </span>
                 </li>

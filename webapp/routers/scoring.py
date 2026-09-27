@@ -33,10 +33,10 @@ def _band_rows(ratings: list[tuple[int, int, str]]) -> list[dict[str, str]]:
 
 @router.get("/methodology", response_class=HTMLResponse)
 async def methodology_page(request: Request):
-    """Scoring methodology page — explains AEO/GEO factors, weights, and ratings."""
+    """Scoring methodology page — explains the three checks, weights, and ratings."""
     site_name = os.getenv("SITE_NAME", "MeshWeave")
     page_title = f"Methodology — {site_name}"
-    meta_description = "Learn how MeshWeave computes AEO, GEO, and AAX and how to interpret each score as a diagnostic signal."
+    meta_description = "Learn how MeshWeave scores Reachable, Answerable, and Actionable and how to interpret each score as a diagnostic signal."
     abs_page_url = _abs_url(request, "/methodology")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
@@ -57,16 +57,16 @@ async def methodology_page(request: Request):
                 },
                 "dateModified": "2026-08-27",
                 "description": (
-                    "How MeshWeave computes AEO, GEO, and AAX scores: "
+                    "How MeshWeave scores Reachable, Answerable, and Actionable: "
                     "factors, weights, and rating bands."
                 ),
                 "mainEntity": {
                     "@type": "CreativeWork",
                     "name": "MeshWeave scoring framework",
                     "about": [
-                        "Answer Engine Optimization (AEO)",
-                        "Generative Engine Optimization (GEO)",
-                        "AI Agent Experience (AAX)",
+                        "Reachable — machine context",
+                        "Answerable — answer extractability",
+                        "Actionable — agent actionability",
                     ],
                 },
             }

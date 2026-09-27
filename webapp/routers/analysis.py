@@ -367,8 +367,8 @@ def _since_last_run(row: Crawl) -> dict | None:
     """Signed lens deltas against the previous succeeded revision.
 
     Returns None when this run is the first in its series or either
-    snapshot lacks scores. Deltas round to one decimal; AAX is omitted
-    when the previous revision has no AAX composite yet.
+    snapshot lacks scores. Deltas round to one decimal; the actionability
+    composite is omitted when the previous revision has no composite yet.
     """
     if row.status != "succeeded":
         return None
@@ -720,7 +720,7 @@ async def export_analysis(request: Request, ref: str) -> Response:
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     response.headers["Content-Disposition"] = (
-        f'attachment; filename="meshweave-report-{safe_filename(row.domain)}.md"'
+        f'attachment; filename="ai-friendly-report-{safe_filename(row.domain)}.md"'
     )
     return response
 

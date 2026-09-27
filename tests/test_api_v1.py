@@ -525,7 +525,7 @@ class TestReportExport:
         assert "meshweave" not in body
         assert "hello@meshweaveai.com" not in body
         # Unbranded header: domain-titled, no dangling brand separator
-        assert body.startswith("# AI Visibility Report — x.com")
+        assert body.startswith("# AI-Friendly Website Report — x.com")
         # No dangling "contact ." footer
         assert "contact ." not in body
 

@@ -1,414 +1,220 @@
 # Scoring Reference
 
-> How AAX, AEO, and GEO scores are calculated in the Meshweave scoring engine.
->
-> Source: `meshweave/scoring/engine.py`, `meshweave/scoring/aeo.py`, `meshweave/scoring/geo.py`
+Canonical reference for MeshWeave's scoring model. Defines each check's factors, weights, band names, compositional semantics, and interpretation matrix. Read this before writing factors, tuning weights, or changing band thresholds.
+
+Three checks in the agent's journey order. Public surfaces use only the names **Reachable / Answerable / Actionable**; internal code, score-group keys (`geo`, `aeo`, `aax`), and API field names keep their identifiers.
+
+| Check | Internal key | Scores | Engine | Source |
+| --- | --- | --- | --- | --- |
+| Reachable | `geo` | Site-wide machine context: entity consistency, evidence depth, cross-page coherence | Heuristic (no LLM) | `meshweave/scoring/geo.py` |
+| Answerable | `aeo` | Answer extractability: extractable answers, evidence density, content/schema alignment, trust | Heuristic (no LLM) | `meshweave/scoring/aeo.py` |
+| Actionable | `aax` | Agent actionability: structure, information architecture, offer clarity, contactability | Heuristic + LLM | `meshweave/scoring/aax.py` |
 
 ---
 
-## Shared Algorithm: Weighted Composite
+## Factor Reference
 
-All three scores use the same weighted composite function with **re-normalization**:
+### Reachable (`geo`) — machine context
 
-```python
-composite = Σ(score_i × weight_i) / Σ(weight_i)    # only for factors with non-None scores
-```
+| Factor | Weight | Meaning | Primary signal |
+|---|---|---|---|
+| `entity_consistency` | 0.35 | Alignment of name and description across key pages | Same brand name and category language across the site |
+| `evidence_depth` | 0.30 | Cross-site support coverage and breadth | Depth of supporting material across the domain |
+| `cross_page_coherence` | 0.20 | Internal-link and content coherence | Pages referencing and supporting each other |
+| `crawl_agency` | 0.15 | Whether AI crawlers can reach the site | robots.txt directives for GPTBot/OAI-SearchBot/ClaudeBot/PerplexityBot + llms.txt |
+| `offsite_consistency` | 0.10 | Organization/Offer schema consistency | Structured data matching page content |
 
-- Factors with `score: None` (e.g. freshness with no dates) are **excluded** and their weight is redistributed proportionally among available factors.
-- A **calibration curve** is applied after the weighted average to compress the upper range and prevent score inflation for average sites:
-  ```python
-  calibrated = 100.0 * (composite / 100.0) ** 1.15
-  ```
-  This pulls 80→77, 70→66, 60→56, 50→45, 40→35 while leaving 100 untouched. Compress more by raising the exponent (e.g. 1.4 gives 80→73, 70→61).
-- The result is capped at 100 and rounded to 1 decimal place.
+Out of scope: third-party authority signals (off-site presence, reviews, links) are not scored.
 
-**Source:** `meshweave/scoring/engine.py` → `_weighted_composite()`
+**Weight sum: 1.10** (normalized at composite time)
 
----
+**Rating bands:** Unreachable → Fragmented → Reachable → Connected → Fully connected.
 
-## AEO — Answer Engine Optimization
+### Answerable (`aeo`) — answer extractability
 
-**Purpose:** How well content is structured so AI agents can extract direct, supported answers from it.
+| Factor | Weight | Meaning | Primary signal |
+|---|---|---|---|
+| `extractable_answer` | 0.35 | Clear, well-structured answers on key pages | Answer-shaped blocks and schema |
+| `evidence_density` | 0.25 | Crawl-internal evidence count and consistency | Evidence count on key pages and site-wide |
+| `answerability_test` | 0.20 | Grounded answerability test verdict mix | Fixed decision-critical benchmark over the crawled pages; only site-supported answers earn weight |
+| `content_schema_alignment` | 0.25 | Structured-data/content alignment | JSON-LD matching visible content |
+| `trust_transparency` | 0.20 | Author and organizational trust markers | Authorship, org identity, contact and legal surfaces |
+| `question_surface` | 0.10 | Question coverage | How many decision questions the content answers (zero when coverage is empty) |
 
-**Composite = 100%, 4 factors:**
+Out of scope: third-party brand presence is not scored.
 
-| # | Factor | Weight | Auto? | Source |
-|---|--------|--------|-------|--------|
-| A7 | Answerability | 40% | ✅ Auto | `aeo.score_answerability()` |
-| A2 | Content Structure | 25% | ✅ Auto | `aeo.score_content_structure()` |
-| A1 | Schema Implementation | 20% | ✅ Auto | `aeo.score_schema()` |
-| A3 | Freshness | 15% | ✅ Auto | `aeo.score_freshness()` |
+**Weight sum: 1.35** (normalized at composite time)
 
-The answerability factor scores the grounded answer test over the crawl's
-pages; when that test did not run, the factor is excluded and the composite
-re-normalizes across the computed factors.
+**Rating bands:** Not extractable → Limited extractability → Partially extractable → Reliably extractable → Fully extractable.
 
-### A1. Schema Implementation (20%)
+### Actionable (`aax`) — agent actionability
 
-```
-Base score = schema_coverage.coverage_pct (0-100)
-+10 if FAQPage schema present
-+5  if HowTo schema present
-+10 if at least half the FAQ answers are in the optimal length range
-    (faq_analysis.answers_in_optimal_range >= max(1, count // 2))
-Cap: 100
-```
+| Factor | Weight | Meaning | Primary signal |
+|---|---|---|---|
+| `structure_schema` | 0.30 | Structure and schema audit | List/table density, JSON-LD/WebPage/WebSite/Organization coverage, key-fact alignment |
+| `information_architecture` | 0.30 | Heading hierarchy and page depth | H1→H3 depth, clicks from homepage |
+| `actionability` | 0.25 | Actionability analysis | Brand clarity, target audience clarity, offer clarity, key features, info density, CTA |
+| `contactability` | 0.15 | Contactability score (0–10 scaled ×10) | Email presence, contact page, form, social links, ContactPoint schema |
 
-A single in-range answer among many is not "FAQ quality" — the bonus requires half the answers to qualify.
+**Weight sum: 1.00**
 
-**Source:** `meshweave/scoring/aeo.py` → `score_schema()`
+**Rating bands:** Opaque → Unclear → Readable → Clear → Fluent.
 
-### A2. Content Structure Quality (25%)
-
-Per-page scoring (0-100), then **averaged across all pages**:
-
-| Check | Points |
-|-------|--------|
-| Single H1 tag (`h1_count == 1`) | +15 |
-| Heading depth ≥ 2 | +15 |
-| Has lists (`lists > 0`) | +10 |
-| Has tables (`tables > 0`) | +10 |
-| Word count ≥ 300 | +15 |
-| Word count ≥ 1000 | +10 bonus |
-| Images with alt text ≥ 80% | +10 |
-| Paragraphs ≥ 5 | +10 |
-| Headings total ≥ 5 | +10 |
-
-**Source:** `meshweave/scoring/aeo.py` → `score_content_structure()`, `_score_single_page()`
-
-### A3. Freshness (15%)
-
-Extracts `datePublished` / `dateModified` / `dateCreated` from JSON-LD across all unique pages (the start page is counted once — it appears both in `page` and in `markdowns` for site crawls, so dates are deduplicated by URL). Future-dated content is clamped to 0 days old so scheduled posts can't inflate the score.
-
-| Avg days since publication | Score |
-|---------------------------|-------|
-| ≤ 30 days | 100 |
-| 31–90 days | 80 |
-| 91–180 days | 60 |
-| 181–365 days | 40 |
-| > 365 days | 20 |
-| No dates found | `None` (excluded from composite) |
-
-**Source:** `meshweave/scoring/aeo.py` → `score_freshness()`
-
-### Rating Scale
-
-| Range | Label |
-|-------|-------|
-| 0–25 | Not extractable |
-| 26–45 | Limited extractability |
-| 46–65 | Partially extractable |
-| 66–85 | Reliably extractable |
-| 86–100 | Fully extractable |
+This check is a structured evaluation over rendered pages. It does not test transactions or operate an interactive browser agent.
 
 ---
 
-## GEO — Generative Engine Optimization
+## Composite Semantics
 
-**Purpose:** Site-wide machine context — whether AI agents can reach the relevant material and reconcile the business identity, evidence, and claims across the site.
+All three checks share identical compositional rules (`meshweave/scoring/composite.py`).
 
-**Composite = 100%, 5 factors:**
+### Weighted Composite
 
-| # | Factor | Weight | Auto? | Source |
-|---|--------|--------|-------|--------|
-| G4 | Crawl Access | 30% | ✅ Auto | `geo.score_crawl_access()` |
-| G6 | Entity Consistency | 20% | ✅ Auto | `geo.score_entity_consistency()` |
-| G5 | Content Depth | 20% | ✅ Auto | `geo.score_content_depth()` |
-| G2 | Topical Authority | 15% | ✅ Auto | `geo.score_topical_authority()` |
-| G3 | E-E-A-T Signals | 15% | ✅ Auto | `geo.score_eeat()` |
+```
+composite = Σ(factor_score × factor_weight) / Σ(factor_weight)
+```
 
-### G2. Topical Authority (15%)
+Only factors with non-`None` scores participate.
 
-Weighted blend of site-wide evidence (sameAs is raw evidence only — not a score driver):
+### Missing Factors (Compositional Re-normalization)
 
-| Sub-factor | Sub-weight | Calculation |
-|-----------|------------|-------------|
-| Schema coverage % | 0.35 | Direct from `schema_coverage.coverage_pct` |
-| Schema type diversity | 0.25 | `min(unique_types / 10, 1.0) × 100` |
-| Entity name consistent | 0.15 | 100 if consistent, else 0 |
-| Description consistent | 0.15 | 100 if consistent, else 0 |
-| Content page ratio | 0.10 | Pages with >300 words / total pages × 100 |
+When a factor is skipped (`score is None`), its weight is re-normalized across remaining factors. Example: if `question_surface` is skipped in the answer-extractability check, the composite divides by 1.25 (the sum of remaining weights), not 1.35.
 
-**Source:** `meshweave/scoring/geo.py` → `score_topical_authority()`
+**Zero-filling is never used.** The methodology page states this plainly: "Scores computed from available signals. Zero-filling is never used."
 
-### G3. E-E-A-T Signals (15%)
+### Calibration Curve
 
-Additive scoring on site-side evidence (review, video, and sameAs signals are raw evidence only — not score drivers):
+Upper-range compression via a power curve:
 
-| Signal | Points |
-|--------|--------|
-| Organization schema present | +30 |
-| Author info in articles | +30 |
-| Contact page exists | +20 |
-| Privacy/terms pages exist | +20 |
+```
+calibrated = 100 × (composite / 100) ^ 1.15
+```
 
-**Cap:** 100. Schema type matching is case-insensitive.
+The exponent (1.15) compresses the upper range so near-perfect scores require near-perfect factors.
 
-**Source:** `meshweave/scoring/geo.py` → `score_eeat()`
+### Final Score
 
-### G4. LLM Crawl Accessibility (30%)
+Capped at 100, rounded to 1 decimal place.
 
-Additive scoring from robots.txt and llms.txt data:
+---
 
-| Signal | Points |
-|--------|--------|
-| robots.txt exists | +8 |
-| GPTBot allowed | +15 |
-| ClaudeBot allowed | +12 |
-| PerplexityBot allowed | +12 |
-| llms.txt exists | +15 |
-| llms-full.txt exists | +8 |
-| XML sitemap present | +7 |
+## Band Reference
 
-**Cap:** 100. Returns `None` if robots/llms data is placeholder (page-scope crawl).
+### Reachable (`geo`) Bands
 
-Bot status matching: a status of exactly `allowed` earns full points; a partially-restricted status (allowed site-wide except specific paths) earns **half credit** (GPTBot 7, ClaudeBot 6, PerplexityBot 6). The structural maximum is 77 — the remaining 23 points don't exist to be earned. Optional llms.txt evidence is scored here only, once.
-
-**Source:** `meshweave/scoring/geo.py` → `score_crawl_access()`
-
-### G5. Content Depth & Originality (20%)
-
-Weighted blend:
-
-| Component | Weight | Calculation |
-|-----------|--------|-------------|
-| Avg word count tier | 0.35 | <200→10, <500→30, <1000→50, <2000→70, <5000→90, ≥5000→100 |
-| Pages with 1000+ words ratio | 0.25 | `(pages_1000+ / total) × 100` |
-| Content pages ratio (>200 words) | 0.15 | `(pages_200+ / total) × 100` |
-| Has code blocks | 0.15 | 100 if any page has code blocks, else 0 |
-| Has tables | 0.10 | 100 if any page has tables, else 0 |
-
-Pages come from `markdowns`; the derived `pages` view is only used as a fallback when no markdowns exist (using both would double-count the same pages).
-
-**Source:** `meshweave/scoring/geo.py` → `score_content_depth()`
-
-### G6. Entity Consistency (20%)
-
-Additive scoring:
-
-| Signal | Points |
-|--------|--------|
-| Entity name consistent across pages | +20 |
-| Description consistent across pages | +15 |
-| sameAs links: 0 | +0 |
-| sameAs links: 1–2 | +16 |
-| sameAs links: 3–5 | +28 |
-| sameAs links: 6+ | +40 |
-
-**Cap:** 100. The sameAs points use the shared `_same_as_score` scale (0/40/70/100) scaled by 0.4, so one signal can't be "good" in one factor and "mediocre" in another.
-
-**Source:** `meshweave/scoring/geo.py` → `score_entity_consistency()`
-
-### Rating Scale
-
-| Range | Label |
-|-------|-------|
-| 0–25 | Unreachable |
-| 26–45 | Fragmented |
-| 46–65 | Reachable |
-| 66–85 | Connected |
+| Score | Band |
+|---|---|
 | 86–100 | Fully connected |
+| 66–85 | Connected |
+| 46–65 | Reachable |
+| 26–45 | Fragmented |
+| 0–25 | Unreachable |
 
----
+### Answerable (`aeo`) Bands
 
-## AAX — AI Agent Experience
+| Score | Band |
+|---|---|
+| 86–100 | Fully extractable |
+| 66–85 | Reliably extractable |
+| 46–65 | Partially extractable |
+| 26–45 | Limited extractability |
+| 0–25 | Not extractable |
 
-**Purpose:** Whether an agent can understand the offer and a credible next step. Computed from LLM-powered analysis tests (requires `--ai-analysis` flag or `AAX_ENABLED=true`).
+### Actionable (`aax`) Bands
 
-**Composite = 100%, 5 factors:**
-
-| # | Factor | Weight | Auto? | Source |
-|---|--------|--------|-------|--------|
-| T2 | Homepage Comprehension | 35% | ✅ Auto | LLM reads homepage markdown |
-| T5 | Content Delta | 25% | ✅ Auto | LLM reads multiple pages |
-| T3 | Meta Optimization | 15% | ✅ Auto | LLM reads meta tags only |
-| T6 | Contactability | 15% | ✅ Auto | Heuristic (no LLM) |
-| T7 | Email Validation | 10% | ✅ Auto | LLM validates email addresses |
-
-### T2. Homepage Comprehension (35%)
-
-LLM reads the homepage markdown and extracts: brand, product, target audience, key features, call-to-action, clarity, information density, memorability.
-
-**Scoring formula:**
-
-```
-field_completeness × 0.4    # how many of {brand, product, audience, CTA} were extracted
-+ clarity × 0.2             # clear=100, somewhat_clear=50, unclear=15
-+ density × 0.2             # dense=100, adequate=60, sparse=25, bloated=15
-+ features_score × 0.1      # min(feature_count × 15, 60)
-+ remember × 0.1            # true=100, false=0
-```
-
-**Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `homepage_comprehension_prompt()`
-
-### T3. Meta Optimization (15%)
-
-LLM reads only the meta tags (title, description, OG tags, JSON-LD summary) and evaluates completeness, clarity, and LLM optimization.
-
-**Scoring formula:**
-
-```
-field_completeness × 0.4    # how many of {brand, product, audience} were extracted
-+ completeness × 0.2        # complete=100, partial=50, minimal=15
-+ clarity × 0.15            # clear=100, somewhat_clear=50, unclear=15
-+ llm_optimization × 0.15   # optimized=100, adequate=50, poor=15
-+ click_through × 0.1       # true=100, false=0
-```
-
-**Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `meta_optimization_prompt()`
-
-### T5. Content Delta (25%)
-
-LLM reads multiple pages (selected by `select_pages_for_analysis()` within a token budget) and produces a comprehensive summary.
-
-**Scoring formula:**
-
-```
-info_richness × 0.4         # how many of 7 fields extracted (company name, product name/desc/features, pricing, audience, strengths)
-+ coherence × 0.3           # consistent=100, somewhat_consistent=50, contradictory=15
-+ completeness × 0.3        # comprehensive=100, adequate=50, incomplete=15
-```
-
-**Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `content_delta_prompt()`, `select_pages_for_analysis()`
-
-### T7. Email Validation (10%)
-
-LLM validates email addresses found during crawling, classifying them by contact type and confidence.
-
-**Scoring formula:**
-
-```
-presence                    # 0 with no valid contacts; 20 for the first,
-                            # +10 for the second, capped at 30
-+ best_contact_type         # sales=25, support=20, general=15, legal=5, invalid=0
-+ confidence × 0.35         # high=90×0.35=31.5, medium=55×0.35=19.25, low=25×0.35=8.75
-+ has_best_contact          # 10 if best_contact exists, else 0
-```
-
-Presence saturates quickly: one contact earns most of the presence points, a second adds a little, more add nothing — quantity must not outweigh quality.
-
-**Source:** `meshweave/scoring/engine.py` → `compute_aax_score()`, `meshweave/ai/prompts.py` → `email_validation_prompt()`
-
-### T6. Contactability (15%)
-
-A 0–100 heuristic score based on crawl data, weighted into the AAX composite (15%):
-
-| Signal | Points |
-|--------|--------|
-| Same-domain emails found | +20 |
-| Only third-party emails found | +5 |
-| mailto links present | +10 |
-| Contact/about page exists | +10 |
-| Email on homepage or contact page | +15 |
-| JSON-LD ContactPoint | +15 |
-| Social links (sameAs) | +10 |
-| Generic contact email (support@, info@, etc.) | +10 |
-| Phone number in JSON-LD | +10 |
-| **Penalty:** Emails only obfuscated (no mailto) | −10 |
-| **Penalty:** Emails only on legal pages | −15 |
-| **Penalty:** No same-domain emails | cap score at 20 |
-
-**Source:** `meshweave/ai/analyses.py` → `_compute_contactability()`
-
-### Rating Scale
-
-| Range | Label |
-|-------|-------|
-| 0–24 | Opaque |
-| 25–39 | Unclear |
-| 40–59 | Readable |
-| 60–79 | Clear |
+| Score | Band |
+|---|---|
 | 80–100 | Fluent |
+| 60–79 | Clear |
+| 40–59 | Readable |
+| 25–39 | Unclear |
+| 0–24 | Opaque |
 
 ---
 
-## Categorical → Numeric Mappings
+## Interpretation Matrix
 
-Used by the AAX scoring engine to convert LLM categorical responses to 0–100 scores:
+`meshweave/scoring/interpretation.py` — translates a score triple (Reachable, Answerable, Actionable) into a plain-language risk narrative: profile label, tone, headline, diagnosis, and fix priority. Runs at report render time; never persisted.
 
-| Map | Values |
-|-----|--------|
-| `CLARITY_MAP` | clear=100, somewhat_clear=50, unclear=15 |
-| `DENSITY_MAP` | dense=100, adequate=60, sparse=25, bloated=15 |
-| `COMPLETENESS_MAP` | complete=100, partial=50, minimal=15 |
-| `COHERENCE_MAP` | consistent=100, somewhat_consistent=50, contradictory=15 |
-| `CONTENT_COMPLETENESS_MAP` | comprehensive=100, adequate=50, incomplete=15 |
-| `LLM_OPT_MAP` | optimized=100, adequate=50, poor=15 |
-| `CONFIDENCE_MAP` | high=90, medium=55, low=25, none=5 |
+### Routing (ordered rules)
 
-**Source:** `meshweave/ai/runner.py`
+| # | Condition | Profile shape | Tone | Fix priority |
+|---|---|---|---|---|
+| 1 | Actionable ≤ 25 (any) | `high_invisibility` | high | Actionable |
+| 2 | Reachable ≤ 25 (any) | `high_invisibility` | high | Reachable |
+| 3 | Answerable ≤ 25 (any) | `high_invisibility` | high | Answerable |
+| 4 | all < 55 | `broad_exposure` | high | lowest check |
+| 5 | two ≥ 70, one < 55 | `single_bottleneck` | moderate | the < 55 check |
+| 6 | one ≥ 70, one < 55, one in [55, 70) | `uneven_profile` | moderate | the < 55 check |
+| 7 | all ≥ 70 | `highly_readable` | low | `—` |
+| 8 | all in [55, 70) | `solid_baseline` | low | lowest check |
+| 9 | all ≥ 55 | `partial_exposure` | moderate | lowest check |
+| 10 | `needs_review` fallback | `needs_review` | moderate | lowest check |
 
----
+`incomplete` shape (any score `None`) short-circuits before routing.
 
-## Execution Flow
+### Required Fields (always populated)
 
-### CLI (`meshweave/cli.py`)
+| Field | Type | Description |
+|---|---|---|
+| `profile_label` | `str` | Human label, e.g. "Several blind spots" |
+| `tone` | `str` | Visual token: `low` / `moderate` / `high` |
+| `headline` | `str` | Display line |
+| `diagnosis` | `str` | ≥2 sentences explaining what's readable and what's not |
+| `primary_exposure` | `str` | The main business risk — what's exposed |
+| `fix_priority` | `str` | Which check to fix first (public label) or `—` |
+| `next_step` | `str` | The one concrete action |
+| `weakest_lens` | `str \| None` | Weakest check name (score-group key) or `None` |
+| `strongest_lens` | `str \| None` | Strongest check name (score-group key) or `None` |
+| `profile_shape` | `str` | Shape key from routing table |
+| `lens_details` | `dict` | Per-check meaning + band label |
+| `bands` | `dict` | Per-check band name (internal label) |
 
-```
-0. Fail fast unless MESHWEAVE_CDP_ENDPOINT is set (exit code 2)
-1. Crawl URL → payload (internal links are always crawled within the URL's path scope)
-2. Always: compute_scores(payload) → AEO + GEO scores
-3. If --ai-analysis: run_aax_analysis(payload) → AAX results
-                     compute_aax_score(aax_result) → AAX score
-                     Merge into payload["scores"]["aax"]
-                     Re-score AEO (answerability lands here) and
-                     re-generate recommendations
-4. Write per-page markdown files, then JSON payload to --output/-o (required)
-```
+### Tone Tokens
 
-The CLI never touches the database — `ScoreSnapshot` persistence happens in the webapp.
-
-### Webapp (`webapp/services/scoring.py`)
-
-```
-score_crawl(crawl_id, payload)
-  → compute_scores(payload)
-  → re-generate recommendations if AAX results are in the payload
-  → persist Crawl score columns + ScoreSnapshot (score_json)
-
-run_aax_for_crawl(crawl_id, payload)
-  → run_aax_analysis(payload, trace_user_id, trace_session_id)
-  → compute_aax_score() → merge into snapshot score_json + payload_json
-  → re-score AEO (answerability lands here) and re-generate recommendations
-```
-
-### Key Entry Points
-
-| Function | File | Purpose |
-|----------|------|---------|
-| `compute_scores()` | `meshweave/scoring/engine.py` | Computes AEO + GEO composites and recommendations |
-| `compute_aax_score()` | `meshweave/scoring/engine.py` | Computes AAX composite from LLM analysis results |
-| `run_aax_analysis()` | `meshweave/ai/analyses.py` | Orchestrates all LLM-powered AAX tests |
-| `_weighted_composite()` | `meshweave/scoring/engine.py` | Shared weighted average with re-normalization |
-| `score_crawl()` | `webapp/services/scoring.py` | Webapp scoring entry point with DB persistence |
-| `run_aax_for_crawl()` | `webapp/services/scoring.py` | Webapp AAX orchestration with DB persistence |
+| Token | Visual | Usage |
+|---|---|---|
+| `low` | Positive/neutral | Highly readable, solid baseline |
+| `moderate` | Amber/warning | Partial exposure, uneven profile, single bottleneck, needs review |
+| `high` | Red/critical | `high_invisibility`, `broad_exposure` shapes |
 
 ---
 
-## Output Structure (`score_json`)
+## Engine Differences
 
-```json
-{
-  "aeo": {
-    "composite": 55.0,
-    "rating": "Partially extractable",
-    "factors": { ... }
-  },
-  "geo": {
-    "composite": 48.5,
-    "rating": "Fragmented",
-    "factors": { ... }
-  },
-  "aax": {
-    "composite": 68.0,
-    "rating": "Clear",
-    "factors": { ... },
-    "contactability": { "score": 45.0, ... },
-    "skip_reasons": { ... },
-    "tests_completed": 4,
-    "tests_skipped": 1,
-    "model_id": "..."
-  },
-  "recommendations": [ ... ]
-}
-```
+| Aspect | Reachable / Answerable (`geo`/`aeo`) | Actionable (`aax`) |
+|---|---|---|
+| LLM required | No | Yes (Gemini via LiteLLM) |
+| Input | Cross-site crawl data | Cross-site crawl + LLM analysis |
+| Output | `score`, `rating`, `factors`, `recommendations`, `skip_reasons` | Same + `ai_analysis` raw blob |
+| Persisted to | `ScoreSnapshot.aeo_score` / `.geo_score` | `ScoreSnapshot.score_json.aax.composite` |
+| Null state | `aeo_score: null` | `aax_score: null` |
+
+### Recommendations
+
+Every check emits **recommendations** (remediation items) with `pillar`, `priority` (derived from `expected_points`), `factor`, `title`, `detail`, `guidance`, and `expected_points`. All findings appear as recommendations; `recommendations.py` sorts them high → medium → info, then `expected_points` descending.
+
+See [docs/product.md](product.md) for the full expected-points remediation model.
+
+---
+
+## Known Gaps / TODO
+
+1. `question_surface` uses a flat `question_coverage_count` threshold. A normalized coverage ratio (questions / category questions) would be more discriminating. Requires a category-question baseline.
+2. `content_schema_alignment` and `trust_transparency` are Medium but arguably High for the answer-extractability check. Pending calibration runs.
+3. Reachable and Answerable share `evidence_count` / `key_page_*` inputs via cross-site crawl. The input contract is identical but the signals diverge at composite time.
+4. `offsite_consistency` (Reachable, 0.10) is a stub — the org schema consistency check is incomplete.
+5. Third-party authority signals remain out of scope across all checks.
+
+---
+
+## Source Files
+
+| Check | Primary file | Tests |
+|---|---|---|
+| Reachable | `meshweave/scoring/aeo.py`, `geo.py` | `tests/test_scoring.py` |
+| Answerable | `meshweave/scoring/aeo.py` | `tests/test_scoring.py`, `tests/test_recommendation_impact.py`, `tests/test_answerability.py` |
+| Actionable | `meshweave/scoring/aax.py` | `tests/test_recommendation_impact.py` |
+| Composite | `meshweave/scoring/composite.py` | `tests/test_scoring.py` |
+| Interpretation | `meshweave/scoring/interpretation.py` | `tests/test_interpretation.py` |
+| Recommendations | `meshweave/scoring/recommendations.py` | `tests/test_recommendation_impact.py` |
