@@ -19,6 +19,8 @@
     var particles = [];
     var PARTICLE_COUNT = 4;
     var CONNECT_DIST = 260;
+    var MOUSE_DIST = 320;
+    var mouse = { x: -9999, y: -9999 };
     var raf = 0;
 
     function resize() {
@@ -91,6 +93,21 @@
       // Draw nodes
       for (var i = 0; i < particles.length; i++) {
         var p = particles[i];
+
+        // Connect nodes to the cursor
+        var mdx = p.x - mouse.x;
+        var mdy = p.y - mouse.y;
+        var mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+        if (mdist < MOUSE_DIST) {
+          var malpha = (1 - mdist / MOUSE_DIST) * 0.45;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(mouse.x, mouse.y);
+          ctx.strokeStyle = 'rgba(0, 163, 108, ' + malpha + ')';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
+
         var glow = 0.3 + 0.3 * Math.sin(p.pulse);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
@@ -143,6 +160,17 @@
 
     resize();
     createParticles();
+
+    hero.addEventListener('mousemove', function (e) {
+      var rect = hero.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+
+    hero.addEventListener('mouseleave', function () {
+      mouse.x = -9999;
+      mouse.y = -9999;
+    });
 
     var resizeTimer;
     window.addEventListener('resize', function () {

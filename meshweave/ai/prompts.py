@@ -222,6 +222,13 @@ Rating criteria:
   described with specifics; "adequate" = the core offering is described
   but details (features, pricing, audience) are missing; "incomplete" =
   the offering or the audience cannot be determined.
+- "weaknesses": ONLY facts a buyer needs to decide that the pages do not
+  state — for example a missing price, a missing audience, an undescribed
+  feature, or no way to start. Phrase each as the missing fact
+  ("No price stated for the paid plan"). Stated limitations, disclaimers,
+  plan restrictions, and product boundaries are facts the pages DO state:
+  never list them as weaknesses. Return an empty list when nothing a buyer
+  needs is missing.
 
 Respond in this JSON format:
 {{
@@ -282,8 +289,11 @@ make sense of it.
 
 Rules:
 - ONE sentence, at most 35 words.
-- Describe the product and audience in your own natural wording — rephrase
-  the data below when its phrasing is awkward. Do not parrot it.
+- Describe the product in your own natural wording — rephrase the data
+  below when its phrasing is awkward. Do not parrot it.
+- Name the audience exactly as the site states it (the target_audience
+  data below). Reuse its groups; never generalise, merge, or substitute
+  them with a broader label such as "marketing professionals".
 - Ground the verdict in the evidence: say agents understood the site only
   when clarity is good and the identity fields were filled; say they
   struggled when clarity is poor or key fields are missing.

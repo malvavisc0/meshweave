@@ -7,76 +7,60 @@
 <header class="page-header" aria-label="Contact">
   <div class="container">
     <h1 class="page-header-title">Contact MeshWeave</h1>
-    <p class="page-header-subtitle">Questions about AI-friendly websites, our scoring methodology, or an audit you ran?
-      Talk to the team that built the tool.</p>
+    <p class="page-header-subtitle">Questions about a report, the scoring, or the API, or want us to do the audit with
+      you? Email us. The people who built MeshWeave answer every message.</p>
   </div>
 </header>
 
 <div class="container">
 
-  <!-- EMAIL -->
-  <section class="prose-section" aria-label="Email">
-    <h2>Email us</h2>
-    <p class="m0">The fastest way to reach us. We answer questions about audits, scores, and methodology —
-      and we offer expert-guided reviews of your AI-friendly website report.</p>
+  <!-- EXPERT AUDIT -->
+  <section class="prose-section" aria-label="Expert-guided audit">
+    <h2>Expert-guided audit</h2>
+    <p class="m0">We go through your report with you and turn it into a fix plan your team or your client can work
+      from.</p>
     <ul class="structured-list mt-2">
-      <li><strong>General questions</strong> —
-        <a href="mailto:{{ contact_email }}?subject={{ 'MeshWeave inquiry' | urlencode }}" data-track="contact_mailto_click" data-track-surface="contact_page">{{ contact_email }}</a></li>
+      <li><strong>You get</strong> — a walkthrough of your results and a ranked plan of fixes, with what to change on
+        which page.</li>
+      <li><strong>Send us</strong> — your site, a link to your report if you have one, and what you want to achieve.</li>
+      <li><strong>You hear back</strong> — within two business days, with scope and a fixed price. No work starts until
+        you agree.</li>
     </ul>
+    <p class="mt-2">
+      <a class="btn btn-primary"
+        href="mailto:{{ contact_email }}?subject={{ 'Expert-guided audit request' | urlencode }}"
+        data-track="contact_mailto_click" data-track-surface="contact_page_audit">Request an expert-guided audit</a>
+    </p>
   </section>
 
-  <!-- WHAT TO ASK -->
-  <section class="prose-section" aria-label="What to ask">
-    <h2>What to ask</h2>
-    <p class="m0">We answer questions about audits, scores, and methodology — and we offer expert-guided reviews of
-      your AI-friendly website report.</p>
-    <ul class="structured-list m0">
-      <li><strong>Reading your report</strong> — what a check score means and which fixes come first.</li>
-      <li><strong>Methodology</strong> — how the Reachable, Answerable, and Actionable factors are measured and weighted.</li>
-      <li><strong>Expert-guided audit</strong> — a walkthrough of your results and a prioritized fix roadmap.</li>
-      <li><strong>Privacy or data requests</strong> — see our <a href="/privacy">privacy policy</a>.</li>
-    </ul>
-  </section>
-
-  <!-- EXPECTATIONS -->
-  <section class="prose-section" aria-label="What to expect">
-    <h2>What to expect</h2>
-    <p class="m0">You will always reach a person who has run analyses and read the scoring code — not a form
-      that disappears into a queue. If your question is about a specific report, include the analysis URL so we
-      can pull it up on our side.</p>
-    <table class="table">
-      <caption class="sr-only">Response expectations by inquiry type</caption>
+  <!-- OTHER QUESTIONS -->
+  <section class="prose-section" aria-label="Other questions">
+    <h2>Other questions</h2>
+    <p class="m0">Email <a href="mailto:{{ contact_email }}?subject={{ 'MeshWeave question' | urlencode }}"
+        data-track="contact_mailto_click" data-track-surface="contact_page">{{ contact_email }}</a>. If your question is
+      about a specific report, include its link so we can open it.</p>
+    <table class="table mt-2">
+      <caption class="sr-only">Response times by topic</caption>
       <thead>
         <tr>
-          <th scope="col">Inquiry</th>
-          <th scope="col">Where it goes</th>
+          <th scope="col">Topic</th>
           <th scope="col">Typical response</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>General questions about scores or methodology or API access</td>
-          <td>{{ contact_email }}</td>
+          <td>Reading a report, the scoring, or the API</td>
           <td>Within two business days</td>
         </tr>
         <tr>
-          <td>Privacy or data deletion requests</td>
-          <td>{{ contact_email }} — see <a href="/privacy">privacy policy</a></td>
-          <td>Within 30 days, as promised in the policy</td>
+          <td>Privacy or data deletion (see the <a href="/privacy">privacy policy</a>)</td>
+          <td>Within 30 days, as the policy states</td>
         </tr>
       </tbody>
     </table>
-    <p class="m0">Before writing, check the <a href="/methodology">methodology page</a> — factor weights, rating
-      bands, and how each score is computed are documented in full there. And if you have not run an analysis
-      yet, start there: a concrete report makes every question below it sharper.</p>
-  </section>
-
-  <!-- METHODOLOGY LINK -->
-  <section class="prose-section" aria-label="Self-serve">
-    <h2>Self-serve first</h2>
-    <p class="m0">Many answers live in the product itself: run a free analysis from the
-      <a href="/">homepage</a>, or read exactly how scores are computed on the
-      <a href="/methodology">methodology page</a>.</p>
+    <p class="m0 mt-2">Many scoring questions are answered on the <a href="/methodology">methodology page</a>, which
+      lists every factor, its weight, and the six buyer questions. If you have not run an audit yet,
+      <a href="/">run a free one</a> first: questions about a real report are quicker to answer.</p>
   </section>
 
 </div>

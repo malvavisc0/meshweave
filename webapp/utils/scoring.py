@@ -41,21 +41,67 @@ def aax_pending(crawl: Any) -> bool:
 
 # Mapping of factor keys to human-readable display names
 FACTOR_DISPLAY_NAMES = {
-    "answerability": "Answerability",
-    "schema": "Schema Implementation",
+    "answerability": "Buyer Questions Answered",
+    "schema": "Schema Markup",
     "content_structure": "Content Structure",
     "freshness": "Freshness",
-    "topical_authority": "Topical Authority",
-    "eeat": "E-E-A-T Signals",
-    "crawl_access": "LLM Crawl Accessibility",
+    "topical_authority": "Structured Data Coverage",
+    "eeat": "Identity and Trust Pages",
+    "crawl_access": "AI Crawler Access",
     "content_depth": "Content Depth",
-    "entity_consistency": "Entity Consistency",
+    "entity_consistency": "Consistent Company Details",
     # AAX factors
-    "homepage_comprehension": "Homepage Comprehension",
-    "meta_optimization": "Meta Optimization",
-    "content_delta": "Content Delta",
-    "email_validation": "Email Validation",
-    "contactability": "Contactability",
+    "homepage_comprehension": "Homepage Clarity",
+    "meta_optimization": "Metadata Clarity",
+    "content_delta": "Cross-Page Clarity",
+    "email_validation": "Working Contact Email",
+    "contactability": "Contact Paths",
+}
+
+# One plain sentence per factor: what the check looks at on the site.
+FACTOR_DESCRIPTIONS = {
+    "answerability": (
+        "Whether your pages answer the six fixed buyer questions, "
+        "judged only on text found in the crawl."
+    ),
+    "schema": "Whether pages carry valid structured data (JSON-LD) that describes them.",
+    "content_structure": (
+        "Whether headings, lists, and short sections make answers easy to lift out."
+    ),
+    "freshness": "Whether pages show when they were published or last updated.",
+    "topical_authority": (
+        "How many pages carry structured data, how varied it is, and whether "
+        "it names the company the same way."
+    ),
+    "eeat": (
+        "Whether the site states who runs it: organization details, authors, "
+        "a contact page, and privacy and terms pages."
+    ),
+    "crawl_access": (
+        "Whether robots.txt lets GPTBot, ClaudeBot, and PerplexityBot in, and "
+        "whether a sitemap and llms.txt exist."
+    ),
+    "content_depth": "Whether pages have enough substantive text to answer from.",
+    "entity_consistency": (
+        "Whether the company name and description match across the site's pages."
+    ),
+    "homepage_comprehension": (
+        "Whether a language model reading only the homepage can tell the offer, "
+        "the audience, and the main action."
+    ),
+    "meta_optimization": (
+        "Whether titles, descriptions, and social tags alone describe the page correctly."
+    ),
+    "content_delta": (
+        "Whether the pages together describe the company, product, and audience "
+        "consistently and completely."
+    ),
+    "email_validation": (
+        "Whether the site shows at least one email address that works as a real contact."
+    ),
+    "contactability": (
+        "Whether a contact page, contact details, or ContactPoint markup is easy to find."
+    ),
 }
 
 PRIORITY_NUMERIC = {

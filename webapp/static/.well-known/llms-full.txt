@@ -2,7 +2,7 @@
 
 ## What It Does
 
-Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable. Each report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
+Find what prevents AI agents from reading your website correctly. MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site. Each report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
 Unlike traditional SEO tools, MeshWeave measures whether the website itself works for AI agents, not keyword rankings. The output is a diagnostic report and a prioritized fix list; it makes no claims about outside outcomes.
 
@@ -44,7 +44,7 @@ v1 API (Bearer key, owner-scoped):
 ## Standard Paths
 
 - `/` — free site review (core experience: enter a domain or URL)
-- `/scoring` — methodology page
+- `/methodology` — methodology page
 - `/browse` — community analyses
 - `/dashboard` — signed-in overview
 - `/api` — API access (create Bearer keys)

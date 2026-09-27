@@ -50,7 +50,9 @@ AAX_WEIGHTS: dict[str, float] = {
 # manual external factors removed, AAX llms.txt factor removed,
 # GEO topical-authority/E-E-A-T rewritten, AEO answerability slot added.
 # 1.3: grounded answerability test computes into AEO.
-SCORING_VERSION = "1.3"
+# 1.4: crawl_access rescaled to 0-100; entity_consistency drops sameAs
+# points and scores on-site name/description consistency only.
+SCORING_VERSION = "1.4"
 
 LENS_WEIGHTS: dict[str, dict[str, float]] = {
     "aeo": AEO_WEIGHTS,

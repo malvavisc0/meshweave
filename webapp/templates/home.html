@@ -10,7 +10,7 @@
       "name": "What does MeshWeave do?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "MeshWeave finds what prevents AI agents from reading your website correctly. It diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable."
+        "text": "MeshWeave audits your website for AI agents. It checks whether agents can reach your pages, answer questions from your content, and find what to do next, then gives you a ranked list of fixes."
       }
     },
     {
@@ -18,7 +18,7 @@
       "name": "Is this an SEO tool?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. Traditional SEO focuses on how people find you through search engines. MeshWeave checks whether AI agents can reach your site, answer from it, and act on it. It complements SEO rather than replacing it."
+        "text": "No. Traditional SEO focuses on how people find you through search engines. MeshWeave checks whether AI agents can reach your site, answer from it, and act on it. It complements SEO rather than replacing it. Some call this GEO or AEO. MeshWeave covers the site-side part, not AI visibility tracking."
       }
     },
     {
@@ -26,23 +26,23 @@
       "name": "Who is MeshWeave for?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "SEO and content teams, product and web teams, marketing and growth teams, founders, operators, agencies, and consultants responsible for keeping the website readable and usable as buyers shift toward AI-assisted research and decision-making."
+        "text": "Agencies and consultants who audit client websites, and in-house web, SEO, and content teams who maintain their own site."
       }
     },
     {
       "@type": "Question",
-      "name": "What will I learn from running an analysis?",
+      "name": "What will I learn from an audit?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "You will learn whether agents can reach your content or miss it, whether your copy supports real answers or leaves them unsupported, whether the site gives agents a credible next step or forces a dead end, and which concrete fixes come first."
+        "text": "You will learn which pages agents cannot reach, which questions your content cannot answer, whether agents can find how to buy or contact you, and which fixes to make first."
       }
     },
     {
       "@type": "Question",
-      "name": "Can I share analysis results with my team?",
+      "name": "Can I share a report with my team or a client?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Signed-in users get private reports with a dedicated dashboard and score history, so results are easy to review with clients or teammates."
+        "text": "Yes. Every public report has a shareable link. If you sign in, you can keep reports private instead and compare each run with the previous one."
       }
     },
     {
@@ -50,7 +50,7 @@
       "name": "How much does MeshWeave cost?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "A site analysis is free and can be started without signing in. Sign in to keep results private, use higher crawl limits, and track score history. Expert-guided audits and remediation roadmaps are available as separate engagements."
+        "text": "An audit is free and needs no sign-in. A free Google sign-in adds a before/after comparison of your runs, a downloadable client-ready report, and a free API key (up to 25 sites per call) whose report export is unbranded. Expert-guided audits and remediation roadmaps are available as separate engagements — email {{ FOOTER_CONTACT_EMAIL }} and you will get scope and price within two business days."
       }
     }
   ]
@@ -62,7 +62,7 @@
   "@type": "Organization",
   "name": "MeshWeave",
   "url": "{{ abs_page_url }}",
-  "description": "Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable.",
+  "description": "Find what prevents AI agents from reading your website correctly. MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site.",
   "sameAs": [
     "https://github.com/malvavisc0/meshweave"
   ],
@@ -91,17 +91,14 @@
 {% if submitted_id %}
 <div class="container">
   <div role="status" aria-live="polite" class="alert alert-info">
-    Site crawl started. Status endpoint:
-    {% if submitted_status_url %}
-    <a href="{{ submitted_status_url }}">{{ submitted_status_url }}</a>
-    {% else %}
-    /api/status/{{ submitted_id }}
-    {% endif %}
+    We are auditing your site.
+    <br><span class="small">Status API (JSON):
+      <a href="{{ submitted_status_url or '/api/status/' ~ submitted_id }}">{{ submitted_status_url or '/api/status/' ~ submitted_id }}</a></span>
     {% if not request.state.current_user %}
     {% if request.query_params.get('private') %}
-    <br><span class="small">This result is private. Sign in to view when ready.</span>
+    <br><span class="small">This report is private. Sign in to view it when it is ready.</span>
     {% else %}
-    <br><span class="small">This result is public. You can follow status via the endpoint above.</span>
+    <br><span class="small">This report is public. Anyone with the link can view it.</span>
     {% endif %}
     {% endif %}
   </div>
@@ -109,38 +106,34 @@
 {% endif %}
 
 <!-- HERO -->
-<section class="landing-hero" aria-label="AI-friendly website review">
+<section class="landing-hero" aria-label="Website audit for AI agents">
   <canvas class="hero-particle-canvas" aria-hidden="true"></canvas>
   <div class="container container-wide">
     <div class="landing-hero-layout">
       <div class="landing-hero-copy">
-        <p class="landing-hero-eyebrow">Site-side agent readiness</p>
+        <p class="landing-hero-eyebrow">Website audit for AI agents</p>
         <h1 class="landing-hero-title">Find what prevents AI agents from reading your website correctly.</h1>
-        <p class="landing-hero-supporting">MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then
-          prioritizes the fixes that make the site usable.</p>
-        <p class="landing-hero-annotation">Run a check before launch, after a redesign, or whenever the pages buyers
-          rely on change.</p>
+        <p class="landing-hero-supporting">MeshWeave finds the pages, text, and next steps AI agents miss — then
+          tells you what to fix, so agents can understand your site.</p>
         <p class="landing-hero-lenses-label">Every report answers three questions.</p>
         <dl class="landing-hero-lenses">
           <div>
-            <dt>Reachable <span>Machine context</span></dt>
-            <dd>Can AI agents reach your site — its pages, evidence, and business context?</dd>
+            <dt>Reachable</dt>
+            <dd>Can AI agents get to your pages and tell who you are?</dd>
           </div>
           <div>
-            <dt>Answerable <span>Answer extractability</span></dt>
-            <dd>Can AI agents answer from it — clear, supported answers they can extract?</dd>
+            <dt>Answerable</dt>
+            <dd>Can AI agents answer a buyer's questions from your content?</dd>
           </div>
           <div>
-            <dt>Actionable <span>Agent actionability</span></dt>
-            <dd>Can AI agents act on it — understand the offer and find a credible next step?</dd>
+            <dt>Actionable</dt>
+            <dd>Can AI agents tell what you sell and how to buy or contact you?</dd>
           </div>
         </dl>
-        <a class="btn btn-expert"
-          href="mailto:{{ FOOTER_CONTACT_EMAIL }}?subject={{ 'MeshWeave expert consultation' | urlencode }}">Talk to an expert</a>
       </div>
       <div class="landing-hero-form">
-        <h2 class="hero-form-title" id="site-heading">Run a site review</h2>
-        <p class="hero-form-intro">Start with a domain or page. We will take you to the report when it is ready.</p>
+        <h2 class="hero-form-title" id="site-heading">Run a free audit</h2>
+        <p class="hero-form-intro">Enter a domain or page. We will take you to the report when it is ready.</p>
         {% if notice == 'cooldown' %}
         <div role="alert" class="hero-inline-notice hero-inline-notice--cooldown">
           <span class="hero-inline-notice-kicker">Recent run</span>
@@ -160,38 +153,47 @@
   </div>
 </section>
 
-<!-- WHAT HAPPENS WHEN YOU RUN MESHWEAVE -->
-<section class="landing-section" id="how-it-works" aria-label="What happens when you run MeshWeave">
+<!-- WHY NOW -->
+<section class="landing-section" id="why-now" aria-label="Why it matters now">
   <div class="container">
-    <h2 class="landing-section-title">Turn a crawl into a focused fix list</h2>
-    <p class="landing-section-subtitle">MeshWeave examines rendered pages, structured data, metadata, content structure,
-      crawler access, entity consistency, and contact signals. The report connects those observations to the three ways AI
-      systems can fail: extracting an answer, recognizing authority, or identifying a useful next step.</p>
+    <h2 class="landing-section-title">Buyers now ask AI first</h2>
+    <p class="landing-section-subtitle">94% of B2B buyers used generative AI during their purchase process (6sense,
+      2025 Buyer Experience Report). The agent answers from what it can read on your website. If your price, audience,
+      or contact path is missing or unclear, it answers without them.</p>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="landing-section" id="how-it-works" aria-label="How the audit works">
+  <div class="container">
+    <h2 class="landing-section-title">From one URL to a ranked fix list</h2>
+    <p class="landing-section-subtitle">MeshWeave loads your pages the way an AI agent would and reads the text, metadata,
+      structured data, links, robots.txt rules, and contact details. Each problem it finds is filed under one of the three
+      checks: Reachable, Answerable, or Actionable.</p>
 
     <div class="pipeline">
       <div class="pipeline-step">
-
         <div class="pipeline-content">
           <span class="pipeline-number">01</span>
-          <h3 class="m0">We show you the evidence</h3>
-          <p class="m0">We render your pages and inspect the content, metadata, structured data, links, crawler directives,
-            and contact information that AI agents can access.</p>
+          <h3 class="m0">We read your site</h3>
+          <p class="m0">We render your pages and collect what AI agents can see: content, metadata, structured data,
+            links, crawler rules, and contact information.</p>
         </div>
       </div>
       <div class="pipeline-step">
         <div class="pipeline-content">
           <span class="pipeline-number">02</span>
-          <h3 class="m0">We identify the failure</h3>
-          <p class="m0">We group findings under the three checks — Reachable, Answerable, and Actionable — then rank
-            them by signal severity and expected score impact. The report makes no claims about outside outcomes.</p>
+          <h3 class="m0">We find the problems</h3>
+          <p class="m0">We sort each problem into Reachable, Answerable, or Actionable, and rank it by how many points
+            fixing it would add to your score.</p>
         </div>
       </div>
       <div class="pipeline-step">
         <div class="pipeline-content">
           <span class="pipeline-number">03</span>
-          <h3 class="m0">We hand you the fix</h3>
-          <p class="m0">You get concrete recommendations tied to the observed signal, such as missing schema, weak structure,
-            blocked crawlers, inconsistent entity descriptions, or unclear contact paths.</p>
+          <h3 class="m0">We tell you what to fix</h3>
+          <p class="m0">Each problem comes with a specific fix, such as adding missing schema, unblocking an AI crawler,
+            making your company description consistent, or adding a clear contact path.</p>
         </div>
       </div>
     </div>
@@ -199,45 +201,43 @@
     <div class="outcome-list">
       <div class="outcome-list-header">
         <h3 class="m0">What changes when you fix it</h3>
-        <p class="mt-1">Use the report to fix what blocks AI agents on your own site. Scores are diagnostic measures of
-          the website itself, not guarantees of outside outcomes.</p>
+        <p class="mt-1">Scores describe your website only. They do not measure or promise traffic, rankings, or
+          mentions in AI answers.</p>
       </div>
       <div class="outcome-grid">
         <article class="outcome-card">
-          <h4 class="m0">Make answers extractable</h4>
-          <p class="m0">Make important answers easier for AI agents to extract by improving structure, metadata, and
-            machine-readable context.</p>
+          <h4 class="m0">Agents can reach your pages</h4>
+          <p class="m0">AI crawlers are allowed in, and your company name, description, and facts match on every page.</p>
         </article>
         <article class="outcome-card">
-          <h4 class="m0">Give agents the whole picture</h4>
-          <p class="m0">Strengthen the entity, trust, crawl-access, and content signals so AI agents can reconcile your
-            business identity and evidence across the site.</p>
+          <h4 class="m0">Agents can answer from your content</h4>
+          <p class="m0">Key facts such as price, features, and who the product is for are stated plainly and are easy to
+            quote.</p>
         </article>
         <article class="outcome-card">
-          <h4 class="m0">Prove the change</h4>
-          <p class="m0">Compare your current report with later runs to see which findings were resolved and where the
-            site still isn't AI-friendly.</p>
+          <h4 class="m0">Agents know what to do next</h4>
+          <p class="m0">Your offer and your buy or contact path are clear. MeshWeave checks that the path exists; it does
+            not click through forms or complete purchases.</p>
         </article>
         <article class="outcome-card">
-          <h4 class="m0">Be agent-ready</h4>
-          <p class="m0">Clarify your offer, cross-page relationships, metadata, and contact paths so AI agents can identify a
-            credible next step. The actionability check does not test transactions or operate an interactive browser agent.</p>
+          <h4 class="m0">You can show the change</h4>
+          <p class="m0">Run the audit again after your fixes and compare the two reports to see which problems are gone.</p>
         </article>
       </div>
     </div>
   </div>
 </section>
 
-<!-- RECENT ANALYSES -->
-<section class="landing-section band-surface" aria-label="Recent analyses">
+<!-- RECENT AUDITS -->
+<section class="landing-section band-surface" aria-label="Recently audited sites">
   <div class="container container-wide">
-    <h2 class="landing-section-title">Recent sites analyzed</h2>
+    <h2 class="landing-section-title">Recently audited sites</h2>
 
     {% if community_metrics %}
     <div class="stats-bar">
       <div class="stat-item">
         <span class="stat-number" data-countup data-target="{{ community_metrics.analyses_total }}">0</span>
-        <span class="label">Analyses run</span>
+        <span class="label">Audits run</span>
       </div>
       <div class="stat-item">
         <span class="stat-number" data-countup data-target="{{ community_metrics.domains_total }}">0</span>
@@ -266,92 +266,68 @@
 </section>
 
 <!-- SCORE FRAMEWORK -->
-<section class="landing-section" id="scoring" aria-label="Scoring framework">
+<section class="landing-section" id="scoring" aria-label="The three checks">
   <div class="container container-wide">
-    <h2 class="landing-section-title">Three ways AI can fail to use your website</h2>
-    <p class="landing-section-subtitle">Reachable measures machine context, Answerable measures answer extractability,
-      and Actionable measures whether a structured AI evaluation can understand your offer and identify a credible next
-      step. Together, they show what the crawl can verify and what still needs human observation.</p>
+    <h2 class="landing-section-title">Three ways AI agents fail on a website</h2>
+    <p class="landing-section-subtitle">An agent first has to reach your pages, then answer a question from them, then
+      work out what to do next. Each check scores one of those steps from 0 to 100.</p>
     <table class="table scoring-table">
       <thead>
         <tr>
-          <th>Risk Check</th>
-          <th>What Failure Looks Like</th>
-          <th>What You Fix</th>
+          <th scope="col">Check</th>
+          <th scope="col">What failure looks like</th>
+          <th scope="col">What you fix</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td><strong>Reachable</strong><br><span class="small">Machine context</span></td>
-          <td>Inaccessible content or inconsistent site context — agents can't reach the material or reconcile what the
-            business is.</td>
-          <td>Crawl access, structured data, and consistent identity and evidence across the site.</td>
+          <td><strong>Reachable</strong></td>
+          <td>AI crawlers are blocked, pages are hidden behind scripts, or pages describe the company differently.</td>
+          <td>Crawler access, structured data, and one consistent company description.</td>
         </tr>
         <tr>
-          <td><strong>Answerable</strong><br><span class="small">Answer extractability</span></td>
-          <td>Unsupported answers — the copy is empty or ambiguous and doesn't back a direct answer.</td>
-          <td>Clear, well-structured content that supports direct answers agents can extract.</td>
+          <td><strong>Answerable</strong></td>
+          <td>Key facts are missing or vague, so an agent has nothing to quote or has to guess.</td>
+          <td>Plain statements of price, features, audience, and other facts buyers ask about.</td>
         </tr>
         <tr>
-          <td><strong>Actionable</strong><br><span class="small">Agent actionability</span></td>
-          <td>Missing action path — agents can't confidently identify the offer, understand the content, or find a
-            credible next step.</td>
-          <td>A clear offer and contact paths so agents can identify what to do next.</td>
+          <td><strong>Actionable</strong></td>
+          <td>An agent cannot tell what you sell or how to buy, sign up, or contact you.</td>
+          <td>A clear offer and a visible buy or contact path.</td>
         </tr>
       </tbody>
     </table>
-    <p class="small mt-3 text-center-muted">
-      Together, these checks show where your site is difficult for AI agents to reach, answer from, or act on.
-    </p>
 
-    <h3 class="landing-section-title mt-4">MeshWeave vs. traditional SEO tools</h3>
-    <p class="landing-section-subtitle">Ranking on a results page and answering a buyer through an AI agent are different
-      jobs. Most tooling measures only the first one.</p>
+    <h3 class="landing-section-title mt-4">Answer-tracking tools vs. MeshWeave</h3>
     <table class="table scoring-table">
-      <caption class="sr-only">MeshWeave compared with traditional SEO tooling</caption>
+      <caption class="sr-only">Answer-tracking tools compared with MeshWeave</caption>
       <thead>
         <tr>
-          <th scope="col">Capability</th>
-          <th scope="col">Traditional SEO tools</th>
+          <th scope="col"></th>
+          <th scope="col">Answer-tracking tools</th>
           <th scope="col">MeshWeave</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td><strong>What it measures</strong></td>
-          <td>Ranking signals for search results pages, for human searchers</td>
-          <td>Whether AI agents can reach, answer from, and act on the site</td>
+          <th scope="row">Question</th>
+          <td>Does AI mention us today?</td>
+          <td>Why can't an agent use our site, and what do we fix?</td>
         </tr>
         <tr>
-          <td><strong>Answer extractability</strong></td>
-          <td>Keyword coverage and backlink authority</td>
-          <td>Whether pages support clean, direct answers agents can extract (Answerable)</td>
+          <th scope="row">Looks at</th>
+          <td>AI answers, polled over time</td>
+          <td>Your own pages</td>
         </tr>
         <tr>
-          <td><strong>Site-wide machine context</strong></td>
-          <td>Not measured</td>
-          <td>Whether agents can reach the content and reconcile identity and evidence (Reachable)</td>
-        </tr>
-        <tr>
-          <td><strong>Agent actionability</strong></td>
-          <td>Not measured</td>
-          <td>Whether AI agents can identify the offer, understand the content, and find a credible next step (Actionable)</td>
-        </tr>
-        <tr>
-          <td><strong>AI crawler access</strong></td>
-          <td>Googlebot-centric (robots.txt, sitemaps)</td>
-          <td>GPTBot, ClaudeBot, PerplexityBot and friends — plus llms.txt readiness</td>
-        </tr>
-        <tr>
-          <td><strong>Output</strong></td>
-          <td>Keyword and backlink reports</td>
-          <td>Three check scores with factor breakdowns and a prioritized fix list</td>
+          <th scope="row">You get</th>
+          <td>A trend chart</td>
+          <td>A ranked fix list and a before/after comparison</td>
         </tr>
       </tbody>
     </table>
     <p class="small mt-3 text-center-muted">
-      The two are complements, not replacements: traditional SEO still matters for human search. MeshWeave covers the
-      how AI-friendly your site is that keyword and ranking reports do not measure.
+      Use both if you like. Tracking shows the symptom; MeshWeave works on the one part you control: your website.
     </p>
   </div>
 </section>
@@ -363,47 +339,42 @@
 
     <div class="faq-item">
       <h3>What does MeshWeave do?</h3>
-        <p class="m0">MeshWeave audits the website signals AI agents can observe. It shows where AI agents may
-          struggle to reach or extract your content, or find a supported answer from it, then gives you a prioritized list of fixes.</p>
+      <p class="m0">MeshWeave audits your website for AI agents. It checks whether agents can reach your pages, answer
+        questions from your content, and find what to do next, then gives you a ranked list of fixes.</p>
     </div>
 
     <div class="faq-item">
       <h3>Is this an SEO tool?</h3>
-      <p class="m0"><strong>No</strong>. Traditional SEO focuses on how humans find you through search engines.
-        MeshWeave focuses on whether AI agents can reach your website, answer from its content, and act on it. It complements
-        traditional SEO by examining machine-readable signals that keyword and ranking reports do not cover.</p>
+      <p class="m0"><strong>No</strong>. Traditional SEO focuses on how people find you through search engines.
+        MeshWeave checks whether AI agents can reach your site, answer from it, and act on it. It complements SEO rather
+        than replacing it.
+        Some call this GEO or AEO. MeshWeave covers the site-side part, not AI visibility tracking.</p>
     </div>
 
     <div class="faq-item">
       <h3>Who is MeshWeave for?</h3>
-      <p class="m0">SEO and content teams, product and web teams, marketing and growth teams, founders, operators,
-        agencies, and consultants responsible for making sure a brand remains discoverable and usable as buyers shift
-        toward AI-assisted research and decision-making.</p>
+      <p class="m0">Agencies and consultants who audit client websites, and in-house web, SEO, and content teams who
+        maintain their own site.</p>
     </div>
 
     <div class="faq-item">
-      <h3>What will I learn from running an analysis?</h3>
-      <ul class="m0">
-        <li>Whether agents reach your content — or miss it</li>
-        <li>Whether your copy supports real answers — or leaves them unsupported</li>
-        <li>Whether the site gives agents a credible next step — or forces a dead end</li>
-        <li>Which concrete fixes address the weakest observed signals</li>
-      </ul>
+      <h3>What will I learn from an audit?</h3>
+      <p class="m0">You will learn which pages agents cannot reach, which questions your content cannot answer, whether
+        agents can find how to buy or contact you, and which fixes to make first.</p>
     </div>
 
     <div class="faq-item">
-      <h3>Can I share analysis results with my team?</h3>
-      <p class="m0">
-        <strong>Yes</strong>. Signed-in users get private reports with a dedicated dashboard and score history, so
-        results are easy to review with clients or teammates.
-      </p>
+      <h3>Can I share a report with my team or a client?</h3>
+      <p class="m0"><strong>Yes</strong>. Every public report has a shareable link. If you sign in, you can keep reports
+        private instead and compare each run with the previous one.</p>
     </div>
 
     <div class="faq-item">
       <h3>How much does MeshWeave cost?</h3>
-      <p class="m0"><strong>A site analysis is free</strong> and can be started without signing in. Sign in to keep results
-        private, use higher crawl limits, and track score history. Expert-guided audits and remediation roadmaps are
-        available as separate engagements.</p>
+      <p class="m0"><strong>An audit is free</strong> and needs no sign-in. A free Google sign-in adds a before/after
+        comparison of your runs, a downloadable client-ready report, and a free API key (up to 25 sites per call) whose
+        report export is unbranded. Expert-guided audits and remediation roadmaps are available as separate engagements —
+        email {{ FOOTER_CONTACT_EMAIL }} and you will get scope and price within two business days.</p>
     </div>
   </div>
 </section>
@@ -412,20 +383,22 @@
 {% if request.state.current_user %}
 <section class="cta-banner" role="complementary" aria-label="Go to dashboard">
   <div class="container">
-    <h2>Track how AI-friendly your site becomes</h2>
-    <p class="m0 mt-1 cta-banner-body">Run a new analysis, compare it with previous results, and focus your next content
-      or technical update on the highest-impact findings.</p>
-    <a href="/dashboard" class="btn btn-primary mt-3">Open Your Dashboard →</a>
+    <h2>Check your fixes</h2>
+    <p class="m0 mt-1 cta-banner-body">Run the audit again after your changes and compare it with the last report to see
+      which problems are gone.</p>
+    <a href="/dashboard" class="btn btn-primary mt-3">Open your dashboard →</a>
   </div>
 </section>
 {% else %}
-<section class="cta-banner" role="complementary" aria-label="Sign up">
+<section class="cta-banner" role="complementary" aria-label="Sign in">
   <div class="container">
-    <h2>Know what to fix for AI agents</h2>
-    <p class="m0 mt-1 cta-banner-copy">Run the free analysis first, then request an expert-guided review when you need help
-      interpreting the findings or building a remediation roadmap.</p>
-    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary mt-3">Track Your Results
-      →</a>
+    <h2>Free with a Google sign-in</h2>
+    <ul class="cta-banner-copy">
+      <li><strong>Before/after comparison</strong> — re-run after your fixes and see what changed.</li>
+      <li><strong>Client-ready report</strong> — download it, or get it unbranded through the API.</li>
+      <li><strong>Free API key</strong> — audit up to 25 sites in one call.</li>
+    </ul>
+    <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary mt-3">Sign in with Google — free →</a>
   </div>
 </section>
 {% endif %}

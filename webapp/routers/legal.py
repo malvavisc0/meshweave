@@ -121,8 +121,8 @@ async def contact(request: Request):
     contact_email = os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweaveai.com")
     page_title = f"Contact — {site_name}"
     meta_description = (
-        "Contact the MeshWeave team for questions about AI-friendly website "
-        "audits, scoring methodology, or expert-guided remediation."
+        "Contact MeshWeave to request an expert-guided audit, or with "
+        "questions about a report, the scoring, or the API."
     )
     abs_page_url = _abs_url(request, "/contact")
     og_image_url = os.getenv("OG_IMAGE_URL") or None

@@ -140,7 +140,9 @@ class TestVerdicts:
             "contradictory",
             "not_applicable",
         ):
-            AnswerabilityAnswerResult(verdict=verdict)
+            AnswerabilityAnswerResult(
+                answer="", verdict=verdict, source_pages=[], missing_facts=[]
+            )
             AnswerabilityQuestionResult(
                 question_id="offer", question="q", verdict=verdict
             )
@@ -413,3 +415,103 @@ class TestPromptHardening:
         # The closing tag inside the page content must not appear as a
         # raw tag that could terminate the block early.
         assert "</pages>\nevil" not in user
+
+
+class TestGroundedPagesNormalization:
+    """Citations match crawled pages despite light format differences."""
+
+    KNOWN = {
+        "https://example.com/",
+        "https://example.com/contact",
+        "https://example.com/pricing/",
+    }
+
+    def _ground(self, citations):
+        from meshweave.ai.answerability import _grounded_pages
+
+        return _grounded_pages(citations, self.KNOWN)
+
+    def test_exact_match_is_unchanged(self):
+        assert self._ground(["https://example.com/"]) == ["https://example.com/"]
+
+    def test_trailing_slash_variants_match(self):
+        assert self._ground(["https://example.com/pricing"]) == [
+            "https://example.com/pricing/"
+        ]
+        assert self._ground(["https://example.com/contact/"]) == [
+            "https://example.com/contact"
+        ]
+
+    def test_scheme_variants_match(self):
+        assert self._ground(["http://example.com/contact"]) == [
+            "https://example.com/contact"
+        ]
+        assert self._ground(["//example.com/contact"]) == [
+            "https://example.com/contact"
+        ]
+
+    def test_bare_paths_match(self):
+        assert self._ground(["/contact"]) == ["https://example.com/contact"]
+
+    def test_bare_host_matches_homepage(self):
+        assert self._ground(["example.com"]) == ["https://example.com/"]
+
+    def test_bare_word_never_matches(self):
+        assert self._ground(["contact"]) == []
+
+    def test_unknown_host_never_matches(self):
+        assert self._ground(["https://other.com/contact"]) == []
+
+    def test_unknown_path_never_matches(self):
+        assert self._ground(["https://example.com/nowhere"]) == []
+
+    def test_empty_and_whitespace_citations_are_dropped(self):
+        assert self._ground(["", "   ", "https://example.com/contact"]) == [
+            "https://example.com/contact"
+        ]
+
+
+class TestStructuredOutputSchema:
+    """Every LLM-filled field is required in the JSON schema sent to the model.
+
+    A field with a default is optional in the schema, and the model may omit
+    it. Omitted source_pages zeroed the answerability factor on a real run.
+    """
+
+    def test_llm_result_models_require_every_field(self):
+        from meshweave.ai.models import (
+            AnswerabilityAnswerResult,
+            ContentDeltaResult,
+            EmailValidationResult,
+            HomepageComprehensionResult,
+            MetaOptimizationResult,
+        )
+
+        for model in (
+            AnswerabilityAnswerResult,
+            ContentDeltaResult,
+            EmailValidationResult,
+            HomepageComprehensionResult,
+            MetaOptimizationResult,
+        ):
+            schema = model.model_json_schema()
+            assert set(schema["required"]) == set(schema["properties"]), model
+
+    def test_supported_verdict_without_grounded_page_is_unsupported(self):
+        from meshweave.ai.answerability import (
+            ANSWERABILITY_QUESTIONS,
+            _question_record,
+        )
+        from meshweave.ai.models import AnswerabilityAnswerResult
+
+        result = AnswerabilityAnswerResult(
+            answer="We sell widgets.",
+            verdict="supported",
+            source_pages=[],
+            missing_facts=[],
+        )
+        record = _question_record(
+            ANSWERABILITY_QUESTIONS[0], result, {"https://example.com/"}
+        )
+        assert record.verdict == "unsupported"
+        assert record.answer == ""

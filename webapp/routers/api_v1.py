@@ -448,7 +448,7 @@ async def get_report_markdown(request: Request, crawl_id: str) -> PlainTextRespo
     # Unbranded: no MeshWeave header branding, no MeshWeave contact footer.
     ctx = build_export_context(row, site_name="", contact_email="")
     body = render_export_markdown(ctx)
-    filename = f"ai-friendly-report-{safe_filename(row.domain)}.md"
+    filename = f"ai-agent-audit-{safe_filename(row.domain)}.md"
     resp = PlainTextResponse(content=body, media_type="text/markdown")
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     with get_session() as s:
@@ -543,7 +543,7 @@ async def get_diff_markdown(
         raise HTTPException(status_code=409, detail="Analysis not finished")
     old_row = _resolve_vs_owned(user_id, row, vs)
     body = render_diff_markdown(_diff_payload(row, old_row), row, old_row)
-    filename = f"ai-friendly-diff-{safe_filename(row.domain)}.md"
+    filename = f"ai-agent-audit-diff-{safe_filename(row.domain)}.md"
     resp = PlainTextResponse(content=body, media_type="text/markdown")
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     with get_session() as s:

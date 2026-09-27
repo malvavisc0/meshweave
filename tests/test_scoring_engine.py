@@ -243,43 +243,41 @@ class TestMetaIssuesSurfacesSuggestions:
 
 
 class TestContentDeltaRec:
-    """The weaknesses fix should always surface at high priority."""
+    """The missing-facts fix quotes the facts and predicts from completeness."""
 
-    def test_emits_at_high_priority_regardless_of_strengths(self):
+    def test_quotes_missing_facts(self):
         factors = {
             "content_delta": {
                 "score": 80,
                 "raw": {
-                    "weaknesses": ["No pricing found"],
-                    "strengths": ["Fast load", "Good structure", "Clear nav"],
+                    "weaknesses": ["No price stated", "No audience named"],
+                    "completeness": "adequate",
                 },
             }
         }
-        recs = _content_delta_rec(factors)
-        assert len(recs) == 1
-        assert recs[0]["priority"] == "high"
-        assert "No pricing found" in recs[0]["detail"]
+        rec = _content_delta_rec(factors)[0]
+        assert rec["title"] == "State 2 missing buyer fact(s)"
+        assert '"No price stated"' in rec["detail"]
+        assert '"No audience named"' in rec["guidance"]
+        # adequate (50) → comprehensive (100) on the 30% completeness slot.
+        assert rec["_target_score"] == 95.0
 
-    def test_emits_even_with_many_strengths(self):
-        factors = {
-            "content_delta": {
-                "score": 80,
-                "raw": {
-                    "weaknesses": ["Ambiguous pricing"],
-                    "strengths": ["One", "Two", "Three", "Four"],
-                },
-            }
+    def test_missing_essentials_named(self):
+        factors = {"content_delta": {"score": 60, "raw": {"weaknesses": []}}}
+        recs = _content_delta_rec(factors)
+        assert [r["title"] for r in recs] == ["State the missing essentials"]
+        assert "pricing model" in recs[0]["detail"]
+
+    def test_no_rec_when_nothing_missing(self):
+        raw = {
+            "weaknesses": [],
+            "company": {"name": "A"},
+            "product": {"name": "B"},
+            "pricing": {"model": "flat"},
+            "target_audience": "agencies",
+            "strengths": ["x"],
         }
-        recs = _content_delta_rec(factors)
-        assert len(recs) == 1
-        assert recs[0]["priority"] == "high"
-
-    def test_no_weakness_rec_when_none(self):
-        factors = {"content_delta": {"raw": {"weaknesses": [], "strengths": ["Fast"]}}}
-        recs = [
-            r for r in _content_delta_rec(factors) if r["title"].startswith("Address")
-        ]
-        assert recs == []
+        assert _content_delta_rec({"content_delta": {"score": 90, "raw": raw}}) == []
 
 
 class TestGroupRecommendationsByPillar:

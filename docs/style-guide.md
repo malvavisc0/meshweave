@@ -259,9 +259,9 @@ topnav (56px, dark)
 
 ### Canonical Language
 
-MeshWeave's promise is: **Find what prevents AI agents from reading your website correctly.** MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable. Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
+MeshWeave's promise is: **Find what prevents AI agents from reading your website correctly.** MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site. Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
-The category noun is **AI-friendly website analysis** (artifact names: **AI-Friendly Website Report**, **AI-Friendly Progress Report**). In prose prefer "how AI-friendly your site is" over nominalizations.
+The category noun is **website audit for AI agents** (artifact names: **AI-Friendly Website Report**, **AI-Friendly Progress Report**). In prose prefer "how AI-friendly your site is" over nominalizations.
 
 Three checks, always in journey order, always phrased as the client's gain:
 
@@ -294,13 +294,13 @@ The words "recommendations" and "recommendation" remain valid for MeshWeave's ow
 
 ### Approved Alternatives
 - "Find what prevents AI agents from reading your website correctly."
-- "Diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable."
+- "Finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site."
 - "Can AI agents reach your site, answer from it, and act on it?"
 - "Reachable — machine context" / "Answerable — answer extractability" / "Actionable — agent actionability"
 - "Automated site review findings"
 - "Confirmed signals" / "Missing or ambiguous signals"
 - "Track how AI-friendly your site becomes."
-- "Run a free AI-friendly website analysis."
+- "Run a free website audit for AI agents."
 
 ---
 

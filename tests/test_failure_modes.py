@@ -101,7 +101,7 @@ class TestUnreachableMeaningfulContent:
         scores = _scores(fixture, run_exercise(fixture))
         geo = scores["geo"]["factors"]
         # robots.txt blocks every AI bot and no llms.txt or sitemap exists.
-        assert geo["crawl_access"]["score"] == 8.0
+        assert geo["crawl_access"]["score"] == round(8 * 100 / 77, 1)
         # JS shells: no headings, no words — near-zero structure per page.
         assert geo["content_depth"]["score"] < 20
         assert scores["aeo"]["factors"]["content_structure"]["raw"]["site_average"] < 20

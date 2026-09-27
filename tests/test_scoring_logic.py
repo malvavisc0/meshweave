@@ -84,8 +84,8 @@ def test_llms_txt_recommendation_not_duplicated():
         }
     }
     recs = generate_recommendations(aeo_factors, geo_factors)
-    llms_titles = [r["title"] for r in recs if "llms" in r["title"].lower()]
-    assert len(llms_titles) == 1
+    llms_titles = [r["title"] for r in recs if "llms.txt file" in r["title"]]
+    assert llms_titles == ["Publish an llms.txt file"]
 
 
 def test_structure_recommendation_fires_in_weak_band():
@@ -158,32 +158,33 @@ def test_email_validation_quality_beats_quantity():
     assert p >= 85  # a single high-confidence sales contact is near-max
 
 
-def test_same_as_buckets_shared_scale():
-    """1 sameAs → 40*0.4=16 of the 40-point entity slot; 6+ → full 40."""
-    one = score_entity_consistency(
+def _entity(name: bool, desc: bool, same_as: list[str]) -> dict:
+    return score_entity_consistency(
         {
             "audit": {
                 "entity": {
-                    "name_consistent": True,
-                    "description_consistent": True,
-                    "same_as": ["https://x"],
+                    "name_consistent": name,
+                    "description_consistent": desc,
+                    "same_as": same_as,
                 }
             }
         }
     )
-    six = score_entity_consistency(
-        {
-            "audit": {
-                "entity": {
-                    "name_consistent": True,
-                    "description_consistent": True,
-                    "same_as": [f"https://x/{i}" for i in range(6)],
-                }
-            }
-        }
-    )
-    assert one["score"] == 51.0  # 20 + 15 + 16
-    assert six["score"] == 75.0  # 20 + 15 + 40
+
+
+def test_entity_consistency_ignores_same_as():
+    """sameAs links are raw evidence only; they add no points."""
+    none = _entity(True, True, [])
+    six = _entity(True, True, [f"https://x/{i}" for i in range(6)])
+    assert none["score"] == six["score"] == 100.0
+    assert six["raw"]["same_as"] == [f"https://x/{i}" for i in range(6)]
+    assert _entity(False, False, ["https://x"])["score"] == 0.0
+
+
+def test_entity_consistency_rescales_name_and_description():
+    """20 name + 15 description points, rescaled to 0-100."""
+    assert _entity(True, False, [])["score"] == round(20 * 100 / 35, 1)
+    assert _entity(False, True, [])["score"] == round(15 * 100 / 35, 1)
 
 
 def test_schema_faq_bonus_requires_majority_in_range():

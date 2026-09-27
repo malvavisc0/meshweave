@@ -39,7 +39,14 @@ class TestEnumEnforcement:
 
     def test_hc_accepts_on_enum(self):
         m = HomepageComprehensionResult(
-            clarity="clear", information_density="dense", would_remember=True
+            brand="",
+            product="",
+            target_audience="",
+            key_features=[],
+            call_to_action="",
+            clarity="clear",
+            information_density="dense",
+            would_remember=True,
         )
         assert m.clarity == "clear"
         assert m.information_density == "dense"
@@ -54,6 +61,7 @@ class TestEnumEnforcement:
             clarity="clear",
             llm_optimization="optimized",
             would_click_through=True,
+            improvement_suggestions=[],
         )
         assert m.completeness == "complete"
 
@@ -80,7 +88,14 @@ class TestEnumEnforcement:
 
     def test_required_categoricals(self):
         m = HomepageComprehensionResult(
-            clarity="clear", information_density="dense", would_remember=True
+            brand="",
+            product="",
+            target_audience="",
+            key_features=[],
+            call_to_action="",
+            clarity="clear",
+            information_density="dense",
+            would_remember=True,
         )
         assert m.clarity == "clear"
         with pytest.raises(ValidationError):

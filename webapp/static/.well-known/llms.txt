@@ -1,20 +1,28 @@
 # MeshWeave
 
-> AI-friendly website analysis: find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable.
+> Website audit for AI agents: find what prevents AI agents from reading your website correctly. MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site.
 
-MeshWeave answers three questions in the agent's journey order: can AI agents reach your site (Reachable), answer from it (Answerable), and act on it (Actionable).
+MeshWeave answers three questions, in the order an agent meets them: can AI agents reach your site (Reachable), answer from it (Answerable), and act on it (Actionable). Each check scores 0-100 and comes with a fix list ranked by expected score impact.
+
+Why it matters: 94% of B2B buyers used generative AI during their purchase process (6sense, 2025). Agents answer from what they can read on a website, so missing or unclear facts leave gaps in their answers.
+
+Some call this GEO or AEO. MeshWeave covers the site-side part, not AI visibility tracking.
+
+Who it is for: agencies and consultants who audit client websites, and in-house web, SEO, and content teams.
+
+Pricing: an audit is free and needs no sign-in. A free Google sign-in adds private reports, before/after comparison of runs, a downloadable report, and a free API key (up to 25 sites per call) whose report export is unbranded. Expert-guided audits and remediation roadmaps are priced per engagement; ask by email via [Contact](/contact).
 
 [API Reference](/api): programmatic access to analyses.
 
-[Methodology](/scoring): scoring model, factor weights, and rating bands.
+[Methodology](/methodology): scoring model, factor weights, and rating bands.
 
 ## Checks
 
-Every report scores three checks in the agent's journey order:
+Every report scores three checks, each 0-100:
 
-- Reachable — machine context: whether agents can reach the content and reconcile the business identity, evidence, and claims across the site (API fields `geo_score`, `geo_rating`; scale 0-100: Unreachable -> Fully connected).
-- Answerable — answer extractability: whether the site provides clear, supported answers agents can extract (API fields `aeo_score`, `aeo_rating`; scale 0-100: Not extractable -> Fully extractable).
-- Actionable — agent actionability: whether agents can identify the offer, understand the content, and find a credible next step (API fields `aax_score`, `aax_rating`; scale 0-100: Opaque -> Fluent).
+- Reachable — machine context: whether AI crawlers can reach the pages and whether the company is described consistently across them (API fields `geo_score`, `geo_rating`; scale 0-100: Unreachable -> Fully connected).
+- Answerable — answer extractability: whether the content states the facts buyers ask about clearly enough for an agent to quote (API fields `aeo_score`, `aeo_rating`; scale 0-100: Not extractable -> Fully extractable).
+- Actionable — agent actionability: whether agents can tell what is sold and find how to buy, sign up, or contact the business (API fields `aax_score`, `aax_rating`; scale 0-100: Opaque, meaning an agent cannot tell what to do -> Fluent, meaning the offer and next step are clear).
 
 ## API
 
@@ -30,8 +38,8 @@ Public summary without authentication (same response for owner and anonymous):
 
 - `GET /api/analysis/public/{key}` — JSON summary with scores and ratings (key-scoped, unguessable key)
 
-Internal pages:
-- `/api` — API access (account page; signed-in users create Bearer keys)
+Account and status pages:
+- `/api` — API keys (sign in to create a Bearer key)
 - `/api/status/{id}` — job status (works without sign-in for public analyses)
 
 Optional pages:

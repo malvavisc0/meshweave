@@ -1,6 +1,6 @@
 # MeshWeave
 
-Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable.
+Find what prevents AI agents from reading your website correctly. MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site.
 
 Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 

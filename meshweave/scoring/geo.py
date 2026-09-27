@@ -15,20 +15,32 @@ from typing import Any
 
 from meshweave.scoring.composite import GEO_WEIGHTS
 
+# Additive crawl-access points a perfect site earns (robots 8 + bots 39 +
+# llms.txt 15 + llms-full.txt 8 + sitemap 7); the factor is rescaled so
+# this total reads as 100.
+CRAWL_ACCESS_MAX_POINTS = 77
 
-def _same_as_score(count: int) -> int:
-    """Shared sameAs presence scale used by entity consistency.
+# Crawl-access points per signal, on the additive (pre-rescale) scale.
+ROBOTS_POINTS = 8
+LLMS_TXT_POINTS = 15
+LLMS_FULL_TXT_POINTS = 8
+SITEMAP_POINTS = 7
+AI_BOT_POINTS: dict[str, int] = {"GPTBot": 15, "ClaudeBot": 12, "PerplexityBot": 12}
 
-    One bucketing so entity signals stay consistent:
-    0 → 0, 1-2 → 40, 3-5 → 70, 6+ → 100.
-    """
-    if count == 0:
-        return 0
-    if count <= 2:
-        return 40
-    if count <= 5:
-        return 70
-    return 100
+# E-E-A-T additive points per site-side trust signal.
+ORG_POINTS = 30
+AUTHOR_POINTS = 30
+CONTACT_POINTS = 20
+POLICY_POINTS = 20
+
+# Additive entity-consistency points, rescaled to 0-100 by their total.
+ENTITY_NAME_POINTS = 20
+ENTITY_DESCRIPTION_POINTS = 15
+
+
+def crawl_access_scale(points: float) -> float:
+    """Convert additive crawl-access points to the 0-100 factor scale."""
+    return points * 100.0 / CRAWL_ACCESS_MAX_POINTS
 
 
 @dataclass
@@ -62,24 +74,19 @@ def score_topical_authority(payload: dict) -> dict:
 
     coverage_pct = schema_cov.get("coverage_pct") or 0
     schema_types = list((schema_cov.get("type_counts") or {}).keys())
-    diversity = min(len(schema_types) / 10.0, 1.0) * 100
-
-    name_consistent = 100 if entity.get("name_consistent") else 0
-    desc_consistent = 100 if entity.get("description_consistent") else 0
 
     same_as_count = len(entity.get("same_as") or [])
 
     # Content page ratio: pages with >300 words / total pages
     content_ratio = _content_page_ratio(payload)
 
-    score = (
-        coverage_pct * 0.35
-        + diversity * 0.25
-        + name_consistent * 0.15
-        + desc_consistent * 0.15
-        + content_ratio * 0.10
+    score = topical_authority_score(
+        coverage_pct,
+        len(schema_types),
+        bool(entity.get("name_consistent")),
+        bool(entity.get("description_consistent")),
+        content_ratio,
     )
-    score = min(100.0, score)
 
     return {
         "score": round(score, 1),
@@ -94,6 +101,25 @@ def score_topical_authority(payload: dict) -> dict:
             "content_page_ratio": round(content_ratio, 1),
         },
     }
+
+
+def topical_authority_score(
+    coverage_pct: float,
+    type_count: int,
+    name_consistent: bool,
+    desc_consistent: bool,
+    content_ratio: float,
+) -> float:
+    """Weighted topical-authority score from its site-side inputs."""
+    diversity = min(type_count / 10.0, 1.0) * 100
+    score = (
+        coverage_pct * 0.35
+        + diversity * 0.25
+        + 100 * name_consistent * 0.15
+        + 100 * desc_consistent * 0.15
+        + content_ratio * 0.10
+    )
+    return min(100.0, score)
 
 
 def _content_page_ratio(payload: dict) -> float:
@@ -269,7 +295,7 @@ def _org_points(pages_with_org: int, schema_types: set[str]) -> int:
     """Points for publishing Organization schema anywhere on the site."""
     lower_types = {t.lower() for t in schema_types}
     if pages_with_org > 0 or "organization" in lower_types or "org" in lower_types:
-        return 30
+        return ORG_POINTS
     return 0
 
 
@@ -277,22 +303,22 @@ def _signal_points(signals: _EeatSignals) -> int:
     """Points for authorship, contact, and policy-page signals."""
     pts = 0
     if signals.has_author:
-        pts += 30
+        pts += AUTHOR_POINTS
     if signals.has_contact:
-        pts += 20
+        pts += CONTACT_POINTS
     if signals.has_privacy or signals.has_terms:
-        pts += 20
+        pts += POLICY_POINTS
     return pts
 
 
 def score_crawl_access(payload: dict) -> dict:
     """G4. LLM Crawl Accessibility (auto when data available).
 
-    Additive scoring: 8 robots.txt + up to 39 bot access (GPTBot 15,
+    Additive points: 8 robots.txt + up to 39 bot access (GPTBot 15,
     ClaudeBot 12, PerplexityBot 12 — half credit when partially
-    restricted) + 15 llms.txt + 8 llms-full.txt + 7 sitemap.
-    Structural maximum: 77 — the remaining 23 points do not exist to be
-    earned. Optional llms.txt evidence is scored here only, once.
+    restricted) + 15 llms.txt + 8 llms-full.txt + 7 sitemap, a 77-point
+    total rescaled to 0-100 so a perfect site scores 100. Optional
+    llms.txt evidence is scored here only, once.
 
     If robots/llms data is only a placeholder (page-scope crawl),
     returns null with a note.
@@ -304,10 +330,10 @@ def score_crawl_access(payload: dict) -> dict:
     if _is_placeholder_access(robots, llms):
         return _placeholder_crawl_access()
 
-    pts = min(100, _crawl_access_points(robots, llms))
+    pts = _crawl_access_points(robots, llms)
 
     return {
-        "score": float(pts),
+        "score": round(crawl_access_scale(pts), 1),
         "weight": GEO_WEIGHTS["crawl_access"],
         "auto_measurable": True,
         "raw": _crawl_access_raw(robots, llms),
@@ -345,7 +371,7 @@ def _crawl_access_points(robots: dict, llms: dict) -> int:
     pts = 0
     # robots.txt exists: +8
     if robots.get("exists"):
-        pts += 8
+        pts += ROBOTS_POINTS
     # Bot access. "partially_restricted" means allowed site-wide except
     # specific paths (e.g. private API endpoints) — the content is still
     # crawlable, so those bots earn half credit.
@@ -357,18 +383,18 @@ def _crawl_access_points(robots: dict, llms: dict) -> int:
 
 def _bot_access_points(bots: dict) -> int:
     """Points for AI-bot crawl permissions, with half credit when partial."""
-    pts = 0
-    for bot_name, expected_pts in [
-        ("GPTBot", 15),
-        ("ClaudeBot", 12),
-        ("PerplexityBot", 12),
-    ]:
-        status = str(bots.get(bot_name) or "").lower()
-        if status == "allowed":
-            pts += expected_pts
-        elif "partial" in status:
-            pts += expected_pts // 2
-    return pts
+    return sum(bot_points(name, bots.get(name)) for name in AI_BOT_POINTS)
+
+
+def bot_points(bot_name: str, status: Any) -> int:
+    """Points one AI bot earns: full when allowed, half when partial."""
+    full = AI_BOT_POINTS[bot_name]
+    text = str(status or "").lower()
+    if text == "allowed":
+        return full
+    if "partial" in text:
+        return full // 2
+    return 0
 
 
 def _llms_txt_points(llms: dict) -> int:
@@ -376,17 +402,17 @@ def _llms_txt_points(llms: dict) -> int:
     pts = 0
     llms_txt_data = llms.get("llms_txt") or {}
     if llms_txt_data.get("exists"):
-        pts += 15
+        pts += LLMS_TXT_POINTS
     llms_full_data = llms.get("llms_full_txt") or {}
     if llms_full_data.get("exists"):
-        pts += 8
+        pts += LLMS_FULL_TXT_POINTS
     return pts
 
 
 def _sitemap_points(robots: dict) -> int:
     """Points when robots.txt declares sitemaps."""
     sitemaps = robots.get("sitemaps") or []
-    return 7 if sitemaps else 0
+    return SITEMAP_POINTS if sitemaps else 0
 
 
 def _crawl_access_raw(robots: dict, llms: dict) -> dict:
@@ -404,7 +430,11 @@ def _crawl_access_raw(robots: dict, llms: dict) -> dict:
 
 
 def score_content_depth(payload: dict) -> dict:
-    """G5. Content Depth & Originality (auto)."""
+    """G5. Content Depth & Originality (auto).
+
+    ``raw.page_words`` keeps the per-page word counts so fixes can name
+    the shallow pages and predict the score once they are expanded.
+    """
     pages = _depth_pages(payload)
 
     total_pages = max(len(pages), 1)
@@ -412,7 +442,7 @@ def score_content_depth(payload: dict) -> dict:
     avg_words = sum(word_counts) / len(word_counts) if word_counts else 0
     metrics = _code_table_metrics(pages)
 
-    score = _content_depth_score(word_counts, total_pages, avg_words, metrics)
+    score = content_depth_score(word_counts, metrics)
 
     return {
         "score": round(score, 1),
@@ -424,7 +454,20 @@ def score_content_depth(payload: dict) -> dict:
             "content_pages_gt200": sum(1 for w in word_counts if w > 200),
             "pages_with_code": metrics[0],
             "pages_with_tables": metrics[1],
+            "page_words": _page_word_map(payload),
         },
+    }
+
+
+def _page_word_map(payload: dict) -> dict[str, int]:
+    """Word count per crawled page key, from the markdowns mapping."""
+    md_dict = payload.get("markdowns") or {}
+    if not isinstance(md_dict, dict):
+        return {}
+    return {
+        str(url): _md_page_words(pg)
+        for url, pg in md_dict.items()
+        if isinstance(pg, dict)
     }
 
 
@@ -440,13 +483,13 @@ def _depth_pages(payload: dict) -> list[dict]:
     return []
 
 
-def _content_depth_score(
-    word_counts: list[int],
-    total_pages: int,
-    avg_words: float,
-    metrics: tuple[int, int],
-) -> float:
-    """Weighted content-depth score from word counts and page metrics."""
+def content_depth_score(word_counts: list[int], metrics: tuple[int, int]) -> float:
+    """Weighted content-depth score from word counts and page metrics.
+
+    ``metrics`` is (pages with code blocks, pages with tables).
+    """
+    total_pages = max(len(word_counts), 1)
+    avg_words = sum(word_counts) / len(word_counts) if word_counts else 0
     # Average word count score (0-100)
     word_score = _avg_words_score(avg_words)
 
@@ -547,42 +590,32 @@ def _avg_words_score(avg_words: float) -> float:
 
 
 def score_entity_consistency(payload: dict) -> dict:
-    """G6. Cross-Platform Entity Consistency (auto).
+    """G6. Entity Consistency across pages (auto).
 
-    Additive scoring: 20 consistent name + 15 consistent description +
-    up to 40 for sameAs presence (shared _same_as_score scale, scaled).
+    Scores only on-site evidence: 20 consistent name + 15 consistent
+    description, rescaled to 0-100. sameAs links to outside profiles are
+    kept as raw evidence only and add no points.
     """
     audit = payload.get("audit") or {}
     entity = audit.get("entity") or {}
 
     name_consistent = entity.get("name_consistent", False)
     desc_consistent = entity.get("description_consistent", False)
-    same_as = entity.get("same_as") or []
-    name_variants = entity.get("name_variants") or []
-    desc_variants = entity.get("description_variants") or []
 
-    pts = 0.0
-    if name_consistent:
-        pts += 20
-    if desc_consistent:
-        pts += 15
-
-    # sameAs on the shared scale (0/40/70/100), scaled to the 40-point
-    # remainder of this factor, so one signal cannot be "good" in one
-    # place and "mediocre" in another.
-    pts += _same_as_score(len(same_as)) * 0.4
-
-    pts = min(100, pts)
+    pts = ENTITY_NAME_POINTS * bool(name_consistent) + ENTITY_DESCRIPTION_POINTS * bool(
+        desc_consistent
+    )
+    score = pts * 100.0 / (ENTITY_NAME_POINTS + ENTITY_DESCRIPTION_POINTS)
 
     return {
-        "score": float(pts),
+        "score": round(score, 1),
         "weight": GEO_WEIGHTS["entity_consistency"],
         "auto_measurable": True,
         "raw": {
             "name_consistent": name_consistent,
             "desc_consistent": desc_consistent,
-            "same_as": same_as,
-            "name_variants": name_variants,
-            "desc_variants": desc_variants,
+            "same_as": entity.get("same_as") or [],
+            "name_variants": entity.get("name_variants") or [],
+            "desc_variants": entity.get("description_variants") or [],
         },
     }

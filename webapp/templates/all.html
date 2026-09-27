@@ -9,15 +9,17 @@
       <div class="dash-header-text">
         {% if filter_domain %}
         <h1 class="dash-title">{{ filter_domain }}</h1>
-        <p class="dash-subtitle">Public analysis showing whether AI agents can reach, answer from, and act on this website.</p>
+        <p class="dash-subtitle">Public audit reports: can AI agents reach this site, answer from it, and act on it?</p>
         {% else %}
-        <h1 class="dash-title">Browse analyses</h1>
-        <p class="dash-subtitle">Public reports checking whether AI agents can reach, answer from, and act on sites across
-          real websites.</p>
+        <h1 class="dash-title">Browse audits</h1>
+        <p class="dash-subtitle">Public audit reports: can AI agents reach each site, answer from it, and act on it?</p>
         {% endif %}
       </div>
     </div>
   </header>
+
+  <p class="small">Finished audits run without an account. Reports from signed-in users are never
+    listed. Open a card to see the full report and its ranked fix list.</p>
 
   <!-- Filters -->
   <form method="get" action="/browse" class="filter-bar filter-bar--dashboard"
@@ -30,22 +32,10 @@
     </div>
 
     <div class="filter-field">
-      <label for="f-status">Status</label>
-      <select id="f-status" name="status">
-        <option value="" {% if not filter_status %}selected{% endif %}>Any</option>
-        <option value="pending" {% if filter_status=='pending' %}selected{% endif %}>Pending</option>
-        <option value="running" {% if filter_status=='running' %}selected{% endif %}>Running</option>
-        <option value="succeeded" {% if filter_status=='succeeded' %}selected{% endif %}>Succeeded</option>
-        <option value="failed" {% if filter_status=='failed' %}selected{% endif %}>Failed</option>
-      </select>
-    </div>
-
-    <div class="filter-field">
       <label for="f-sort">Sort by</label>
       <select id="f-sort" name="sort">
-        <option value="recent" {% if sort=='recent' %}selected{% endif %}>Most Recent</option>
-        <option value="emails" {% if sort=='emails' %}selected{% endif %}>Most Emails</option>
-        <option value="pages" {% if sort=='pages' %}selected{% endif %}>Pages</option>
+        <option value="recent" {% if sort=='recent' %}selected{% endif %}>Most recent</option>
+        <option value="pages" {% if sort=='pages' %}selected{% endif %}>Most pages read</option>
       </select>
     </div>
 
@@ -68,7 +58,7 @@
   <div class="results-header results-header--browse">
     <span class="results-count">
       {% if items and items|length > 0 %}
-      Showing {{ items|length }} analyses
+      Showing {{ items|length }} audits
       {% endif %}
     </span>
   </div>
@@ -98,8 +88,8 @@
 
   {% else %}
   <div class="empty-state">
-    <h3>No analyses found</h3>
-    <p>Try adjusting your filters or <a href="/">submit a new URL</a> to start a new analysis.</p>
+    <h3>No audits found</h3>
+    <p>Try another domain, or <a href="/">run a free audit</a>.</p>
   </div>
   {% endif %}
 

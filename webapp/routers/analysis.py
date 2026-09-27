@@ -720,7 +720,7 @@ async def export_analysis(request: Request, ref: str) -> Response:
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     response.headers["Content-Disposition"] = (
-        f'attachment; filename="ai-friendly-report-{safe_filename(row.domain)}.md"'
+        f'attachment; filename="ai-agent-audit-{safe_filename(row.domain)}.md"'
     )
     return response
 

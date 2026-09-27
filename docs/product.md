@@ -2,7 +2,7 @@
 
 ## Elevator Pitch
 
-Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable.
+Find what prevents AI agents from reading your website correctly. MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site.
 
 Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
@@ -38,7 +38,7 @@ Five things determine whether an AI agent can use your website:
 
 - **Most SEO tools measure ranking signals for search engines.** They are not built to answer "can an AI agent use this page?"
 - **Site owners don't know where they stand.** There is no score, no baseline, and no before/after measurement for agent legibility.
-- **Even when they know, they don't know what to fix first.** A 47/100 with 23 findings and no expected impact per fix is not actionable.
+- **Even when they know, they don't know what to fix, so agents can understand your site.** A 47/100 with 23 findings and no expected impact per fix is not actionable.
 - **Agencies and consultants have no proof-of-work artifact.** They make improvements to a client's site but cannot show a clean before/after score with concrete, completed fixes.
 
 ### What MeshWeave does instead

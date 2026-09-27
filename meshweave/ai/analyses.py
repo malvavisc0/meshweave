@@ -14,6 +14,19 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from meshweave.ai.models import (
+    CONTACT_PAGE_POINTS,
+    CONTACT_POINT_SCHEMA_POINTS,
+    LEGAL_ONLY_EMAIL_PENALTY,
+    LEGAL_ONLY_EMAIL_PENALTY_POINTS,
+    LISTED_EMAIL_POINTS,
+    MAILTO_POINTS,
+    OBFUSCATED_EMAIL_PENALTY,
+    OBFUSCATED_EMAIL_PENALTY_POINTS,
+    SAME_DOMAIN_EMAIL_CAP,
+    SAME_DOMAIN_EMAIL_PENALTY,
+    SAME_DOMAIN_EMAIL_POINTS,
+    SOCIAL_LINK_POINTS,
+    THIRD_PARTY_EMAIL_POINTS,
     AAXAnalysisResult,
     AnswerabilityResult,
     ContactabilityResult,
@@ -390,9 +403,8 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     )
     pts, result = _apply_schema_points(pts, result, payload, md_dict, unique_emails)
 
-    pts, penalties = _contactability_penalties(
+    pts, penalty_points = _contactability_penalties(
         pts,
-        [],
         unique_emails=unique_emails,
         has_mailto=result.has_mailto,
         by_url=by_url,
@@ -402,7 +414,8 @@ def _compute_contactability(payload: dict) -> ContactabilityResult:
     )
 
     result.score = max(0.0, min(100.0, float(pts)))
-    result.penalties = penalties
+    result.penalties = list(penalty_points)
+    result.penalty_points = penalty_points
 
     return result
 
@@ -467,17 +480,17 @@ def _apply_contact_points(
     """Award mailto, contact-page, and contact-email points."""
     if _has_mailto_link(sources):
         result.has_mailto = True
-        pts += 10
+        pts += MAILTO_POINTS
 
     if contact_pages:
         result.has_contact_page = True
-        pts += 10
+        pts += CONTACT_PAGE_POINTS
 
     # Email on homepage or contact page. emails_by_url is keyed by the full
     # crawled URL (e.g. "https://example.com/"), so detect the homepage by its
     # root path rather than a literal "/" key.
     if homepage_emails or contact_emails:
-        pts += 15
+        pts += LISTED_EMAIL_POINTS
 
     return pts, result
 
@@ -495,14 +508,14 @@ def _apply_schema_points(
     # JSON-LD ContactPoint
     if _has_contactpoint_schema(all_jsonld):
         result.has_contact_point_schema = True
-        pts += 15
+        pts += CONTACT_POINT_SCHEMA_POINTS
 
     # Social links (sameAs)
     entity = (payload.get("audit") or {}).get("entity") or {}
     same_as = entity.get("same_as") or []
     if same_as:
         result.has_social_links = True
-        pts += 10
+        pts += SOCIAL_LINK_POINTS
 
     if _has_generic_contact_email(unique_emails):
         pts += 10
@@ -516,7 +529,6 @@ def _apply_schema_points(
 
 def _contactability_penalties(
     pts: int,
-    penalties: list[str],
     *,
     unique_emails: list[str],
     has_mailto: bool,
@@ -524,30 +536,39 @@ def _contactability_penalties(
     homepage_emails: list[str],
     contact_emails: list[str],
     same_domain_emails: list[str],
-) -> tuple[int, list[str]]:
-    """Apply contactability point penalties and log their reasons."""
+) -> tuple[int, dict[str, float]]:
+    """Apply contactability penalties; map each reason to the points it cost."""
+    lost: dict[str, float] = {}
     if unique_emails and not has_mailto:
-        pts -= 10
-        penalties.append("All emails are obfuscated-only (no mailto links)")
-
-    # Emails only on legal pages
-    legal_pages = [
-        url
-        for url in by_url
-        if any(p in url.lower() for p in ("privacy", "terms", "legal"))
-    ]
-    if legal_pages and not homepage_emails and not contact_emails:
-        pts -= 15
-        penalties.append(
-            "Emails only found on legal pages (not intended as contact points)"
+        pts = _apply_penalty(
+            pts, lost, OBFUSCATED_EMAIL_PENALTY, OBFUSCATED_EMAIL_PENALTY_POINTS
         )
-
-    # No same-domain emails
+    if _emails_only_on_legal_pages(by_url, homepage_emails, contact_emails):
+        pts = _apply_penalty(
+            pts, lost, LEGAL_ONLY_EMAIL_PENALTY, LEGAL_ONLY_EMAIL_PENALTY_POINTS
+        )
     if not same_domain_emails:
-        pts = min(pts, 20)
-        penalties.append("No same-domain email addresses found")
+        capped = min(pts, SAME_DOMAIN_EMAIL_CAP)
+        lost[SAME_DOMAIN_EMAIL_PENALTY] = float(pts - capped)
+        pts = capped
+    return pts, lost
 
-    return pts, penalties
+
+def _apply_penalty(pts: int, lost: dict[str, float], reason: str, points: int) -> int:
+    """Subtract a penalty, floored at 0, recording the points it removed."""
+    after = max(0, pts - points)
+    lost[reason] = float(pts - after)
+    return after
+
+
+def _emails_only_on_legal_pages(
+    by_url: dict, homepage_emails: list[str], contact_emails: list[str]
+) -> bool:
+    """True when emails appear on legal pages but not homepage/contact."""
+    legal = any(
+        any(p in url.lower() for p in ("privacy", "terms", "legal")) for url in by_url
+    )
+    return legal and not homepage_emails and not contact_emails
 
 
 def _found_as(src: Any) -> list[str]:
@@ -569,10 +590,10 @@ def _score_email_presence(
     """Award points for same-domain vs third-party email presence."""
     if same_domain_emails:
         result.has_email = True
-        return pts + 20, result
+        return pts + SAME_DOMAIN_EMAIL_POINTS, result
     if unique_emails:
         result.has_email = True
-        return pts + 5, result  # Third-party emails only
+        return pts + THIRD_PARTY_EMAIL_POINTS, result
     return pts, result
 
 

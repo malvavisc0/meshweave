@@ -1,6 +1,6 @@
 # MeshWeave Product Overview
 
-Find what prevents AI agents from reading your website correctly. MeshWeave diagnoses inaccessible content and empty or ambiguous copy, then prioritizes the fixes that make the site usable. Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
+Find what prevents AI agents from reading your website correctly. MeshWeave finds the pages, text, and next steps AI agents miss — then tells you what to fix, so agents can understand your site. Every report answers three questions in the agent's journey order: can AI agents reach your site, answer from it, and act on it.
 
 MeshWeave occupies the site side of AI search exclusively. It measures what the website itself makes possible for AI agents and ranks the fixes by expected score impact. Everything that happens inside third-party answer engines — tracking answers, brand mentions, share of voice — is out of scope by design.
 

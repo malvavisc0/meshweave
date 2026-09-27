@@ -44,4 +44,4 @@ webapp = [
 ]
 
 [project.scripts]
-meshweave = "webapp.cli:main"
+meshweave-webapp = "webapp.cli:main"

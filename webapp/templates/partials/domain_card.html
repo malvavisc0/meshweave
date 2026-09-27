@@ -48,7 +48,7 @@
         site.geo_score) and (site.aax_score is none or site.aeo_score <=site.aax_score) else 'geo' if site.geo_score is
         not none and (site.aax_score is none or site.geo_score <=site.aax_score) else 'aax' %} <div
         class="site-card-snapshot mt-2">
-        <p class="site-card-kicker">AI-friendly website snapshot</p>
+        <p class="site-card-kicker">Website audit for AI agents</p>
         <p class="site-card-summary">
             {% if site.aax_score is not none and site.aeo_score is not none and site.aax_score >= 70 and site.aeo_score
             < 55 %} Your offer and next-step signals are stronger than your answers. {% elif site.geo_score is not none and

@@ -395,13 +395,13 @@ class TestReportExport:
         assert "meshweave" not in body
         assert "hello@meshweaveai.com" not in body
         # Unbranded header: domain-titled, no dangling brand separator
-        assert body.startswith("# AI-Friendly Website Report — x.com")
+        assert body.startswith("# Website Audit for AI Agents — x.com")
         # No dangling "contact ." footer
         assert "contact ." not in body
         # Artifact filename names the deliverable
         assert (
             resp.headers["Content-Disposition"]
-            == 'attachment; filename="ai-friendly-report-x.com.md"'
+            == 'attachment; filename="ai-agent-audit-x.com.md"'
         )
 
     @pytest.mark.asyncio
@@ -412,7 +412,7 @@ class TestReportExport:
         resp = await api_v1.get_diff_markdown(_bearer_request(token), cid)
         assert (
             resp.headers["Content-Disposition"]
-            == 'attachment; filename="ai-friendly-diff-x.com.md"'
+            == 'attachment; filename="ai-agent-audit-diff-x.com.md"'
         )
 
 

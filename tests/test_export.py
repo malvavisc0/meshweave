@@ -233,7 +233,7 @@ def test_context_scores_and_sorted_recommendations() -> None:
 # --------------------------------------------------------------------------
 def test_markdown_contains_all_sections_and_identifiers() -> None:
     md = render_export_markdown(_build())
-    assert md.startswith("# MeshWeave — AI-Friendly Website Report")
+    assert md.startswith("# MeshWeave — Website Audit for AI Agents")
     assert "## Executive Summary" in md
     assert "## Scores" in md
     assert "## Recommendations" in md

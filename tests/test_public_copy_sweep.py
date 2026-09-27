@@ -29,6 +29,11 @@ os.environ.setdefault("SQLITE_PATH", "/tmp/kilo/meshweave-test-db/webapp.sqlite3
 
 from fastapi_stub import load_api_v1_module
 
+from meshweave.ai.models import (
+    LEGAL_ONLY_EMAIL_PENALTY,
+    OBFUSCATED_EMAIL_PENALTY,
+    SAME_DOMAIN_EMAIL_PENALTY,
+)
 from meshweave.scoring.interpretation import interpret_profile
 from meshweave.scoring.ratings import aax_rating, aeo_rating, geo_rating
 from meshweave.scoring.recommendations import generate_recommendations
@@ -52,20 +57,38 @@ RETIRED = re.compile(
     r"|recommendability|ai visibility"
     r"|answer engine optimization|generative engine optimization"
     r"|ai agent experience"
-    r"|agent[- ]readability",
+    r"|agent[- ]readability"
+    r"|ai[- ]friendly",
     re.IGNORECASE,
 )
 
-# Standing vocabulary: these words must never describe a site's standing.
-STANDING = re.compile(
-    r"\binvisib\w*|\bcit(?:ed|es?|ations?)\b|\bquoted\b|\brecommended\b"
-    r"|\bdominant\b|\bcompetitive\b|\bcompetitors?\b",
+# Standing vocabulary: words whose only use in our copy would be to rate a
+# site's standing in outside systems. Ordinary nouns ("recommended fixes",
+# "sources cited", "competitors") are not claims and are not listed.
+STANDING = re.compile(r"\binvisib\w*|\bdominant\b", re.IGNORECASE)
+
+# External-outcome promises: copy must never promise what outside systems
+# (AI answers, search engines) will do for the business. Claims, not nouns.
+PROMISE = re.compile(
+    r"\brecommend(?:s|ed)? (?:you|your)\b"
+    r"|\bget (?:you |your (?:site|brand|business) )?(?:cited|recommended|mentioned)\b"
+    r"|\bbe (?:cited|recommended|mentioned)\b"
+    r"|\brank(?:s|ing)? higher\b"
+    r"|\bmore (?:traffic|visitors|leads|sales|conversions)\b"
+    r"|\bincrease (?:your )?(?:traffic|conversions?|sales|leads)\b"
+    r"|\bappear in (?:ai|chatgpt)\b"
+    r"|\bguarantee(?:s|d)? (?:you|your|that|to)\b",
     re.IGNORECASE,
 )
 
-# External-outcome promises: a fix must never promise that outside
-# systems will recommend the business.
-PROMISE = re.compile(r"\brecommend(?:s|ed)? (?:you|your)\b", re.IGNORECASE)
+# The one sentence allowed to name the market's category terms, so buyers
+# and agents searching for them can place MeshWeave. Exempt verbatim, and
+# only on the surfaces listed; anywhere else the normal rules apply.
+CATEGORY_SENTENCE = (
+    "Some call this GEO or AEO. MeshWeave covers the site-side part, "
+    "not AI visibility tracking."
+)
+CATEGORY_SURFACES = {"home.html", "llms.txt"}
 
 PATTERNS = (
     (ACRONYMS, "internal acronym"),
@@ -188,7 +211,33 @@ def _stub_row() -> SimpleNamespace:
 
 def test_raw_copy_sources_are_clean() -> None:
     for path in RAW_SOURCES:
-        _scan_text(path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        if path.name in CATEGORY_SURFACES:
+            text = text.replace(CATEGORY_SENTENCE, "")
+        _scan_text(path.relative_to(ROOT).as_posix(), text)
+
+
+def test_category_sentence_only_on_allowed_surfaces() -> None:
+    for path in RAW_SOURCES:
+        if path.name not in CATEGORY_SURFACES:
+            assert CATEGORY_SENTENCE not in path.read_text(encoding="utf-8"), path
+
+
+def test_promise_pattern_catches_claims_not_nouns() -> None:
+    for claim in (
+        "Get cited by ChatGPT",
+        "Rank higher in AI answers",
+        "Get more traffic from AI",
+        "We guarantee your results",
+    ):
+        assert _violations(claim), claim
+    for honest in (
+        "Recommended fixes",
+        "Sources cited: 6sense, 2025",
+        "We do not track competitors.",
+        "Scope and price quoted by email",
+    ):
+        assert not _violations(honest), honest
 
 
 def test_rendered_exports_are_clean() -> None:
@@ -266,10 +315,10 @@ def test_export_titles_name_the_deliverable() -> None:
     unbranded = render_export_markdown(
         build_export_context(row, site_name="", contact_email="")
     )
-    assert branded.startswith("# MeshWeave \u2014 AI-Friendly Website Report")
-    assert unbranded.startswith("# AI-Friendly Website Report \u2014 example.com")
+    assert branded.startswith("# MeshWeave \u2014 Website Audit for AI Agents")
+    assert unbranded.startswith("# Website Audit for AI Agents \u2014 example.com")
     diff = render_diff_markdown({}, row, None)
-    assert diff.startswith("# AI-Friendly Progress Report \u2014 example.com")
+    assert diff.startswith("# Before/After Audit Report \u2014 example.com")
 
 
 # ── API JSON responses (public preview, v1 private contract and diff) ──
@@ -351,7 +400,14 @@ def _recommendation_scenarios() -> list[tuple[dict, dict, dict, dict]]:
     }
     geo = {
         "eeat": {"score": 20.0, "raw": {"has_org_schema": False}},
-        "entity_consistency": {"score": 15.0, "raw": {"same_as": []}},
+        "entity_consistency": {
+            "score": 0.0,
+            "raw": {"same_as": [], "name_variants": ["Acme", "Acme Inc"]},
+        },
+        "topical_authority": {
+            "score": 20.0,
+            "raw": {"coverage_pct": 10, "schema_types_count": 1},
+        },
         "crawl_access": {
             "score": 25.0,
             "raw": {
@@ -361,19 +417,38 @@ def _recommendation_scenarios() -> list[tuple[dict, dict, dict, dict]]:
                 "sitemap_count": 0,
             },
         },
-        "content_depth": {"score": 25.0, "raw": {"avg_words": 150}},
+        "content_depth": {
+            "score": 25.0,
+            "raw": {
+                "avg_words": 150,
+                "page_words": {"https://a/": 120},
+                "pages_with_code": 0,
+                "pages_with_tables": 0,
+            },
+        },
     }
     aax = {
         "homepage_comprehension": {
             "score": 30.0,
             "raw": {"clarity": "unclear", "information_density": "sparse"},
         },
-        "content_delta": {"score": 25.0, "raw": {"weaknesses": ["pricing"]}},
+        "content_delta": {
+            "score": 25.0,
+            "raw": {"weaknesses": ["No price stated"], "completeness": "adequate"},
+        },
         "meta_optimization": {
             "score": 25.0,
             "raw": {"completeness": "minimal", "clarity": "unclear"},
         },
         "email_validation": {"score": 20.0, "raw": {"confidence": "low"}},
+        "contactability": {"score": 15.0, "raw": {}},
+    }
+    confirmed_email = {
+        "score": 60.0,
+        "raw": {
+            "confidence": "high",
+            "valid_contacts": [{"email": "a@b.c", "contact_type": "general"}],
+        },
     }
     payload = {
         "audit": {
@@ -401,6 +476,17 @@ def _recommendation_scenarios() -> list[tuple[dict, dict, dict, dict]]:
         "has_mailto": False,
         "has_contact_page": False,
     }
+    penalised = {
+        "score": 20.0,
+        "has_email": True,
+        "has_mailto": False,
+        "has_contact_page": True,
+        "penalty_points": {
+            OBFUSCATED_EMAIL_PENALTY: 10.0,
+            LEGAL_ONLY_EMAIL_PENALTY: 15.0,
+            SAME_DOMAIN_EMAIL_PENALTY: 30.0,
+        },
+    }
     return [
         (
             aeo,
@@ -409,6 +495,12 @@ def _recommendation_scenarios() -> list[tuple[dict, dict, dict, dict]]:
             {**payload, "scores": {"aax": {"contactability": contactability}}},
         ),
         (aeo, geo, aax, {**payload, "aax": {"contactability": contactability}}),
+        (
+            aeo,
+            geo,
+            {**aax, "email_validation": confirmed_email},
+            {**payload, "scores": {"aax": {"contactability": penalised}}},
+        ),
     ]
 
 

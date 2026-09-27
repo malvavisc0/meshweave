@@ -36,7 +36,7 @@ async def llms_txt(request: Request):
         return (
             f"Site: {base}\n"
             "Product: MeshWeave\n"
-            "Summary: AI-friendly website analysis \u2014 can AI agents reach, "
+            "Summary: Website audit for AI agents \u2014 can AI agents reach, "
             "answer from, and act on the site.\n"
         )
 
@@ -397,7 +397,7 @@ def _build_json_ld(request: Request, site_name: str, abs_page_url: str) -> str |
             "@context": "https://schema.org",
             "@type": "SoftwareApplication",
             "name": site_name,
-            "applicationCategory": "DataExtraction",
+            "applicationCategory": "BusinessApplication",
             "url": abs_page_url,
             "softwareVersion": (os.getenv("APP_VERSION", "v1") or "v1"),
             "author": {
@@ -405,27 +405,27 @@ def _build_json_ld(request: Request, site_name: str, abs_page_url: str) -> str |
                 "name": site_name,
                 "url": abs_page_url,
             },
-            "dateModified": "2026-08-27",
             "provider": {"@type": "Organization", "name": site_name},
             "description": (
                 "Find what prevents AI agents from reading your website correctly. "
-                "MeshWeave diagnoses inaccessible content and empty or "
-                "ambiguous copy, then prioritizes the fixes that make the "
-                "site usable."
+                "MeshWeave finds the pages, text, and next steps AI agents "
+                "miss \u2014 then tells you what to fix, so agents can "
+                "understand your site."
             ),
             "featureList": [
-                "AI-friendly website analysis",
-                "Answer-extractability diagnostics",
-                "Entity consistency and crawl-access auditing",
-                "Prioritized remediation roadmap",
+                "Website audit for AI agents",
+                "Checks whether AI crawlers can reach your pages",
+                "Checks whether agents can answer questions from your content",
+                "Checks whether agents can find how to buy or contact you",
+                "Fix list ranked by expected score impact",
             ],
             "offers": {
                 "@type": "Offer",
-                "name": "Free site analysis",
+                "name": "Free website audit",
                 "price": "0",
                 "priceCurrency": "USD",
                 "description": (
-                    "Running a site analysis is free. Expert-guided audits "
+                    "A website audit is free. Expert-guided audits "
                     "and remediation roadmaps are priced per engagement."
                 ),
             },
@@ -451,9 +451,9 @@ def _session_params(request: Request) -> tuple[str, str, bool]:
 def _seo_params(site_name: str) -> tuple[str, str]:
     page_title = f"{site_name} — Find what prevents AI agents from reading your website correctly"
     meta_description = (
-        "Run a free AI-friendly website analysis. MeshWeave diagnoses inaccessible "
-        "content and empty or ambiguous copy, then prioritizes the fixes that "
-        "make the site usable."
+        "Run a free website audit. MeshWeave finds the pages, text, "
+        "and next steps AI agents miss \u2014 then tells you what to fix, "
+        "so agents understand your site."
     )
     return page_title, meta_description
 

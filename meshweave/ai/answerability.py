@@ -183,26 +183,75 @@ def _question_record(
             error=str(result),
         )
     source_pages = _grounded_pages(result.source_pages, known_urls)
+    verdict = result.verdict
+    if not source_pages and verdict in _SUPPORTED_VERDICTS:
+        # A claimed answer with no crawled page behind it is not grounded;
+        # record it as unsupported so the stored verdict matches the score.
+        verdict = "unsupported"
     return AnswerabilityQuestionResult(
         question_id=question.id,
         question=question.text,
         # Grounding rule: the answer is stored only with supporting
         # pages from the crawl.
         answer=result.answer if source_pages else "",
-        verdict=result.verdict,
+        verdict=verdict,
         source_pages=source_pages,
         missing_facts=result.missing_facts,
     )
 
 
-def _grounded_pages(source_pages: list[str], known_urls: set[str]) -> list[str]:
-    """Supporting pages restricted to the crawled pages, in report order."""
+def _grounded_pages(citations: list[str], known_urls: set[str]) -> list[str]:
+    """Supporting pages restricted to the crawled pages, in report order.
+
+    Citations are matched after light normalization, so the same page
+    returned with a different scheme, a missing trailing slash, or as a
+    bare path still counts as grounded. Unknown pages never match.
+    """
+    from urllib.parse import urlparse
+
+    by_key: dict[tuple[str, str], str] = {}
+    by_path: dict[str, str] = {}
+    for url in sorted(known_urls):
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            continue
+        path = parsed.path or "/"
+        if len(path) > 1:
+            path = path.rstrip("/")
+        by_key.setdefault((parsed.netloc.lower(), path), url)
+        by_path.setdefault(path, url)
+
+    def resolve(citation: str) -> str | None:
+        cite = str(citation or "").strip()
+        if not cite:
+            return None
+        if "://" in cite:
+            parsed = urlparse(cite)
+        elif cite.startswith("//"):
+            parsed = urlparse("http:" + cite)
+        elif cite.startswith("/"):
+            path = cite if len(cite) > 1 else "/"
+            return by_path.get(path.rstrip("/") or "/")
+        elif "/" in cite:
+            parsed = urlparse("http://" + cite)
+        else:
+            if "." not in cite:
+                return None
+            return by_path.get("/")
+        if not parsed.netloc:
+            return None
+        path = parsed.path or "/"
+        if len(path) > 1:
+            path = path.rstrip("/")
+        return by_key.get((parsed.netloc.lower(), path))
+
     seen: set[str] = set()
     grounded: list[str] = []
-    for page in source_pages:
-        if page in known_urls and page not in seen:
-            seen.add(page)
-            grounded.append(page)
+    for citation in citations or []:
+        matched = resolve(citation)
+        if matched and matched not in seen:
+            seen.add(matched)
+            grounded.append(matched)
     return grounded
 
 

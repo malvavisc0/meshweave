@@ -6,8 +6,8 @@ fastapi / sqlalchemy / prometheus_client imports so the logic is unit-testable
 without the webapp runtime stack installed.
 
 Rendered artifacts carry the deliverable name, never external-outcome
-positioning: the report is the "AI-Friendly Website Report" and the diff is the
-"AI-Friendly Progress Report". Internal score-group keys stay in context
+positioning: the report is the "Website Audit for AI Agents" and the diff is the
+"Before/After Audit Report". Internal score-group keys stay in context
 keys; rendered copy only shows the public check labels (Reachable, Answerable,
 Actionable).
 """
@@ -167,9 +167,9 @@ def _md_cell(value) -> str:
 def _md_header(ctx: dict) -> str:
     site_name = (ctx.get("site_name") or "").strip()
     title = (
-        f"# {site_name} — AI-Friendly Website Report"
+        f"# {site_name} — Website Audit for AI Agents"
         if site_name
-        else f"# AI-Friendly Website Report — {ctx['domain']}"
+        else f"# Website Audit for AI Agents — {ctx['domain']}"
     )
     lines = [
         title,
@@ -385,7 +385,7 @@ def _diff_answerability_movement(row, old_row) -> list[str]:
 
 def render_diff_markdown(payload: dict, row, old_row) -> str:
     """Serialize the diff as a clean Markdown evidence pack."""
-    lines = [f"# AI-Friendly Progress Report — {row.domain}", ""]
+    lines = [f"# Before/After Audit Report — {row.domain}", ""]
     if not old_row:
         lines.append("_No previous revision to compare against yet._")
         lines.append("")

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from meshweave.scoring import aax_fields
 from meshweave.scoring import aeo as aeo_mod
 from meshweave.scoring import geo as geo_mod
 from meshweave.scoring.composite import (
@@ -141,23 +142,17 @@ def _add_homepage_comprehension_factor(
     hc = aax_result.get("homepage_comprehension")
     if not hc:
         return
-    from meshweave.ai.runner import CLARITY_MAP, DENSITY_MAP
-
-    clarity = CLARITY_MAP.get(hc.get("clarity", "unclear"), 20)
-    density = DENSITY_MAP.get(hc.get("information_density", "sparse"), 30)
+    clarity = aax_fields.CLARITY_MAP.get(hc.get("clarity", "unclear"), 20)
+    density = aax_fields.DENSITY_MAP.get(hc.get("information_density", "sparse"), 30)
     remember = 100 if hc.get("would_remember") else 0
-    fields_filled = sum(
-        1
-        for k in ("brand", "product", "target_audience", "call_to_action")
-        if hc.get(k)
-    )
-    field_score = (fields_filled / 4) * 100
+    fields_filled = sum(1 for k in aax_fields.HOMEPAGE_FIELDS if hc.get(k))
+    field_score = (fields_filled / len(aax_fields.HOMEPAGE_FIELDS)) * 100
     features_score = min(len(hc.get("key_features", [])) * 15, 60)
     factors["homepage_comprehension"] = {
         "score": min(
             100.0,
             float(
-                field_score * 0.4
+                field_score * aax_fields.HOMEPAGE_FIELD_WEIGHT
                 + clarity * 0.2
                 + density * 0.2
                 + features_score * 0.1
@@ -178,11 +173,11 @@ def _add_meta_optimization_factor(
     mo = aax_result.get("meta_optimization")
     if not mo:
         return
-    from meshweave.ai.runner import CLARITY_MAP, COMPLETENESS_MAP, LLM_OPT_MAP
-
-    completeness = COMPLETENESS_MAP.get(mo.get("completeness", "minimal"), 20)
-    clarity = CLARITY_MAP.get(mo.get("clarity", "unclear"), 20)
-    llm_opt = LLM_OPT_MAP.get(mo.get("llm_optimization", "poor"), 20)
+    completeness = aax_fields.COMPLETENESS_MAP.get(
+        mo.get("completeness", "minimal"), 20
+    )
+    clarity = aax_fields.CLARITY_MAP.get(mo.get("clarity", "unclear"), 20)
+    llm_opt = aax_fields.LLM_OPT_MAP.get(mo.get("llm_optimization", "poor"), 20)
     click = 100 if mo.get("would_click_through") else 0
     factors["meta_optimization"] = {
         "score": min(
@@ -203,39 +198,27 @@ def _add_content_delta_factor(
     cd = aax_result.get("content_delta")
     if not cd:
         return
-    from meshweave.ai.runner import COHERENCE_MAP, CONTENT_COMPLETENESS_MAP
-
-    coherence = COHERENCE_MAP.get(cd.get("coherence", "somewhat_consistent"), 60)
-    completeness = CONTENT_COMPLETENESS_MAP.get(
+    coherence = aax_fields.COHERENCE_MAP.get(
+        cd.get("coherence", "somewhat_consistent"), 60
+    )
+    completeness = aax_fields.CONTENT_COMPLETENESS_MAP.get(
         cd.get("completeness", "incomplete"), 20
     )
     # Info richness: how many fields were extracted
-    richness_score = _content_richness_score(cd)
+    richness_score = aax_fields.richness_score(cd)
     factors["content_delta"] = {
         "score": min(
             100.0,
-            float(richness_score * 0.4 + coherence * 0.3 + completeness * 0.3),
+            float(
+                richness_score * aax_fields.RICHNESS_WEIGHT
+                + coherence * aax_fields.COHERENCE_WEIGHT
+                + completeness * aax_fields.COMPLETENESS_WEIGHT
+            ),
         ),
         "weight": AAX_WEIGHTS["content_delta"],
         "auto_measurable": True,
         "raw": cd,
     }
-
-
-def _content_richness_score(cd: dict[str, Any]) -> float:
-    """Score for how many extractable content fields the pages filled."""
-    product = cd.get("product") or {}
-    pricing = cd.get("pricing") or {}
-    richness = sum(
-        [
-            bool((cd.get("company") or {}).get("name")),
-            bool(product.get("name")),
-            bool(pricing.get("model")),
-            bool(cd.get("target_audience")),
-            bool(cd.get("strengths")),
-        ]
-    )
-    return (richness / 5) * 100
 
 
 def _add_email_validation_factor(
@@ -246,9 +229,7 @@ def _add_email_validation_factor(
     ev = aax_result.get("email_validation")
     if not ev:
         return
-    from meshweave.ai.runner import CONFIDENCE_MAP
-
-    confidence = CONFIDENCE_MAP.get(ev.get("confidence", "low"), 30)
+    confidence = aax_fields.CONFIDENCE_MAP.get(ev.get("confidence", "low"), 30)
     contacts = ev.get("valid_contacts") or []
     presence = _email_presence_points(contacts)
     best_type = _email_type_points(contacts)
@@ -285,22 +266,16 @@ def _email_presence_points(contacts: list) -> float:
     # Presence saturates quickly: one contact earns most of the
     # presence points, a second adds a little, more add nothing —
     # quantity must not outweigh quality.
-    return min(30.0, 20.0 + 10.0 * min(len(contacts) - 1, 1))
-
-
-# Best contact-type score awarded for a valid contact
-_EMAIL_TYPE_SCORES: dict[str, int] = {
-    "sales": 25,
-    "support": 20,
-    "general": 15,
-    "legal": 5,
-    "invalid": 0,
-}
+    extra = aax_fields.SECOND_CONTACT_POINTS * min(len(contacts) - 1, 1)
+    return aax_fields.FIRST_CONTACT_POINTS + extra
 
 
 def _email_type_points(contacts: list) -> int:
     """Best contact-type score among the valid contacts."""
     return max(
-        (_EMAIL_TYPE_SCORES.get(c.get("contact_type", "invalid"), 0) for c in contacts),
+        (
+            aax_fields.EMAIL_TYPE_SCORES.get(c.get("contact_type", "invalid"), 0)
+            for c in contacts
+        ),
         default=0,
     )

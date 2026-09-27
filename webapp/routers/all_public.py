@@ -219,18 +219,17 @@ def _serialize_cell(row: Crawl, email_count, page_count) -> dict:
     }
 
 
-def _base_results_query(s: Session, dom, st):
-    """Base filtered query for public listed crawls."""
+def _base_results_query(s: Session, dom):
+    """Base query for public listed crawls with a finished report."""
     q = s.query(Crawl).filter(
         Crawl.visibility == "public",
         Crawl.user_id.is_(None),
         Crawl.listed,
         Crawl.key.is_not(None),
+        Crawl.status == "succeeded",
     )
     if dom:
         q = q.filter(Crawl.domain == dom)
-    if st:
-        q = q.filter(Crawl.status == st)
     return q
 
 
@@ -264,16 +263,10 @@ def _normalize_domain(domain: str | None) -> str | None:
     return dom
 
 
-def _normalize_status(status: str | None) -> str | None:
-    """Validate the status filter against allowed values."""
-    allowed_status = {"pending", "running", "succeeded", "failed"}
-    return status if (status and status in allowed_status) else None
-
-
 def _normalize_sort(sort: str | None) -> str:
-    """Coerce sort to one of {recent, emails, pages}."""
+    """Coerce sort to one of {recent, pages}."""
     srt = (sort or "recent").lower()
-    return srt if srt in {"recent", "emails", "pages"} else "recent"
+    return srt if srt in {"recent", "pages"} else "recent"
 
 
 def _normalize_direction(dir: str | None) -> str:
@@ -284,14 +277,7 @@ def _normalize_direction(dir: str | None) -> str:
 
 def _sort_row_counts(row_counts: list, srt: str) -> None:
     """Sort (counts, row) pairs in place for the requested aggregation."""
-    if srt == "emails":
-        row_counts.sort(
-            key=lambda x: (
-                -x[0][0],
-                x[1].updated_at or datetime.min.replace(tzinfo=UTC),
-            )
-        )
-    elif srt == "pages":
+    if srt == "pages":
         row_counts.sort(
             key=lambda x: (
                 -x[0][1],
@@ -309,18 +295,14 @@ def _sort_row_counts(row_counts: list, srt: str) -> None:
 def _aggregate_items(
     s: Session,
     dom: str | None,
-    st: str | None,
-    has_emails: bool,
     srt: str,
     page_size: int,
 ) -> tuple[list[dict], bool, bool]:
     """Build card items via aggregation ordering (non-recent, non-cursor)."""
-    q = _base_results_query(s, dom, st)
+    q = _base_results_query(s, dom)
     rows_db_raw = q.options(joinedload(Crawl.score_snapshot)).limit(500).all()
 
     row_counts = [(_counts_from_payload(r), r) for r in rows_db_raw]
-    if has_emails:
-        row_counts = [(c, r) for c, r in row_counts if c[0] > 0]
     _sort_row_counts(row_counts, srt)
 
     rows_db = [(r, ec, pc) for (ec, pc), r in row_counts[:page_size]]
@@ -375,11 +357,9 @@ def _recent_count_maps(rows_db_recent: list) -> tuple[dict, dict]:
     return email_counts_map, page_counts_map
 
 
-def _recent_page_rows(
-    s: Session, dom, st, has_emails, cursor_ts, cursor_id, direction, page_size
-):
+def _recent_page_rows(s: Session, dom, cursor_ts, cursor_id, direction, page_size):
     """Query recent crawl rows with keyset pagination and count maps."""
-    q = _base_results_query(s, dom, st)
+    q = _base_results_query(s, dom)
     q = _apply_cursor_filters(q, cursor_ts, cursor_id, direction)
 
     rows_db_recent = (
@@ -394,8 +374,6 @@ def _recent_page_rows(
 def _recent_items(
     s: Session,
     dom: str | None,
-    st: str | None,
-    has_emails: bool,
     cursor_ts,
     cursor_id,
     direction: str,
@@ -403,7 +381,7 @@ def _recent_items(
 ) -> tuple[list[dict], str | None, str | None, bool, bool]:
     """Build card items and prev/next URLs for recent keyset pagination."""
     rows_db_recent, email_counts, page_counts = _recent_page_rows(
-        s, dom, st, has_emails, cursor_ts, cursor_id, direction, page_size
+        s, dom, cursor_ts, cursor_id, direction, page_size
     )
 
     more = len(rows_db_recent) > page_size
@@ -414,7 +392,7 @@ def _recent_items(
     ]
 
     prev_url, next_url, has_prev, has_next = _recent_nav(
-        dom, st, has_emails, cursor_ts, cursor_id, direction, page_size, rows, more
+        dom, cursor_ts, cursor_id, direction, page_size, rows, more
     )
 
     return items, prev_url, next_url, has_prev, has_next
@@ -462,8 +440,6 @@ def _nav_urls(
 
 def _recent_nav(
     dom: str | None,
-    st: str | None,
-    has_emails: bool,
     cursor_ts,
     cursor_id,
     direction: str,
@@ -479,7 +455,7 @@ def _recent_nav(
     if not rows:
         return prev_url, next_url, has_prev, has_next
 
-    base_params = _nav_base_params(dom, st, has_emails, page_size)
+    base_params = _nav_base_params(dom, page_size)
     first, last = _nav_endpoint_rows(rows, cursor_ts, cursor_id, direction)
     prev_url, next_url, has_prev, has_next = _nav_urls(
         base_params, cursor_ts, cursor_id, direction, first, last, more
@@ -488,17 +464,11 @@ def _recent_nav(
     return prev_url, next_url, has_prev, has_next
 
 
-def _nav_base_params(
-    dom: str | None, st: str | None, has_emails: bool, page_size: int
-) -> dict:
+def _nav_base_params(dom: str | None, page_size: int) -> dict:
     """Base query params shared by all keyset nav URLs."""
     base_params: dict = {"page_size": str(page_size), "sort": "recent"}
     if dom:
         base_params["domain"] = dom
-    if st:
-        base_params["status"] = st
-    if has_emails:
-        base_params["has_emails"] = "1"
     return base_params
 
 
@@ -510,38 +480,26 @@ def _with_cursor(base_params: dict, nav_dir: str, row: Crawl) -> tuple[str, bool
     return "/browse?" + urlencode(params), True
 
 
-def _page_title_text(dom: str | None, st: str | None, srt: str, site_name: str) -> str:
+def _page_title_text(dom: str | None, srt: str, site_name: str) -> str:
     """Build the SEO title for the browse page."""
-    title_bits = ["Public AI-friendly website analyses"]
+    title_bits = ["Public website audits for AI agents"]
     if dom:
         title_bits.append(f"for {dom}")
-    if st:
-        title_bits.append(f"(status {st})")
-    if srt and srt != "recent":
-        title_bits.append(f"— sorted by {srt}")
+    if srt == "pages":
+        title_bits.append("— sorted by pages read")
     return " ".join(title_bits) + f" — {site_name}"
 
 
-def _meta_description_text(dom: str | None, st: str | None) -> str:
+def _meta_description_text(dom: str | None) -> str:
     """Build the meta description for the browse page."""
-    if dom and st:
-        return (
-            f"Browse AI-friendly website analyses for {dom} with status {st}. "
-            "See whether agents can reach, answer from, and act on it."
-        )
     if dom:
         return (
-            f"Browse AI-friendly website analyses for {dom}. See how this site "
-            "performs across the factors AI engines care about."
-        )
-    if st:
-        return (
-            f"Browse public AI-friendly website analyses filtered by status {st}. "
-            "See analyses from the community."
+            f"Public audit reports for {dom}: can AI agents reach this site, "
+            "answer from it, and act on it?"
         )
     return (
-        "Browse AI-friendly website analyses submitted by the community. "
-        "See how sites perform across the factors AI engines care about."
+        "Public audit reports from MeshWeave: can AI agents reach each site, "
+        "answer from it, and act on it?"
     )
 
 
@@ -549,9 +507,7 @@ def _items_json_ld(items: list[dict], dom: str | None, request: Request) -> str 
     """Build the ItemList JSON-LD for search engine discovery."""
     try:
         list_name = (
-            f"Public AI Search Analyses for {dom}"
-            if dom
-            else "Public AI Search Analyses"
+            f"Public website audits for {dom}" if dom else "Public website audits"
         )
         elements = []
         for it in items:
@@ -559,14 +515,13 @@ def _items_json_ld(items: list[dict], dom: str | None, request: Request) -> str 
                 elements.append(
                     {
                         "@type": "CreativeWork",
-                        "name": f"Analysis for {it.get('domain') or 'site'}",
+                        "name": f"Audit for {it.get('domain') or 'site'}",
                         "identifier": it.get("key", ""),
                         "about": str(it.get("domain") or "").strip(),
                         "url": _abs_url(request, f"/analysis/{it.get('key', '')}"),
                         "dateModified": str(it.get("updated_at", ""))[:19],
                         "keywords": [
-                            "AI-friendly website",
-                            "site analysis",
+                            "website audit",
                             "AI agents",
                         ],
                     }
@@ -585,13 +540,11 @@ def _items_json_ld(items: list[dict], dom: str | None, request: Request) -> str 
         return None
 
 
-def _canonical_browse_path(dom: str | None, st: str | None) -> str:
-    """Canonical /browse path retaining only the domain/status filters."""
+def _canonical_browse_path(dom: str | None) -> str:
+    """Canonical /browse path retaining only the domain filter."""
     canonical_params = {}
     if dom:
         canonical_params["domain"] = dom
-    if st:
-        canonical_params["status"] = st
     canonical_path = "/browse"
     if canonical_params:
         canonical_path = canonical_path + "?" + urlencode(canonical_params)
@@ -604,10 +557,8 @@ async def view_all(
     page: int = 1,
     page_size: int = 12,
     domain: str | None = None,
-    status: str | None = None,
     cursor: str | None = None,
     dir: str | None = "next",
-    has_emails: bool = False,
     sort: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -615,15 +566,13 @@ async def view_all(
 
     Query parameters:
       - domain: exact host (lowercase, 'www.' stripped)
-      - status: one of {'pending','running','succeeded','failed'}
-      - has_emails: boolean; if true only show rows with email_count > 0
-      - sort: one of {'recent','emails','pages'}
+      - sort: one of {'recent','pages'}
+    Only finished (succeeded) reports are listed.
       - cursor/dir: keyset pagination for 'recent' sort only
     """
     # Normalize inputs
     page_size = _normalize_page_size(page_size)
     dom = _normalize_domain(domain)
-    st = _normalize_status(status)
     srt = _normalize_sort(sort)
     direction = _normalize_direction(dir)
     cursor_ts, cursor_id = _parse_cursor(cursor)
@@ -636,21 +585,19 @@ async def view_all(
 
     with contextlib.nullcontext(db) as s:
         if srt != "recent" and not cursor:
-            items, has_prev, has_next = _aggregate_items(
-                s, dom, st, has_emails, srt, page_size
-            )
+            items, has_prev, has_next = _aggregate_items(s, dom, srt, page_size)
         else:
             items, prev_url, next_url, has_prev, has_next = _recent_items(
-                s, dom, st, has_emails, cursor_ts, cursor_id, direction, page_size
+                s, dom, cursor_ts, cursor_id, direction, page_size
             )
 
     # SEO
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-    page_title = _page_title_text(dom, st, srt, site_name)
-    meta_description = _meta_description_text(dom, st)
+    page_title = _page_title_text(dom, srt, site_name)
+    meta_description = _meta_description_text(dom)
 
-    # Canonical: keep domain/status only; exclude cursor/page_size/sort/has_emails
-    canonical_path = _canonical_browse_path(dom, st)
+    # Canonical: keep domain only; exclude cursor/page_size/sort
+    canonical_path = _canonical_browse_path(dom)
     abs_page_url = _abs_url(request, canonical_path)
 
     og_image_url = os.getenv("OG_IMAGE_URL") or None
@@ -672,8 +619,6 @@ async def view_all(
             "abs_prev_url": _abs_url(request, prev_url) if prev_url else None,
             "abs_next_url": _abs_url(request, next_url) if next_url else None,
             "filter_domain": dom or "",
-            "filter_status": st or "",
-            "filter_has_emails": bool(has_emails),
             "sort": srt,
             "site_name": site_name,
             "page_title": page_title,

@@ -1726,6 +1726,18 @@ p.card-meta {
   text-align: center;
 }
 
+ul.cta-banner-copy {
+  display: table;
+  margin: var(--space-sm) auto 0;
+  max-width: 40rem;
+  padding-left: 1.25em;
+  text-align: left;
+}
+
+ul.cta-banner-copy li + li {
+  margin-top: var(--space-xs);
+}
+
 .result-bottom-cta {
   text-align: center;
 }
@@ -1877,10 +1889,6 @@ p.card-meta {
   .landing-hero-layout {
     grid-template-columns: 1fr;
     gap: var(--space-xl);
-  }
-
-  .landing-hero-form {
-    max-width: 640px;
   }
 }
 

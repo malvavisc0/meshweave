@@ -9,7 +9,10 @@ from meshweave.scoring.composite import (
     weighted_composite,
 )
 from meshweave.scoring.engine import compute_scores
-from meshweave.scoring.recommendations import generate_recommendations
+from meshweave.scoring.recommendations import (
+    generate_recommendations,
+    priority_for_points,
+)
 
 
 def _geo_factors(**overrides: float | None) -> dict[str, dict]:
@@ -79,13 +82,11 @@ class TestGEORecommendationOrdering:
             },
         }
 
-    def test_org_and_llms_outrank_sameas(self):
+    def test_org_and_llms_fixes_carry_points_and_no_sameas_fix(self):
         payload = self._geo_zero_payload()
         scores = compute_scores(payload)
         geo_factors = scores["geo"]["factors"]
-        # Force the rec-triggering raw shapes with zero scores.
         geo_factors["eeat"]["raw"] = _eeat_raw()
-        geo_factors["entity_consistency"]["raw"] = {"same_as": []}
         geo_factors["crawl_access"]["raw"] = {
             "llms_txt_exists": False,
             "robots_exists": True,
@@ -94,33 +95,13 @@ class TestGEORecommendationOrdering:
         }
 
         recs = generate_recommendations({}, geo_factors, payload=payload)
-        titles = [r["title"] for r in recs if r["expected_points"] is not None]
+        titles = [r["title"] for r in recs]
 
         assert "Publish an llms.txt file" in titles
         assert "Add Organization JSON-LD schema" in titles
-        assert "Add sameAs links to your Organization schema" in titles
-
-        by_title = {r["title"]: r for r in recs}
-        org_pts = by_title["Add Organization JSON-LD schema"]["expected_points"]
-        llms_pts = by_title["Publish an llms.txt file"]["expected_points"]
-        sameas_pts = by_title["Add sameAs links to your Organization schema"][
-            "expected_points"
-        ]
-        # Crawl access carries 0.30 weight: the llms.txt fix (+15 on
-        # crawl_access) and the org-schema fix (+30 on eeat) both move GEO
-        # ~3.4 points and outrank the sameAs fix (+16 on entity_consistency
-        # at 0.20 weight).
-        assert org_pts is not None and llms_pts is not None
-        assert sameas_pts is not None
-        assert llms_pts > sameas_pts
-        assert org_pts > sameas_pts
-        # And the ordering in the returned list follows the points.
-        assert titles.index("Publish an llms.txt file") < titles.index(
-            "Add sameAs links to your Organization schema"
-        )
-        assert titles.index("Add Organization JSON-LD schema") < titles.index(
-            "Add sameAs links to your Organization schema"
-        )
+        assert not any("sameAs" in r["title"] + r["detail"] for r in recs)
+        points = [r["expected_points"] for r in recs if r["expected_points"]]
+        assert points == sorted(points, reverse=True)
 
     def test_impact_string_renders_from_points(self):
         payload = self._geo_zero_payload()
@@ -173,9 +154,9 @@ class TestPointlessRecommendations:
             r for r in recs if r["factor"] == "schema" and "canonical" in r["title"]
         )
         assert canonical["expected_points"] is None
-        assert "estimated" in canonical["impact"]
+        assert canonical["impact"].startswith("Not scored")
 
-    def test_pointless_recs_sort_after_point_bearing(self):
+    def test_unpredicted_recs_sort_after_point_bearing(self):
         payload = {
             "audit": {
                 "meta": {"canonical_issues": ["https://a"]},
@@ -189,29 +170,71 @@ class TestPointlessRecommendations:
         aeo_factors = scores["aeo"]["factors"]
         geo_factors = scores["geo"]["factors"]
         geo_factors["eeat"]["raw"] = _eeat_raw()
-        geo_factors["entity_consistency"]["raw"] = {"same_as": []}
 
         recs = generate_recommendations(aeo_factors, geo_factors, payload=payload)
-        medium_band = [r for r in recs if r["priority"] == "medium"]
-        with_pts = [r for r in medium_band if r["expected_points"] is not None]
-        without_pts = [r for r in medium_band if r["expected_points"] is None]
-        assert with_pts, "expected at least one point-bearing medium rec"
-        assert without_pts, "expected the canonical rec in the medium band"
-        last_with = medium_band.index(with_pts[-1])
-        first_without = medium_band.index(without_pts[0])
-        assert last_with < first_without
+        with_pts = [i for i, r in enumerate(recs) if r["expected_points"] is not None]
+        without_pts = [i for i, r in enumerate(recs) if r["expected_points"] is None]
+        assert with_pts and without_pts
+        assert max(with_pts) < min(without_pts)
+        assert all(recs[i]["priority"] == "low" for i in without_pts)
 
-    def test_positive_callouts_keep_empty_impact(self):
+
+class TestNonFixesDropped:
+    """Praise items and 0-point predictions never reach the fix list."""
+
+    def test_strong_schema_yields_no_praise_item(self):
         aeo_factors = {
             "schema": {
                 "score": 85.0,
                 "raw": {"coverage_pct": 85, "has_faq_schema": True},
             },
         }
-        recs = generate_recommendations(aeo_factors, {})
-        callout = next(r for r in recs if r["priority"] == "low")
-        assert callout["expected_points"] is None
-        assert callout["impact"] == ""
+        assert generate_recommendations(aeo_factors, {}) == []
+
+    def test_zero_point_fix_is_dropped(self):
+        aax_factors = {
+            "meta_optimization": {
+                "score": 100.0,
+                "raw": {"improvement_suggestions": ["Shorten the title"]},
+            },
+            "content_delta": {"score": 100.0, "raw": {"completeness": "adequate"}},
+        }
+        aeo_factors = {
+            "schema": {
+                "score": 100.0,
+                "raw": {"coverage_pct": 100, "has_faq_schema": True},
+            }
+        }
+        recs = generate_recommendations(aeo_factors, {}, aax_factors=aax_factors)
+        assert recs == []
+
+
+class TestPriorityFollowsPoints:
+    """Priority is derived from expected_points, never typed in."""
+
+    def test_bands(self):
+        assert priority_for_points(None) == "low"
+        assert priority_for_points(0.4) == "low"
+        assert priority_for_points(1.0) == "medium"
+        assert priority_for_points(3.0) == "high"
+
+    def test_every_rec_priority_matches_its_points(self):
+        payload = {
+            "audit": {
+                "meta": {"canonical_issues": ["https://a"]},
+                "schema_coverage": {"coverage_pct": 0, "type_counts": {}},
+                "entity": {},
+            },
+            "markdowns": {"https://a/": {"content_metrics": {"words": 100}}},
+            "page": {},
+        }
+        scores = compute_scores(payload)
+        recs = generate_recommendations(
+            scores["aeo"]["factors"], scores["geo"]["factors"], payload=payload
+        )
+        assert recs
+        for rec in recs:
+            assert rec["priority"] == priority_for_points(rec["expected_points"])
 
 
 class TestAEOTargets:
@@ -254,24 +277,28 @@ class TestEndToEndPrediction:
     """A predicted delta must match the observed one through compute_scores."""
 
     def test_content_depth_prediction_lands(self):
-        payload = {
-            "audit": {},
-            "markdowns": {
-                "https://a/": {"content_metrics": {"words": 100}},
-                "https://b/": {"content_metrics": {"words": 120}},
-            },
-            "page": {},
-        }
-        scores = compute_scores(payload)
-        geo_factors = scores["geo"]["factors"]
-        recs = generate_recommendations({}, geo_factors, payload=payload)
-        depth_rec = next(r for r in recs if r["factor"] == "content_depth")
-        predicted = depth_rec["expected_points"]
-        assert predicted is not None
+        def payload(words: tuple[int, int]) -> dict:
+            return {
+                "audit": {},
+                "markdowns": {
+                    "https://a/": {"content_metrics": {"words": words[0]}},
+                    "https://b/": {"content_metrics": {"words": words[1]}},
+                },
+                "page": {},
+            }
 
-        # Observed: same payload, but the depth factor jumps by the
-        # rec's declared target delta (current + 20, the 500-word band).
-        current = geo_factors["content_depth"]["score"]
-        target = min(100.0, current + 20.0)
-        observed = expected_lens_delta("geo", geo_factors, "content_depth", target)
-        assert predicted == observed
+        before = compute_scores(payload((100, 120)))
+        recs = generate_recommendations({}, before["geo"]["factors"])
+        depth_rec = next(r for r in recs if r["factor"] == "content_depth")
+        assert "https://a/ (100 words)" in depth_rec["detail"]
+
+        # Observed: re-score with the named pages expanded to 1,000 words;
+        # the factor lands on the rec's predicted target.
+        after = compute_scores(payload((1000, 1000)))
+        observed = expected_lens_delta(
+            "geo",
+            before["geo"]["factors"],
+            "content_depth",
+            after["geo"]["factors"]["content_depth"]["score"],
+        )
+        assert depth_rec["expected_points"] == observed

@@ -28,8 +28,9 @@ def test_fully_allowed_bots_earn_full_points():
             {"GPTBot": "allowed", "ClaudeBot": "allowed", "PerplexityBot": "allowed"}
         )
     )
-    # 8 robots + 15 + 12 + 12 bots + 15 llms + 8 llms-full + 7 sitemap
-    assert raw["score"] == 77.0
+    # 8 robots + 15 + 12 + 12 bots + 15 llms + 8 llms-full + 7 sitemap = 77
+    # additive points, the structural maximum, rescaled to 100.
+    assert raw["score"] == 100.0
 
 
 def test_partially_restricted_bots_earn_half_points():
@@ -43,7 +44,7 @@ def test_partially_restricted_bots_earn_half_points():
         )
     )
     # 8 robots + 7 + 6 + 6 bots + 15 llms + 8 llms-full + 7 sitemap
-    assert raw["score"] == 57.0
+    assert raw["score"] == round(57 * 100 / 77, 1)
 
 
 def test_blocked_bots_earn_nothing():
@@ -53,4 +54,4 @@ def test_blocked_bots_earn_nothing():
         )
     )
     # 8 robots + 15 llms + 8 llms-full + 7 sitemap only
-    assert raw["score"] == 38.0
+    assert raw["score"] == round(38 * 100 / 77, 1)

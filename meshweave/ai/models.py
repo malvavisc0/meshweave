@@ -1,11 +1,13 @@
 """Pydantic response models for AAX analysis tests.
 
 Each model defines the structured output that the LLM must return.
-Categorical fields use Literal types and are REQUIRED: an off-enum or
-omitted verdict fails validation and triggers the structured-output
-retry instead of silently scoring as a default downstream. Free-text
-extraction fields (brand, product, …) keep empty-string defaults
-because "not found on the page" is a legitimate answer.
+Every field the LLM fills is REQUIRED, with no default. Structured output
+sends the model a JSON schema, and a field with a default is optional in
+that schema, so the model may simply omit it (observed: answerability
+answers came back with no source_pages, which zeroed the factor). An
+empty string or empty list is still a legitimate "not found" answer; it
+just has to be stated. Categorical fields use Literal types, so an
+off-enum verdict fails validation and triggers the retry.
 """
 
 from __future__ import annotations
@@ -20,11 +22,11 @@ from pydantic import BaseModel, Field
 class HomepageComprehensionResult(BaseModel):
     """What the LLM understands from reading only the homepage."""
 
-    brand: str = ""
-    product: str = ""
-    target_audience: str = ""
-    key_features: list[str] = Field(default_factory=list)
-    call_to_action: str = ""
+    brand: str
+    product: str
+    target_audience: str
+    key_features: list[str]
+    call_to_action: str
     clarity: Literal["clear", "somewhat_clear", "unclear"]
     information_density: Literal["dense", "adequate", "sparse", "bloated"]
     would_remember: bool
@@ -40,7 +42,7 @@ class MetaOptimizationResult(BaseModel):
     completeness: Literal["complete", "partial", "minimal"]
     clarity: Literal["clear", "somewhat_clear", "unclear"]
     llm_optimization: Literal["optimized", "adequate", "poor"]
-    improvement_suggestions: list[str] = Field(default_factory=list)
+    improvement_suggestions: list[str]
 
 
 # --- Test 5: Content Delta ---
@@ -49,30 +51,30 @@ class MetaOptimizationResult(BaseModel):
 class CompanyInfo(BaseModel):
     """Company name extracted from multi-page content."""
 
-    name: str = ""
+    name: str
 
 
 class ProductInfo(BaseModel):
     """Product name extracted from multi-page content."""
 
-    name: str = ""
+    name: str
 
 
 class PricingInfo(BaseModel):
     """Pricing model extracted from multi-page content."""
 
-    model: str | None = None
+    model: str | None
 
 
 class ContentDeltaResult(BaseModel):
     """What the LLM understands from reading multiple pages."""
 
-    company: CompanyInfo = Field(default_factory=CompanyInfo)
-    product: ProductInfo = Field(default_factory=ProductInfo)
-    pricing: PricingInfo = Field(default_factory=PricingInfo)
-    target_audience: str = ""
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
+    company: CompanyInfo
+    product: ProductInfo
+    pricing: PricingInfo
+    target_audience: str
+    strengths: list[str]
+    weaknesses: list[str]
     coherence: Literal["consistent", "somewhat_consistent", "contradictory"]
     completeness: Literal["comprehensive", "adequate", "incomplete"]
 
@@ -80,8 +82,31 @@ class ContentDeltaResult(BaseModel):
 # --- Test 6: Contactability (heuristic — no LLM) ---
 
 
+OBFUSCATED_EMAIL_PENALTY = "All emails are obfuscated-only (no mailto links)"
+LEGAL_ONLY_EMAIL_PENALTY = (
+    "Emails only found on legal pages (not intended as contact points)"
+)
+SAME_DOMAIN_EMAIL_PENALTY = "No same-domain email addresses found"
+SAME_DOMAIN_EMAIL_CAP = 20
+
+# Contactability heuristic point values, shared with the fix generator.
+SAME_DOMAIN_EMAIL_POINTS = 20
+THIRD_PARTY_EMAIL_POINTS = 5
+MAILTO_POINTS = 10
+CONTACT_PAGE_POINTS = 10
+LISTED_EMAIL_POINTS = 15
+CONTACT_POINT_SCHEMA_POINTS = 15
+SOCIAL_LINK_POINTS = 10
+OBFUSCATED_EMAIL_PENALTY_POINTS = 10
+LEGAL_ONLY_EMAIL_PENALTY_POINTS = 15
+
+
 class ContactabilityResult(BaseModel):
-    """Heuristic score for how contactable the brand is."""
+    """Heuristic score for how contactable the brand is.
+
+    ``penalty_points`` maps each applied penalty reason to the points it
+    removed from the score.
+    """
 
     score: float = 0.0
     has_email: bool = False
@@ -91,6 +116,7 @@ class ContactabilityResult(BaseModel):
     has_social_links: bool = False
     email_count: int = 0
     penalties: list[str] = Field(default_factory=list)
+    penalty_points: dict[str, float] = Field(default_factory=dict)
 
 
 # --- Test 7: Email Validation ---
@@ -100,16 +126,16 @@ class ValidatedEmail(BaseModel):
     """A single validated email result."""
 
     email: str
-    reason: str = ""
+    reason: str
     contact_type: Literal["sales", "support", "general", "legal", "invalid"]
 
 
 class EmailValidationResult(BaseModel):
     """LLM-validated email contacts."""
 
-    valid_contacts: list[ValidatedEmail] = Field(default_factory=list)
-    rejected_contacts: list[ValidatedEmail] = Field(default_factory=list)
-    best_contact: str | None = None
+    valid_contacts: list[ValidatedEmail]
+    rejected_contacts: list[ValidatedEmail]
+    best_contact: str | None
     confidence: Literal["high", "medium", "low"]
 
 
@@ -134,10 +160,10 @@ class AnswerabilityAnswerResult(BaseModel):
     orchestrator).
     """
 
-    answer: str = ""
+    answer: str
     verdict: AnswerabilityVerdict
-    source_pages: list[str] = Field(default_factory=list)
-    missing_facts: list[str] = Field(default_factory=list)
+    source_pages: list[str]
+    missing_facts: list[str]
 
 
 class AnswerabilityQuestionResult(BaseModel):
