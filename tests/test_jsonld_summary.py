@@ -20,7 +20,10 @@ def test_faq_page_questions_are_visible():
                     "name": "What does MeshWeave do?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "MeshWeave audits websites for AI visibility.",
+                        "text": (
+                            "MeshWeave finds what prevents AI agents "
+                            "from reading your website correctly."
+                        ),
                     },
                 },
                 {"@type": "Question", "name": "How much does it cost?"},
@@ -31,7 +34,7 @@ def test_faq_page_questions_are_visible():
     assert out["mainEntity_count"] == 2
     qa = out["mainEntity_qa"]
     assert qa[0]["question"] == "What does MeshWeave do?"
-    assert "audits websites" in qa[0]["answer_excerpt"]
+    assert "prevents AI agents" in qa[0]["answer_excerpt"]
     # Questions without answers are still listed, without the key.
     assert qa[1] == {"question": "How much does it cost?"}
 

@@ -52,6 +52,7 @@ from webapp.utils.quotas import (
     _count_user_daily_site_crawls,
     _daily_site_limit,
 )
+from webapp.utils.scoring import lens_label
 from webapp.utils.url import canonicalize_url, reject_internal_target
 
 router = APIRouter()
@@ -153,6 +154,18 @@ def _contract_answerability(score_json: dict) -> dict[str, Any]:
     }
 
 
+def _contract_interpretation(row: Crawl, score_json: dict) -> dict[str, Any]:
+    """Interpretation text for the contract: lens names under public labels."""
+    interp = interpret_profile(
+        row.aeo_score,
+        row.geo_score,
+        (score_json.get("aax") or {}).get("composite"),
+    )
+    for key in ("weakest_lens", "strongest_lens"):
+        interp[key] = lens_label(interp.get(key))
+    return interp
+
+
 def _analysis_contract(row: Crawl) -> dict[str, Any]:
     """The site-side contract for one succeeded analysis.
 
@@ -162,7 +175,6 @@ def _analysis_contract(row: Crawl) -> dict[str, Any]:
     """
     snap = getattr(row, "score_snapshot", None)
     score_json = (snap.score_json if snap is not None else None) or {}
-    aax_composite = (score_json.get("aax") or {}).get("composite")
     return {
         "id": row.id,
         "url": row.url,
@@ -177,9 +189,7 @@ def _analysis_contract(row: Crawl) -> dict[str, Any]:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         "scores": _contract_lens_scores(row, score_json),
-        "interpretation": interpret_profile(
-            row.aeo_score, row.geo_score, aax_composite
-        ),
+        "interpretation": _contract_interpretation(row, score_json),
         "answerability": _contract_answerability(score_json),
     }
 

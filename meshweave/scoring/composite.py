@@ -58,6 +58,15 @@ LENS_WEIGHTS: dict[str, dict[str, float]] = {
     "aax": AAX_WEIGHTS,
 }
 
+# Public check labels: the only lens names customer-facing surfaces
+# render. Internal score-group keys (aeo/geo/aax) stay in code, stored
+# payloads, and API field names.
+LENS_PUBLIC_LABELS: dict[str, str] = {
+    "aeo": "Answerable",
+    "geo": "Reachable",
+    "aax": "Actionable",
+}
+
 logger = logging.getLogger(__name__)
 
 

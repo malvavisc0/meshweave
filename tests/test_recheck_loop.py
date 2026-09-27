@@ -9,6 +9,7 @@ import types
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -238,6 +239,48 @@ class TestFindingsDiffPredictions:
 
         diff = build_findings_diff(old_ss, new_ss)
         assert diff["resolved"][0]["observed_delta"] == 4.0
+
+    def test_observed_delta_is_the_lens_aggregate_not_per_fix(self):
+        """Predicted per fix; observed is the one lens movement for every fix."""
+        old_ss = SimpleNamespace(
+            score_json={
+                "recommendations": [
+                    {
+                        "factor": "crawl_access",
+                        "pillar": "geo",
+                        "priority": "high",
+                        "title": "Publish an llms.txt file",
+                        "expected_points": 3.1,
+                    },
+                    {
+                        "factor": "eeat",
+                        "pillar": "geo",
+                        "priority": "medium",
+                        "title": "Add Organization JSON-LD schema",
+                        "expected_points": 8.4,
+                    },
+                ]
+            },
+            aeo_score=50.0,
+            geo_score=40.0,
+        )
+        new_ss = SimpleNamespace(
+            score_json={"recommendations": []},
+            aeo_score=60.0,
+            geo_score=44.0,
+        )
+
+        diff = build_findings_diff(old_ss, new_ss)
+        resolved = {r["title"]: r for r in diff["resolved"]}
+        llms = resolved["Publish an llms.txt file"]
+        org = resolved["Add Organization JSON-LD schema"]
+        # Each fix keeps its own prediction (per fix)…
+        assert llms["expected_points"] == 3.1
+        assert org["expected_points"] == 8.4
+        # …but both observe the same lens-aggregate movement — never a
+        # per-fix observed delta.
+        assert llms["observed_delta"] == 4.0
+        assert org["observed_delta"] == 4.0
 
 
 class TestPreviousRevision:

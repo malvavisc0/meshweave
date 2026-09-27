@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-import types
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -23,147 +22,18 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("SQLITE_PATH", os.path.join(tempfile.mkdtemp(), "apiv1.db"))
 
-if "prometheus_client" not in sys.modules:
-    _fake_prom = types.ModuleType("prometheus_client")
+from fastapi_stub import (
+    install_fastapi_stub,
+    install_prometheus_stub,
+    load_api_v1_module,
+)
 
-    class _FakeMetric:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def labels(self, *args: object, **kwargs: object) -> _FakeMetric:
-            return self
-
-        def inc(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def observe(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def set(self, *args: object, **kwargs: object) -> None:
-            pass
-
-    _fake_prom.Counter = _FakeMetric
-    _fake_prom.Gauge = _FakeMetric
-    _fake_prom.Histogram = _FakeMetric
-    _fake_prom.CONTENT_TYPE_LATEST = "text/plain"
-    _fake_prom.generate_latest = lambda: b""
-    sys.modules["prometheus_client"] = _fake_prom
-
-
-def _install_fastapi_stub() -> None:
-    if "fastapi" in sys.modules:
-        return
-    fastapi = types.ModuleType("fastapi")
-    responses = types.ModuleType("fastapi.responses")
-
-    class _Stub:
-        def __init__(self, *a: object, **k: object) -> None:
-            pass
-
-        def __call__(self, *a: object, **k: object) -> _Stub:
-            return _Stub()
-
-    class _Router(_Stub):
-        def get(self, *a: object, **k: object):
-            return lambda fn: fn
-
-        def post(self, *a: object, **k: object):
-            return lambda fn: fn
-
-        def put(self, *a: object, **k: object):
-            return lambda fn: fn
-
-        def patch(self, *a: object, **k: object):
-            return lambda fn: fn
-
-        def delete(self, *a: object, **k: object):
-            return lambda fn: fn
-
-    class _HTTPException(Exception):
-        def __init__(self, status_code: int = 500, detail: object = None) -> None:
-            super().__init__(detail)
-            self.status_code = status_code
-            self.detail = detail
-
-    class _State:
-        pass
-
-    class _Request:
-        def __init__(self, headers: dict | None = None, body: bytes = b"") -> None:
-            self.headers = headers or {}
-            self._body = body
-            self.state = _State()
-
-        async def json(self) -> dict:
-            import json as _json
-
-            return _json.loads(self._body.decode() or "{}")
-
-    class _JSONResponse:
-        def __init__(self, content=None, status_code: int = 200, **k) -> None:
-            self.content = content
-            self.status_code = status_code
-            self.headers: dict = {}
-
-    class _PlainTextResponse(_JSONResponse):
-        def __init__(self, content="", media_type: str = "", **k) -> None:
-            super().__init__(content=content, **k)
-            self.media_type = media_type
-
-    fastapi.APIRouter = _Router
-    fastapi.BackgroundTasks = _Stub
-    fastapi.Form = lambda *a, **k: None
-    fastapi.HTTPException = _HTTPException
-    fastapi.Request = _Request
-    fastapi.Response = _Stub
-    responses.RedirectResponse = _Stub
-    responses.JSONResponse = _JSONResponse
-    responses.HTMLResponse = _Stub
-    responses.PlainTextResponse = _PlainTextResponse
-    responses.Response = _Stub
-    fastapi.responses = responses
-    fastapi.Depends = lambda *a, **k: None
-    fastapi.Query = lambda *a, **k: None
-    fastapi.Path = lambda *a, **k: None
-    sys.modules["fastapi"] = fastapi
-    sys.modules["fastapi.responses"] = responses
-
-
-_install_fastapi_stub()
+install_prometheus_stub()
+install_fastapi_stub()
 
 from webapp.models import ApiKey, Base, Crawl, ScoreSnapshot, User  # noqa: E402
 
-
-def _load_api_v1_module():
-    """Import webapp.routers.api_v1 without the routers package __init__
-    (which imports every router and needs the full webapp runtime)."""
-    import importlib.util
-    from pathlib import Path
-
-    module_path = (
-        Path(__file__).resolve().parent.parent / "webapp" / "routers" / "api_v1.py"
-    )
-    # Stub the parent package so `webapp.routers` resolves without __init__,
-    # and pre-load the sibling modules api_v1 imports from it.
-    routers_pkg = types.ModuleType("webapp.routers")
-    routers_pkg.__path__ = [str(module_path.parent)]
-    sys.modules.setdefault("webapp.routers", routers_pkg)
-
-    def _load_sibling(name: str):
-        spec = importlib.util.spec_from_file_location(
-            f"webapp.routers.{name}", module_path.parent / f"{name}.py"
-        )
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[f"webapp.routers.{name}"] = mod
-        spec.loader.exec_module(mod)
-        return mod
-
-    _load_sibling("api")  # api_v1 imports _bearer_user_id from here
-    _load_sibling("submissions")  # api_v1 imports upsert helpers from here
-    return _load_sibling("api_v1")
-
-
-api_v1 = _load_api_v1_module()
+api_v1 = load_api_v1_module()
 
 HTTPException = sys.modules["fastapi"].HTTPException
 Request = sys.modules["fastapi"].Request
@@ -528,6 +398,22 @@ class TestReportExport:
         assert body.startswith("# AI-Friendly Website Report — x.com")
         # No dangling "contact ." footer
         assert "contact ." not in body
+        # Artifact filename names the deliverable
+        assert (
+            resp.headers["Content-Disposition"]
+            == 'attachment; filename="ai-friendly-report-x.com.md"'
+        )
+
+    @pytest.mark.asyncio
+    async def test_diff_md_filename_names_the_deliverable(self, sessions):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid)
+        resp = await api_v1.get_diff_markdown(_bearer_request(token), cid)
+        assert (
+            resp.headers["Content-Disposition"]
+            == 'attachment; filename="ai-friendly-diff-x.com.md"'
+        )
 
 
 class TestDiff:

@@ -30,11 +30,13 @@ def test_serializer_keeps_only_allowlisted_fields() -> None:
             "priority": "high",
             "title": "T",
             "detail": "D",
+            "expected_points": 3.4,
             "guidance": "internal",
             "impact": "x",
         }
     )
-    assert set(rec) == {"pillar", "priority", "title", "detail"}
+    assert set(rec) == {"pillar", "priority", "title", "detail", "expected_points"}
+    assert rec["expected_points"] == 3.4
     assert "guidance" not in rec and "impact" not in rec
 
 
@@ -59,6 +61,7 @@ def test_serializer_defaults_for_missing_keys() -> None:
     assert rec["title"] == ""
     assert rec["detail"] == ""
     assert rec["pillar"] == ""
+    assert rec["expected_points"] is None
 
 
 def test_serializer_normalizes_pillar_and_priority_case() -> None:
@@ -246,6 +249,15 @@ def test_markdown_lists_recommendations_in_order() -> None:
     assert md.index("### [High] Fix offer") < md.index("### [Medium] Add FAQ")
 
 
+def test_markdown_renders_expected_change_per_fix() -> None:
+    row = _stub_row()
+    row.score_snapshot.score_json["recommendations"][0]["expected_points"] = 2.5
+    md = render_export_markdown(
+        build_export_context(row, site_name="s", contact_email="e")
+    )
+    assert "- **Expected change:** Actionable +2.5 points" in md
+
+
 def test_markdown_excludes_guidance_and_sentinels() -> None:
     md = render_export_markdown(_build())
     assert "PRIVATE PAGE BODY" not in md
@@ -258,6 +270,8 @@ def test_markdown_contains_fixed_methodology_copy() -> None:
     md = render_export_markdown(_build())
     assert "diagnostic signals" in md
     assert "browser-agent" in md
+    assert "Re-check condition" in md
+    assert "per check, across all fixes in that check" in md
 
 
 def test_markdown_table_cells_escape_pipes_and_newlines() -> None:

@@ -3,13 +3,13 @@
 import os
 from typing import Any
 
-from meshweave.scoring.composite import LENS_WEIGHTS
+from meshweave.scoring.composite import LENS_PUBLIC_LABELS, LENS_WEIGHTS
 from meshweave.scoring.interpretation import interpret_profile
 
 # Public check labels: score-group keys stay internal, customer-facing
 # surfaces only show these names in the agent's journey order.
 JOURNEY_ORDER = ("geo", "aeo", "aax")
-PUBLIC_LENS_LABELS = {"geo": "Reachable", "aeo": "Answerable", "aax": "Actionable"}
+PUBLIC_LENS_LABELS = LENS_PUBLIC_LABELS
 
 
 def lens_label(key: str | None) -> str:

@@ -1,19 +1,24 @@
 """Public-copy sweep: customer-facing surfaces stay acronym-free and claim-free.
 
-Phase-4 guard for the AI-friendly website rewrite. Scans every
+Phase-4/5 guard for the AI-friendly website rewrite. Scans every
 customer-facing copy surface — rendered pages (template sources), exports
-(rendered Markdown), JSON-LD builders, agent-facing documentation, the site
-manifest, interpretation copy, and nudge copy — and asserts none of them
-carries external-outcome claims or the internal AEO/GEO/AAX acronyms.
+(report.md / diff.md renders, branded and unbranded), public and private
+API JSON responses, JSON-LD builders (raw source), agent-facing
+documentation, the site manifest, interpretation copy, nudge copy,
+recommendation copy, and rating/implication bands — and asserts none of
+them carries external-outcome claims or the internal AEO/GEO/AAX
+acronyms.
 
-Internal score-group keys (``aeo`` / ``geo`` / ``aax``), code identifiers, and
-API field names are out of scope: only rendered or published copy is checked.
+Internal score-group keys (``aeo`` / ``geo`` / ``aax``), code identifiers,
+and API field names are out of scope: only rendered or published copy
+values are checked.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,13 +27,18 @@ from types import SimpleNamespace
 os.environ.setdefault("SQLITE_DIR", "/tmp/kilo/meshweave-test-db")
 os.environ.setdefault("SQLITE_PATH", "/tmp/kilo/meshweave-test-db/webapp.sqlite3")
 
+from fastapi_stub import load_api_v1_module
+
 from meshweave.scoring.interpretation import interpret_profile
+from meshweave.scoring.ratings import aax_rating, aeo_rating, geo_rating
+from meshweave.scoring.recommendations import generate_recommendations
 from webapp.services.nudges import _base_nudges
 from webapp.utils.export import (
     build_export_context,
     render_diff_markdown,
     render_export_markdown,
 )
+from webapp.utils.scoring import score_implication
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -48,19 +58,25 @@ RETIRED = re.compile(
 
 # Standing vocabulary: these words must never describe a site's standing.
 STANDING = re.compile(
-    r"\binvisib\w*|\bcited\b|\bcitations?\b|\bquoted\b|\brecommended\b"
+    r"\binvisib\w*|\bcit(?:ed|es?|ations?)\b|\bquoted\b|\brecommended\b"
     r"|\bdominant\b|\bcompetitive\b|\bcompetitors?\b",
     re.IGNORECASE,
 )
+
+# External-outcome promises: a fix must never promise that outside
+# systems will recommend the business.
+PROMISE = re.compile(r"\brecommend(?:s|ed)? (?:you|your)\b", re.IGNORECASE)
 
 PATTERNS = (
     (ACRONYMS, "internal acronym"),
     (RETIRED, "retired vocabulary"),
     (STANDING, "external-outcome/standing vocabulary"),
+    (PROMISE, "external-outcome promise"),
 )
 
-# Copy sources as raw text: rendered-page templates, agent-facing docs,
-# manifest, and the routers that build JSON-LD / meta copy.
+# Copy sources as raw text: rendered-page templates (including the
+# JSON-LD builders' literals in home/legal routers), agent-facing docs,
+# manifest.
 RAW_SOURCES = [
     *sorted((ROOT / "webapp" / "templates").rglob("*.html")),
     ROOT / "webapp" / "static" / ".well-known" / "llms.txt",
@@ -110,38 +126,56 @@ def _stub_row() -> SimpleNamespace:
         "aeo": {
             "composite": 72.0,
             "rating": "Reliably extractable",
-            "factors": {
-                "extractable_answer": {"score": 75.0, "weight": 0.35, "note": "ok"}
-            },
+            "factors": {"answerability": {"score": 75.0, "weight": 0.4, "note": "ok"}},
             "skip_reasons": {},
         },
         "aax": {
             "composite": 80.0,
             "rating": "Fluent",
             "factors": {
-                "structure_schema": {"score": 82.0, "weight": 0.3, "note": "ok"}
+                "homepage_comprehension": {"score": 82.0, "weight": 0.3, "note": "ok"}
             },
             "skip_reasons": {},
         },
         "recommendations": [
             {
+                "factor": "entity_consistency",
                 "pillar": "geo",
                 "priority": "high",
                 "title": "Align brand description",
                 "detail": "Observed drift across pages.",
-                "guidance": "internal",
+                "guidance": "State one brand description on every page.",
+                "impact": "Reachable +3.4 points",
+                "expected_points": 3.4,
             }
         ],
     }
     return SimpleNamespace(
         id="11111111-1111-4111-8111-111111111111",
+        key="abc123",
+        url="https://example.com",
         domain="example.com",
+        path="/",
+        query="",
+        status="succeeded",
+        visibility="private",
+        scoring_version="1.3",
         canonical_url="https://example.com",
         crawl_params=None,
         updated_at=datetime(2026, 1, 15),
         created_at=datetime(2026, 1, 15),
-        payload_json={},
+        aeo_score=72.0,
+        geo_score=65.0,
+        aeo_rating="Reliably extractable",
+        geo_rating="Connected",
+        payload_json={
+            "page": {
+                "title": "Example — Free Tool",
+                "description": "A free tool for example work.",
+            }
+        },
         score_snapshot=SimpleNamespace(
+            scoring_version="1.3",
             aeo_score=72.0,
             geo_score=65.0,
             aeo_rating="Reliably extractable",
@@ -236,3 +270,163 @@ def test_export_titles_name_the_deliverable() -> None:
     assert unbranded.startswith("# AI-Friendly Website Report \u2014 example.com")
     diff = render_diff_markdown({}, row, None)
     assert diff.startswith("# AI-Friendly Progress Report \u2014 example.com")
+
+
+# ── API JSON responses (public preview, v1 private contract and diff) ──
+
+
+def _api_builders():
+    api_v1 = load_api_v1_module()
+    api = sys.modules["webapp.routers.api"]
+    return api_v1, api
+
+
+def test_public_api_preview_is_clean() -> None:
+    _, api = _api_builders()
+    preview = api._build_public_preview(_stub_row())
+    for text in _iter_strings(preview):
+        _scan_text("public API preview", text)
+
+
+def test_private_api_analysis_contract_is_clean() -> None:
+    api_v1, _ = _api_builders()
+    row = _stub_row()
+    contract = api_v1._analysis_contract(row)
+    summary = api_v1._crawl_summary(row)
+    for label, blob in (("private API contract", contract), ("API summary", summary)):
+        for text in _iter_strings(blob):
+            _scan_text(label, text)
+
+
+def test_private_api_diff_payload_is_clean() -> None:
+    api_v1, _ = _api_builders()
+    row = _stub_row()
+    old_row = SimpleNamespace(
+        id="22222222-2222-4222-8222-222222222222",
+        domain="example.com",
+        scoring_version="1.3",
+        aeo_score=68.0,
+        geo_score=62.0,
+        created_at=datetime(2026, 1, 1),
+        score_snapshot=SimpleNamespace(
+            scoring_version="1.3",
+            aeo_score=68.0,
+            geo_score=62.0,
+            score_json={},
+        ),
+    )
+    payload = api_v1._diff_payload(row, old_row)
+    for text in _iter_strings(payload):
+        _scan_text("private API diff payload", text)
+
+
+# ── Generated model copy: recommendations, ratings, implications ──
+
+
+def _recommendation_scenarios() -> list[tuple[dict, dict, dict, dict]]:
+    """(aeo, geo, aax, payload) inputs exercising every generator."""
+    failing_questions = [
+        {
+            "question_id": qid,
+            "question": f"Question {qid}?",
+            "verdict": "unsupported",
+            "missing_facts": [f"missing {qid}"],
+        }
+        for qid in ("offer", "audience", "use_case", "differentiation", "scope")
+    ]
+    aeo = {
+        "answerability": {
+            "score": 15.0,
+            "raw": {"questions": failing_questions},
+        },
+        "schema": {"score": 20.0, "raw": {"coverage_pct": 20, "has_faq_schema": False}},
+        "content_structure": {
+            "score": 30.0,
+            "raw": {
+                "site_average": 30,
+                "pages_evaluated": 2,
+                "per_page_scores": {"https://a/": 25.0, "https://b/": 35.0},
+            },
+        },
+    }
+    geo = {
+        "eeat": {"score": 20.0, "raw": {"has_org_schema": False}},
+        "entity_consistency": {"score": 15.0, "raw": {"same_as": []}},
+        "crawl_access": {
+            "score": 25.0,
+            "raw": {
+                "llms_txt_exists": False,
+                "robots_exists": False,
+                "bot_statuses": {},
+                "sitemap_count": 0,
+            },
+        },
+        "content_depth": {"score": 25.0, "raw": {"avg_words": 150}},
+    }
+    aax = {
+        "homepage_comprehension": {
+            "score": 30.0,
+            "raw": {"clarity": "unclear", "information_density": "sparse"},
+        },
+        "content_delta": {"score": 25.0, "raw": {"weaknesses": ["pricing"]}},
+        "meta_optimization": {
+            "score": 25.0,
+            "raw": {"completeness": "minimal", "clarity": "unclear"},
+        },
+        "email_validation": {"score": 20.0, "raw": {"confidence": "low"}},
+    }
+    payload = {
+        "audit": {
+            "meta": {
+                "canonical_issues": ["https://a/"],
+                "duplicate_og_titles": {"x": 1},
+            },
+            "schema_coverage": {"coverage_pct": 0, "type_counts": {}},
+            "entity": {"same_as": []},
+        },
+        "markdowns": {
+            "https://a/": {
+                "content_metrics": {
+                    "words": 120,
+                    "images_total": 4,
+                    "images_with_alt": 0,
+                }
+            }
+        },
+        "page": {},
+    }
+    contactability = {
+        "score": 15.0,
+        "has_email": False,
+        "has_mailto": False,
+        "has_contact_page": False,
+    }
+    return [
+        (
+            aeo,
+            geo,
+            aax,
+            {**payload, "scores": {"aax": {"contactability": contactability}}},
+        ),
+        (aeo, geo, aax, {**payload, "aax": {"contactability": contactability}}),
+    ]
+
+
+def test_recommendation_copy_is_clean() -> None:
+    for aeo, geo, aax, payload in _recommendation_scenarios():
+        recs = generate_recommendations(aeo, geo, payload=payload, aax_factors=aax)
+        assert recs, "scenario must generate recommendations to scan"
+        for rec in recs:
+            for text in _iter_strings(rec):
+                _scan_text("recommendation copy", text)
+
+
+def test_rating_and_implication_copy_is_clean() -> None:
+    for score in range(0, 101):
+        for lens, rating in (
+            ("aeo", aeo_rating(score)),
+            ("geo", geo_rating(score)),
+            ("aax", aax_rating(score)),
+        ):
+            _scan_text(f"{lens} rating", str(rating))
+            _scan_text(f"{lens} implication", score_implication(lens, score))

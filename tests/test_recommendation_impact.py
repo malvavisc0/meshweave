@@ -136,11 +136,27 @@ class TestGEORecommendationOrdering:
         }
         recs = generate_recommendations({}, geo_factors, payload=payload)
         llms_rec = next(r for r in recs if r["title"] == "Publish an llms.txt file")
-        assert llms_rec["impact"].startswith("GEO +")
+        assert llms_rec["impact"].startswith("Reachable +")
         assert "estimated" not in llms_rec["impact"]
         assert llms_rec["expected_points"] == float(
             llms_rec["impact"].split("+")[1].split()[0]
         )
+
+    def test_output_is_globally_sorted_by_band_then_points(self):
+        """The honest prediction sorts: band first, then expected points."""
+        recs = generate_recommendations(
+            {}, _geo_factors(), payload=self._geo_zero_payload()
+        )
+        band = {"high": 0, "medium": 1, "low": 2}
+        keyed = [
+            (
+                band.get(r["priority"], 9),
+                0 if r.get("expected_points") is not None else 1,
+                -(r.get("expected_points") or 0.0),
+            )
+            for r in recs
+        ]
+        assert keyed == sorted(keyed)
 
 
 class TestPointlessRecommendations:

@@ -26,19 +26,21 @@ from webapp.utils.times import ensure_utc
 
 
 def export_recommendation(rec: dict) -> dict:
-    """Serialize a recommendation to the export allowlist (four bounded fields).
+    """Serialize a recommendation to the export allowlist (five bounded fields).
 
-    Keeps only ``pillar``, ``priority``, ``title``, and ``detail``. ``guidance``
-    and every other field are dropped — they carry internal remediation
-    instructions. Length bounds are the defense against a saved artifact
-    rendering an unbounded blob. ``pillar`` crosses the boundary as the public
-    check label.
+    Keeps only ``pillar``, ``priority``, ``title``, ``detail``, and the
+    predicted ``expected_points``. ``guidance`` and every other field are
+    dropped — they carry internal remediation instructions. Length bounds
+    are the defense against a saved artifact rendering an unbounded blob.
+    ``pillar`` crosses the boundary as the public check label.
     """
+    exp = rec.get("expected_points")
     return {
         "pillar": str(lens_label(rec.get("pillar")))[:12],
         "priority": str(rec.get("priority") or "info").lower()[:12],
         "title": str(rec.get("title") or "")[:200],
         "detail": str(rec.get("detail") or "")[:500],
+        "expected_points": round(float(exp), 1) if exp is not None else None,
     }
 
 
@@ -235,6 +237,16 @@ def _md_answerability(ctx: dict) -> str:
     return "\n".join(lines)
 
 
+def _md_expected_change(rec: dict) -> str:
+    """The per-fix predicted movement line, or empty when unpredicted."""
+    exp = rec.get("expected_points")
+    if exp is None:
+        return ""
+    check = str(rec.get("pillar") or "").strip()
+    points = f"+{round(float(exp), 1)} points"
+    return f"- **Expected change:** {check + ' ' if check else ''}{points}"
+
+
 def _md_recommendations(ctx: dict) -> str:
     recs = ctx.get("recommendations") or []
     lines = ["## Recommendations", ""]
@@ -249,6 +261,9 @@ def _md_recommendations(ctx: dict) -> str:
         lines.append(f"- **Check:** {rec.get('pillar') or 'Unknown'}")
         if rec.get("detail"):
             lines.append(f"- **Detail:** {rec['detail']}")
+        change = _md_expected_change(rec)
+        if change:
+            lines.append(change)
         lines.append("")
     return "\n".join(lines)
 
@@ -259,6 +274,12 @@ def _md_methodology(ctx: dict) -> str:
         "Scores are diagnostic signals for the website itself, not "
         "guarantees of outside outcomes. The actionability check is not an "
         "interactive browser-agent or transaction test."
+    )
+    lines.append("")
+    lines.append(
+        "Re-check condition: after applying the fixes, re-run the analysis "
+        "to compare before and after. Observed score movement is measured "
+        "per check, across all fixes in that check."
     )
     lines.append("")
     return "\n".join(lines)
