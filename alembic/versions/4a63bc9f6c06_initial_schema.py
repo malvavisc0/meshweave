@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 4c6f9c5ed377
+Revision ID: 4a63bc9f6c06
 Revises: 
-Create Date: 2026-09-02 10:48:54.718185
+Create Date: 2026-09-27 17:10:19.089555
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "4c6f9c5ed377"
+revision: str = "4a63bc9f6c06"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -55,6 +55,7 @@ def upgrade() -> None:
     sa.Column('key_hash', sa.String(length=64), nullable=False),
     sa.Column('key_prefix', sa.String(length=24), nullable=False),
     sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('first_used_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
@@ -92,11 +93,11 @@ def upgrade() -> None:
     sa.Column('geo_score', sa.Float(), nullable=True),
     sa.Column('aeo_rating', sa.String(length=32), nullable=True),
     sa.Column('geo_rating', sa.String(length=32), nullable=True),
-    sa.Column('ai_analysis_json', sa.JSON(), nullable=True),
     sa.Column('aax_status', sa.String(length=10), server_default='pending', nullable=False),
     sa.Column('aax_started_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('queue_status', sa.String(length=10), nullable=True),
+    sa.Column('queue_started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('scoring_version', sa.String(length=16), nullable=False),
-    sa.Column('has_manual_input', sa.Boolean(), nullable=False),
     sa.Column('listed', sa.Boolean(), nullable=False),
     sa.Column('is_latest', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
@@ -106,11 +107,36 @@ def upgrade() -> None:
     sa.UniqueConstraint('key', name='uq_crawls_key')
     )
     op.create_index('ix_crawls_aax_status', 'crawls', ['aax_status', 'updated_at'], unique=False)
+    op.create_index('ix_crawls_anonymous_user_id', 'crawls', ['anonymous_user_id'], unique=False)
     op.create_index('ix_crawls_domain', 'crawls', ['domain'], unique=False)
     op.create_index('ix_crawls_domain_is_latest', 'crawls', ['domain', 'is_latest'], unique=False)
+    op.create_index('ix_crawls_queue_status', 'crawls', ['queue_status', 'created_at'], unique=False)
     op.create_index('ix_crawls_updated_at', 'crawls', ['updated_at'], unique=False)
+    op.create_index('ix_crawls_user_created', 'crawls', ['user_id', 'created_at', 'id'], unique=False)
     op.create_index('ix_crawls_user_id', 'crawls', ['user_id'], unique=False)
     op.create_index('ix_crawls_visibility_user_id_listed', 'crawls', ['visibility', 'user_id', 'listed'], unique=False)
+    op.create_table('funnel_actor_domains',
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('domain', sa.String(length=255), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('user_id', 'domain', name='pk_funnel_actor_domains')
+    )
+    op.create_table('funnel_state',
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('stage', sa.String(length=16), nullable=False),
+    sa.Column('segment', sa.String(length=16), nullable=False),
+    sa.Column('analyses_count', sa.Integer(), nullable=False),
+    sa.Column('distinct_domains', sa.Integer(), nullable=False),
+    sa.Column('last_event_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('dismissed_nudges', sa.JSON(), nullable=False),
+    sa.Column('gates_seen', sa.JSON(), nullable=False),
+    sa.Column('gates_taken', sa.JSON(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('user_id')
+    )
     op.create_table('products',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
@@ -126,6 +152,32 @@ def upgrade() -> None:
     sa.UniqueConstraint('user_id', 'name', name='uq_products_user_name')
     )
     op.create_index('ix_products_user_id', 'products', ['user_id'], unique=False)
+    op.create_table('api_key_usage_daily',
+    sa.Column('api_key_id', sa.String(length=36), nullable=False),
+    sa.Column('day', sa.Date(), nullable=False),
+    sa.Column('calls', sa.Integer(), nullable=False),
+    sa.Column('urls_admitted', sa.Integer(), nullable=False),
+    sa.Column('urls_rejected', sa.Integer(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['api_key_id'], ['api_keys.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('api_key_id', 'day')
+    )
+    op.create_index('ix_api_key_usage_daily_day', 'api_key_usage_daily', ['day'], unique=False)
+    op.create_index('ix_api_key_usage_daily_key_day', 'api_key_usage_daily', ['api_key_id', 'day'], unique=False)
+    op.create_table('funnel_events',
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('event_type', sa.String(length=32), nullable=False),
+    sa.Column('crawl_id', sa.String(length=36), nullable=True),
+    sa.Column('domain', sa.String(length=255), nullable=True),
+    sa.Column('payload', sa.JSON(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['crawl_id'], ['crawls.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_funnel_events_type', 'funnel_events', ['event_type', 'created_at'], unique=False)
+    op.create_index('ix_funnel_events_user', 'funnel_events', ['user_id', 'created_at'], unique=False)
     op.create_table('prospects',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
@@ -158,7 +210,6 @@ def upgrade() -> None:
     sa.Column('score_json', sa.JSON(), nullable=False),
     sa.Column('ai_analysis_json', sa.JSON(), nullable=True),
     sa.Column('scoring_version', sa.String(length=16), nullable=False),
-    sa.Column('has_manual_input', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['crawl_id'], ['crawls.id'], ondelete='CASCADE'),
@@ -230,13 +281,24 @@ def downgrade() -> None:
     op.drop_index('ix_prospects_user_id', table_name='prospects')
     op.drop_index('ix_prospects_domain', table_name='prospects')
     op.drop_table('prospects')
+    op.drop_index('ix_funnel_events_user', table_name='funnel_events')
+    op.drop_index('ix_funnel_events_type', table_name='funnel_events')
+    op.drop_table('funnel_events')
+    op.drop_index('ix_api_key_usage_daily_key_day', table_name='api_key_usage_daily')
+    op.drop_index('ix_api_key_usage_daily_day', table_name='api_key_usage_daily')
+    op.drop_table('api_key_usage_daily')
     op.drop_index('ix_products_user_id', table_name='products')
     op.drop_table('products')
+    op.drop_table('funnel_state')
+    op.drop_table('funnel_actor_domains')
     op.drop_index('ix_crawls_visibility_user_id_listed', table_name='crawls')
     op.drop_index('ix_crawls_user_id', table_name='crawls')
+    op.drop_index('ix_crawls_user_created', table_name='crawls')
     op.drop_index('ix_crawls_updated_at', table_name='crawls')
+    op.drop_index('ix_crawls_queue_status', table_name='crawls')
     op.drop_index('ix_crawls_domain_is_latest', table_name='crawls')
     op.drop_index('ix_crawls_domain', table_name='crawls')
+    op.drop_index('ix_crawls_anonymous_user_id', table_name='crawls')
     op.drop_index('ix_crawls_aax_status', table_name='crawls')
     op.drop_table('crawls')
     op.drop_index('ix_auth_sessions_expires_at', table_name='auth_sessions')

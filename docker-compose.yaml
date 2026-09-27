@@ -2,12 +2,12 @@
 name: meshweave
 
 networks:
-  magics:
+  network:
 
 services:
   postgres:
     image: postgres:18
-    container_name: postgres
+    container_name: meshweave-postgres
     hostname: postgres
     restart: unless-stopped
     environment:
@@ -26,7 +26,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - magics
+      - network
   alembic:
     build:
       context: .
@@ -47,11 +47,11 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - magics
+      - network
   lightpanda:
     # Pinned digest of lightpanda/browser:nightly (2026-08-26); bump deliberately
     image: lightpanda/browser:0.3.7
-    container_name: lightpanda
+    container_name: meshweave-lightpanda
     hostname: lightpanda
     restart: always
     command: ["lightpanda", "serve", "--host", "0.0.0.0", "--port", "9222"]
@@ -67,13 +67,13 @@ services:
     environment:
       TZ: ${TZ:-UTC}
     networks:
-      - magics
+      - network
   webapp:
     build:
       context: .
       dockerfile: webapp/Dockerfile
     image: meshweave:latest
-    container_name: meshweave
+    container_name: meshweave-webapp
     hostname: meshweave
     restart: always
     environment:
@@ -176,4 +176,4 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - magics
+      - network
