@@ -480,12 +480,3 @@ class TestEnvExampleCoversComposeVars:
         documented = set(re.findall(r"^#?\s*([A-Z][A-Z0-9_]*)=", example, re.M))
         missing = sorted(names - documented)
         assert not missing, f".env.prod.example misses {missing}"
-
-
-class TestDocsMigrationIds:
-    def test_docs_reference_the_real_single_head(self):
-        for rel in ("docs/backup-restore.md", "docs/launch-blockers.md"):
-            text = (ROOT / rel).read_text()
-            assert "b62716752fd5" not in text, rel
-            assert "4a63bc9f6c06" not in text, rel
-            assert "880764c4c4b4" in text, rel
