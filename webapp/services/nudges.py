@@ -89,13 +89,13 @@ def _record_impression(
         ).inc()
     except Exception:
         pass
-    # A gate offer shown to a user without a key is a gated-feature
-    # hit: the funnel needs to know how often the gate does its job.
-    # A gate offer shown to a user without a key is a gated-feature
-    # hit; the services offer is Plan A — it is tracked via its CTA.
-    if nudge.get("name") in ("bulk_gate", "save_analysis") and not has_active_api_key(
-        user_id
-    ):
+    # A gate offer that renders is a gated-feature hit: the funnel needs
+    # to know how often the gate does its job, and the seen-mark is what
+    # later pairs a taken event with this offer. Emitted for every gate
+    # render — including save_analysis for key holders, or their takes
+    # could never pair with a hit. The services offer is Plan A — it is
+    # tracked via its CTA.
+    if nudge.get("name") in ("bulk_gate", "save_analysis"):
         try:
             funnel_svc.emit_gated_feature_hit(
                 user_id, feature=nudge["name"], surface=surface
@@ -195,7 +195,15 @@ def _base_nudges(
 def _eligible(
     nudge: dict[str, Any], stage: str, first_used: bool, has_key: bool
 ) -> bool:
-    """Whether a candidate nudge applies to this user right now."""
+    """Whether a candidate nudge applies to this user right now.
+
+    The anti-nagging rule is uniform: once a user shows contact intent
+    (``inquiry``) or converts (``customer``), every offer stops rendering
+    (conversion-funnel.md) — the gate pitch and the first-call hint
+    included, not just the save/services offers.
+    """
+    if stage in ("inquiry", "customer"):
+        return False
     if nudge["name"] == "first_call_hint":
         # Only meaningful for a key holder that has not made a call yet.
         return has_key and not first_used

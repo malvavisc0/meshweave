@@ -100,6 +100,12 @@ def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
     section for AAX.
 
     Returns None if AAX is disabled or has no completed tests.
+
+    Honesty on degradation: when any LLM test failed, the composite
+    is suppressed (None) rather than published from whatever rule-based
+    factors survived — a client must never see a confident Actionable
+    score computed from one heuristic while the AI review was down. The
+    failure is surfaced through ``degraded`` plus the skip reasons.
     """
     if not _aax_completed(aax_result):
         return None
@@ -115,17 +121,22 @@ def compute_aax_score(aax_result: dict[str, Any]) -> dict[str, Any] | None:
     if not factors:
         return None
 
-    composite = _weighted_composite(factors, AAX_WEIGHTS)
+    skip_reasons = aax_result.get("skip_reasons", {})
+    degraded = any(
+        str(reason).startswith("Test failed") for reason in skip_reasons.values()
+    )
+    composite = None if degraded else _weighted_composite(factors, AAX_WEIGHTS)
 
     return {
         "composite": composite,
-        "rating": aax_rating(composite),
+        "rating": aax_rating(composite) if composite is not None else None,
         "factors": factors,
         "contactability": aax_result.get("contactability"),
-        "skip_reasons": aax_result.get("skip_reasons", {}),
+        "skip_reasons": skip_reasons,
         "tests_completed": aax_result.get("tests_completed", 0),
         "tests_skipped": aax_result.get("tests_skipped", 0),
         "model_id": aax_result.get("model_id", ""),
+        "degraded": degraded,
     }
 
 

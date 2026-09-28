@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+from webapp.utils.config import _env_bool, _is_dev_environment
+
 log = logging.getLogger(__name__)
 
 # SQLite path configurable via env
@@ -17,6 +19,32 @@ os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
 # SQLAlchemy engine and session factory (sync)
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+
+def _fallback_sqlite_url(sqlite_path: str) -> str:
+    """Resolve the dev-only SQLite fallback URL for an empty DATABASE_URL.
+
+    Args:
+        sqlite_path (str): Filesystem path for the SQLite database file.
+
+    Returns:
+        str: SQLite SQLAlchemy URL for the dev fallback database.
+
+    Raises:
+        RuntimeError: When WEBAPP_ENV marks a non-development deployment.
+            A production deployment that silently falls back to a local
+            file loses every write on re-deploy.
+    """
+    if not _is_dev_environment():
+        raise RuntimeError(
+            "DATABASE_URL is required outside development (WEBAPP_ENV != development)"
+        )
+    log.warning(
+        "DATABASE_URL is empty; falling back to SQLite at %s. "
+        "Set DATABASE_URL for any persistent deployment.",
+        sqlite_path,
+    )
+    return f"sqlite:///{sqlite_path}"
 
 
 class DatabaseConnectionPool:
@@ -62,9 +90,8 @@ class DatabaseConnectionPool:
                 )
                 event.listen(self.engine, "connect", _set_sqlite_pragma)
         else:
-            # Default to SQLite
             self.engine = create_engine(
-                f"sqlite:///{sqlite_path}",
+                _fallback_sqlite_url(sqlite_path),
                 connect_args={"check_same_thread": False, "timeout": 30.0},
                 future=True,
             )
@@ -118,15 +145,6 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
 
 
 db_pool = DatabaseConnectionPool(DATABASE_URL, SQLITE_PATH)
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, "" if not default else "1").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
 
 
 def _run_alembic_upgrade() -> None:

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import case
@@ -37,6 +38,24 @@ QUEUE_STALE_MINUTES = 30  # Reclaim "running" queue jobs older than this
 QUEUE_WORKER_POLL_INTERVAL = 5.0  # Seconds between queue polls
 QUEUE_BATCH_LIMIT = 5  # Jobs claimed per poll
 QUEUE_JOB_TIMEOUT_SECONDS = 15 * 60  # Hard cap per queued crawl execution
+
+
+def _max_concurrent_crawls() -> int:
+    """Global concurrency cap across queue jobs.
+
+    N identities can otherwise saturate the single LightPanda and the
+    DB pool. 0 disables the cap.
+    """
+    try:
+        return int(os.getenv("WEBAPP_MAX_CONCURRENT_CRAWLS", "3"))
+    except ValueError:
+        return 3
+
+
+def _count_running_queue_jobs() -> int:
+    """Crawl rows currently claimed by a queue worker."""
+    with get_session() as s:
+        return s.query(Crawl.id).filter(Crawl.queue_status == "running").count()
 
 
 def _claim_pending_job(crawl_id: str) -> bool:
@@ -91,6 +110,37 @@ def reset_stale_jobs() -> int:
         )
         if updated:
             logger.info("Reclaimed %s stale crawl queue jobs", updated)
+        return updated
+
+
+def adopt_stranded_form_jobs() -> int:
+    """Move stranded form-path jobs onto the durable queue.
+
+    Form submissions ride ``BackgroundTasks``; a restart between row
+    creation and task execution leaves the row ``pending`` with no
+    queue_status forever. This sweep adopts rows that have waited past
+    one poll interval onto the durable queue, whose worker re-runs them
+    like any other job. Retired rows are excluded: a retire clears
+    queue_status on a row that was pending, and re-crawling a retired
+    revision would undo the retirement.
+    """
+    cutoff = datetime.now(UTC) - timedelta(minutes=QUEUE_STALE_MINUTES)
+    with get_session() as s:
+        updated = (
+            s.query(Crawl)
+            .filter(
+                Crawl.queue_status.is_(None),
+                Crawl.status == "pending",
+                Crawl.created_at < cutoff,
+                Crawl.is_latest == True,  # noqa: E712
+            )
+            .update(
+                {"queue_status": "pending", "queue_started_at": None},
+                synchronize_session=False,
+            )
+        )
+        if updated:
+            logger.info("Adopted %s stranded form jobs onto the crawl queue", updated)
         return updated
 
 
@@ -170,6 +220,20 @@ async def _process_job(crawl_id: str) -> None:
         _mark_terminal(crawl_id, "failed")
 
 
+async def _run_queue_batch(stop_event: asyncio.Event, cap: int) -> None:
+    """Claim and execute one batch of pending jobs under the concurrency cap."""
+    running = _count_running_queue_jobs() if cap > 0 else 0
+    if cap > 0 and running >= cap:
+        logger.debug("Crawl concurrency cap reached (%s running)", running)
+        return
+    limit = max(1, cap - running) if cap > 0 else QUEUE_BATCH_LIMIT
+    batch = _fetch_pending_ids(limit=limit)
+    if batch:
+        await asyncio.gather(
+            *(_process_job(cid) for cid in batch if not stop_event.is_set())
+        )
+
+
 async def crawl_queue_worker(stop_event: asyncio.Event) -> None:
     """Poll the durable crawl queue and execute pending jobs.
 
@@ -177,17 +241,15 @@ async def crawl_queue_worker(stop_event: asyncio.Event) -> None:
     the AAX worker. Each poll claims a batch and runs its jobs
     concurrently so one slow crawl does not stall the rest of the queue;
     stale reclaim runs every poll so a long-lived process also recovers
-    jobs orphaned by a crashed co-worker.
+    jobs orphaned by a crashed co-worker. The batch size is bounded by
+    the global crawl-concurrency cap.
     """
     logger.info("Crawl queue worker started")
     while not stop_event.is_set():
         try:
             reset_stale_jobs()
-            batch = _fetch_pending_ids()
-            if batch:
-                await asyncio.gather(
-                    *(_process_job(cid) for cid in batch if not stop_event.is_set())
-                )
+            adopt_stranded_form_jobs()
+            await _run_queue_batch(stop_event, _max_concurrent_crawls())
         except Exception:
             logger.exception("Crawl queue worker poll failed")
         try:

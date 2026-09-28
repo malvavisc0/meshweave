@@ -42,6 +42,18 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+      - name: Mypy
+        run: uv run mypy
+
+      - name: Radon complexity gate
+        run: |
+          uv run radon cc meshweave webapp -s > radon.txt
+          if grep -qE '\-\s(C|D|E|F)\s' radon.txt; then
+            echo "Complexity gate failed — no function may rank C or worse:"
+            grep -E '\-\s(C|D|E|F)\s' radon.txt
+            exit 1
+          fi
+
   test:
     name: Test
     runs-on: ubuntu-latest

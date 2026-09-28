@@ -173,3 +173,105 @@ class TestSummaryPrompt:
         user, _ = aax_summary_prompt({"target_audience": "agencies"}, None)
         assert "Name the audience exactly as the site states it" in user
         assert "never generalise" in user
+
+
+class TestFreshnessHonesty:
+    """Freshness findings match the evidence and never over-promise."""
+
+    @staticmethod
+    def _freshness(avg_days: float | None, score: float | None) -> dict[str, dict]:
+        return {
+            "freshness": {
+                "score": score,
+                "raw": {"avg_days_old": avg_days, "pages_with_dates": 2},
+            }
+        }
+
+    def test_stale_dated_rec_fires_with_a_real_move_and_honest_copy(self):
+        factors = self._freshness(150.0, 60.0)
+        recs = generate_recommendations(factors, {})
+        fix = next(r for r in recs if r["factor"] == "freshness")
+        assert fix["expected_points"] is not None and fix["expected_points"] > 0
+        assert "150 days" in fix["detail"]
+        assert "carry no date" not in fix["detail"]
+        assert "an agent can read" not in fix["detail"]
+        assert "note" not in factors["freshness"]
+
+    def test_dateless_freshness_yields_a_note_not_a_fix(self):
+        factors = self._freshness(None, None)
+        recs = generate_recommendations(factors, {})
+        assert not [r for r in recs if r["factor"] == "freshness"]
+        assert "No readable dates" in factors["freshness"]["note"]
+
+    def test_mid_band_freshness_yields_a_note_not_a_fix(self):
+        factors = self._freshness(50.0, 80.0)
+        recs = generate_recommendations(factors, {})
+        assert not [r for r in recs if r["factor"] == "freshness"]
+        assert "50 days" in factors["freshness"]["note"]
+
+    def test_zero_point_freshness_produces_no_fix_list_item(self):
+        # Content older than a year: re-dating moves nothing. Predict 0,
+        # drop the fix, and give the reason as a factor note.
+        factors = self._freshness(400.0, 20.0)
+        recs = generate_recommendations(factors, {})
+        assert not [r for r in recs if r["factor"] == "freshness"]
+        assert "older than a year" in factors["freshness"]["note"]
+
+    def test_target_band_already_reached_predicts_no_move(self):
+        # A predicted move of zero never reaches the fix list.
+        factors = self._freshness(120.0, 80.0)
+        recs = generate_recommendations(factors, {})
+        assert not [r for r in recs if r["factor"] == "freshness"]
+        assert factors["freshness"]["note"]
+
+
+class TestGapNotes:
+    """Sub-100 factors without a fix carry a reason note, never silence."""
+
+    def test_mid_band_topical_authority_gets_a_note(self):
+        raw = {
+            "coverage_pct": 80,
+            "schema_types_count": 1,
+            "name_consistent": True,
+            "desc_consistent": True,
+            "content_page_ratio": 0.5,
+        }
+        factors = {"topical_authority": {"score": 60.6, "raw": raw}}
+        recs = generate_recommendations({}, factors)
+        assert not [r for r in recs if r["factor"] == "topical_authority"]
+        assert factors["topical_authority"]["note"]
+
+    def test_mid_band_content_depth_gets_a_note(self):
+        factors = {"content_depth": {"score": 70.0, "raw": {"page_words": {}}}}
+        recs = generate_recommendations({}, factors)
+        assert not [r for r in recs if r["factor"] == "content_depth"]
+        assert factors["content_depth"]["note"]
+
+    def test_meta_without_issues_below_100_gets_a_note(self):
+        factors = {
+            "meta_optimization": {
+                "score": 60.0,
+                "raw": {
+                    "completeness": "adequate",
+                    "clarity": "clear",
+                    "llm_optimization": "good",
+                    "would_click_through": True,
+                },
+            }
+        }
+        recs = generate_recommendations({}, {}, aax_factors=factors)
+        assert not [r for r in recs if r["factor"] == "meta_optimization"]
+        assert factors["meta_optimization"]["note"]
+
+    def test_factor_with_a_fix_gets_no_note(self):
+        raw = {
+            "coverage_pct": 40,
+            "schema_types_count": 1,
+            "name_consistent": True,
+            "desc_consistent": True,
+            "content_page_ratio": 0.5,
+        }
+        factors = {"topical_authority": {"score": 46.6, "raw": raw}}
+        recs = generate_recommendations({}, factors)
+        assert [r for r in recs if r["factor"] == "topical_authority"]
+        assert "note" not in factors["topical_authority"]

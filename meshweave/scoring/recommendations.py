@@ -70,7 +70,9 @@ def generate_recommendations(
             when recommendations are first generated.
 
     Returns:
-        List of recommendation dicts sorted by expected impact.
+        List of recommendation dicts sorted by expected impact. Factors
+        below 100 that no fix addresses receive a ``note`` (the reason)
+        in place, so every sub-100 factor carries a fix or a reason.
     """
     lens_factors = {
         "aeo": aeo_factors,
@@ -94,6 +96,7 @@ def generate_recommendations(
         rec["priority"] = priority_for_points(rec["expected_points"])
 
     recs = [r for r in recs if not _is_non_fix(r)]
+    _attach_gap_notes(lens_factors, recs)
     _sort_recommendations(recs)
 
     return recs
@@ -186,7 +189,100 @@ def _aeo_recommendations(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
     recs.extend(_answerability_recs(aeo_factors))
     recs.extend(_schema_coverage_recs(aeo_factors))
     recs.extend(_content_structure_recs(aeo_factors))
+    recs.extend(_freshness_recs(aeo_factors))
     return recs
+
+
+def _freshness_recs(aeo_factors: dict[str, dict]) -> list[dict[str, Any]]:
+    """Freshness findings: a fix only where a real update moves the band.
+
+    The journey rule is fix-or-reason for every factor below 100.
+    Publishing dates alone never moves the band — the score follows the
+    content's own age — so dated-stale content gets an update fix with an
+    honest predicted move while mid-band, dateless, and year-old content
+    get factor notes instead of an over-promising fix.
+    """
+    raw = _factor_raw(aeo_factors, "freshness")
+    factor = aeo_factors.get("freshness") or {}
+    avg_days = raw.get("avg_days_old")
+    if not isinstance(avg_days, (int, float)):
+        _set_factor_note(factor, "No readable dates on pages — freshness not scored.")
+        return []
+    current = _factor_score(aeo_factors, "freshness")
+    if avg_days <= 30:
+        return []
+    if avg_days <= 90:
+        _set_factor_note(
+            factor,
+            f"Readable dates average {avg_days:.0f} days old — past the 30-day "
+            "fresh band.",
+        )
+        return []
+    if avg_days > 365:
+        _set_factor_note(
+            factor, "Content older than a year — update the content itself."
+        )
+        return []
+    next_band = 80.0 if avg_days <= 180 else 60.0
+    gain = next_band - (current if current is not None else 0.0)
+    if gain <= 0:
+        _set_factor_note(
+            factor,
+            f"Readable dates average {avg_days:.0f} days old — only a content "
+            "update moves the band.",
+        )
+        return []
+    return [
+        {
+            "factor": "freshness",
+            "title": "Update stale content and publish the new last-updated dates",
+            "detail": (
+                f"Pages carry readable dates averaging {float(avg_days):.0f} days "
+                "old — the dates exist and read as stale. Update the content on "
+                "key pages and publish each page's new dateModified date."
+            ),
+            "impact": "",
+            "_target_score": target(current, gain),
+        }
+    ]
+
+
+def _set_factor_note(factor: dict, note: str) -> None:
+    """Record a reason on the factor (rendered as factor.note)."""
+    if factor:
+        factor.setdefault("note", note)
+
+
+# Reasons for factors below 100 that no fix addresses. The journey rule
+# is fix-or-reason: a sub-100 factor without a generated fix carries a
+# factor note so the gap is never silent.
+_FACTOR_GAP_NOTES: dict[str, str] = {
+    "topical_authority": (
+        "Structured data falls short of full coverage with no single missing "
+        "item — extend JSON-LD across more pages for the remaining points."
+    ),
+    "content_depth": (
+        "Content is adequate but not deep — expand key pages with the "
+        "specifics a buyer needs for the remaining points."
+    ),
+    "meta_optimization": (
+        "No specific metadata gap found — the score reflects partial title "
+        "and description quality."
+    ),
+}
+
+
+def _attach_gap_notes(lens_factors: dict[str, dict[str, dict]], recs: list) -> None:
+    """Give every sub-100 factor without a fix a visible reason."""
+    fixed = {r["factor"] for r in recs}
+    for factors in lens_factors.values():
+        for key, factor in factors.items():
+            score = factor.get("score")
+            if score is None or score >= 100 or key in fixed or factor.get("note"):
+                continue
+            note = _FACTOR_GAP_NOTES.get(key)
+            if note:
+                _set_factor_note(factor, note)
 
 
 # Finding titles per benchmark question. Unsupported and contradictory
@@ -1235,6 +1331,10 @@ _GUIDANCE: dict[str, str] = {
     ),
     "Publish an llms-full.txt file": (
         "Publish /llms-full.txt with the full text of your key pages."
+    ),
+    "Update stale content and publish the new last-updated dates": (
+        "Update the stale pages and publish each one's new dateModified "
+        "date in its JSON-LD."
     ),
     "Declare your sitemap in robots.txt": (
         "Add a Sitemap: line to robots.txt that points to your XML sitemap."

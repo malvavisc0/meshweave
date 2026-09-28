@@ -123,13 +123,34 @@ def _normalize_domain_field(domain: str | None) -> str:
     return dom
 
 
+def _strict_url_host(uval: str) -> str:
+    """Bare host of a URL for validation: userinfo and port stripped.
+
+    Both the page path and the site-form ``url`` field validate this
+    exact extraction — the netloc form can carry userinfo
+    (``user@host``) or an explicit port, and a decoy prefix must never
+    widen what ``reject_internal_target`` sees. A bracketed IPv6
+    literal collapses to the empty host and is rejected closed.
+    """
+    return urlparse(uval).netloc.split("@")[-1].split(":")[0].strip("[]")
+
+
 def _site_start_url(dom: str, url: str | None) -> str:
-    """Derive start_url from the url field (path) or default to domain root."""
+    """Derive start_url from the url field (path) or default to domain root.
+
+    The ``url`` field's host must pass the same internal-target rejection
+    as the ``domain`` field: without it, a public decoy domain plus a
+    private ``url`` sends the crawler at an internal address.
+    """
     _site_url = (url or "").strip()
     if _site_url and _site_url.startswith("http"):
         from webapp.utils.url import canonicalize_url as _canon
 
-        _s_dom, _s_path, _s_query, _s_canon = _canon(_site_url)
+        _, _, _, _s_canon = _canon(_site_url)
+        if reject_internal_target(_strict_url_host(_site_url)):
+            raise HTTPException(
+                status_code=400, detail="URL targets a non-public network address"
+            )
         return _s_canon
     return f"https://{dom}/"
 
@@ -138,9 +159,23 @@ def _parse_site_limits(
     max_pages: str | None,
     max_depth: str | None,
     time_budget_ms: str | None,
+    is_authenticated: bool = False,
 ) -> dict:
-    """Parse optional site crawl limits, ignoring invalid values."""
-    lim_req = {}
+    """Parse optional site crawl limits into a fully-populated dict.
+
+    Form site rows must always carry real limit parameters: an
+    empty ``{}`` makes scope dispatch disagree with the diff matcher,
+    which distinguishes site rows from page rows by ``is not None``.
+    Missing fields fall back to the anonymous/authenticated env
+    defaults, mirroring ``_limits_from_row``.
+    """
+    prefix = "AUTH" if is_authenticated else "ANON"
+    defaults = {
+        "max_pages": _int_env(f"{prefix}_SITE_MAX_PAGES_DEFAULT", 10),
+        "max_depth": _int_env(f"{prefix}_SITE_MAX_DEPTH_DEFAULT", 1),
+        "time_budget_ms": _int_env(f"{prefix}_SITE_TIME_BUDGET_MS_DEFAULT", 600_000),
+    }
+    lim_req: dict[str, int] = dict(defaults)
     if max_pages is not None:
         try:
             lim_req["max_pages"] = int(max_pages)
@@ -157,6 +192,14 @@ def _parse_site_limits(
         except Exception:
             pass
     return lim_req
+
+
+def _int_env(name: str, default: int) -> int:
+    """Read an integer env var with a fallback."""
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return default
 
 
 def _generate_public_key(s) -> str:
@@ -247,8 +290,14 @@ def _logs_single_page(
             status_at_submit=status_at_submit,
             client_ip=raw_client_ip if raw_client_ip else None,
             client_ip_hash=(client_ip_hash if cfg["mask_ip"] else None),
-            forwarded_for=_request_header(request, "x-forwarded-for"),
-            x_real_ip=_request_header(request, "x-real-ip"),
+            # Privacy claim: masked logging never persists raw proxy
+            # headers — they carry the client IP verbatim.
+            forwarded_for=(
+                None if cfg["mask_ip"] else _request_header(request, "x-forwarded-for")
+            ),
+            x_real_ip=(
+                None if cfg["mask_ip"] else _request_header(request, "x-real-ip")
+            ),
             user_agent=_request_header(request, "user-agent"),
             accept_language=_request_header(request, "accept-language"),
             referer=_request_header(request, "referer"),
@@ -350,6 +399,18 @@ def _track_site_submit(user, visibility: str) -> None:
         pass
 
 
+def _site_csrf_failure_redirect(request) -> RedirectResponse:
+    """Land a site-form CSRF failure where the visitor can read it.
+
+    The site form is on the public home page: the dashboard requires
+    auth, so an anonymous visitor must be sent home instead of being
+    stranded on a raw 401.
+    """
+    user = getattr(request.state, "current_user", None)
+    target = "/dashboard?notice=csrf_failed" if user else "/?notice=csrf_failed"
+    return RedirectResponse(url=target, status_code=303)
+
+
 async def _submit_site(
     request,
     background_tasks,
@@ -362,11 +423,15 @@ async def _submit_site(
     time_budget_ms,
 ):
     """Handle the site-scope crawl submission branch."""
-    # CSRF validation (same behavior as the old /submit-site: redirect on failure)
     try:
         verify_request_csrf(request, csrf_token)
     except HTTPException:
-        return RedirectResponse(url="/dashboard?notice=csrf_failed", status_code=303)
+        return _site_csrf_failure_redirect(request)
+
+    # Rate limiting runs before anything else, for anonymous and signed-in
+    # users alike: the site form is reachable from the public home page and
+    # an unmetered anonymous submit spawns a full site crawl.
+    _enforce_rate_limit(request, datetime.now(UTC))
 
     user = getattr(request.state, "current_user", None)
     # Resolve visibility with override support
@@ -387,12 +452,24 @@ async def _submit_site(
 
     _track_site_submit(user, visibility)
 
-    lim_req = _parse_site_limits(max_pages, max_depth, time_budget_ms)
+    lim_req = _parse_site_limits(
+        max_pages,
+        max_depth,
+        time_budget_ms,
+        is_authenticated=bool(user and getattr(user, "id", None)),
+    )
     start_url = _site_start_url(dom, url)
 
-    # Upsert crawl row (unique on visibility+domain+path+query)
+    # Upsert crawl row (unique on visibility+domain+path+query). A
+    # refresh within the cooldown window redirects instead of re-crawling,
+    # matching the page path's safeguard.
     now = datetime.now(UTC)
     with get_session() as s2:
+        existing_latest = _find_latest_crawl(
+            s2, visibility, dom, "/", "", getattr(user, "id", None), scope_site=True
+        )
+        if existing_latest is not None and _now_refreshing(s2, existing_latest, now):
+            return _cooldown_response(None)
         crawl_id, key = _upsert_site_crawl_row(
             s2, user, dom, start_url, visibility, lim_req, None, now
         )
@@ -405,6 +482,10 @@ async def _submit_site(
         pass
 
     response = _site_submit_redirect(user, crawl_id, visibility, key)
+    # Site submits land in the same submission log the rate limiter
+    # counts: without a row here, pure site-form hammering is invisible
+    # to the only anonymous throttle.
+    _maybe_log_site_submission(request, crawl_id, dom, visibility)
     _attribute_anonymous_crawl(request, response, crawl_id, user)
     return response
 
@@ -420,6 +501,9 @@ def _replace_site_crawl(
     existing.is_latest = False
     old_key = getattr(existing, "key", None)
     existing.key = None
+    # Land the retire before the replacement insert shares the
+    # uq_crawls_series_latest key with it.
+    s.flush()
     row = Crawl(
         url=start_url,
         domain=dom,
@@ -498,6 +582,7 @@ def _upsert_site_crawl_row(s, user, dom, start_url, visibility, lim_req, key, no
         Crawl.path == "/",
         Crawl.query == "",
         Crawl.is_latest == True,  # noqa: E712
+        _scope_filter(True),
     ]
     if visibility == "private":
         filters.append(Crawl.user_id == getattr(user, "id", None))
@@ -521,7 +606,7 @@ def _require_page_url(uval: str) -> str:
         raise HTTPException(
             status_code=400, detail="Invalid URL. Must start with http(s)://"
         )
-    if reject_internal_target(urlparse(uval).netloc.split("@")[-1].split(":")[0]):
+    if reject_internal_target(_strict_url_host(uval)):
         raise HTTPException(
             status_code=400, detail="URL targets a non-public network address"
         )
@@ -575,6 +660,34 @@ def _maybe_log_submission(
             uval,
             is_public,
             force_refresh,
+            ip_fields_holder,
+        )
+
+
+def _maybe_log_site_submission(
+    request: Request,
+    crawl_id,
+    dom: str,
+    visibility: str,
+) -> None:
+    """Persist a site-scope submission row (same shape as the page path).
+
+    The anonymous rate limiter counts ``Submission`` rows, so the site
+    form must write one too — with the form's start URL as the recorded
+    URL — or its submits bypass the only anonymous throttle.
+    """
+    if not _env_bool("WEBAPP_LOG_REQUESTS", True):
+        return
+    ip_fields_holder = _page_submission_ip_fields(request)
+    with get_session() as s:
+        _logs_single_page(
+            s,
+            request,
+            crawl_id,
+            dom,
+            f"https://{dom}/",
+            visibility == "public",
+            True,
             ip_fields_holder,
         )
 
@@ -656,6 +769,22 @@ def _finalize_page_submission(
     return resp
 
 
+def _enforce_page_submission_gates(user, visibility: str, return_to):
+    """Post-security gates for the page submit path.
+
+    Anonymous private submissions redirect to sign-in (no row created),
+    and per-user quotas apply to the form path too: without the latter a
+    signed-in user re-running via the Refresh form escapes the
+    concurrent/daily limits. Returns a redirect response the
+    caller must return, or None to continue.
+    """
+    if not user and visibility == "private":
+        return _anonymous_private_login_redirect(return_to)
+    if user and getattr(user, "id", None):
+        enforce_concurrent_jobs_limit(user.id)
+    return None
+
+
 async def _submit_page(
     request,
     background_tasks,
@@ -686,11 +815,9 @@ async def _submit_page(
     _resolve_page_submission(request, user, csrf_token, return_to, now)
 
     visibility = "public" if is_public else "private"
-
-    # Anonymous users may not create private analyses. Reject server-side and
-    # send them to sign in so they can re-submit; do not create a row.
-    if not user and visibility == "private":
-        return _anonymous_private_login_redirect(return_to)
+    gate_redirect = _enforce_page_submission_gates(user, visibility, return_to)
+    if gate_redirect is not None:
+        return gate_redirect
 
     # Upsert behavior for page
     upsert, cooldown = _upsert_result_or_redirect(
@@ -784,7 +911,13 @@ def _enforce_origin(request: Request) -> None:
 
 
 def _enforce_rate_limit(request: Request, now: datetime) -> None:
-    """Apply simple per-client/session rate limiting (fail-open on errors)."""
+    """Apply simple per-client/session rate limiting (fail-closed).
+
+    The counter lives in the submissions log table, but the check itself
+    must not share the request-logging toggle: with ``WEBAPP_LOG_REQUESTS``
+    off there would be no rows to count, and a DB error must not open the
+    throttle either — on failure the request is rejected (fail-closed).
+    """
     window_sec = int(os.getenv("WEBAPP_RATE_LIMIT_WINDOW_SEC", "60"))
     max_in_window = int(os.getenv("WEBAPP_RATE_LIMIT_MAX", "10"))
     trust_proxy = _env_bool("WEBAPP_TRUST_PROXY", False)
@@ -795,42 +928,44 @@ def _enforce_rate_limit(request: Request, now: datetime) -> None:
     session_cookie_val = request.cookies.get(cookie_name)
 
     window_start = now - timedelta(seconds=window_sec)
-    try:
-        with get_session() as s:
-            q = s.query(Submission).filter(Submission.created_at >= window_start)
-            conds = []
-            if client_ip_val:
-                conds.append(Submission.client_ip == client_ip_val)
-            if client_ip_hashed:
-                conds.append(Submission.client_ip_hash == client_ip_hashed)
-            if session_cookie_val:
-                conds.append(Submission.session_id == session_cookie_val)
-            if conds:
-                q = q.filter(or_(*conds))
-            recent_count = q.count()
-            if recent_count >= max_in_window:
-                try:
-                    log_audit("rate_limited", request=request, level=logging.WARNING)
-                except Exception:
-                    pass
-                raise HTTPException(
-                    status_code=429,
-                    detail="Too many submissions. Please try again later.",
-                )
-    except HTTPException:
-        raise
-    except Exception:
-        # On error, do not block but proceed (fail-open)
-        pass
+    with get_session() as s:
+        q = s.query(Submission).filter(Submission.created_at >= window_start)
+        conds = []
+        if client_ip_val:
+            conds.append(Submission.client_ip == client_ip_val)
+        if client_ip_hashed:
+            conds.append(Submission.client_ip_hash == client_ip_hashed)
+        if session_cookie_val:
+            conds.append(Submission.session_id == session_cookie_val)
+        if conds:
+            q = q.filter(or_(*conds))
+        recent_count = q.count()
+    if recent_count >= max_in_window:
+        try:
+            log_audit("rate_limited", request=request, level=logging.WARNING)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=429,
+            detail="Too many submissions. Please try again later.",
+        )
 
 
-def _find_latest_crawl(s, visibility, dom, path, query, user_id: str | None = None):
+def _find_latest_crawl(
+    s, visibility, dom, path, query, user_id: str | None = None, scope_site=None
+):
     """Load the latest crawl row for the given visibility/domain/path/query.
 
     Private lookups must pass ``user_id``: private series are per-owner, and
     an unscoped lookup would hand another user's latest row to the replace
     path (its revision history would be retired under the wrong account).
     Public rows are shared and stay unscoped.
+
+    ``scope_site`` filters the series by scope when given (True = site
+    rows carrying crawl_params, False = page rows): a page re-run must
+    never retire a site-scope latest or vice versa. ``None`` keeps
+    the historical unfiltered behaviour for callers that have no row to
+    compare against.
     """
     filters = [
         Crawl.visibility == visibility,
@@ -841,7 +976,20 @@ def _find_latest_crawl(s, visibility, dom, path, query, user_id: str | None = No
     ]
     if visibility == "private":
         filters.append(Crawl.user_id == user_id)
+    if scope_site is not None:
+        filters.append(_scope_filter(scope_site))
     return s.query(Crawl).filter(*filters).one_or_none()
+
+
+def _scope_filter(scope_site: bool):
+    """SQLA filter matching one crawl scope (site vs page).
+
+    Delegates to the canonical matcher in ``webapp.utils.diff`` so the
+    SQL-level scope test can never drift from the diff series matcher.
+    """
+    from webapp.utils.diff import scope_filter
+
+    return scope_filter(scope_site)
 
 
 def _cooldown_result(return_to) -> dict:
@@ -863,6 +1011,9 @@ def _retire_existing(s, existing) -> str | None:
     existing.is_latest = False
     old_key = getattr(existing, "key", None)
     existing.key = None
+    # Land the retire before the replacement insert shares the
+    # uq_crawls_series_latest key with it.
+    s.flush()
     return old_key
 
 
@@ -874,7 +1025,7 @@ def _cleanup_old_rows(s, dom: str, visibility: str, user_id: str | None = None) 
         pass
 
 
-def _replace_public_crawl(s, existing, dom: str, now) -> dict:
+def _replace_public_crawl(s, existing, dom: str, now, user=None) -> dict:
     """Retire the public domain-root crawl and insert a replacement row."""
     start_url = f"https://{dom}/"
     old_key = _retire_existing(s, existing)
@@ -889,6 +1040,10 @@ def _replace_public_crawl(s, existing, dom: str, now) -> dict:
         status="pending",
         payload_json=None,
         error=None,
+        # A signed-in refresh must not land under "runs without an
+        # account" (the /browse test is user_id IS NULL) and must keep
+        # its funnel attribution.
+        user_id=(getattr(user, "id", None) if user else None),
         created_at=now,
         updated_at=now,
         is_latest=True,
@@ -907,7 +1062,7 @@ def _replace_public_crawl(s, existing, dom: str, now) -> dict:
     }
 
 
-def _new_public_crawl(s, dom: str, now) -> dict:
+def _new_public_crawl(s, dom: str, now, user=None) -> dict:
     """Insert a fresh public domain-root crawl row with a generated key."""
     start_url = f"https://{dom}/"
     key_try = _generate_public_key(s)
@@ -922,6 +1077,9 @@ def _new_public_crawl(s, dom: str, now) -> dict:
         status="pending",
         payload_json=None,
         error=None,
+        #: keep funnel attribution and the "run without an account"
+        # listing test honest for signed-in refreshes.
+        user_id=(getattr(user, "id", None) if user else None),
         created_at=now,
         updated_at=now,
     )
@@ -936,18 +1094,18 @@ def _new_public_crawl(s, dom: str, now) -> dict:
     }
 
 
-def _upsert_public_page_crawl(s, dom: str, now, return_to) -> dict:
+def _upsert_public_page_crawl(s, dom: str, now, return_to, user=None) -> dict:
     """Create or replace the public domain-root crawl row.
 
     Returns a dict with crawl_id, key, force_refresh, and optional
     cooldown_redirect used when a refresh falls within the cooldown window.
     """
-    existing = _find_latest_crawl(s, "public", dom, "/", "")
+    existing = _find_latest_crawl(s, "public", dom, "/", "", scope_site=False)
     if not existing:
-        return _new_public_crawl(s, dom, now)
+        return _new_public_crawl(s, dom, now, user)
     if _now_refreshing(s, existing, now):
         return _cooldown_result(return_to)
-    return _replace_public_crawl(s, existing, dom, now)
+    return _replace_public_crawl(s, existing, dom, now, user)
 
 
 def _replace_private_crawl(s, existing, uval, dom, path, query, canon_url, now) -> dict:
@@ -1027,7 +1185,13 @@ def _upsert_private_page_crawl(
     cooldown_redirect used when a refresh falls within the cooldown window.
     """
     existing = _find_latest_crawl(
-        s, "private", dom, path, query, getattr(user, "id", None)
+        s,
+        "private",
+        dom,
+        path,
+        query,
+        getattr(user, "id", None),
+        scope_site=False,
     )
     if not existing:
         return _new_private_crawl(s, user, uval, dom, path, query, canon_url, now)
@@ -1060,7 +1224,7 @@ def _upsert_page_crawl(
     """
     with get_session() as s:
         if is_public:
-            return _upsert_public_page_crawl(s, dom, now, return_to)
+            return _upsert_public_page_crawl(s, dom, now, return_to, user)
         return _upsert_private_page_crawl(
             s, user, uval, dom, path, query, canon_url, now, return_to
         )
@@ -1087,7 +1251,7 @@ def _schedule_page_crawl(
     """Schedule the appropriate background crawl for a page submission."""
     with get_session() as s:
         existing_row = s.get(Crawl, crawl_id)
-        if existing_row and existing_row.status in {"pending", "failed", "succeeded"}:
+        if existing_row and existing_row.status in {"pending", "failed"}:
             if is_public:
                 background_tasks.add_task(run_site_crawl_task, crawl_id, force_refresh)
             else:

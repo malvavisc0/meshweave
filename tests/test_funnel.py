@@ -285,6 +285,7 @@ class TestGateTracking:
 
     def test_gate_taken_emits_once_per_user(self, factory, user, monkeypatch):
         monkeypatch.setattr(funnel_svc, "get_session", _session_scope_factory(factory))
+        funnel_svc.emit_gated_feature_hit(user, feature="bulk_gate", surface="result")
         funnel_svc.record_gate_taken(user, nudge="bulk_gate")
         funnel_svc.record_gate_taken(user, nudge="bulk_gate")
         with _session_scope(factory) as s:
@@ -297,6 +298,14 @@ class TestGateTracking:
                 .all()
             )
             assert len(events) == 1
+
+    def test_taken_without_hit_is_ignored(self, factory, user, monkeypatch):
+        """Taken events must pair with a hit from the same feature."""
+        monkeypatch.setattr(funnel_svc, "get_session", _session_scope_factory(factory))
+        funnel_svc.record_gate_taken(user, nudge="bulk_gate")
+        with _session_scope(factory) as s:
+            events = s.query(FunnelEvent).filter(FunnelEvent.user_id == user).all()
+            assert events == []
 
     def test_gate_hit_and_taken_are_distinct_events(self, factory, user, monkeypatch):
         monkeypatch.setattr(funnel_svc, "get_session", _session_scope_factory(factory))
@@ -331,15 +340,28 @@ class TestAgencyCounting:
             assert state.segment == "standard"
 
     def test_threshold_trips_segment_upgraded_exactly_once(self, factory, user):
-        domains = [f"d{i}.com" for i in range(funnel_svc.AGENCY_DOMAIN_THRESHOLD + 1)]
-        for domain in domains:
+        domains = [f"d{i}.com" for i in range(funnel_svc.AGENCY_DOMAIN_THRESHOLD)]
+        for domain in domains[:-1]:
             with _session_scope(factory) as s:
                 funnel_svc.emit(
                     s, user, funnel_svc.EVENT_ANALYSIS_COMPLETED, domain=domain
                 )
         events = _events(factory, user)
+        assert [e for e in events if e.event_type == "segment_upgraded"] == []
+        with _session_scope(factory) as s:
+            assert s.get(FunnelState, user).segment == "standard"
+
+        with _session_scope(factory) as s:
+            funnel_svc.emit(
+                s, user, funnel_svc.EVENT_ANALYSIS_COMPLETED, domain=domains[-1]
+            )
+        events = _events(factory, user)
         upgrades = [e for e in events if e.event_type == "segment_upgraded"]
         assert len(upgrades) == 1
+        assert (
+            upgrades[0].payload["distinct_domains"]
+            == funnel_svc.AGENCY_DOMAIN_THRESHOLD
+        )
         with _session_scope(factory) as s:
             assert s.get(FunnelState, user).segment == "agency"
 

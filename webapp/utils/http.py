@@ -75,10 +75,12 @@ def _client_ip_from_request(request: Request, trust_proxy: bool) -> str:
     headers = request.headers
     ip = ""
     try:
+        # Proxy headers are attacker-controlled unless the deployment sits
+        # behind a trusted reverse proxy that overwrites them; reading them
+        # without trust_proxy hands any client a fresh rate-limit bucket
+        # per request.
         if trust_proxy:
-            ip = _forwarded_for_ip(headers)
-        if not ip:
-            ip = _real_ip_header(headers)
+            ip = _forwarded_for_ip(headers) or _real_ip_header(headers)
         if not ip:
             ip = _client_host(request)
     except Exception:

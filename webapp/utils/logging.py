@@ -227,17 +227,27 @@ def log_audit(
 def _client_ip(request: Request) -> str | None:
     """Best-effort client IP extraction.
 
+    Proxy headers are attacker-controlled unless the deployment sits
+    behind a trusted reverse proxy; reading them without trust_proxy
+    lets any client poison the audit log with a chosen IP.
+
     Args:
-        request (Request): Incoming request.
+        request: Incoming request.
 
     Returns:
-        Optional[str]: First IP from X-Forwarded-For or client host; None if unavailable.
+        Optional[str]: Trusted-proxy-derived IP or the connection host;
+        None if unavailable.
     """
-    # Mirrors minimal logic; full trust-proxy logic is elsewhere
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else None
+    from webapp.utils.http import _client_ip_from_request
+
+    try:
+        from webapp.utils.config import _env_bool
+
+        trust_proxy = _env_bool("WEBAPP_TRUST_PROXY", False)
+    except Exception:
+        trust_proxy = False
+    ip = _client_ip_from_request(request, trust_proxy=trust_proxy)
+    return ip or None
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):

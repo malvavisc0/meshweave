@@ -26,22 +26,37 @@ MAX_MARKDOWN_BYTES = 200_000
 PILLARS = ("aeo", "geo", "aax")
 
 
+def scope_filter(scope_site: bool):
+    """SQLA filter matching one crawl scope (site vs page).
+
+    Site rows carry a crawl_params JSON object (possibly {} — the legacy
+    shape); page rows are SQL NULL or JSON 'null'. The column has two
+    "empty" representations in the wild — SQL NULL (fresh rows) and JSON
+    ``'null'`` (rows rewritten by code that assigned None explicitly) —
+    so both are matched for the page case and excluded from the site
+    case. A revision series never mixes scopes: diffing a page run
+    against a site run would compare incompatible payloads.
+
+    Args:
+        scope_site (bool): True for the site-scope series, False for page.
+
+    Returns:
+        SQLAlchemy filter clause selecting rows in that scope.
+    """
+    is_json_null = cast(Crawl.crawl_params, String) == "null"
+    if scope_site:
+        return Crawl.crawl_params.isnot(None) & ~is_json_null
+    return Crawl.crawl_params.is_(None) | is_json_null
+
+
 def _same_series_scope(row: Crawl):
     """SQLA filter matching the base row's scope (site vs page crawl).
 
-    Site crawls carry a ``crawl_params`` object; page crawls store none. The
-    column has two "empty" representations in the wild — SQL NULL (fresh
-    rows) and JSON ``'null'`` (rows rewritten by code that assigned None
-    explicitly) — so both are matched for the page case. A revision series
-    never mixes scopes: diffing a page run against a site run would compare
-    incompatible payloads.
+    Site crawls carry a ``crawl_params`` object (including {}); page
+    crawls store none. Shared with every series-scope matcher so the
+    SQL-level and ORM-level scope tests can never drift apart again.
     """
-    is_json_null = cast(Crawl.crawl_params, String) == "null"
-    # Site scope is any JSON object, including {} (site crawls store their
-    # limit params, possibly empty); page scope is SQL NULL or JSON 'null'.
-    if isinstance(row.crawl_params, dict):
-        return Crawl.crawl_params.isnot(None) & ~is_json_null
-    return Crawl.crawl_params.is_(None) | is_json_null
+    return scope_filter(isinstance(row.crawl_params, dict))
 
 
 def find_previous_revision(row: Crawl, s: Session | None = None) -> Crawl | None:
@@ -110,7 +125,7 @@ def list_revision_series(row: Crawl) -> list[dict]:
             "created_at": r.created_at,
             "status": r.status,
             "visibility": r.visibility,
-            "scope": "site" if r.crawl_params else "page",
+            "scope": "site" if r.crawl_params is not None else "page",
         }
         for r in rows
     ]

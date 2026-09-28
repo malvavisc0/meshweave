@@ -46,7 +46,7 @@ from meshweave.ai.prompts import (
     select_pages_for_analysis,
     summarize_jsonld,
 )
-from meshweave.ai.runner import run_structured_test
+from meshweave.ai.runner import format_test_error, run_structured_test
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +300,7 @@ async def _gather_results(
         for key, result in zip(tasks.keys(), done):
             if isinstance(result, Exception):
                 logger.warning("AAX test %s failed: %s", key, result)
-                skip_reasons[key] = f"Test failed: {result}"
+                skip_reasons[key] = f"Test failed: {format_test_error(result)}"
             else:
                 results[key] = result
     return results, skip_reasons
@@ -325,7 +325,7 @@ async def _run_email_validation_task(
         return await run_structured_test(EmailValidationResult, p, s)
     except Exception as e:
         logger.warning("Email validation test failed: %s", e)
-        skip_reasons["email_validation"] = f"Test failed: {e}"
+        skip_reasons["email_validation"] = f"Test failed: {format_test_error(e)}"
         return None
 
 

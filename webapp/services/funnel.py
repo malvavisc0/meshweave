@@ -23,6 +23,10 @@ from webapp.utils.times import ensure_utc
 AGENCY_DOMAIN_THRESHOLD = 5
 NUDGE_RESURFACE_DAYS = 7
 
+# Gate features: the only names record_gate_taken accepts — the
+# same two nudges that emit gated_feature_hit.
+_GATE_FEATURES = frozenset({"bulk_gate", "save_analysis"})
+
 _STAGE_ORDER = {"registered": 0, "api_consumer": 1, "inquiry": 2, "customer": 3}
 
 EVENT_USER_REGISTERED = "user_registered"
@@ -281,22 +285,57 @@ def record_nudge_dismissal(user_id: str, nudge: str) -> bool:
     return True
 
 
+def _claim_gate(s: Session, user_id: str, kind: str, feature: str) -> bool:
+    """Atomically claim one (user, kind, feature) slot in funnel_gates.
+
+    Once-per-user gate bookkeeping must be a single INSERT .. ON
+    CONFLICT DO NOTHING against the composite primary key — not
+    read-check-write (concurrent renders/clicks would double-emit) and
+    not dialect-specific JSON SQL (the PostgreSQL branch never worked).
+    The statement shape is identical on SQLite and PostgreSQL. ``kind``
+    is 'seen' (the offer rendered) or 'taken' (its CTA was clicked).
+    """
+    result = s.execute(
+        text(
+            "INSERT INTO funnel_gates (user_id, kind, feature, created_at) "
+            "VALUES (:user_id, :kind, :feature, :created_at) "
+            "ON CONFLICT DO NOTHING"
+        ),
+        {
+            "user_id": user_id,
+            "kind": kind,
+            "feature": feature,
+            "created_at": _now(),
+        },
+    )
+    return getattr(result, "rowcount", 0) == 1
+
+
+def _gate_seen(s: Session, user_id: str, feature: str) -> bool:
+    """Whether this user was already offered this gate feature."""
+    row = s.execute(
+        text(
+            "SELECT 1 FROM funnel_gates "
+            "WHERE user_id = :user_id AND kind = 'seen' AND feature = :feature"
+        ),
+        {"user_id": user_id, "feature": feature},
+    ).first()
+    return row is not None
+
+
 def emit_gated_feature_hit(user_id: str | None, *, feature: str, surface: str) -> None:
     """Record that a gated feature was offered to a known user — once.
 
     Once per user per feature: the first render emits the event and marks
     the gate seen; later renders are silent (the event counts users
-    offered to, not impressions). No-ops for anonymous activity.
+    offered to, not impressions). The seen-mark is one conditional
+    claim. No-ops for anonymous activity.
     """
     if not user_id:
         return
     with get_session() as s:
-        state = _state_row(s, user_id)
-        if feature in (state.gates_seen or {}):
+        if not _claim_gate(s, user_id, "seen", feature):
             return
-        seen = dict(state.gates_seen or {})
-        seen[feature] = _now().isoformat()
-        state.gates_seen = seen
         _insert_event(
             s,
             user_id,
@@ -311,15 +350,18 @@ def record_gate_taken(user_id: str, *, nudge: str) -> None:
     'Taken' is the moment the user acted on an offer (clicked its CTA):
     the strongest pre-conversion signal the gates produce. Distinct
     event name from the offer ('shown') so the funnel never conflates
-    rendering with acting.
+    rendering with acting. Unknown feature names are rejected and a take
+    is ignored unless the same feature was actually offered to this user
+    — taken events always pair with a hit from the same feature. The
+    taken-mark is one conditional claim.
     """
+    if nudge not in _GATE_FEATURES:
+        return
     with get_session() as s:
-        state = _state_row(s, user_id)
-        if nudge in (state.gates_taken or {}):
+        if not _gate_seen(s, user_id, nudge):
             return
-        taken = dict(state.gates_taken or {})
-        taken[nudge] = _now().isoformat()
-        state.gates_taken = taken
+        if not _claim_gate(s, user_id, "taken", nudge):
+            return
         _insert_event(s, user_id, EVENT_GATED_FEATURE_TAKEN, payload={"feature": nudge})
 
 
@@ -355,8 +397,19 @@ def mark_customer(
         raise ValueError("source must be 'api' or 'services'")
     with get_session() as s:
         state = _state_row(s, user_id)
-        if state.stage == "customer":
+        old_stage = state.stage
+        # Claim-by-UPDATE: concurrent CLI runs cannot both pass
+        # ``stage != 'customer'``, so became_customer never double-emits.
+        claimed = s.execute(
+            text(
+                "UPDATE funnel_state SET stage = 'customer', updated_at = :now "
+                "WHERE user_id = :user_id AND stage != 'customer'"
+            ),
+            {"now": _now(), "user_id": user_id},
+        )
+        if getattr(claimed, "rowcount", 0) != 1:
             return False
+        state.stage = "customer"
         _insert_event(
             s,
             user_id,
@@ -367,5 +420,10 @@ def mark_customer(
                 "contract_value": contract_value,
             },
         )
-        _transition_stage(s, state, "customer")
+        try:
+            from webapp.utils.metrics import funnel_stage_transitions
+
+            funnel_stage_transitions.labels(old_stage, "customer").inc()
+        except Exception:
+            pass
     return True

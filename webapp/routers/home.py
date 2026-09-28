@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
-from sqlalchemy import case
 from sqlalchemy.orm import Session, joinedload
 
 from meshweave.scoring.interpretation import interpret_profile
@@ -105,6 +104,9 @@ def _relative_time(dt: datetime) -> str:
 
 
 def _fetch_recent_rows(db: Session) -> list[Crawl]:
+    # Only succeeded runs: "Recently audited sites" is a proof surface, and
+    # failed/unfinished rows at the top of the list read as broken results
+    # . /browse keeps its own, stricter query.
     return (
         db.query(Crawl)
         .options(joinedload(Crawl.score_snapshot))
@@ -113,15 +115,9 @@ def _fetch_recent_rows(db: Session) -> list[Crawl]:
             Crawl.user_id.is_(None),
             Crawl.listed,
             Crawl.key.is_not(None),
+            Crawl.status == "succeeded",
         )
-        .order_by(
-            case(
-                (Crawl.status == "succeeded", 0),
-                (Crawl.status == "running", 1),
-                else_=2,
-            ),
-            Crawl.updated_at.desc(),
-        )
+        .order_by(Crawl.updated_at.desc())
         .limit(6)
         .all()
     )
@@ -170,7 +166,7 @@ def _meta_from_page(pg: dict) -> tuple[str, str, str]:
 
 def _meta_page_source(payload: dict, crawl_params: Any) -> dict | None:
     """Locate the page dict holding meta fields, or None when absent."""
-    if crawl_params:
+    if crawl_params is not None:
         # For site crawls, title from first page
         pages = payload.get("pages") or []
         if pages and isinstance(pages, list) and len(pages) > 0:
@@ -211,7 +207,7 @@ def _build_summary(
     crawl_params: Any,
 ) -> str:
     summary_snippet = ""
-    if bool(crawl_params):
+    if crawl_params is not None:
         if description:
             summary_snippet = _first_sentence(description, 160)
         elif og_desc:
@@ -285,7 +281,7 @@ def _serialize_row(
         "query": r.query,
         "canonical_url": r.canonical_url,
         "title": title or r.canonical_url or f"{r.domain}{r.path or ''}",
-        "scope": "site" if r.crawl_params else "page",
+        "scope": "site" if r.crawl_params is not None else "page",
         "status": r.status,
         "page_count": page_counts_map.get(r.id, 0),
         "email_count": email_counts_map.get(r.id, 0),
@@ -298,7 +294,7 @@ def _serialize_row(
         "updated_iso": updated_iso,
         "updated_relative": updated_relative,
         "is_new": bool(is_new),
-        "summary_snippet": (summary_snippet if bool(r.crawl_params) else ""),
+        "summary_snippet": (summary_snippet if r.crawl_params is not None else ""),
         "run_count": domain_run_counts.get(r.domain, 1),
         "headline": headline,
         "tone": tone,
@@ -330,7 +326,7 @@ def _crawl_page_count(pj: Any, cp: Any) -> int:
             return 0
         # Pages count: site crawls have a "pages" array,
         # page crawls evaluate 1 page
-        if cp:  # site crawl
+        if cp is not None:  # site crawl
             pages_list = p.get("pages") or []
             return len(pages_list) if isinstance(pages_list, list) else 0
         return 1  # page crawl

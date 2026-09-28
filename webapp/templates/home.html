@@ -143,6 +143,10 @@
         <div role="status" class="hero-inline-notice">
           <span>Your account and all associated data were deleted.</span>
         </div>
+        {% elif notice == 'csrf_failed' %}
+        <div role="alert" class="hero-inline-notice">
+          <span>Your session expired. Please try again.</span>
+        </div>
         {% endif %}
         {% include "partials/site_crawl_form.html" %}
         {% if request.state.current_user %}

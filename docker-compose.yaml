@@ -49,7 +49,7 @@ services:
     networks:
       - network
   lightpanda:
-    # Pinned digest of lightpanda/browser:nightly (2026-08-26); bump deliberately
+    # Pinned minor tag 0.3.7 (a mutable tag, not an immutable digest); bump deliberately
     image: lightpanda/browser:0.3.7
     container_name: meshweave-lightpanda
     hostname: lightpanda
@@ -147,7 +147,6 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
       OTEL_SERVICE_NAME: meshweave
-      DEBUG: yes
       # Database pool tuning (Postgres)
       DB_POOL_SIZE: 5
       DB_MAX_OVERFLOW: 10

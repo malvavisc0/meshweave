@@ -15,11 +15,12 @@ Endpoints:
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
+from sqlalchemy import func
 
 from meshweave.scoring.interpretation import interpret_profile
 from webapp.db import get_session
@@ -32,6 +33,7 @@ from webapp.routers.submissions import (
     _require_page_url,
 )
 from webapp.services import funnel
+from webapp.utils.body_size import enforce_body_size
 from webapp.utils.diff import (
     CrossVersionComparisonError,
     build_findings_diff,
@@ -58,7 +60,6 @@ from webapp.utils.url import canonicalize_url, reject_internal_target
 router = APIRouter()
 
 BULK_BATCH_CAP = 25
-BULK_BODY_MAX_BYTES = 64 * 1024
 
 
 # ── helpers ─────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ def _require_bearer_user(request: Request) -> str:
     user_id = _bearer_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="API key required")
+    _enforce_key_rate_limit(request)
     try:
         from webapp.services.api_usage import record_usage
 
@@ -80,6 +82,67 @@ def _require_bearer_user(request: Request) -> str:
     except Exception:
         pass
     return user_id
+
+
+def _stamp_first_use(request: Request) -> None:
+    """Stamp the key's first use once the call is known-successful.
+
+    Reaching the call site means the endpoint is returning a 2xx — every
+    failure path raises — so this is the "the key actually works for
+    them" activation signal.
+    """
+    try:
+        from webapp.routers.api import stamp_key_first_use
+
+        stamp_key_first_use(request)
+    except Exception:
+        pass
+
+
+def _enforce_key_rate_limit(request: Request) -> None:
+    """Per-key API rate limit: calls per window per Bearer key.
+
+    Counts come from the key's own daily usage rows (already recorded on
+    every call), so no new store is needed. Fail-open on accounting
+    errors — the limit is abuse control, not a data gate.
+    """
+    key_id = getattr(getattr(request, "state", None), "bearer_api_key_id", None)
+    if not key_id:
+        return
+    limit = _int_env("WEBAPP_API_RATE_LIMIT_MAX", 240)
+    window_sec = _int_env("WEBAPP_API_RATE_LIMIT_WINDOW_SEC", 3600)
+    if limit <= 0:
+        return
+    try:
+        from datetime import UTC as _UTC
+
+        cutoff = datetime.now(_UTC) - timedelta(seconds=window_sec)
+        with get_session() as s:
+            from webapp.models import ApiKeyUsageDaily
+
+            used = (
+                s.query(func.sum(ApiKeyUsageDaily.calls))
+                .filter(
+                    ApiKeyUsageDaily.api_key_id == key_id,
+                    ApiKeyUsageDaily.updated_at >= cutoff,
+                )
+                .scalar()
+                or 0
+            )
+        if int(used) >= limit:
+            raise HTTPException(status_code=429, detail="API rate limit exceeded")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
+def _int_env(name: str, default: int) -> int:
+    """Read an integer env var with a fallback."""
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return default
 
 
 def _owned_crawl(user_id: str, crawl_id: str) -> Crawl:
@@ -295,7 +358,15 @@ def _admit_one(
     except HTTPException:
         entry["status"] = "invalid"
         return entry
-    existing = _find_latest_crawl(s, "private", dom, path, query, user_id)
+    if not budget.allows(scope):
+        # Quota must be checked BEFORE any history is touched: retiring the
+        # previous latest here would destroy the revision and strand its
+        # queued job on a rejected re-submit.
+        entry["status"] = "quota"
+        return entry
+    existing = _find_latest_crawl(
+        s, "private", dom, path, query, user_id, scope_site=(scope == "site")
+    )
     if existing is not None:
         if _now_refreshing(s, existing, now):
             entry["status"] = "cooldown"
@@ -308,9 +379,9 @@ def _admit_one(
         existing.key = None
         if getattr(existing, "queue_status", None) == "pending":
             existing.queue_status = None
-    if not budget.allows(scope):
-        entry["status"] = "quota"
-        return entry
+        # Land the retire before the admitted insert shares the
+        # uq_crawls_series_latest key with it.
+        s.flush()
     row = Crawl(
         url=canon_url,
         domain=dom,
@@ -343,9 +414,11 @@ async def create_analyses(request: Request) -> JSONResponse:
     restarts) and owned by the caller (private).
     """
     user_id = _require_bearer_user(request)
-    _enforce_body_size(request)
+    await enforce_body_size(request)
     try:
         data = await request.json()
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     urls, scope = _parse_bulk_body(data)
@@ -365,20 +438,8 @@ async def create_analyses(request: Request) -> JSONResponse:
         )
     except Exception:
         pass
+    _stamp_first_use(request)
     return JSONResponse(status_code=201, content={"items": items})
-
-
-def _enforce_body_size(request: Request) -> None:
-    """Reject oversized bulk bodies before parsing (HTTP 413)."""
-    raw = request.headers.get("content-length")
-    if not raw:
-        return
-    try:
-        size = int(raw)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid Content-Length")
-    if size > BULK_BODY_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Request body too large")
 
 
 @router.get("/api/v1/analyses")
@@ -405,6 +466,7 @@ async def list_analyses(request: Request, cursor: str = "", limit: int = 50) -> 
         rows = q.limit(limit + 1).all()
     items = [_crawl_summary(r) for r in rows[:limit]]
     next_cursor = rows[limit - 1].id if len(rows) > limit and rows else None
+    _stamp_first_use(request)
     return {"items": items, "next_cursor": next_cursor}
 
 
@@ -432,6 +494,7 @@ async def get_analysis(request: Request, crawl_id: str) -> JSONResponse:
         )
     resp = JSONResponse(content=_analysis_contract(row))
     resp.headers["X-Robots-Tag"] = "noindex"
+    _stamp_first_use(request)
     return resp
 
 
@@ -440,11 +503,21 @@ async def get_analysis(request: Request, crawl_id: str) -> JSONResponse:
 
 @router.get("/api/v1/analyses/{crawl_id}/report.md")
 async def get_report_markdown(request: Request, crawl_id: str) -> PlainTextResponse:
-    """Client-ready, unbranded Markdown report for an owned crawl."""
+    """Client-ready, unbranded Markdown report for an owned crawl.
+
+    Readiness matches the browser export: succeeded, snapshot
+    present, and the async AAX analysis completed — a report labelled
+    client-ready must not ship with "—" actionability and missing
+    findings while AAX is still pending.
+    """
     user_id = _require_bearer_user(request)
     row = _owned_crawl(user_id, crawl_id)
-    if row.status != "succeeded":
-        raise HTTPException(status_code=409, detail="Analysis not finished")
+    if (
+        row.status != "succeeded"
+        or not row.score_snapshot
+        or str(getattr(row, "aax_status", "") or "") != "completed"
+    ):
+        raise HTTPException(status_code=409, detail="Report is not ready")
     # Unbranded: no MeshWeave header branding, no MeshWeave contact footer.
     ctx = build_export_context(row, site_name="", contact_email="")
     body = render_export_markdown(ctx)
@@ -460,6 +533,7 @@ async def get_report_markdown(request: Request, crawl_id: str) -> PlainTextRespo
             domain=row.domain,
             format="markdown",
         )
+    _stamp_first_use(request)
     return resp
 
 
@@ -482,7 +556,7 @@ def _resolve_vs_owned(user_id: str, row: Crawl, vs: str) -> Crawl | None:
             vs_row.domain != row.domain
             or vs_row.path != row.path
             or vs_row.query != row.query
-            or bool(vs_row.crawl_params) != bool(row.crawl_params)
+            or (vs_row.crawl_params is not None) != (row.crawl_params is not None)
         ):
             raise HTTPException(status_code=404, detail="Not found")
         old_row: Crawl | None = vs_row
@@ -529,6 +603,7 @@ async def get_diff(request: Request, crawl_id: str, vs: str = "") -> dict:
     if row.status != "succeeded":
         raise HTTPException(status_code=409, detail="Analysis not finished")
     old_row = _resolve_vs_owned(user_id, row, vs)
+    _stamp_first_use(request)
     return _diff_payload(row, old_row)
 
 
@@ -555,4 +630,5 @@ async def get_diff_markdown(
             domain=row.domain,
             format="markdown",
         )
+    _stamp_first_use(request)
     return resp

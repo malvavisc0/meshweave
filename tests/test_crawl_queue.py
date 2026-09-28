@@ -99,6 +99,7 @@ def _queued_crawl(
     queue_status="pending",
     params=None,
     minutes_ago=0,
+    domain="q.com",
 ) -> str:
     cid = str(uuid.uuid4())
     ts = datetime.now(UTC) - timedelta(minutes=minutes_ago)
@@ -106,8 +107,8 @@ def _queued_crawl(
         s.add(
             Crawl(
                 id=cid,
-                url="https://q.com/",
-                domain="q.com",
+                url=f"https://{domain}/",
+                domain=domain,
                 path="/",
                 query="",
                 canonical_url="https://q.com/",
@@ -209,3 +210,162 @@ class TestScopeDispatch:
         cid_site = _queued_crawl(factory, params={"max_pages": 5})
         assert cq._job_scope_owner_status(cid_page)[0] == "page"
         assert cq._job_scope_owner_status(cid_site)[0] == "site"
+
+
+class TestAdoptStrandedFormJobs:
+    """Form-path rows stranded by a restart join the durable queue.
+
+    A retired row also carries queue_status=None + status=pending (the
+    retire path clears its queue job), so the sweep must key off
+    is_latest or it resurrects retired revisions and re-crawls them.
+    """
+
+    def test_adopts_stranded_pending_form_row(self, sessions, monkeypatch):
+        _, factory = sessions
+        monkeypatch.setattr(cq, "QUEUE_STALE_MINUTES", 0)
+        cid = _queued_crawl(factory, queue_status=None, minutes_ago=60)
+        assert cq.adopt_stranded_form_jobs() == 1
+        with factory() as s:
+            assert s.get(Crawl, cid).queue_status == "pending"
+
+    def test_never_adopts_a_retired_row(self, sessions, monkeypatch):
+        _, factory = sessions
+        monkeypatch.setattr(cq, "QUEUE_STALE_MINUTES", 0)
+        cid = _queued_crawl(factory, queue_status=None, minutes_ago=60)
+        with factory() as s:
+            row = s.get(Crawl, cid)
+            row.is_latest = False
+            row.key = None
+            s.commit()
+        assert cq.adopt_stranded_form_jobs() == 0
+        with factory() as s:
+            assert s.get(Crawl, cid).queue_status is None
+
+
+def _committing(factory):
+    """Committing session factory with get_session semantics."""
+
+    @contextmanager
+    def get_session():
+        s = factory()
+        try:
+            yield s
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
+
+    return get_session
+
+
+def _load_jobs():
+    """Import webapp.routers.jobs without the routers package __init__.
+
+    webapp.infra is stubbed: jinja2 is not installed in the root test
+    environment and jobs.py only touches templates at render time.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    from fastapi_stub import install_fastapi_stub
+
+    install_fastapi_stub()
+    if "webapp.infra" not in sys.modules:
+        infra = types.ModuleType("webapp.infra")
+        infra.templates = types.SimpleNamespace()
+        sys.modules["webapp.infra"] = infra
+    root = Path(__file__).resolve().parent.parent / "webapp" / "routers"
+    if "webapp.routers" not in sys.modules:
+        routers_pkg = types.ModuleType("webapp.routers")
+        routers_pkg.__path__ = [str(root)]
+        sys.modules["webapp.routers"] = routers_pkg
+    existing = sys.modules.get("webapp.routers.jobs")
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        "webapp.routers.jobs", root / "jobs.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["webapp.routers.jobs"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestFormRetryResetsQueueJob:
+    """A bulk-origin row retried from the form rejoins the durable queue."""
+
+    def test_reset_job_row_puts_row_back_in_adoptable_pool(self, sessions, monkeypatch):
+        jobs = _load_jobs()
+        _, factory = sessions
+        monkeypatch.setattr(jobs, "get_session", _committing(factory))
+        monkeypatch.setattr(cq, "QUEUE_STALE_MINUTES", 0)
+        cid = _queued_crawl(
+            factory, status="failed", queue_status="done", minutes_ago=60
+        )
+        assert jobs._reset_job_row(cid, datetime.now(UTC), require_idle=False) is True
+        with factory() as s:
+            row = s.get(Crawl, cid)
+            assert row.status == "pending"
+            assert row.queue_status is None
+            assert row.queue_started_at is None
+        assert cq.adopt_stranded_form_jobs() == 1
+        with factory() as s:
+            assert s.get(Crawl, cid).queue_status == "pending"
+
+
+class TestBeginCrawlTransition:
+    """Only pending/failed rows may enter running (no orphan re-crawl)."""
+
+    def test_page_begin_crawl_refuses_succeeded(self, sessions, monkeypatch):
+        from webapp.services import crawling
+
+        _, factory = sessions
+        monkeypatch.setattr(crawling, "get_session", _committing(factory))
+        cid = _queued_crawl(factory, status="succeeded", queue_status=None)
+        assert crawling._begin_crawl(cid, None, datetime.now(UTC)) is None
+        with factory() as s:
+            assert s.get(Crawl, cid).status == "succeeded"
+
+    def test_page_begin_crawl_takes_pending_and_failed(self, sessions, monkeypatch):
+        from webapp.services import crawling
+
+        _, factory = sessions
+        monkeypatch.setattr(crawling, "get_session", _committing(factory))
+        for start in ("pending", "failed"):
+            cid = _queued_crawl(
+                factory, status=start, queue_status=None, domain=f"{start}.com"
+            )
+            url = crawling._begin_crawl(cid, None, datetime.now(UTC))
+            assert url == f"https://{start}.com/"
+            with factory() as s:
+                assert s.get(Crawl, cid).status == "running"
+
+    def test_site_begin_crawl_refuses_succeeded(self, sessions, monkeypatch):
+        from webapp.services import site_crawling
+
+        _, factory = sessions
+        monkeypatch.setattr(site_crawling, "get_session", _committing(factory))
+        cid = _queued_crawl(
+            factory, status="succeeded", queue_status=None, params={"max_pages": 3}
+        )
+        start_url, row = site_crawling._begin_crawl_transition(cid, datetime.now(UTC))
+        assert start_url is None
+        assert row is None
+        with factory() as s:
+            assert s.get(Crawl, cid).status == "succeeded"
+
+    def test_site_begin_crawl_takes_pending(self, sessions, monkeypatch):
+        from webapp.services import site_crawling
+
+        _, factory = sessions
+        monkeypatch.setattr(site_crawling, "get_session", _committing(factory))
+        cid = _queued_crawl(
+            factory, status="pending", queue_status=None, params={"max_pages": 3}
+        )
+        start_url, row = site_crawling._begin_crawl_transition(cid, datetime.now(UTC))
+        assert start_url == "https://q.com/"
+        assert row is not None
+        with factory() as s:
+            assert s.get(Crawl, cid).status == "running"

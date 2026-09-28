@@ -27,7 +27,7 @@ Scores are diagnostic measures of the website itself, not guarantees of outside 
 ## API Endpoints
 
 Browser UI (session auth):
-- `POST /api/submit` — start an analysis
+- `POST /submit` — start an analysis (form; mode `page` or `site`)
 - `GET /api/status/{id}` — job status (public for public analyses)
 
 Public summary without authentication:
@@ -47,7 +47,7 @@ v1 API (Bearer key, owner-scoped):
 - `/methodology` — methodology page
 - `/browse` — community analyses
 - `/dashboard` — signed-in overview
-- `/api` — API access (create Bearer keys)
+- `/profile#api-access` — API access (create Bearer keys)
 - `/contact` — contact page
 - `/privacy`, `/terms` — legal pages
 

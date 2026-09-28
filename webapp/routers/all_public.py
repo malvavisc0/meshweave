@@ -73,7 +73,7 @@ def _row_title(row: Crawl) -> str:
     try:
         if row.payload_json:
             payload = row.payload_json or {}
-            if bool(row.crawl_params):
+            if row.crawl_params is not None:
                 title = _first_page_title(payload)
             else:
                 title = _page_title_from_payload(payload)
@@ -116,7 +116,7 @@ def _time_fields(row: Crawl) -> tuple[str, str, bool]:
 def _scope_of(row: Crawl) -> str:
     """Return the row scope ("site" or "page")."""
     try:
-        return "site" if row.crawl_params else "page"
+        return "site" if row.crawl_params is not None else "page"
     except Exception:
         return "page"
 
@@ -200,7 +200,7 @@ def _serialize_cell(row: Crawl, email_count, page_count) -> dict:
         "canonical_url": row.canonical_url,
         "title": title,
         "status": row.status,
-        "scope": "site" if row.crawl_params else "page",
+        "scope": "site" if row.crawl_params is not None else "page",
         "updated_at": updated_iso,
         "updated_iso": updated_iso,
         "updated_relative": updated_relative,

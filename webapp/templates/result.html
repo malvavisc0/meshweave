@@ -137,7 +137,7 @@ else 'n/a') ~
           <span class="factor-score factor-score-missing">—</span>
           {% endif %}
         </div>
-        {% if factor.note and not factor.skipped %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
+        {% if factor.note %}<span class="factor-note small">{{ factor.note }}</span>{% endif %}
         <div class="factor-row-foot">
           <div class="factor-bar">
             <div class="factor-bar-fill {{ factor.score | width_class }}"></div>
@@ -157,12 +157,20 @@ else 'n/a') ~
     {% if ans %}
     <div class="answerability" role="region" aria-label="Answerability test">
       <h4 class="answerability-header">Answerability test</h4>
+      {% if ans.status == 'completed' %}
+      {% set _applicable = (ans.questions or []) | rejectattr('error') | rejectattr('verdict', 'equalto', 'not_applicable') | list | length %}
       <p class="answerability-lede small">
-        A grounded answer test answered {{ ans.question_count }} decision questions using
+        A grounded answer test answered {{ _applicable }} of {{ ans.question_count }} decision questions using
         <strong>only your crawled pages</strong>. Answer support: <strong>{{ (ans.answer_support * 100) | round(0) }}%</strong>
         — evidence coverage: <strong>{{ (ans.evidence_coverage * 100) | round(0) }}%</strong>.
         Grounded in this crawl only.
       </p>
+      {% else %}
+      <p class="answerability-lede small">
+        The grounded answer test did not complete — {{ ans.skip_reason or 'no reason recorded' }}.
+      </p>
+      {% endif %}
+      {% if ans.questions %}
       <details class="answerability-details">
         <summary>See the questions and answers</summary>
         <ul class="answerability-list">
@@ -188,15 +196,16 @@ else 'n/a') ~
           {% endfor %}
         </ul>
       </details>
+      {% endif %}
     </div>
     {% endif %}
     {% if ext[0] or ext[2] %}
     <div class="breakdown-interpretation">
       {% if ext[2] %}
-      <span class="interp-critical">{{ ext[2] | replace('_', ' ') | title }} has no data — the real score may be
+      <span class="interp-critical">{{ ext[2] | join(', ') | replace('_', ' ') | title }} {{ 'has' if ext[2] | length == 1 else 'have' }} no data — the real score may be
         lower</span>
       {% endif %}
-      {% if ext[0] and ext[0][0] != ext[2] %}
+      {% if ext[0] and ext[0][0] not in ext[2] %}
       <br>
       {% if ext[0][1].score < 40 %} <span class="interp-critical">{{ ext[0][1].display_name }} critically low ({{
         ext[0][1].score | round(1) }})</span>
@@ -378,10 +387,9 @@ else 'n/a') ~
       </div>
       {% endif %}
       <div class="risk-chips-inline" aria-label="Failure diagnostics">
-        <span class="risk-chip-inline"><span>Weakest check</span> <strong>{{ interp.weakest_lens | lens_label }}</strong></span><br>
-        <span class="risk-chip-inline"><span>Business risk</span> <strong>{{ interp.primary_exposure
-            }}</strong></span><br>
-        <span class="risk-chip-inline"><span>Fix priority</span> <strong>{{ interp.fix_priority }}</strong></span>
+        <span class="risk-chip-inline"><span>Weakest check</span> <strong>{{ (interp.weakest_lens | lens_label) or '—' }}</strong></span><br>
+        <span class="risk-chip-inline"><span>Business risk</span> <strong>{{ interp.primary_exposure or '—' }}</strong></span><br>
+        <span class="risk-chip-inline"><span>Fix priority</span> <strong>{{ interp.fix_priority or '—' }}</strong></span>
       </div>
     </div>
   </section>
@@ -510,7 +518,6 @@ else 'n/a') ~
       _grouped_recs.aeo, factor_extremes.aeo,
       (score_snapshot.aax_analysis.answerability
         if score_snapshot.aax_analysis and score_snapshot.aax_analysis.answerability
-          and score_snapshot.aax_analysis.answerability.status == 'completed'
         else none)) }}
 
     {{ check_breakdown(
@@ -603,6 +610,40 @@ else 'n/a') ~
           {% else %}
           <span class="report-action-status">Not ready</span>
           {% endif %}
+        </div>
+      </div>
+      <div class="report-action">
+        <div class="report-action-copy">
+          <h3>Visibility</h3>
+          <p class="small">
+            {% if visibility == 'public' %}
+            This report is public and appears in community listings.
+            {% else %}
+            This report is private: only you can open it.
+            {% endif %}
+          </p>
+        </div>
+        <div class="report-action-control">
+          <form method="post" action="/analysis/{{ id }}/visibility" class="inline-block">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+            <input type="hidden" name="visibility" value="{% if visibility == 'public' %}private{% else %}public{% endif %}">
+            <button type="submit" class="btn">
+              {% if visibility == 'public' %}Make private{% else %}Make public{% endif %}
+            </button>
+          </form>
+        </div>
+      </div>
+      <div class="report-action">
+        <div class="report-action-copy">
+          <h3>Delete this analysis</h3>
+          <p class="small">Permanently removes this report and its revisions. This cannot be undone.</p>
+        </div>
+        <div class="report-action-control">
+          <form method="post" action="/analysis/{{ id }}/delete" class="inline-block"
+            data-confirm="Delete this analysis permanently?">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+            <button type="submit" class="btn btn-danger-soft">Delete</button>
+          </form>
         </div>
       </div>
     </div>
@@ -933,7 +974,7 @@ else 'n/a') ~
         e.preventDefault();
         if (button) button.disabled = true;
         fetch(claim.action, { method: 'POST', body: new FormData(claim) })
-          .then(function (resp) {
+.then(function (resp) {
             if (resp.ok) {
               window.location.reload();
               return;
@@ -947,7 +988,7 @@ else 'n/a') ~
               setStatus('Claim failed. Try again in a moment.');
             }
           })
-          .catch(function () {
+.catch(function () {
             if (button) button.disabled = false;
             setStatus('Claim failed. Check your connection and try again.');
           });
@@ -961,7 +1002,7 @@ else 'n/a') ~
         e.preventDefault();
         if (saveButton) saveButton.disabled = true;
         fetch(save.action, { method: 'POST', body: new FormData(save) })
-          .then(function (resp) {
+.then(function (resp) {
             if (resp.ok) {
               window.location.reload();
               return;
@@ -972,7 +1013,7 @@ else 'n/a') ~
                 ? 'This analysis could not be saved — it may already belong to an account.'
                 : 'Save failed. Try again in a moment.';
           })
-          .catch(function () {
+.catch(function () {
             if (saveButton) saveButton.disabled = false;
             if (saveStatus) saveStatus.textContent = 'Save failed. Check your connection and try again.';
           });

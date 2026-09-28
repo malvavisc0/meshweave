@@ -11,9 +11,14 @@ volumes:
 services:
   postgres:
     image: postgres:18
-    container_name: postgres
+    container_name: meshweave-prod-postgres
     hostname: postgres
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       TZ: ${TZ:-UTC}
       POSTGRES_USER: ${POSTGRES_USER:?}
@@ -31,14 +36,19 @@ services:
       - magics
 
   lightpanda:
-    # Pinned digest of lightpanda/browser:nightly (2026-08-26); bump deliberately
+    # Pinned minor tag 0.3.7 (a mutable tag, not an immutable digest); bump deliberately
     image: lightpanda/browser:0.3.7
-    container_name: lightpanda
+    container_name: meshweave-prod-lightpanda
     hostname: lightpanda
     restart: always
     command: ["lightpanda", "serve", "--host", "0.0.0.0", "--port", "9222"]
     expose:
       - "9222"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       TZ: ${TZ:-UTC}
     healthcheck:
@@ -53,12 +63,19 @@ services:
 
   webapp:
     image: ghcr.io/malvavisc0/meshweave:${MESHWEAVE_VERSION:-latest}
-    container_name: meshweave
+    container_name: meshweave-prod-webapp
     hostname: meshweave
     restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       TZ: ${TZ:-UTC}
       SITE_BASE_URL: ${SITE_BASE_URL:?}
+      # Non-dev deployment: fail closed on a missing secret key
+      WEBAPP_ENV: production
       # HMAC key for CSRF tokens; required so prod never falls back to the
       # hard-coded development default
       WEBAPP_SECRET_KEY: ${WEBAPP_SECRET_KEY:?}
@@ -87,7 +104,30 @@ services:
       ANON_SITE_MAX_PAGES_DEFAULT: "10"
       ANON_SITE_MAX_DEPTH_DEFAULT: "1"
       ANON_SITE_MAX_PAGES_CAP: "10"
-      OAUTH_PROVIDER: google
+      # A free anonymous crawl may not hold an hour of shared browser
+      # time: cap it at five minutes.
+      ANON_SITE_TIME_BUDGET_MS_CAP: "300000"
+      # Behind the reverse proxy: derive client IPs from proxy headers
+      #. Dev/local stays on the connection host.
+      WEBAPP_TRUST_PROXY: "true"
+      # Cookie handling must match the privacy policy: Secure on
+      # every cookie, IP masking on, salted IP hashes.
+      WEBAPP_COOKIE_SECURE: "true"
+      WEBAPP_MASK_IP: "true"
+      IP_HASH_SALT: ${IP_HASH_SALT:?}
+      # Baseline Content Security Policy: the app sets an explicit
+      # default policy; override with WEBAPP_CSP when telemetry needs more.
+      WEBAPP_ENABLE_CSP: "true"
+      # Request-body cap enforced on every write endpoint
+      WEBAPP_BODY_MAX_BYTES: "65536"
+      # Per-key API rate limit
+      WEBAPP_API_RATE_LIMIT_MAX: "240"
+      WEBAPP_API_RATE_LIMIT_WINDOW_SEC: "3600"
+      # Global crawl concurrency cap
+      WEBAPP_MAX_CONCURRENT_CRAWLS: "3"
+      # Retention: prune anonymous submission metadata and the page cache
+      WEBAPP_SUBMISSION_RETENTION_DAYS: "30"
+      WEBAPP_CACHE_RETENTION_DAYS: "14"
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?}
       OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?}
       # Optional email domain allowlist (comma-separated)
@@ -114,13 +154,15 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:?}
       LLM_API_KEY: ${LLM_API_KEY:?}
       LLM_MODEL: ${LLM_MODEL:?}
+      # Per-test LLM wall-clock budget so one slow endpoint cannot stall
+      # the AAX queue
+      LLM_TEST_TIMEOUT_SECONDS: "120"
       AAX_ENABLED: ${AAX_ENABLED:-true}
       # Opt-in LLM observability (Langfuse); off unless both keys are provided
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
       OTEL_SERVICE_NAME: meshweave
-      DEBUG: "false"
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "10"
       DB_POOL_RECYCLE: "1800"

@@ -109,6 +109,7 @@ def _add_crawl(
     path: str = "/",
     created_at: datetime | None = None,
     status: str = "pending",
+    is_latest: bool = True,
 ) -> str:
     cid = str(uuid.uuid4())
     with get_session() as s:
@@ -126,7 +127,7 @@ def _add_crawl(
                 created_at=created_at or datetime.now(UTC),
                 updated_at=datetime.now(UTC),
                 scoring_version=SCORING_VERSION,
-                is_latest=True,
+                is_latest=is_latest,
             )
         )
     return cid
@@ -169,6 +170,7 @@ class TestPageCrawlEmits:
             user_id=user,
             created_at=datetime.now(UTC) - timedelta(days=1),
             status="succeeded",
+            is_latest=False,
         )
         new = _add_crawl(sessions, user_id=user)
         crawling_svc._persist_succeeded(new, {"page": {}})
@@ -288,4 +290,18 @@ class TestNudgeSelection:
             dismissed_nudges={},
         )
         nudge = nudges_svc.select_nudge("result", state, "owner")
-        assert nudge is None or nudge["name"] != "services_offer"
+        assert nudge is None
+
+    def test_no_nudge_at_all_after_inquiry(self):
+        """B10: gate pitch and first-call hint also stop at inquiry."""
+        state = types.SimpleNamespace(
+            stage="inquiry", segment="standard", dismissed_nudges={}
+        )
+        assert nudges_svc.select_nudge("dashboard", state, None, False, False) is None
+
+    def test_no_nudge_at_all_for_customer(self):
+        """B10: a customer never sees any offer, even with an unused key."""
+        state = types.SimpleNamespace(
+            stage="customer", segment="standard", dismissed_nudges={}
+        )
+        assert nudges_svc.select_nudge("dashboard", state, None, False, True) is None

@@ -12,7 +12,7 @@ Who it is for: agencies and consultants who audit client websites, and in-house 
 
 Pricing: an audit is free and needs no sign-in. A free Google sign-in adds private reports, before/after comparison of runs, a downloadable report, and a free API key (up to 25 sites per call) whose report export is unbranded. Expert-guided audits and remediation roadmaps are priced per engagement; ask by email via [Contact](/contact).
 
-[API Reference](/api): programmatic access to analyses.
+[API Reference](/profile#api-access): create a Bearer key in your account profile; endpoint reference lives in [llms-full.txt](/.well-known/llms-full.txt).
 
 [Methodology](/methodology): scoring model, factor weights, and rating bands.
 
@@ -26,7 +26,7 @@ Every report scores three checks, each 0-100:
 
 ## API
 
-Two API surfaces. The browser UI uses `/api` endpoints with session auth.
+Two API surfaces. The browser UI uses `/api` endpoints with session auth; the v1 JSON API is Bearer-key authenticated (create a key at `/profile#api-access`).
 
 - `POST /api/v1/analyses` — bulk submit up to 25 pages or sites (Bearer key, durable queue)
 - `GET /api/v1/analyses` — list your analyses, cursor-paginated (per-check scores and ratings)
@@ -39,11 +39,11 @@ Public summary without authentication (same response for owner and anonymous):
 - `GET /api/analysis/public/{key}` — JSON summary with scores and ratings (key-scoped, unguessable key)
 
 Account and status pages:
-- `/api` — API keys (sign in to create a Bearer key)
+- `/profile#api-access` — API keys (sign in to create a Bearer key)
 - `/api/status/{id}` — job status (works without sign-in for public analyses)
 
 Optional pages:
-- `/analysis/public/{key}` — shareable report
+- `/analysis/{key}` — shareable report
 - `/analysis/{id}` — private signed-in report
 - `/analysis/{id}/diff` — comparison with the previous run
 - `/browse` — community analyses

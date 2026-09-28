@@ -84,7 +84,7 @@ def _limits_from_row(row: Crawl) -> dict[str, int]:
 def _begin_crawl_transition(
     crawl_id: str, now: datetime
 ) -> tuple[str | None, Crawl | None]:
-    """Transition a pending/failed/succeeded crawl to running."""
+    """Transition a pending/failed crawl to running."""
     with get_session() as s:
         row = s.get(Crawl, crawl_id)
         if not row:
@@ -94,7 +94,7 @@ def _begin_crawl_transition(
             s.query(Crawl)
             .filter(
                 Crawl.id == crawl_id,
-                Crawl.status.in_(("pending", "failed", "succeeded")),
+                Crawl.status.in_(("pending", "failed")),
             )
             .update(
                 {

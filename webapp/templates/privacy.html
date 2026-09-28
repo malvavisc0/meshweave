@@ -68,7 +68,9 @@
       indexing.</p>
     <p class="mt-3 m0"><strong>Claiming public results.</strong> If you submit an analysis while not signed in
       and later create an account, you may claim public ownerless analyses after
-      {{ CLAIM_PUBLIC_MIN_AGE_HOURS or 24 }} hours.</p>
+      {{ CLAIM_PUBLIC_MIN_AGE_HOURS or 24 }} hours. Both claiming and saving require proof that the request comes
+      from the same browser that ran the analysis (a matching browser cookie), so no one can take an analysis they
+      did not run.</p>
   </section>
 
   <!-- COOKIES & AUTHENTICATION -->

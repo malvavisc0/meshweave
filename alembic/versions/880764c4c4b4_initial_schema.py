@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 4a63bc9f6c06
+Revision ID: 880764c4c4b4
 Revises: 
-Create Date: 2026-09-27 17:10:19.089555
+Create Date: 2026-09-27 23:42:36.251085
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "4a63bc9f6c06"
+revision: str = "880764c4c4b4"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -115,6 +115,7 @@ def upgrade() -> None:
     op.create_index('ix_crawls_user_created', 'crawls', ['user_id', 'created_at', 'id'], unique=False)
     op.create_index('ix_crawls_user_id', 'crawls', ['user_id'], unique=False)
     op.create_index('ix_crawls_visibility_user_id_listed', 'crawls', ['visibility', 'user_id', 'listed'], unique=False)
+    op.create_index('uq_crawls_series_latest', 'crawls', ['visibility', sa.literal_column("(CASE WHEN visibility = 'private' THEN coalesce(user_id, '') ELSE '' END)"), 'domain', 'path', 'query', sa.literal_column("(crawl_params IS NULL OR CAST(crawl_params AS TEXT) = 'null')")], unique=True, sqlite_where=sa.text('is_latest'), postgresql_where=sa.text('is_latest'))
     op.create_table('funnel_actor_domains',
     sa.Column('user_id', sa.String(length=36), nullable=False),
     sa.Column('domain', sa.String(length=255), nullable=False),
@@ -130,12 +131,18 @@ def upgrade() -> None:
     sa.Column('distinct_domains', sa.Integer(), nullable=False),
     sa.Column('last_event_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('dismissed_nudges', sa.JSON(), nullable=False),
-    sa.Column('gates_seen', sa.JSON(), nullable=False),
-    sa.Column('gates_taken', sa.JSON(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('user_id')
+    )
+    op.create_table('funnel_gates',
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('kind', sa.String(length=8), nullable=False),
+    sa.Column('feature', sa.String(length=32), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('user_id', 'kind', 'feature', name='pk_funnel_gates')
     )
     op.create_table('products',
     sa.Column('id', sa.String(length=36), nullable=False),
@@ -289,8 +296,10 @@ def downgrade() -> None:
     op.drop_table('api_key_usage_daily')
     op.drop_index('ix_products_user_id', table_name='products')
     op.drop_table('products')
+    op.drop_table('funnel_gates')
     op.drop_table('funnel_state')
     op.drop_table('funnel_actor_domains')
+    op.drop_index('uq_crawls_series_latest', table_name='crawls', sqlite_where=sa.text('is_latest'), postgresql_where=sa.text('is_latest'))
     op.drop_index('ix_crawls_visibility_user_id_listed', table_name='crawls')
     op.drop_index('ix_crawls_user_id', table_name='crawls')
     op.drop_index('ix_crawls_user_created', table_name='crawls')

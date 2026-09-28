@@ -193,9 +193,14 @@ class AnswerabilityResult(BaseModel):
 
 
 class AAXSummaryResult(BaseModel):
-    """One-line diagnostic verdict for the hero card."""
+    """One-line diagnostic verdict for the hero card.
 
-    summary: str = ""
+    ``summary`` has no default: a defaulted field is optional in the
+    JSON schema sent to the model, and the model may omit it — the same
+    failure class that once discarded every answerability answer.
+    """
+
+    summary: str
 
 
 class AAXAnalysisResult(BaseModel):

@@ -94,15 +94,16 @@ def _make_crawl(
     status: str = "succeeded",
     aax_status: str = "pending",
     aax_started_at: datetime | None = None,
+    domain: str = "example.com",
 ) -> Crawl:
     """Create and flush a Crawl row for testing."""
     with get_session() as s:
         crawl = Crawl(
-            url="https://example.com",
-            domain="example.com",
+            url=f"https://{domain}",
+            domain=domain,
             path="/",
             query="",
-            canonical_url="https://example.com",
+            canonical_url=f"https://{domain}",
             visibility="public",
             status=status,
             aax_status=aax_status,
@@ -191,9 +192,11 @@ class TestFetchPendingAaxIds:
 
     def test_fetch_returns_succeeded_pending_only(self, db_session):
         """Only succeeded+pending crawls are returned."""
-        c1 = _make_crawl(db_session, aax_status="pending")
-        c2 = _make_crawl(db_session, status="failed", aax_status="pending")
-        c3 = _make_crawl(db_session, aax_status="completed")
+        c1 = _make_crawl(db_session, aax_status="pending", domain="a.com")
+        c2 = _make_crawl(
+            db_session, status="failed", aax_status="pending", domain="b.com"
+        )
+        c3 = _make_crawl(db_session, aax_status="completed", domain="c.com")
 
         ids = scoring_svc._fetch_pending_aax_ids()
         assert c1.id in ids

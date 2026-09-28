@@ -25,6 +25,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from typing import Literal
 
 from meshweave.ai.models import (
     AnswerabilityAnswerResult,
@@ -35,7 +36,7 @@ from meshweave.ai.prompts import (
     answerability_question_prompt,
     select_pages_for_analysis,
 )
-from meshweave.ai.runner import run_structured_test
+from meshweave.ai.runner import format_test_error, run_structured_test
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,9 @@ def _question_record(
             question_id=question.id,
             question=question.text,
             verdict="unsupported",
-            error=str(result),
+            error=format_test_error(result)
+            if isinstance(result, BaseException)
+            else str(result),
         )
     source_pages = _grounded_pages(result.source_pages, known_urls)
     verdict = result.verdict
@@ -266,20 +269,47 @@ def _pages_content(selected: list[dict]) -> str:
 
 
 def _aggregate(records: list[AnswerabilityQuestionResult]) -> dict:
-    """Fold per-question records into the answerability summary."""
+    """Fold per-question records into the answerability summary.
+
+    Status derives from what actually ran: with zero applicable
+    questions the exercise is ``skipped``, never a "completed" panel
+    claiming 0% on questions that never executed. Questions that all
+    errored mark the run ``failed`` with the first error as reason — a
+    tool failure is not "no applicable questions by design".
+    """
     applicable = [r for r in records if _is_applicable(r)]
-    supported = sum(
-        1 for r in applicable if r.source_pages and r.verdict in _SUPPORTED_VERDICTS
-    )
-    covered = sum(1 for r in applicable if r.source_pages)
+    if applicable:
+        supported = sum(
+            1 for r in applicable if r.source_pages and r.verdict in _SUPPORTED_VERDICTS
+        )
+        covered = sum(1 for r in applicable if r.source_pages)
+        answer_support = round(supported / len(applicable), 2)
+        evidence_coverage = round(covered / len(applicable), 2)
+        status: Literal["completed", "skipped", "failed"] = "completed"
+        skip_reason = ""
+    else:
+        answer_support = 0.0
+        evidence_coverage = 0.0
+        status, skip_reason = _no_applicable_outcome(records)
     result = AnswerabilityResult(
-        status="completed",
+        status=status,
+        skip_reason=skip_reason,
         question_count=len(records),
-        answer_support=round(supported / len(applicable), 2) if applicable else 0.0,
-        evidence_coverage=round(covered / len(applicable), 2) if applicable else 0.0,
+        answer_support=answer_support,
+        evidence_coverage=evidence_coverage,
         questions=records,
     )
     return result.model_dump()
+
+
+def _no_applicable_outcome(
+    records: list[AnswerabilityQuestionResult],
+) -> tuple[Literal["skipped", "failed"], str]:
+    """Status and reason when no question was measurable."""
+    errors = [r.error for r in records if r.error]
+    if errors:
+        return "failed", f"All {len(records)} question runs failed: {errors[0]}"
+    return "skipped", "No applicable questions ran"
 
 
 def _is_applicable(record: AnswerabilityQuestionResult) -> bool:

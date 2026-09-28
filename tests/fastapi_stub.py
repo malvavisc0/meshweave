@@ -97,6 +97,12 @@ def install_fastapi_stub() -> None:
 
             return _json.loads(self._body.decode() or "{}")
 
+        async def stream(self):
+            # Yields the preloaded body once; json() reads the same
+            # retained copy, mirroring FastAPI's receive-cached request.
+            if self._body:
+                yield self._body
+
     class _JSONResponse:
         def __init__(self, content=None, status_code: int = 200, **k) -> None:
             self.content = content

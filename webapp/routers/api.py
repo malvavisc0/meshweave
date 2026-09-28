@@ -57,10 +57,10 @@ def _bearer_user_id(request: Request) -> str | None:
     """Resolve the user id for a valid, non-revoked Bearer API key, if present.
 
     Returns None when no Bearer header is present. Raises 401 for a
-    malformed, unknown, or revoked key. The first successful use stamps
-    ``first_used_at`` and emits ``api_key_first_used`` in the same
-    transaction — a one-time conditional UPDATE keeps it exactly-once
-    under concurrent calls.
+    malformed, unknown, or revoked key. ``first_used_at`` is NOT stamped
+    here: the activation signal is "the key actually works for them", so
+    the stamp (and its exactly-once event) lands only after the call
+    completes with a 2xx — see ``stamp_key_first_use``.
     """
     authorization = request.headers.get("authorization", "")
     if not authorization.lower().startswith("bearer "):
@@ -68,8 +68,6 @@ def _bearer_user_id(request: Request) -> str | None:
     token = authorization[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    from webapp.services import funnel
-
     with get_session() as s:
         row = (
             s.query(ApiKey)
@@ -85,22 +83,38 @@ def _bearer_user_id(request: Request) -> str | None:
             request.state.bearer_api_key_id = row.id
         except Exception:
             pass
-        # Exactly-once first-use stamp: only the call that flips
-        # first_used_at from NULL emits the activation event.
+        return row.user_id
+
+
+def stamp_key_first_use(request: Request) -> None:
+    """Stamp ``first_used_at`` after a successful (2xx) API call.
+
+    Exactly-once conditional UPDATE in the caller's key row: only the
+    call that flips ``first_used_at`` from NULL emits the activation
+    event. A valid key whose call fails (garbage body → 400) never
+    promotes the user to ``api_consumer``.
+    """
+    key_id = getattr(getattr(request, "state", None), "bearer_api_key_id", None)
+    if not key_id:
+        return
+    from webapp.services import funnel
+
+    with get_session() as s:
         claimed = (
             s.query(ApiKey)
-            .filter(ApiKey.id == row.id, ApiKey.first_used_at.is_(None))
+            .filter(ApiKey.id == key_id, ApiKey.first_used_at.is_(None))
             .update({"first_used_at": datetime.now(UTC)}, synchronize_session=False)
         )
         if claimed == 1:
-            funnel.emit(
-                s,
-                row.user_id,
-                funnel.EVENT_API_KEY_FIRST_USED,
-                stage="api_consumer",
-                key_id=row.id,
-            )
-        return row.user_id
+            row = s.get(ApiKey, key_id)
+            if row is not None:
+                funnel.emit(
+                    s,
+                    row.user_id,
+                    funnel.EVENT_API_KEY_FIRST_USED,
+                    stage="api_consumer",
+                    key_id=row.id,
+                )
 
 
 @router.get("/api/keys")
@@ -543,6 +557,9 @@ async def sitemap_xml(request: Request):
                 Crawl.visibility == "public",
                 Crawl.status == "succeeded",
                 Crawl.listed,
+                # Retirement clears `key`; those rows must not produce
+                # /analysis/None entries.
+                Crawl.key.isnot(None),
             )
             .order_by(Crawl.updated_at.desc())
             .limit(500)
@@ -603,10 +620,18 @@ async def claim_public(request: Request, key: str, csrf_token: str | None = Form
       - visibility='public'
       - user_id IS NULL
       - created_at <= now - CLAIM_PUBLIC_MIN_AGE_HOURS (default 24)
+      - the browser's mw_anon_id cookie matches the crawl's persisted
+        anonymous_user_id (cookie proof: ownership can never be taken
+        without proof this browser ran the analysis —
     Concurrency-safety: single UPDATE with conditions; 409 when already claimed.
     """
     verify_request_csrf(request, csrf_token)
     user = await require_auth(request)
+    anon_id = request.cookies.get(os.getenv("WEBAPP_ANON_ID_COOKIE_NAME", "mw_anon_id"))
+    if not anon_id:
+        # No cookie means no proof; without this check any ownerless row
+        # that never got an anon id stamped would match ``== None``.
+        return JSONResponse(status_code=409, content={"detail": "no_browser_proof"})
 
     try:
         min_age_hours = int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
@@ -631,7 +656,7 @@ async def claim_public(request: Request, key: str, csrf_token: str | None = Form
         if created > cutoff:
             return JSONResponse(status_code=400, content={"detail": "ineligible"})
 
-        # Concurrency-safe claim
+        # Concurrency-safe claim with the cookie proof in the WHERE clause
         updated = (
             s.query(Crawl)
             .filter(
@@ -639,6 +664,7 @@ async def claim_public(request: Request, key: str, csrf_token: str | None = Form
                 Crawl.visibility == "public",
                 Crawl.user_id.is_(None),
                 Crawl.created_at <= cutoff,
+                Crawl.anonymous_user_id == anon_id,
             )
             .update({"user_id": user.id, "updated_at": now}, synchronize_session=False)
         )
@@ -841,6 +867,21 @@ def _track_signin_event(event: str, surface: str) -> None:
         signin_cta_clicks.labels(surface or "homepage").inc()
 
 
+# /api/track is unmetered and attacker-controlled; these labels land in
+# in-process Prometheus counters, so the surface value must be bounded
+# . Unknown values collapse to "other".
+_TRACK_SURFACES = frozenset(
+    {
+        "homepage",
+        "result",
+        "dashboard",
+        "footer",
+        "contact_page",
+        "contact_page_audit",
+    }
+)
+
+
 def _track_contact_nav(surface: str) -> None:
     """Navigation to /contact: aggregate counter only. Looking at the
     contact page is curiosity, not intent — it never enters the funnel."""
@@ -867,12 +908,23 @@ def _track_contact_mailto(request: Request, surface: str) -> None:
 
 
 def _track_nudge_cta_click(request: Request, nudge: str) -> None:
-    """A gate offer was taken; record it (once per user per feature)."""
+    """A gate offer was taken; record it (once per user per feature).
+
+    Only the actual gate features record a take: the taken event
+    must pair with a ``gated_feature_hit`` from the same feature, so
+    non-gate CTAs (first-call hint, services offer) never mint
+    taken-without-hit rows.
+    """
     user = getattr(request.state, "current_user", None)
-    if user and getattr(user, "id", None):
+    if user and getattr(user, "id", None) and nudge in _GATE_FEATURES:
         from webapp.services import funnel
 
         funnel.record_gate_taken(user.id, nudge=nudge)
+
+
+# Gate offers are the features whose CTA click counts as "taken" — the
+# same two that emit gated_feature_hit in nudges.py.
+_GATE_FEATURES = frozenset({"bulk_gate", "save_analysis"})
 
 
 def _track_beacon(request: Request, event: str, surface: str) -> dict:
@@ -882,13 +934,22 @@ def _track_beacon(request: Request, event: str, surface: str) -> dict:
     per-surface ``signin_cta_click`` counter is the general form. Only
     mailto clicks carry contact *intent* into the funnel tables — plain
     /contact navigation is an aggregate counter only.
+
+    ``surface`` is attacker-controlled and lands in Prometheus labels,
+    so it is clamped to a fixed allowlist — anything else is recorded
+    under ``other`` to bound label cardinality. The nudge handler is the
+    exception: the beacon sends the nudge *name* as ``surface`` and the
+    handler validates it against the gate allowlist itself, so it must
+    see the raw value before the clamp collapses it to ``other``.
     """
+    raw_surface = surface
+    surface = surface if surface in _TRACK_SURFACES else "other"
     handlers = {
         "signin_click": lambda: _track_signin_event(event, surface),
         "signin_cta_click": lambda: _track_signin_event(event, surface),
         "contact_click": lambda: _track_contact_nav(surface),
         "contact_mailto_click": lambda: _track_contact_mailto(request, surface),
-        "nudge_cta_click": lambda: _track_nudge_cta_click(request, surface),
+        "nudge_cta_click": lambda: _track_nudge_cta_click(request, raw_surface),
     }
     try:
         handler = handlers.get(event)

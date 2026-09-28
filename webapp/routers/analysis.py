@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import joinedload
 
@@ -44,11 +44,11 @@ router = APIRouter()
 
 
 def _factor_extremes(factors: dict) -> tuple:
-    """Return (weakest_item, strongest_item, first_missing_key).
+    """Return (weakest_item, strongest_item, missing_keys).
 
-    Each item is (factor_key, factor_dict) or None.
-    first_missing_key is the first factor key where score is None,
-    or None if all factors are scored (or dict is empty).
+    Each item is (factor_key, factor_dict) or None. missing_keys lists
+    every factor key with no score (empty when all factors are scored),
+    so the missing-data caveat names all of them.
     """
     scored = [(k, v) for k, v in factors.items() if v.get("score") is not None]
     missing = [k for k, v in factors.items() if v.get("score") is None]
@@ -56,18 +56,18 @@ def _factor_extremes(factors: dict) -> tuple:
         return (
             min(scored, key=lambda x: x[1]["score"]),
             max(scored, key=lambda x: x[1]["score"]),
-            missing[0] if missing else None,
+            missing,
         )
-    return None, None, missing[0] if missing else None
+    return None, None, missing
 
 
 def _build_factor_extremes(ss: dict | None) -> dict:
     """Build factor_extremes dict for all pillars from score_snapshot."""
     if not ss or not ss.get("score_data"):
         return {
-            "aeo": (None, None, None),
-            "geo": (None, None, None),
-            "aax": (None, None, None),
+            "aeo": (None, None, []),
+            "geo": (None, None, []),
+            "aax": (None, None, []),
         }
     sd = ss["score_data"]
     return {
@@ -684,6 +684,96 @@ async def view_analysis(request: Request, ref: str):
     return await _render_public_view(request, ref)
 
 
+async def _require_owned_analysis(request: Request, ref: str) -> Crawl:
+    """Load an owned crawl by UUID ref; 404 for anything else."""
+    if not _is_uuid(ref):
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        row = await require_ownership(request, ref)
+    except HTTPException as exc:
+        if exc.status_code in (401, 403):
+            raise HTTPException(status_code=404, detail="Not found")
+        raise
+    return row
+
+
+@router.post("/analysis/{ref}/visibility")
+async def toggle_analysis_visibility(
+    request: Request,
+    ref: str,
+    visibility: str = Form(...),
+    csrf_token: str | None = Form(None),
+) -> RedirectResponse:
+    """Flip a report public or private (owner-only).
+
+    The journey requires making a report public to share it or private
+    again; visibility was previously fixed at submit time. Strangers get
+    404 so a UUID's existence is never revealed.
+    """
+    from webapp.utils.security import verify_request_csrf
+
+    verify_request_csrf(request, csrf_token)
+    row = await _require_owned_analysis(request, ref)
+    target = visibility.strip().lower()
+    if target not in ("public", "private"):
+        raise HTTPException(status_code=400, detail="visibility must be public|private")
+    now = datetime.now(UTC)
+    with get_session() as s:
+        db_row = s.get(Crawl, row.id)
+        if not db_row or db_row.user_id != row.user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        if db_row.visibility == target:
+            return RedirectResponse(
+                url=f"/analysis/{row.id}?notice=visibility_{target}", status_code=303
+            )
+        # Moving a row into the target-visibility series must keep the
+        # one-latest invariant: retire that series' current latest or
+        # the toggle mints a double-latest series (unique index, and
+        # the one_or_none() lookups the submit paths rely on).
+        from webapp.utils.revisions import retire_series_latest
+
+        retire_series_latest(s, db_row, visibility=target)
+        db_row.visibility = target
+        if target == "private":
+            # Private rows leave the community surfaces; keeping the short
+            # key just changes the URL shape, so clear it to match form
+            # submissions (private rows carry no key).
+            db_row.key = None
+        else:
+            if not db_row.key:
+                from webapp.utils.url import generate_short_key
+
+                db_row.key = generate_short_key()
+            db_row.listed = True
+        db_row.updated_at = now
+    return RedirectResponse(
+        url=f"/analysis/{row.id}?notice=visibility_{target}", status_code=303
+    )
+
+
+@router.post("/analysis/{ref}/delete")
+async def delete_analysis(
+    request: Request,
+    ref: str,
+    csrf_token: str | None = Form(None),
+) -> RedirectResponse:
+    """Delete one owned analysis (owner-only).
+
+    The privacy page promises a claimed analysis can be removed; this is
+    the per-analysis delete behind that promise. Strangers get 404.
+    """
+    from webapp.utils.security import verify_request_csrf
+
+    verify_request_csrf(request, csrf_token)
+    row = await _require_owned_analysis(request, ref)
+    with get_session() as s:
+        db_row = s.get(Crawl, row.id)
+        if not db_row or db_row.user_id != row.user_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        s.delete(db_row)
+    return RedirectResponse(url="/dashboard?notice=analysis_deleted", status_code=303)
+
+
 @router.get("/analysis/{ref}/export")
 async def export_analysis(request: Request, ref: str) -> Response:
     """Download the private report as a Markdown artifact (owner-only).
@@ -708,6 +798,19 @@ async def export_analysis(request: Request, ref: str) -> Response:
         or row.aax_status != "completed"
     ):
         raise HTTPException(status_code=409, detail="Report is not ready")
+
+    # The primary export path must be visible to the funnel
+    from webapp.services import funnel
+
+    with get_session() as s:
+        funnel.emit(
+            s,
+            row.user_id,
+            funnel.EVENT_REPORT_EXPORTED,
+            crawl_id=row.id,
+            domain=row.domain,
+            format="markdown",
+        )
 
     markdown = render_export_markdown(
         build_export_context(
@@ -745,7 +848,7 @@ async def _resolve_vs_row(request: Request, vs: str, base_row: Crawl) -> Crawl |
         or vs_row.domain != base_row.domain
         or vs_row.path != base_row.path
         or vs_row.query != base_row.query
-        or bool(vs_row.crawl_params) != bool(base_row.crawl_params)
+        or (vs_row.crawl_params is not None) != (base_row.crawl_params is not None)
     ):
         return None
     return vs_row
@@ -760,7 +863,7 @@ def _diff_row_view(row: Crawl) -> dict:
         "status": row.status,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
-        "scope": "site" if row.crawl_params else "page",
+        "scope": "site" if row.crawl_params is not None else "page",
     }
 
 

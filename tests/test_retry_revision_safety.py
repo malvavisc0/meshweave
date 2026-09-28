@@ -52,8 +52,13 @@ if "prometheus_client" not in sys.modules:
 
 from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 from webapp.models import Base, Crawl, ScoreSnapshot, User  # noqa: E402
-from webapp.utils.revisions import replace_succeeded_crawl  # noqa: E402
+from webapp.utils.revisions import (  # noqa: E402
+    replace_succeeded_crawl,
+    retire_series_latest,
+)
 from webapp.utils.times import ensure_utc  # noqa: E402
+
+_UNSET = object()
 
 
 @pytest.fixture
@@ -98,10 +103,11 @@ def _make_succeeded_crawl(
     user_id: str,
     visibility: str = "private",
     key: str | None = None,
-    crawl_params: dict | None = None,
+    crawl_params: dict | None | object = _UNSET,
     domain: str = "example.com",
     path: str = "/",
     created_at: datetime | None = None,
+    is_latest: bool = True,
 ) -> Crawl:
     url = f"https://{domain}{path}"
     ts = created_at or datetime(2026, 8, 1, tzinfo=UTC)
@@ -117,13 +123,17 @@ def _make_succeeded_crawl(
         status="succeeded",
         payload_json={"markdown": "old content"},
         user_id=user_id,
-        crawl_params=crawl_params,
         scoring_version=SCORING_VERSION,
         listed=True,
-        is_latest=True,
+        is_latest=is_latest,
         created_at=ts,
         updated_at=ts,
     )
+    # Only set when provided: an explicit None serializes as the JSON
+    # 'null' text while an omitted column stores SQL NULL — the two
+    # page-scope shapes the shared scope predicate must both match.
+    if crawl_params is not _UNSET:
+        row.crawl_params = crawl_params
     s.add(row)
     s.add(
         ScoreSnapshot(
@@ -173,6 +183,26 @@ def _make_failed_crawl(s, *, user_id: str, domain: str = "failed.com") -> Crawl:
     return row
 
 
+def _assert_retired_old_row(old: Crawl) -> None:
+    assert old.status == "succeeded"
+    assert old.is_latest is False
+    assert old.key is None
+    assert old.payload_json == {"markdown": "old content"}
+    assert old.score_snapshot is not None
+    assert old.score_snapshot.score_json["aeo"]["composite"] == 50.0
+
+
+def _assert_new_pending_row(new: Crawl, old: Crawl) -> None:
+    assert new.status == "pending"
+    assert new.is_latest is True
+    assert new.payload_json is None
+    assert new.user_id == "u1"
+    assert new.domain == old.domain
+    assert new.path == old.path
+    assert new.query == old.query
+    assert new.crawl_params == old.crawl_params
+
+
 class TestReplaceSucceededCrawl:
     def test_retires_and_inserts_new_pending_row(self, sessions):
         with sessions() as s:
@@ -188,21 +218,9 @@ class TestReplaceSucceededCrawl:
         with sessions() as s:
             old = s.get(Crawl, old_id)
             new = s.get(Crawl, new_id)
-            assert old.status == "succeeded"
-            assert old.is_latest is False
-            assert old.key is None
-            assert old.payload_json == {"markdown": "old content"}
-            assert old.score_snapshot is not None
-            assert old.score_snapshot.score_json["aeo"]["composite"] == 50.0
-
-            assert new.status == "pending"
-            assert new.is_latest is True
-            assert new.payload_json is None
-            assert new.user_id == "u1"
-            assert new.domain == old.domain
-            assert new.path == old.path
-            assert new.query == old.query
-            assert new.crawl_params == old.crawl_params
+            assert old is not None and new is not None
+            _assert_retired_old_row(old)
+            _assert_new_pending_row(new, old)
 
             latest_rows = (
                 s.query(Crawl)
@@ -325,15 +343,8 @@ class TestReplaceSucceededCrawl:
                     user_id="u1",
                     domain="example.com",
                     created_at=datetime(2026, 8, day, tzinfo=UTC),
+                    is_latest=False,
                 )
-            retired_rows = (
-                s.query(Crawl)
-                .filter(Crawl.user_id == "u1")
-                .order_by(Crawl.created_at)
-                .all()
-            )
-            for r in retired_rows:
-                r.is_latest = False
             # The current latest revision to retry.
             latest = _make_succeeded_crawl(
                 s,
@@ -377,3 +388,180 @@ class TestReplaceSucceededCrawl:
             )
             assert current.id == new_id
             assert current.status == "pending"
+
+
+class TestKeyInheritance:
+    """The public short key must survive a retry of a non-latest revision."""
+
+    def test_non_latest_retry_inherits_the_series_key(self, sessions):
+        with sessions() as s:
+            _make_user(s, "u1")
+            old = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                visibility="public",
+                created_at=datetime(2026, 8, 1, tzinfo=UTC),
+                is_latest=False,
+            )
+            _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                visibility="public",
+                key="pubkey1",
+                created_at=datetime(2026, 8, 2, tzinfo=UTC),
+                is_latest=True,
+            )
+            old_id = old.id
+
+        now = datetime.now(UTC)
+        with sessions() as s:
+            new_id = replace_succeeded_crawl(s, old_id, now)
+        assert new_id is not None
+
+        with sessions() as s:
+            rows = (
+                s.query(Crawl)
+                .filter(Crawl.domain == "example.com", Crawl.visibility == "public")
+                .all()
+            )
+            assert [r.id for r in rows if r.is_latest] == [new_id]
+            keyed = [r for r in rows if r.key is not None]
+            assert [r.key for r in keyed] == ["pubkey1"]
+            assert keyed[0].id == new_id
+
+
+class TestScopeIsolationOnRetire:
+    """A site-scope retire or retry must never touch a page-scope latest."""
+
+    @pytest.mark.parametrize("null_shape", ["json_null", "sql_null"])
+    def test_site_scope_retry_spares_page_scope_latest(self, sessions, null_shape):
+        page_params = None if null_shape == "json_null" else _UNSET
+        with sessions() as s:
+            _make_user(s, "u1")
+            page_latest = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params=page_params,
+                created_at=datetime(2026, 8, 1, tzinfo=UTC),
+                is_latest=True,
+            )
+            site_old = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params={"max_pages": 5},
+                created_at=datetime(2026, 8, 2, tzinfo=UTC),
+                is_latest=False,
+            )
+            site_latest = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params={"max_pages": 3},
+                created_at=datetime(2026, 8, 3, tzinfo=UTC),
+                is_latest=True,
+            )
+            page_id = page_latest.id
+            site_old_id = site_old.id
+            site_latest_id = site_latest.id
+
+        now = datetime.now(UTC)
+        with sessions() as s:
+            new_id = replace_succeeded_crawl(s, site_old_id, now)
+        assert new_id is not None
+
+        with sessions() as s:
+            assert s.get(Crawl, page_id).is_latest is True
+            assert s.get(Crawl, site_latest_id).is_latest is False
+            latests = (
+                s.query(Crawl)
+                .filter(Crawl.domain == "scoped.com", Crawl.is_latest.is_(True))
+                .all()
+            )
+            assert sorted(r.id for r in latests) == sorted([new_id, page_id])
+            new = s.get(Crawl, new_id)
+            assert new.crawl_params is not None
+
+    @pytest.mark.parametrize("null_shape", ["json_null", "sql_null"])
+    def test_site_scope_retire_spares_page_scope_latest(self, sessions, null_shape):
+        page_params = None if null_shape == "json_null" else _UNSET
+        with sessions() as s:
+            _make_user(s, "u1")
+            page_latest = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params=page_params,
+                created_at=datetime(2026, 8, 1, tzinfo=UTC),
+                is_latest=True,
+            )
+            mover = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params={"max_pages": 5},
+                created_at=datetime(2026, 8, 2, tzinfo=UTC),
+                is_latest=False,
+            )
+            site_latest = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params={"max_pages": 3},
+                created_at=datetime(2026, 8, 3, tzinfo=UTC),
+                is_latest=True,
+            )
+            page_id = page_latest.id
+            mover_id = mover.id
+            site_latest_id = site_latest.id
+
+        with sessions() as s:
+            mover_row = s.get(Crawl, mover_id)
+            assert mover_row is not None
+            retire_series_latest(s, mover_row)
+            s.commit()
+
+        with sessions() as s:
+            assert s.get(Crawl, page_id).is_latest is True
+            assert s.get(Crawl, site_latest_id).is_latest is False
+
+    def test_page_scope_retire_spares_site_scope_latest(self, sessions):
+        with sessions() as s:
+            _make_user(s, "u1")
+            page_old = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params=None,
+                created_at=datetime(2026, 8, 1, tzinfo=UTC),
+                is_latest=False,
+            )
+            page_latest = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                created_at=datetime(2026, 8, 2, tzinfo=UTC),
+                is_latest=True,
+            )
+            site_latest = _make_succeeded_crawl(
+                s,
+                user_id="u1",
+                domain="scoped.com",
+                crawl_params={"max_pages": 3},
+                created_at=datetime(2026, 8, 3, tzinfo=UTC),
+                is_latest=True,
+            )
+            page_old_id = page_old.id
+            page_latest_id = page_latest.id
+            site_latest_id = site_latest.id
+
+        with sessions() as s:
+            mover_row = s.get(Crawl, page_old_id)
+            assert mover_row is not None
+            retire_series_latest(s, mover_row)
+            s.commit()
+
+        with sessions() as s:
+            assert s.get(Crawl, site_latest_id).is_latest is True
+            assert s.get(Crawl, page_latest_id).is_latest is False

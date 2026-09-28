@@ -54,7 +54,7 @@ def _serialize_job_row(r, snapshot_map: dict | None = None) -> dict:
     aax_score = _extract_aax_score(snapshot_map.get(r.id) if snapshot_map else None)
     return {
         "id": r.id,
-        "scope": "site" if r.crawl_params else "page",
+        "scope": "site" if r.crawl_params is not None else "page",
         "domain": r.domain,
         "path": r.path,
         "query": r.query,
@@ -444,6 +444,11 @@ def _reset_job_row(row_id, now: datetime, require_idle: bool) -> bool:
         db_row.status = "pending"
         db_row.payload_json = None
         db_row.error = None
+        # Back into the adoptable pool: a bulk-origin row retried from
+        # the form is a form-path pending row again, and the stranded-job
+        # reaper only adopts rows with no queue job.
+        db_row.queue_status = None
+        db_row.queue_started_at = None
         try:
             if hasattr(db_row, "error_json"):
                 setattr(db_row, "error_json", None)
@@ -455,7 +460,7 @@ def _reset_job_row(row_id, now: datetime, require_idle: bool) -> bool:
 
 def _schedule_retry_task(user, crawl_params, crawl_id, background_tasks) -> None:
     """Schedule the retry background task with force_refresh=True."""
-    if bool(crawl_params):
+    if crawl_params is not None:
         background_tasks.add_task(run_site_crawl_task, crawl_id, True)
     else:
         background_tasks.add_task(run_crawl_task, crawl_id, True, user_id=user.id)
@@ -465,7 +470,7 @@ def _retry_quota_ok(user, row) -> bool:
     """Enforce per-retry quotas; False when a quota blocks the retry."""
     try:
         enforce_concurrent_jobs_limit(user.id)
-        if bool(row.crawl_params):
+        if row.crawl_params is not None:
             enforce_daily_site_crawl_limit(user.id)
     except HTTPException:
         # Skip this job if quota prevents retry
@@ -496,7 +501,7 @@ async def retry_crawl(
 
     # Enforce quotas
     enforce_concurrent_jobs_limit(user.id)
-    if bool(row.crawl_params):
+    if row.crawl_params is not None:
         enforce_daily_site_crawl_limit(user.id)
 
     # Reset and schedule

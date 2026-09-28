@@ -160,6 +160,8 @@ def _crawl(
     params=None,
     minutes_ago=120,
     scoring_version=SCORING_VERSION,
+    with_snapshot=False,
+    is_latest=True,
 ):
     ts = datetime.now(UTC) - timedelta(minutes=minutes_ago)
     cid = str(uuid.uuid4())
@@ -180,8 +182,66 @@ def _crawl(
                 scoring_version=scoring_version,
                 created_at=ts,
                 updated_at=ts,
+                is_latest=is_latest,
             )
         )
+        if with_snapshot:
+            # W8: a populated snapshot so the unbranded-branding fixture's
+            # assertions actually scan rendered sections.
+            s.add(
+                ScoreSnapshot(
+                    crawl_id=cid,
+                    user_id=user_id,
+                    domain=domain,
+                    aeo_score=62.0,
+                    geo_score=55.0,
+                    aeo_rating="Partially extractable",
+                    geo_rating="Fragmented",
+                    score_json={
+                        "aeo": {
+                            "composite": 62.0,
+                            "rating": "Partially extractable",
+                            "factors": {
+                                "schema": {
+                                    "score": 40.0,
+                                    "weight": 0.2,
+                                    "raw": {},
+                                },
+                            },
+                        },
+                        "geo": {
+                            "composite": 55.0,
+                            "rating": "Fragmented",
+                            "factors": {
+                                "crawl_access": {
+                                    "score": 70.0,
+                                    "weight": 0.3,
+                                    "raw": {},
+                                },
+                            },
+                        },
+                        "recommendations": [
+                            {
+                                "factor": "schema",
+                                "pillar": "aeo",
+                                "priority": "high",
+                                "title": "Add structured data to more pages",
+                                "detail": "Key pages lack schema markup.",
+                                "expected_points": 4.0,
+                            }
+                        ],
+                    },
+                    scoring_version=scoring_version,
+                )
+            )
+            s.flush()
+            row = s.get(Crawl, cid)
+            assert row is not None
+            row.aeo_score = 62.0
+            row.geo_score = 55.0
+            row.aeo_rating = "Partially extractable"
+            row.geo_rating = "Fragmented"
+            row.aax_status = "completed"
         s.commit()
     return cid
 
@@ -388,7 +448,7 @@ class TestReportExport:
     async def test_report_has_no_meshweave_branding(self, sessions, monkeypatch):
         factory = sessions[1]
         uid, token = _user_with_key(factory, "a@b.c")
-        cid = _crawl(factory, user_id=uid)
+        cid = _crawl(factory, user_id=uid, with_snapshot=True)
         resp = await api_v1.get_report_markdown(_bearer_request(token), cid)
         body = resp.content
         assert "MeshWeave" not in body
@@ -403,6 +463,16 @@ class TestReportExport:
             resp.headers["Content-Disposition"]
             == 'attachment; filename="ai-agent-audit-x.com.md"'
         )
+
+    @pytest.mark.asyncio
+    async def test_report_gates_on_readiness_like_browser_export(self, sessions):
+        """W7: no snapshot / pending AAX → 409, not a thin client-ready report."""
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid)  # succeeded, but no snapshot/AAX
+        with pytest.raises(HTTPException) as exc:
+            await api_v1.get_report_markdown(_bearer_request(token), cid)
+        assert exc.value.status_code == 409
 
     @pytest.mark.asyncio
     async def test_diff_md_filename_names_the_deliverable(self, sessions):
@@ -447,6 +517,7 @@ class TestDiff:
             domain="series.com",
             minutes_ago=180,
             scoring_version="1.2",
+            is_latest=False,
         )
         new_id = _crawl(
             factory,
@@ -474,6 +545,7 @@ class TestDiff:
             domain="series.com",
             minutes_ago=180,
             scoring_version="1.2",
+            is_latest=False,
         )
         new_id = _crawl(
             factory,
@@ -491,7 +563,13 @@ class TestDiff:
         """A comparable pair diffs without any annotation fields."""
         factory = sessions[1]
         uid, token = _user_with_key(factory, "a@b.c")
-        old_id = _crawl(factory, user_id=uid, domain="series.com", minutes_ago=180)
+        old_id = _crawl(
+            factory,
+            user_id=uid,
+            domain="series.com",
+            minutes_ago=180,
+            is_latest=False,
+        )
         new_id = _crawl(factory, user_id=uid, domain="series.com", minutes_ago=5)
         resp = await api_v1.get_diff(_bearer_request(token), new_id, vs=old_id)
         assert resp["vs_crawl_id"] == old_id

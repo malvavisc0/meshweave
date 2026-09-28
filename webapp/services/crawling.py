@@ -46,7 +46,7 @@ def _begin_crawl(crawl_id: str, user_id: str | None, now: datetime) -> str | Non
             s.query(Crawl)
             .filter(
                 Crawl.id == crawl_id,
-                Crawl.status.in_(["pending", "failed", "succeeded"]),
+                Crawl.status.in_(["pending", "failed"]),
             )
             .update({"status": "running", "updated_at": now})
         )
@@ -161,7 +161,7 @@ def _emit_outcome(s, row: Crawl, *, failed: bool = False) -> None:
 def _clear_stale_scores(s, row) -> None:
     """Drop scoring state left over from a previous successful run.
 
-    Crawl rows are re-used across retries (pending/failed/succeeded →
+    Crawl rows are re-used across retries (pending/failed →
     running), so a previously-scored crawl that later fails keeps its
     old scores and snapshot unless they are cleared here. Left in
     place, list cards and the API keep showing the old report's

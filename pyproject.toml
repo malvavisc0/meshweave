@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshweave"
-version = "0.1.9"
+version = "0.2.0"
 description = "Render pages with Playwright, extract markdown, links, emails, and optionally crawl internal links."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -43,6 +43,7 @@ dev = [
   "pytest-cov",
   "pytest-xdist",
   "radon",
+  "alembic",
 ]
 
 [project.urls]
@@ -53,7 +54,7 @@ Repository = "https://github.com/malvavisc0/meshweave"
 meshweave = "meshweave.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["meshweave*"]
+include = ["meshweave*", "webapp*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

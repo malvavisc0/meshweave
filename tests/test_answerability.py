@@ -244,12 +244,22 @@ class TestSkipBehaviour:
             new=AsyncMock(side_effect=always_fail),
         ):
             result = asyncio.run(run_answerability_test(_payload()))
-        assert result["status"] == "completed"
+        # Questions ran but every one errored: the run is failed with the
+        # error as reason — never a "skipped" panel hiding the tool failure.
+        assert result["status"] == "failed"
+        assert "RuntimeError: llm down" in result["skip_reason"]
         records = _records(result)
-        assert all(r["error"] == "llm down" for r in records.values())
+        assert all(r["error"] == "RuntimeError: llm down" for r in records.values())
         # Errored questions are not site verdicts: no findings.
         recs = compute_scores({"aax": {"answerability": result}})["recommendations"]
         assert not [r for r in recs if r["factor"] == "answerability"]
+
+    def test_no_applicable_by_design_stays_skipped(self):
+        result = _run(
+            {q.text: _answer("not_applicable") for q in ANSWERABILITY_QUESTIONS}
+        )
+        assert result["status"] == "skipped"
+        assert "applicable" in result["skip_reason"]
 
 
 class TestMeasurements:
@@ -480,6 +490,7 @@ class TestStructuredOutputSchema:
 
     def test_llm_result_models_require_every_field(self):
         from meshweave.ai.models import (
+            AAXSummaryResult,
             AnswerabilityAnswerResult,
             ContentDeltaResult,
             EmailValidationResult,
@@ -488,6 +499,7 @@ class TestStructuredOutputSchema:
         )
 
         for model in (
+            AAXSummaryResult,
             AnswerabilityAnswerResult,
             ContentDeltaResult,
             EmailValidationResult,

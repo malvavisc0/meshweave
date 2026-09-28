@@ -135,7 +135,7 @@ def build_export_context(row, *, site_name: str, contact_email: str) -> dict:
         "site_name": str(site_name),
         "domain": row.domain,
         "canonical_url": row.canonical_url,
-        "scope": "site" if row.crawl_params else "page",
+        "scope": "site" if row.crawl_params is not None else "page",
         "report_date": _report_date(row),
         "scores": {
             lens: {

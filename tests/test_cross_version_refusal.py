@@ -80,6 +80,7 @@ def _install_runtime_stubs() -> None:
                 self.detail = detail
 
         fastapi.APIRouter = _Router
+        fastapi.Form = lambda *a, **k: None
         fastapi.HTTPException = _HTTPException
         fastapi.Request = _Stub
         fastapi.Response = _Stub

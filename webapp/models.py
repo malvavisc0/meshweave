@@ -18,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     delete,
     event,
+    text,
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, relationship
@@ -257,6 +258,33 @@ class Crawl(Base):
         ),
         # Durable crawl queue worker: find pending queue jobs efficiently
         Index("ix_crawls_queue_status", "queue_status", "created_at"),
+        # /: exactly one latest row per series key. The owner term is
+        # '' for public rows — public lookups ignore user_id, so an
+        # ownerless row and a saved-by-a-user row in the same public
+        # series must collide here or one_or_none() bricks. For private
+        # rows the owner partitions the series. The scope column keeps a
+        # domain's site crawl and its root page crawl as two distinct
+        # series — the lookups filter by scope too.
+        # Scope is "no params": the ORM's JSON type stores a Python None
+        # as SQL NULL on some paths and the string 'null' on others
+        # (same dual shape the diff matcher handles), so both count as
+        # page-scope here. CAST works on SQLite and PostgreSQL alike.
+        # Without this index, two concurrent admits mint two latest rows
+        # and brick the one_or_none() series lookups.
+        Index(
+            "uq_crawls_series_latest",
+            "visibility",
+            text(
+                "(CASE WHEN visibility = 'private' THEN coalesce(user_id, '') ELSE '' END)"
+            ),
+            "domain",
+            "path",
+            "query",
+            text("(crawl_params IS NULL OR CAST(crawl_params AS TEXT) = 'null')"),
+            unique=True,
+            sqlite_where=text("is_latest"),
+            postgresql_where=text("is_latest"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(
@@ -534,10 +562,6 @@ class FunnelState(Base):
         DateTime(timezone=True), nullable=True
     )
     dismissed_nudges: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    # Gate offers/takes already recorded — once per user per feature, so
-    # hit/taken events count users, not renders.
-    gates_seen: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    gates_taken: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
@@ -546,6 +570,30 @@ class FunnelState(Base):
         nullable=False,
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class FunnelGate(Base):
+    """One row per (user, kind, feature): the once-per-user gate claims.
+
+    ``kind`` is 'seen' (the offer rendered) or 'taken' (its CTA was
+    clicked). The composite primary key turns every claim into one
+    INSERT .. ON CONFLICT DO NOTHING — atomic on SQLite and PostgreSQL
+    alike, so hit/taken events count users, never renders or clicks.
+    """
+
+    __tablename__ = "funnel_gates"
+    __table_args__ = (
+        PrimaryKeyConstraint("user_id", "kind", "feature", name="pk_funnel_gates"),
+    )
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    feature: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
 

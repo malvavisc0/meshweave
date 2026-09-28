@@ -248,27 +248,25 @@ def group_recommendations_by_pillar(
 def _sorted_recommendations(ss: dict | None) -> list[dict]:
     """Pre-compute sorted recommendations for the template.
 
-    Sorts by priority (high→low) then by weakest pillar first. Kept in this
-    pure module (no webapp stack) so the export serializer can reuse it.
+    The report page promises the fix list is "in order of how many
+    points each is expected to add", so expected_points is the sort key
+    (descending, unpredicted fixes last) and the priority band's
+    numeric order only breaks ties between fixes with equal points.
     """
     if not ss or not ss.get("recommendations"):
         return []
-    pillar_scores = {
-        "aeo": ss.get("aeo_score") or 100,
-        "geo": ss.get("geo_score") or 100,
-        "aax": ss.get("aax_score") or 100,
-    }
-    pillar_rank = {
-        k: i
-        for i, (k, _) in enumerate(sorted(pillar_scores.items(), key=lambda x: x[1]))
-    }
-    return sorted(
-        ss["recommendations"],
-        key=lambda r: (
-            PRIORITY_NUMERIC.get(r.get("priority", "medium"), 1),
-            pillar_rank.get(r.get("pillar", ""), 99),
-        ),
-    )
+
+    def _sort_key(rec: dict) -> tuple:
+        points = rec.get("expected_points")
+        # None sorts last; a real 0.0 is a real (low) score, not 100.
+        points_val = -(float(points)) if points is not None else 1.0
+        return (
+            points is None,  # scored fixes first
+            points_val,
+            PRIORITY_NUMERIC.get(rec.get("priority", "medium"), 1),
+        )
+
+    return sorted(ss["recommendations"], key=_sort_key)
 
 
 def build_score_snapshot_context(crawl) -> dict | None:

@@ -179,7 +179,7 @@ def _count_visited_pages(row: Crawl) -> int:
 def _build_limits(row: Crawl) -> dict[str, Any]:
     # Limits (for site crawls)
     limits = {}
-    if bool(row.crawl_params):
+    if row.crawl_params is not None:
         try:
             limits = row.crawl_params or {}
         except Exception:
@@ -203,7 +203,7 @@ def _compute_elapsed(row: Crawl, now: datetime, limits: dict[str, Any]) -> int |
     try:
         now_ms = int(now.timestamp() * 1000)
         started_ms = None
-        if bool(row.crawl_params):
+        if row.crawl_params is not None:
             try:
                 raw_started = (limits or {}).get("started_at_ms")
                 if raw_started is not None:
@@ -221,7 +221,7 @@ def _compute_elapsed(row: Crawl, now: datetime, limits: dict[str, Any]) -> int |
 
 def _time_budget_ms(row: Crawl, limits: dict[str, Any]) -> int | None:
     # Time budget for site crawls, with env default fallback (enables staleness checks)
-    if not row.crawl_params:
+    if row.crawl_params is None:
         return None
     try:
         v = limits.get("time_budget_ms") if isinstance(limits, dict) else None
@@ -237,7 +237,7 @@ def _time_budget_ms(row: Crawl, limits: dict[str, Any]) -> int | None:
 def _check_stale(
     row: Crawl, elapsed_ms: int | None, time_budget_ms_val: int | None
 ) -> tuple[bool, str]:
-    scope = "site" if row.crawl_params else "page"
+    scope = "site" if row.crawl_params is not None else "page"
     stale = False
     if scope == "site":
         grace_ms = _int_env("STALE_FINALIZE_GRACE_MS", 120000)

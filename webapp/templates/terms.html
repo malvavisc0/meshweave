@@ -92,7 +92,9 @@
       default. Private results are accessible only via their UUID URL and include a <code>noindex</code> tag to
       prevent search engine indexing.</p>
     <p class="mt-3 m0"><strong>Claiming.</strong> Anonymous public analyses may be claimed by a signed-in user
-      after {{ CLAIM_PUBLIC_MIN_AGE_HOURS or 24 }} hours, provided no other user has already claimed them.</p>
+      after {{ CLAIM_PUBLIC_MIN_AGE_HOURS or 24 }} hours, provided no other user has already claimed them and the
+      claim comes from the same browser that ran the analysis (matching browser cookie). Analyses cannot be claimed
+      from a different browser.</p>
     <p class="mt-3 m0"><strong>Responsibility.</strong> You are responsible for the URLs you submit. Do not
       submit URLs to content that is illegal, infringing, or that you do not have the right to analyse.</p>
   </section>
