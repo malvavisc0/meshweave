@@ -4293,7 +4293,7 @@ ul.cta-banner-copy li + li {
 
 .analysis-result-page .lens-def-row {
   display: grid;
-  grid-template-columns: 56px 1fr;
+  grid-template-columns: minmax(112px, max-content) 1fr;
   align-items: start;
   gap: var(--space-md);
   padding: var(--space-sm) var(--space-md);
@@ -4314,6 +4314,7 @@ ul.cta-banner-copy li + li {
   margin: 0;
   width: 100%;
   text-align: center;
+  white-space: nowrap;
 }
 
 .analysis-result-page .lens-def-grid dd {
