@@ -772,7 +772,7 @@ wheels = [
 
 [[package]]
 name = "meshweave-webapp"
-version = "0.1.9"
+version = "0.2.2"
 source = { editable = "." }
 
 [package.optional-dependencies]
