@@ -75,8 +75,10 @@ from the environment — `set -a && . ./.env.prod && set +a` (source
 
 The launch database is created **fresh** from the migration chain
 starting at `880764c4c4b4` — it starts empty of crawls, and no historical
-purge ever ran. Never restore a pre-launch dump over it: those dumps carry
-historical crawls and pre-answerability-fix scores the fresh schema never
-had. If one was restored over it anyway, resync revision tracking with
+purge ever ran. The app does not migrate on startup (`WEBAPP_AUTO_MIGRATE`
+is false in production); run `alembic upgrade head` once from a one-shot
+container before starting the new image. Never restore a pre-launch dump
+over it: those dumps carry historical crawls and pre-answerability-fix
+scores the fresh schema never had. If one was restored over it anyway, resync revision tracking with
 `alembic stamp --purge 880764c4c4b4`, then recreate the database from a
 post-launch backup instead.

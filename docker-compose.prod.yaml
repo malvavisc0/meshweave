@@ -82,7 +82,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meshweave}
       FOOTER_REPO_URL: ${FOOTER_REPO_URL:-https://github.com/malvavisc0/meshweave}
       FOOTER_CONTACT_EMAIL: ${FOOTER_CONTACT_EMAIL:?}
-      WEBAPP_AUTO_MIGRATE: "true"
+      WEBAPP_AUTO_MIGRATE: "false"
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
       # Render pages through the LightPanda CDP service (no local browser in image)
       MESHWEAVE_CDP_ENDPOINT: ${CDP_ENDPOINT:-http://lightpanda:9222}
