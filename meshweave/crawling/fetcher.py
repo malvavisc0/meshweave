@@ -243,7 +243,7 @@ async def get_rendered_html(
     url: str,
     *,
     session: BrowserSession,
-    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "networkidle",
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
     timeout: float = 30.0,
     progressive_scroll: bool = False,
     return_metrics: Literal[False] = False,
@@ -256,7 +256,7 @@ async def get_rendered_html(
     url: str,
     *,
     session: BrowserSession,
-    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "networkidle",
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
     timeout: float = 30.0,
     progressive_scroll: bool = False,
     return_metrics: Literal[True],
@@ -268,13 +268,16 @@ async def get_rendered_html(
     url: str,
     *,
     session: BrowserSession,
-    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "networkidle",
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
     timeout: float = 30.0,
     progressive_scroll: bool = False,
     return_metrics: bool = False,
     cache_dir: str | None = None,
 ) -> str | tuple[str, RenderMetrics]:
     """Render a URL via a CDP browser and return the HTML.
+
+    Waits for ``load`` by default: ``networkidle`` never fires on pages
+    that keep analytics, long-polling, or websocket connections open.
 
     Returns html string, or (html, RenderMetrics) when
     return_metrics is True.

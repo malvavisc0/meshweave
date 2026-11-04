@@ -245,7 +245,7 @@ async def _crawl_page(
             progressive_scroll=False,
             return_metrics=True,
             timeout=max(1.0, state.per_page_timeout),
-            wait_until="networkidle",
+            wait_until="load",
             cache_dir=state.cache_dir,
         )
     except Exception:

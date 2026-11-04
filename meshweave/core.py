@@ -389,7 +389,7 @@ async def crawl(
             progressive_scroll=True,
             return_metrics=True,
             timeout=30.0,
-            wait_until="networkidle",
+            wait_until="load",
             cache_dir=local_cache,
         )
 
