@@ -224,7 +224,6 @@ async def login(request: Request, provider: str = "google", next: str | None = N
         sid = str(uuid.uuid4())
         set_sid = True
 
-    # Rate limit login attempts
     await _rate_limit_login(sid)
 
     # Store state server-side
@@ -353,7 +352,9 @@ def _google_user_allowed(email: str) -> bool:
     return domain.lower() in domains
 
 
-def _new_google_user(email: str, sub: str, name, picture) -> User:
+def _new_google_user(
+    email: str, sub: str, name: str | None, picture: str | None
+) -> User:
     """Build a new Google user row.
 
     Args:
@@ -377,7 +378,9 @@ def _new_google_user(email: str, sub: str, name, picture) -> User:
     )
 
 
-def _refresh_google_user_fields(user: User, email: str, name, picture) -> None:
+def _refresh_google_user_fields(
+    user: User, email: str, name: str | None, picture: str | None
+) -> None:
     """Update mutable profile fields on an existing Google user."""
     changed = False
     if email and user.email != email:
@@ -394,7 +397,7 @@ def _refresh_google_user_fields(user: User, email: str, name, picture) -> None:
 
 
 def _upsert_google_user(
-    email: str, sub: str, name, picture
+    email: str, sub: str, name: str | None, picture: str | None
 ) -> tuple[User, AuthSession, bool] | None:
     """Upsert the Google user and create an auth session, or None on failure.
 
@@ -418,7 +421,6 @@ def _upsert_google_user(
             s.flush()
             created = True
         else:
-            # Update mutable fields
             _refresh_google_user_fields(user, email, name, picture)
 
         if created:
@@ -461,7 +463,6 @@ def _auth_success_redirect(
     next_path_val: str | None, oauth_row: OAuthState, sess: AuthSession
 ) -> RedirectResponse:
     """Build the post-login redirect response with the auth cookie set."""
-    # Redirect to requested path; set auth cookie
     next_path = sanitize_next(next_path_val if oauth_row else None)
     resp = RedirectResponse(url=next_path or "/", status_code=status.HTTP_303_SEE_OTHER)
     set_auth_cookie(resp, sess.session_id)
@@ -478,7 +479,7 @@ async def auth_callback(
     state: str | None = None,
     code: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """Handle OAuth redirect, validate state, exchange code, upsert user, and set auth cookie.
 
     Args:
@@ -505,7 +506,6 @@ async def auth_callback(
     sid = request.cookies.get(_sid_cookie_name()) or ""
     next_path_val, oauth_row = _validate_oauth_state(state, sid)
 
-    # Exchange code for tokens
     redirect_uri = _build_redirect_uri(request)
     ui = await _exchange_google_code(code, redirect_uri)
 

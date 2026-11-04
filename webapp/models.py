@@ -46,7 +46,7 @@ class User(Base):
     provider_id: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(

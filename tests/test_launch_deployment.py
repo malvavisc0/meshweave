@@ -8,6 +8,7 @@ report missed (log rotation).
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib.util
 import os
@@ -325,19 +326,62 @@ class TestPackaging:
         assert '"alembic"' in m.group(1)
 
 
-class TestSingleInitialMigration:
-    """was resolved by deleting the database: the fresh schema starts
-    with zero historical crawls, so no purge migration exists.'s
-    series-latest uniqueness lives in the model and the one migration."""
+VERSIONS = ROOT / "alembic" / "versions"
 
-    def test_single_migration_file(self):
-        versions = Path(__file__).parent.parent / "alembic" / "versions"
-        files = [f for f in versions.glob("*.py") if f.name != "__init__.py"]
-        assert len(files) == 1, f"expected one migration, got {files}"
+
+def _assigned(tree: ast.Module, name: str) -> str | None:
+    """Read a literal module-level assignment from a migration script."""
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign):
+            target = node.target
+            if isinstance(target, ast.Name) and target.id == name:
+                assert node.value is not None
+                value = ast.literal_eval(node.value)
+                assert value is None or isinstance(value, str)
+                return value
+        elif isinstance(node, ast.Assign):
+            for assign_target in node.targets:
+                if isinstance(assign_target, ast.Name) and assign_target.id == name:
+                    value = ast.literal_eval(node.value)
+                    assert value is None or isinstance(value, str)
+                    return value
+    raise AssertionError(f"{name} assignment not found")
+
+
+def _migration_metadata() -> dict[str, str | None]:
+    """Map revision id to parent revision for every Alembic migration."""
+    metadata: dict[str, str | None] = {}
+    for path in VERSIONS.glob("*.py"):
+        if path.name == "__init__.py":
+            continue
+        tree = ast.parse(path.read_text())
+        revision = _assigned(tree, "revision")
+        assert revision is not None
+        metadata[revision] = _assigned(tree, "down_revision")
+    return metadata
+
+
+class TestMigrationHistory:
+    """The initial schema is immutable; later changes are new revisions."""
+
+    def test_migrations_form_single_chain(self):
+        metadata = _migration_metadata()
+        roots = [revision for revision, parent in metadata.items() if parent is None]
+        assert roots == ["880764c4c4b4"]
+        for revision, parent in metadata.items():
+            if parent is not None:
+                assert parent in metadata, f"{revision} has unknown parent {parent}"
+        assert len(set(metadata.values()) - {None}) == len(metadata) - 1
+
+    def test_avatar_url_migration_widens_to_text(self):
+        metadata = _migration_metadata()
+        assert metadata.get("b7c4e1a9d2f3") == "880764c4c4b4"
+        text = (VERSIONS / "b7c4e1a9d2f3_widen_avatar_url.py").read_text()
+        assert "batch_alter_table" in text
+        assert "sa.Text()" in text
 
     def test_migration_declares_series_latest_index(self):
-        versions = Path(__file__).parent.parent / "alembic" / "versions"
-        text = next(versions.glob("*.py")).read_text()
+        text = (VERSIONS / "880764c4c4b4_initial_schema.py").read_text()
         assert "uq_crawls_series_latest" in text
 
     def test_model_declares_series_latest_index(self):
