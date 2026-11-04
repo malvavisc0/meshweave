@@ -17,6 +17,7 @@ from urllib.parse import SplitResult, urlsplit
 from playwright.async_api import (
     Browser,
     BrowserContext,
+    Page,
     Playwright,
     async_playwright,
 )
@@ -325,6 +326,21 @@ async def get_rendered_html(
     )
 
 
+async def _settle_page(
+    page: Page,
+    wait_until: Literal["load", "domcontentloaded", "networkidle"],
+    timeout_ms: int,
+) -> None:
+    """Give a page a short, bounded chance to reach network idle."""
+    settle_ms = min(1000, timeout_ms // 10)
+    if wait_until == "networkidle" or settle_ms <= 0:
+        return
+    try:
+        await page.wait_for_load_state("networkidle", timeout=settle_ms)
+    except PlaywrightTimeoutError:
+        pass
+
+
 async def _render_page(
     *,
     url: str,
@@ -369,12 +385,7 @@ async def _render_page(
             metrics.response_status = resp.status
             metrics.final_url = resp.url
 
-        settle_ms = min(1000, timeout_ms // 10)
-        if wait_until != "networkidle" and settle_ms > 0:
-            try:
-                await page.wait_for_load_state("networkidle", timeout=settle_ms)
-            except PlaywrightTimeoutError:
-                pass
+        await _settle_page(page, wait_until, timeout_ms)
 
         if progressive_scroll:
             await _progressive_scroll(page, timeout_ms)
