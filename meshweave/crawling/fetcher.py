@@ -20,6 +20,7 @@ from playwright.async_api import (
     Playwright,
     async_playwright,
 )
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 __all__ = [
     "BrowserSession",
@@ -243,7 +244,7 @@ async def get_rendered_html(
     url: str,
     *,
     session: BrowserSession,
-    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
     timeout: float = 30.0,
     progressive_scroll: bool = False,
     return_metrics: Literal[False] = False,
@@ -256,7 +257,7 @@ async def get_rendered_html(
     url: str,
     *,
     session: BrowserSession,
-    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
     timeout: float = 30.0,
     progressive_scroll: bool = False,
     return_metrics: Literal[True],
@@ -268,7 +269,7 @@ async def get_rendered_html(
     url: str,
     *,
     session: BrowserSession,
-    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
+    wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
     timeout: float = 30.0,
     progressive_scroll: bool = False,
     return_metrics: bool = False,
@@ -276,8 +277,9 @@ async def get_rendered_html(
 ) -> str | tuple[str, RenderMetrics]:
     """Render a URL via a CDP browser and return the HTML.
 
-    Waits for ``load`` by default: ``networkidle`` never fires on pages
-    that keep analytics, long-polling, or websocket connections open.
+    Waits for ``domcontentloaded`` by default, then gives the page a short
+    bounded chance to reach network idle. ``networkidle`` never fires on
+    pages that keep analytics, long-polling, or websocket connections open.
 
     Returns html string, or (html, RenderMetrics) when
     return_metrics is True.
@@ -366,6 +368,13 @@ async def _render_page(
         if resp:
             metrics.response_status = resp.status
             metrics.final_url = resp.url
+
+        settle_ms = min(1000, timeout_ms // 10)
+        if wait_until != "networkidle" and settle_ms > 0:
+            try:
+                await page.wait_for_load_state("networkidle", timeout=settle_ms)
+            except PlaywrightTimeoutError:
+                pass
 
         if progressive_scroll:
             await _progressive_scroll(page, timeout_ms)
