@@ -77,6 +77,7 @@ make langfuse-up   # local Langfuse observability stack (optional)
 | [docs/funnels/30-questions.md](docs/funnels/30-questions.md) | The 30-question funnel detail |
 | [docs/scoring-reference.md](docs/scoring-reference.md) | Scoring model: factors, weights, bands, compositional semantics |
 | [docs/style-guide.md](docs/style-guide.md) | UI style guide: visual DNA, design tokens, HTML patterns |
+| [docs/coding-standard.md](docs/coding-standard.md) | Engineering standards: stack, gates, complexity, PII, conventions |
 | [docs/conversion-funnel.md](docs/conversion-funnel.md) | Conversion funnel and lead-capture design |
 | [docs/observability.md](docs/observability.md) | LLM and application observability (Langfuse, SerpAPI, metrics) |
 | [docs/market-research.md](docs/market-research.md) | Market research: buyer demand, ICP, competitive landscape, GTM plan |
