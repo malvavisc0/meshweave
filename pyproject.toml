@@ -32,6 +32,13 @@ dependencies = [
   "langfuse",
 ]
 
+[project.optional-dependencies]
+saliency = [
+  "numpy>=2.0",
+  "onnxruntime>=1.20",
+  "pillow>=11",
+]
+
 [dependency-groups]
 dev = [
   "pre-commit",

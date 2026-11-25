@@ -77,6 +77,9 @@ def install_fastapi_stub() -> None:
         def delete(self, *a: object, **k: object):
             return lambda fn: fn
 
+        def include_router(self, *a: object, **k: object) -> None:
+            pass
+
     class _HTTPException(Exception):
         def __init__(self, status_code: int = 500, detail: object = None) -> None:
             super().__init__(detail)

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -34,9 +35,12 @@ install_fastapi_stub()
 from webapp.models import ApiKey, Base, Crawl, ScoreSnapshot, User  # noqa: E402
 
 api_v1 = load_api_v1_module()
+api_v1_visual = sys.modules["webapp.routers.api_v1_visual"]
 
 HTTPException = sys.modules["fastapi"].HTTPException
 Request = sys.modules["fastapi"].Request
+
+from playwright.async_api import Error as PlaywrightError  # noqa: E402
 
 from meshweave.scoring.composite import SCORING_VERSION  # noqa: E402
 
@@ -716,3 +720,170 @@ class TestAnalysisContract:
             assert banned not in blob
         assert "markdown" not in body
         assert "emails" not in body
+
+
+class TestVisualCapture:
+    @pytest.mark.asyncio
+    async def test_visual_uses_stored_cta_and_owner_scope(self, sessions, monkeypatch):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="voxlynow.com", with_snapshot=True)
+        with factory() as s:
+            snap = s.query(ScoreSnapshot).filter(ScoreSnapshot.crawl_id == cid).one()
+            snap.ai_analysis_json = {
+                "aax": {
+                    "homepage_comprehension": {"call_to_action": "Start a campaign"}
+                }
+            }
+            s.commit()
+
+        seen = {}
+
+        class FakeAudit:
+            def to_dict(self):
+                return {
+                    "url": "https://voxlynow.com/",
+                    "attention_model": False,
+                    "assessment": {"cta_text": seen.get("cta")},
+                }
+
+        async def fake_run(url, **kwargs):
+            seen["url"] = url
+            seen["cta"] = kwargs.get("cta_text")
+            return FakeAudit()
+
+        monkeypatch.setattr(api_v1_visual, "run_visual_audit", fake_run)
+        resp = await api_v1_visual.create_visual(_bearer_request(token), cid)
+
+        assert seen == {
+            "url": "https://voxlynow.com/",
+            "cta": "Start a campaign",
+        }
+        assert resp.content["id"] == cid
+        assert resp.content["assessment"]["cta_text"] == "Start a campaign"
+
+    @pytest.mark.asyncio
+    async def test_visual_404_for_other_users_crawl(self, sessions, monkeypatch):
+        factory = sessions[1]
+        _, token = _user_with_key(factory, "a@b.c")
+        other_uid, _ = _user_with_key(factory, "c@d.e")
+        cid = _crawl(factory, user_id=other_uid, domain="voxlynow.com")
+        with pytest.raises(HTTPException) as exc:
+            await api_v1_visual.create_visual(_bearer_request(token), cid)
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_visual_409_for_unfinished_crawl(self, sessions, monkeypatch):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="voxlynow.com", status="running")
+        with pytest.raises(HTTPException) as exc:
+            await api_v1_visual.create_visual(_bearer_request(token), cid)
+        assert exc.value.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_visual_400_for_internal_target_url(self, sessions, monkeypatch):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="169.254.169.254")
+        with pytest.raises(HTTPException) as exc:
+            await api_v1_visual.create_visual(_bearer_request(token), cid)
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_visual_returns_503_when_capture_is_unavailable(
+        self, sessions, monkeypatch
+    ):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="voxlynow.com")
+
+        async def failing(url, **kwargs):
+            raise RuntimeError("MESHWEAVE_VISUAL_CDP_ENDPOINT is not set")
+
+        monkeypatch.setattr(api_v1_visual, "run_visual_audit", failing)
+        with pytest.raises(HTTPException) as exc:
+            await api_v1_visual.create_visual(_bearer_request(token), cid)
+        assert exc.value.status_code == 503
+        assert "not available" in exc.value.detail
+
+    @pytest.mark.asyncio
+    async def test_visual_returns_502_when_page_fails_to_load(
+        self, sessions, monkeypatch
+    ):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="voxlynow.com")
+
+        async def failing(url, **kwargs):
+            raise PlaywrightError("net::ERR_NAME_NOT_RESOLVED")
+
+        monkeypatch.setattr(api_v1_visual, "run_visual_audit", failing)
+        with pytest.raises(HTTPException) as exc:
+            await api_v1_visual.create_visual(_bearer_request(token), cid)
+        assert exc.value.status_code == 502
+
+    @pytest.mark.asyncio
+    async def test_visual_images_are_base64(self, sessions, monkeypatch):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="voxlynow.com")
+
+        class FakeSnapshot:
+            screenshot_png = b"shot"
+
+        class FakeAudit:
+            snapshot = FakeSnapshot()
+
+            def to_dict(self):
+                return {"url": "https://voxlynow.com/", "attention_model": True}
+
+        async def fake_run(url, **kwargs):
+            return FakeAudit()
+
+        monkeypatch.setattr(api_v1_visual, "run_visual_audit", fake_run)
+        monkeypatch.setattr(api_v1_visual, "render_overlay", lambda audit: b"overlay")
+        resp = await api_v1_visual.create_visual(
+            _bearer_request(token), cid, images=True
+        )
+        assert resp.content["screenshot_png"] == "c2hvdA=="
+        assert resp.content["overlay_png"] == "b3ZlcmxheQ=="
+
+    @pytest.mark.asyncio
+    async def test_visual_images_omit_overlay_without_attention(
+        self, sessions, monkeypatch
+    ):
+        factory = sessions[1]
+        uid, token = _user_with_key(factory, "a@b.c")
+        cid = _crawl(factory, user_id=uid, domain="voxlynow.com")
+
+        class FakeSnapshot:
+            screenshot_png = b"shot"
+
+        class FakeAudit:
+            snapshot = FakeSnapshot()
+            attention = None
+
+            def to_dict(self):
+                return {"url": "https://voxlynow.com/", "attention_model": False}
+
+        async def fake_run(url, **kwargs):
+            return FakeAudit()
+
+        monkeypatch.setattr(api_v1_visual, "run_visual_audit", fake_run)
+        resp = await api_v1_visual.create_visual(
+            _bearer_request(token), cid, images=True
+        )
+        assert resp.content["screenshot_png"] == "c2hvdA=="
+        assert "overlay_png" not in resp.content
+
+    def test_stored_cta_text_reads_homepage_comprehension(self):
+        snapshot = SimpleNamespace(
+            ai_analysis_json={
+                "aax": {
+                    "homepage_comprehension": {"call_to_action": "Start a campaign"}
+                }
+            }
+        )
+        row = SimpleNamespace(score_snapshot=snapshot)
+        assert api_v1_visual._stored_cta_text(row) == "Start a campaign"

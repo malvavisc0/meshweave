@@ -507,12 +507,13 @@ class TestProdContainerNames:
         assert names == [
             "meshweave-prod-postgres",
             "meshweave-prod-lightpanda",
+            "meshweave-prod-chromium",
             "meshweave-prod-webapp",
         ]
 
     def test_service_names_and_db_host_stay_stable(self):
         text = COMPOSE.read_text()
-        for svc in ("postgres", "lightpanda", "webapp"):
+        for svc in ("postgres", "lightpanda", "chromium", "webapp"):
             assert re.search(rf"^  {svc}:", text, re.M), svc
         assert "postgres:5432" in _compose_env().get("DATABASE_URL", "")
 

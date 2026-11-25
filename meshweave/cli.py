@@ -404,6 +404,7 @@ examples:
   meshweave crawl https://example.com -o result.json
   meshweave crawl https://example.com --max-pages 50 -o out.json
   meshweave crawl example.com --throttle-ms 200 -o result.json
+  meshweave visual https://example.com --cta-text "Start free audit"
 """
 
 
@@ -449,7 +450,14 @@ def main() -> None:
     # available subcommands.  When the first argument is a URL (i.e. not a
     # known subcommand), default to "crawl" for backward compatibility
     # with  meshweave <url> [flags].
-    known_subcommands = {"crawl", "mark-customer", "--help", "-h", "--version"}
+    known_subcommands = {
+        "crawl",
+        "visual",
+        "mark-customer",
+        "--help",
+        "-h",
+        "--version",
+    }
     if len(sys.argv) < 2:
         sys.argv.insert(1, "--help")
     elif sys.argv[1] not in known_subcommands:
@@ -481,6 +489,11 @@ def main() -> None:
     )
     _add_crawl_args(crawl_parser)
     crawl_parser.set_defaults(func=_run_crawl)
+
+    # -- visual --
+    from .cli_visual import add_visual_parser
+
+    add_visual_parser(subs)
 
     # -- mark-customer --
     mc_parser = subs.add_parser(

@@ -20,10 +20,16 @@ Every page must feel like part of the same operational product system — not a 
 ### Primary Accent
 | Token | Value | Usage |
 |---|---|---|
-| `--color-primary` | `#00A36C` | Buttons, active states, focus rings, primary CTAs |
-| `--color-primary-hover` | `#008F5D` | Button hover state |
-| `--color-primary-pressed` | `#007A4E` | Button active/pressed state |
+| `--color-primary` | `#00A36C` | Accents, links, borders, focus rings |
+| `--color-primary-hover` | `#008F5D` | Accent hover state |
+| `--color-primary-pressed` | `#007A4E` | Accent active/pressed state |
 | `--color-on-primary` | `#FAFAF8` | Text on primary-colored backgrounds |
+| `--color-primary-strong` | `#008052` | Filled text controls (4.77:1 with `--color-on-primary`) |
+| `--color-primary-strong-hover` | `#008458` | Filled-control hover |
+| `--color-primary-strong-pressed` | `#008154` | Filled-control active/pressed |
+
+Filled controls use the `-strong` ramp so their label clears WCAG AA at 14px;
+`--color-primary` stays for non-text accents and for text on dark surfaces.
 
 ### Text / Ink
 | Token | Value | Usage |
@@ -159,7 +165,9 @@ MeshWeave uses **no shadows**. Depth is communicated through:
 ## Components
 
 ### Buttons
-- Primary: `--color-primary` bg, `--color-on-primary` text, 12px 16px padding
+- Primary: `--color-primary-strong` bg, `--color-on-primary` text, 12px 16px
+  padding (4.77:1 label contrast; the brand green itself does not clear AA
+  against `--color-on-primary`)
 - Secondary/Navy: transparent bg, hairline border, `--color-dark-text-muted` text
 - Danger: transparent bg, `--color-semantic-error` border and text
 - All buttons use `--radius-none` (3px)

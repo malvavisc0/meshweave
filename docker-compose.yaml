@@ -68,6 +68,31 @@ services:
       TZ: ${TZ:-UTC}
     networks:
       - network
+  chromium:
+    # Pinned Chrome for Testing build by digest; bump deliberately.
+    # Separate from lightpanda: the text crawl needs no pixels, but screenshot
+    # and geometry checks need a real layout and paint engine.
+    # init reaps Chromium's zombie renderer processes; 2g /dev/shm avoids
+    # BUS_ADRERR renderer crashes on image-heavy pages (image README).
+    image: chromedp/headless-shell@sha256:381353d3530ab9d579d2fe8b9c0f4519c995617f5a71daf6bb649e2d12005bd9
+    container_name: meshweave-chromium
+    hostname: chromium
+    restart: always
+    init: true
+    shm_size: "2g"
+    expose:
+      - "9222"
+    healthcheck:
+      # The image proxies CDP from 9222 to 9223; probe the exposed port only
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9222' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    environment:
+      TZ: ${TZ:-UTC}
+    networks:
+      - network
   webapp:
     build:
       context: .
@@ -90,6 +115,8 @@ services:
       RYBBIT_SITE_ID: ${RYBBIT_SITE_ID}
       # Render pages through the LightPanda CDP service instead of local Chromium
       MESHWEAVE_CDP_ENDPOINT: http://lightpanda:9222
+      # Chromium CDP for screenshot and geometry checks (LightPanda renders no pixels)
+      MESHWEAVE_VISUAL_CDP_ENDPOINT: http://chromium:9222
       # Prefer local source templates/static during local dev so code edits take effect without rebuild
       WEBAPP_PREFER_LOCAL_TEMPLATES: "true"
       WEBAPP_PREFER_LOCAL_STATIC: "true"

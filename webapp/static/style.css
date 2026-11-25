@@ -7,6 +7,10 @@
   --color-primary-hover: #008F5D;
   --color-primary-pressed: #007A4E;
   --color-on-primary: #FAFAF8;
+  /* Filled text controls: 4.77:1 with --color-on-primary, 3.03:1 on dark cards */
+  --color-primary-strong: #008052;
+  --color-primary-strong-hover: #008458;
+  --color-primary-strong-pressed: #008154;
   --color-expert: #0F62FE;
   --color-expert-hover: #0043CE;
 
@@ -87,8 +91,10 @@
   --elevation-focus-ring: 2px solid var(--color-primary);
 
   /* --- Component tokens --- */
-  --component-button-primary-bg: var(--color-primary);
+  --component-button-primary-bg: var(--color-primary-strong);
   --component-button-primary-text: var(--color-on-primary);
+  --component-button-primary-hover: var(--color-primary-strong-hover);
+  --component-button-primary-pressed: var(--color-primary-strong-pressed);
 
   --component-card-bg: var(--color-canvas);
   --component-card-border: var(--elevation-hairline);
@@ -431,14 +437,14 @@ button:disabled,
 }
 
 .btn-primary:hover {
-  background: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
+  background: var(--component-button-primary-hover);
+  border-color: var(--component-button-primary-hover);
   color: var(--color-on-primary);
 }
 
 .btn-primary:active {
-  background: var(--color-primary-pressed);
-  border-color: var(--color-primary-pressed);
+  background: var(--component-button-primary-pressed);
+  border-color: var(--component-button-primary-pressed);
 }
 
 /* Tertiary button - white with green border */
@@ -529,15 +535,15 @@ button:disabled,
 
 .cta-banner .btn-primary {
   color: var(--color-on-primary);
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--component-button-primary-bg);
+  border-color: var(--component-button-primary-bg);
   display: inline-flex;
   margin-top: var(--space-lg) !important;
 }
 
 .cta-banner .btn-primary:hover {
-  background: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
+  background: var(--component-button-primary-hover);
+  border-color: var(--component-button-primary-hover);
   color: var(--color-on-primary);
 }
 
@@ -875,7 +881,7 @@ label {
   left: var(--space-xs);
   z-index: 1000;
   padding: var(--space-xs) var(--space-sm);
-  background: var(--color-primary);
+  background: var(--color-primary-strong);
   color: var(--color-primary-contrast, #fff);
   text-decoration: none;
   transform: translateY(-200%);

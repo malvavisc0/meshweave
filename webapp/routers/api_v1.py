@@ -8,6 +8,7 @@ Endpoints:
 - POST /api/v1/analyses — bulk submit (page or site), durable queue
 - GET  /api/v1/analyses — the caller's crawl list, cursor-paginated
 - GET  /api/v1/analyses/{crawl_id} — site-side contract (202 while in progress)
+- POST /api/v1/analyses/{crawl_id}/visual — CTA visual assessment (?images=1)
 - GET  /api/v1/analyses/{crawl_id}/report.md — unbranded client-ready report
 - GET  /api/v1/analyses/{crawl_id}/diff[.md] — proof-of-work diff
 """
@@ -26,6 +27,7 @@ from meshweave.scoring.interpretation import interpret_profile
 from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.routers.api import _bearer_user_id
+from webapp.routers.api_v1_visual import router as _visual_router
 from webapp.routers.submissions import (
     _find_latest_crawl,
     _normalize_domain_field,
@@ -58,6 +60,7 @@ from webapp.utils.scoring import lens_label
 from webapp.utils.url import canonicalize_url, reject_internal_target
 
 router = APIRouter()
+router.include_router(_visual_router)
 
 BULK_BATCH_CAP = 25
 

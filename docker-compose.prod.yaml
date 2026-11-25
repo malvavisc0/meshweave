@@ -61,6 +61,37 @@ services:
     networks:
       - magics
 
+  chromium:
+    # Pinned Chrome for Testing build by digest; bump deliberately.
+    # Separate from lightpanda: the text crawl needs no pixels, but screenshot
+    # and geometry checks need a real layout and paint engine.
+    # init reaps Chromium's zombie renderer processes; 2g /dev/shm avoids
+    # BUS_ADRERR renderer crashes on image-heavy pages (image README).
+    image: chromedp/headless-shell@sha256:381353d3530ab9d579d2fe8b9c0f4519c995617f5a71daf6bb649e2d12005bd9
+    container_name: meshweave-prod-chromium
+    hostname: chromium
+    restart: always
+    init: true
+    shm_size: "2g"
+    expose:
+      - "9222"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      TZ: ${TZ:-UTC}
+    healthcheck:
+      # The image proxies CDP from 9222 to 9223; probe the exposed port only
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9222' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - magics
+
   webapp:
     image: ghcr.io/malvavisc0/meshweave:${MESHWEAVE_VERSION:-latest}
     container_name: meshweave-prod-webapp
@@ -86,6 +117,8 @@ services:
       MESHWEAVE_CACHE_DIR: /tmp/meshweave/cache
       # Render pages through the LightPanda CDP service (no local browser in image)
       MESHWEAVE_CDP_ENDPOINT: ${CDP_ENDPOINT:-http://lightpanda:9222}
+      # Chromium CDP for screenshot and geometry checks (LightPanda renders no pixels)
+      MESHWEAVE_VISUAL_CDP_ENDPOINT: ${VISUAL_CDP_ENDPOINT:-http://chromium:9222}
       SITE_NAME: MeshWeave
       WEBAPP_AUTH_ENABLED: "true"
       WEBAPP_READINESS_REQUIRE_OAUTH: "true"
