@@ -1401,19 +1401,15 @@ dependencies = [
     { name = "html-to-markdown" },
     { name = "langfuse" },
     { name = "lxml" },
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "pillow" },
     { name = "playwright" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-ai" },
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
-]
-
-[package.optional-dependencies]
-saliency = [
-    { name = "numpy" },
-    { name = "onnxruntime" },
-    { name = "pillow" },
 ]
 
 [package.dev-dependencies]
@@ -1436,9 +1432,9 @@ requires-dist = [
     { name = "html-to-markdown" },
     { name = "langfuse" },
     { name = "lxml" },
-    { name = "numpy", marker = "extra == 'saliency'", specifier = ">=2.0" },
-    { name = "onnxruntime", marker = "extra == 'saliency'", specifier = ">=1.20" },
-    { name = "pillow", marker = "extra == 'saliency'", specifier = ">=11" },
+    { name = "numpy", specifier = ">=2.5" },
+    { name = "onnxruntime", specifier = ">=1.32" },
+    { name = "pillow", specifier = ">=13" },
     { name = "playwright" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
@@ -1446,7 +1442,6 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
 ]
-provides-extras = ["saliency"]
 
 [package.metadata.requires-dev]
 dev = [

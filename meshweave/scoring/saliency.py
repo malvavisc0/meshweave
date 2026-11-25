@@ -1,9 +1,8 @@
 """FastSal attention maps for rendered screenshots.
 
-Optional layer: ``compute`` needs the ``saliency`` extra (onnxruntime, numpy,
-pillow) and a FastSal ONNX model at ``MESHWEAVE_SALIENCY_MODEL_PATH``. The
-model is not downloaded or bundled; point the env var at a local file. Upstream
-weights are Apache-2.0 (https://github.com/feiyanhu/FastSal).
+Needs a FastSal ONNX model at ``MESHWEAVE_SALIENCY_MODEL_PATH``. The model is
+not downloaded or bundled; point the env var at a local file. Upstream weights
+are Apache-2.0 (https://github.com/feiyanhu/FastSal).
 
 The map is only meaningful for the first viewport of a top-of-page screenshot,
 which is what :func:`meshweave.crawling.visual.capture_visual_snapshot`
@@ -32,7 +31,7 @@ _STD = (0.229, 0.224, 0.225)
 
 
 class SaliencyUnavailable(RuntimeError):
-    """The saliency model or its optional dependencies are unavailable."""
+    """The saliency model is unavailable or unusable."""
 
 
 @dataclass(frozen=True)
@@ -54,18 +53,6 @@ class SaliencyMap:
         return float(self.values[top:bottom, left:right].sum())
 
 
-def _runtime() -> tuple[Any, Any, Any]:
-    try:
-        import numpy as np
-        import onnxruntime as ort
-        from PIL import Image
-    except ImportError as exc:
-        raise SaliencyUnavailable(
-            "Attention maps need the saliency extra: pip install 'meshweave[saliency]'"
-        ) from exc
-    return np, Image, ort
-
-
 @functools.lru_cache(maxsize=2)
 def load_saliency_model(model_path: str) -> SaliencyModel:
     """Load (and cache) the FastSal ONNX session for *model_path*."""
@@ -80,6 +67,8 @@ class SaliencyModel:
     """
 
     def __init__(self, model_path: str | None = None) -> None:
+        import onnxruntime as ort
+
         path = model_path or os.environ.get(SALIENCY_MODEL_ENV)
         if not path:
             raise SaliencyUnavailable(
@@ -88,7 +77,6 @@ class SaliencyModel:
             )
         if not os.path.isfile(path):
             raise SaliencyUnavailable(f"Saliency model not found: {path}")
-        _, _, ort = _runtime()
         try:
             self._session = ort.InferenceSession(
                 path, providers=["CPUExecutionProvider"]
@@ -100,11 +88,13 @@ class SaliencyModel:
 
     def predict(self, png: bytes) -> SaliencyMap:
         """Return the attention map for a PNG screenshot."""
-        np, image_module, _ = _runtime()
-        with image_module.open(io.BytesIO(png)) as image:
+        import numpy as np
+        from PIL import Image
+
+        with Image.open(io.BytesIO(png)) as image:
             rgb = image.convert("RGB")
             width, height = rgb.size
-            small = rgb.resize((INPUT_WIDTH, INPUT_HEIGHT), image_module.BILINEAR)
+            small = rgb.resize((INPUT_WIDTH, INPUT_HEIGHT), Image.Resampling.BILINEAR)
             array = np.asarray(small, dtype=np.float32) / 255.0
         mean = np.array(_MEAN, dtype=np.float32)
         std = np.array(_STD, dtype=np.float32)
@@ -120,8 +110,8 @@ class SaliencyModel:
         logits = output[0, 0]
         probability = 1 / (1 + np.exp(-logits))
         resized = np.asarray(
-            image_module.fromarray(probability.astype(np.float32)).resize(
-                (width, height), image_module.BICUBIC
+            Image.fromarray(probability.astype(np.float32)).resize(
+                (width, height), Image.Resampling.BICUBIC
             ),
             dtype=np.float32,
         )

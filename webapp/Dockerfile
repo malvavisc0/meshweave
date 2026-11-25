@@ -37,7 +37,8 @@ COPY alembic ./alembic
 
 # Install all dependencies via uv (locked + reproducible)
 # - Sync core deps from uv.lock (meshweave crawler library)
-# - Install the webapp package with its runtime extras
+# - Install the meshweave library (numpy/onnxruntime/pillow are core deps,
+#   so a configured FastSal model works in prod) and the webapp runtime extras
 RUN uv sync --frozen --no-dev --no-install-project && \
     uv pip install --system . && \
     uv pip install --system /app/webapp[runtime]

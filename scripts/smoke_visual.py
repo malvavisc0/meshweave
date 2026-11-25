@@ -4,8 +4,8 @@ Captures a Chromium screenshot, computes the FastSal attention map, runs the
 deterministic CTA assessment, and writes the screenshot, an attention overlay,
 and the JSON report to disk.
 
-Requires the ``saliency`` extra, a Chromium CDP endpoint, and a FastSal ONNX
-model. Fetch the model once (Apache-2.0, 10.2 MB, sha256
+Requires a Chromium CDP endpoint and a FastSal ONNX model. Fetch the model
+once (Apache-2.0, 10.2 MB, sha256
 6beb2db6820d5609746905d0b6d0df953aaa42c84848b9067ebb11798a675148)::
 
     curl -L -o /tmp/fastsal.onnx \\
@@ -13,7 +13,7 @@ model. Fetch the model once (Apache-2.0, 10.2 MB, sha256
 
     MESHWEAVE_VISUAL_CDP_ENDPOINT=http://127.0.0.1:9222 \\
     MESHWEAVE_SALIENCY_MODEL_PATH=/tmp/fastsal.onnx \\
-    uv run --extra saliency python scripts/smoke_visual.py https://example.com
+    uv run python scripts/smoke_visual.py https://example.com
 """
 
 from __future__ import annotations
@@ -122,17 +122,6 @@ def _check(audit: VisualAudit, overlay: bytes) -> None:
 
 def main() -> None:
     args = _parse_args()
-    try:
-        import numpy  # noqa: F401
-        import onnxruntime  # noqa: F401
-        import PIL  # noqa: F401
-    except ImportError:
-        print(
-            "Missing saliency dependencies; run with "
-            "uv run --extra saliency python scripts/smoke_visual.py ...",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
     raise SystemExit(asyncio.run(_run(args)))
 
 
