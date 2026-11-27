@@ -41,7 +41,7 @@ class VisualAudit(Base):
         unique=True,
         nullable=False,
     )
-    url: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False, default="")
     assessment_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     attention_model: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
@@ -50,7 +50,7 @@ class VisualAudit(Base):
     element_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     screenshot_png: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     overlay_png: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
-    capture_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    capture_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -60,5 +60,4 @@ class VisualAudit(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
     )

@@ -456,25 +456,31 @@ async def delete_analysis(
     ref: str,
     csrf_token: str | None = Form(None),
 ) -> RedirectResponse:
-    """Delete one owned analysis (owner-only).
+    """Delete one owned analysis and every revision in its series.
 
-    Removes the report and all its revisions. Strangers get 404 so a
-    UUID's existence is never revealed.
+    Strangers get 404 so a UUID's existence is never revealed. Only the
+    owner's own runs are removed: a series keyed by domain/path/query also
+    matches other users' runs (e.g. an ownerless public submission), and
+    those rows are untouched.
     """
     from webapp.utils.security import verify_request_csrf
 
     verify_request_csrf(request, csrf_token)
     row = await _require_owned_analysis(request, ref)
     with get_session() as s:
-        for target in [
-            r
-            for r in s.query(Crawl).filter(Crawl.domain == row.domain).all()
-            if r.path == row.path
-            and r.query == row.query
-            and r.visibility == row.visibility
-        ]:
+        for target in (
+            s.query(Crawl)
+            .filter(
+                Crawl.user_id == row.user_id,
+                Crawl.domain == row.domain,
+                Crawl.path == row.path,
+                Crawl.query == row.query,
+                Crawl.visibility == row.visibility,
+            )
+            .all()
+        ):
             s.delete(target)
-    return RedirectResponse(url="/dashboard?notice=deleted", status_code=303)
+    return RedirectResponse(url="/dashboard?notice=analysis_deleted", status_code=303)
 
 
 @router.get("/analysis/{ref}/export")

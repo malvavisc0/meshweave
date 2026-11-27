@@ -411,3 +411,45 @@ def test_payload_from_stored_row_shape():
         "assessment": {"cta_text": "Go"},
         "capture_version": "1",
     }
+
+
+@pytest.mark.asyncio
+async def test_owner_claim_refuses_rerun_inside_cooldown(sessions, monkeypatch):
+    """A replayed submit inside the cooldown is refused, not re-captured."""
+    import webapp.db as db_mod
+
+    factory = sessions[1]
+    uid, _token = user_with_key(factory, "a@b.c")
+    cid = crawl_row(factory, user_id=uid, domain="voxlynow.com")
+
+    monkeypatch.setattr(visual_audit_mod, "get_session", db_mod.get_session)
+
+    assert visual_audit_mod.claim_run(cid) is True
+    assert visual_audit_mod.claim_run(cid) is False
+    from webapp.services.visual_audit import store_audit
+
+    with db_mod.get_session() as s:
+        from webapp.models import Crawl
+
+        row = s.get(Crawl, cid)
+        store_audit(s, row, fake_audit(), claim=True)
+    assert visual_audit_mod.claim_run(cid) is False
+    with factory() as s:
+        assert get_stored(s, cid) is not None
+
+
+@pytest.mark.asyncio
+async def test_failed_capture_releases_the_claim(sessions, monkeypatch):
+    """A failed capture frees the slot so the owner can retry immediately."""
+    factory = sessions[1]
+    uid, _token = user_with_key(factory, "a@b.c")
+    import webapp.db as db_mod
+
+    cid = crawl_row(factory, user_id=uid, domain="voxlynow.com")
+    monkeypatch.setattr(visual_audit_mod, "get_session", db_mod.get_session)
+
+    assert visual_audit_mod.claim_run(cid) is True
+    with factory() as s:
+        assert get_stored(s, cid) is None
+    visual_audit_mod.release_run(cid)
+    assert visual_audit_mod.claim_run(cid) is True

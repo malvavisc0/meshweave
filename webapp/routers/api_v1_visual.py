@@ -107,7 +107,7 @@ async def create_visual(
         raise HTTPException(status_code=503, detail=str(exc)) from None
 
     with get_session() as s:
-        stored = store_audit(s, row, audit)
+        stored = store_audit(s, row, audit, claim=False)
         resp = _response(stored, images)
     _stamp_first_use(request)
     return resp

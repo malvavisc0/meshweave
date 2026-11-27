@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
@@ -23,14 +24,23 @@ from meshweave.visual_audit import (
     render_overlay,
     run_visual_audit,
 )
+from webapp.db import get_session
 from webapp.models import Crawl
 from webapp.models_visual import VisualAudit as VisualAuditRow
+from webapp.utils.times import cooldown
 
 logger = logging.getLogger(__name__)
 
 VISUAL_TIMEOUT_SECONDS = 20.0
 VISUAL_MAX_CONCURRENT = 4
 _capture_slots = asyncio.Semaphore(VISUAL_MAX_CONCURRENT)
+
+_CLAIM_MARKER = b""
+
+
+def _min_age_minutes() -> int:
+    """Owner run cooldown from ``VISUAL_MIN_AGE_MINUTES`` (default 10)."""
+    return int(os.getenv("VISUAL_MIN_AGE_MINUTES", "10"))
 
 
 class VisualCaptureTimeout(Exception):
@@ -82,12 +92,23 @@ async def run_capture(row: Crawl) -> VisualAudit:
         raise VisualCaptureUnavailable("Visual capture is not available") from exc
 
 
-def store_audit(s: Session, row: Crawl, audit: VisualAudit) -> VisualAuditRow:
+def store_audit(
+    s: Session, row: Crawl, audit: VisualAudit, *, claim: bool
+) -> VisualAuditRow:
     """Persist one audit per crawl (a re-run replaces the row) and emit.
 
-    The ``visual_audit_run`` funnel event shares ``s``'s transaction.
+    A claim marker left by :func:`claim_run` keeps the cooldown stamp under
+    the owner's policy; a direct store (the API path) is stamped now. The
+    ``visual_audit_run`` funnel event shares ``s``'s transaction.
     """
     snapshot = audit.snapshot
+    now = datetime.now(UTC)
+    stored = (
+        s.query(VisualAuditRow).filter(VisualAuditRow.crawl_id == row.id).one_or_none()
+    )
+    updated_at = now
+    if stored is not None and claim:
+        updated_at = stored.updated_at
     values = {
         "url": snapshot.final_url,
         "assessment_json": audit.assessment.to_dict(),
@@ -100,12 +121,10 @@ def store_audit(s: Session, row: Crawl, audit: VisualAudit) -> VisualAuditRow:
         "screenshot_png": snapshot.screenshot_png,
         "overlay_png": render_overlay(audit),
         "capture_version": VISUAL_CAPTURE_VERSION,
+        "updated_at": updated_at,
     }
     from webapp.services import funnel
 
-    stored = (
-        s.query(VisualAuditRow).filter(VisualAuditRow.crawl_id == row.id).one_or_none()
-    )
     if stored is None:
         stored = VisualAuditRow(crawl_id=row.id, **values)
         s.add(stored)
@@ -123,17 +142,67 @@ def store_audit(s: Session, row: Crawl, audit: VisualAudit) -> VisualAuditRow:
     return stored
 
 
+def claim_run(crawl_id: str) -> bool:
+    """Claim an owner run unless a capture is in flight or cooling down.
+
+    The owner form runs on the app's single event loop, so the read and the
+    write cannot interleave with another owner claim. An aged-out row is
+    replaced by a marker (id-keyed, so a concurrent API store is never
+    clobbered); a fresh row refuses; a never-captured crawl gets a marker.
+    """
+    now = datetime.now(UTC)
+    with get_session() as s:
+        stored = (
+            s.query(VisualAuditRow)
+            .filter(VisualAuditRow.crawl_id == crawl_id)
+            .one_or_none()
+        )
+        if stored is not None and cooldown(stored.updated_at, _min_age_minutes())[0]:
+            s.query(VisualAuditRow).filter(VisualAuditRow.id == stored.id).update(
+                {
+                    VisualAuditRow.screenshot_png: _CLAIM_MARKER,
+                    VisualAuditRow.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+            s.flush()
+            return True
+        if stored is not None:
+            return False
+        s.add(
+            VisualAuditRow(
+                crawl_id=crawl_id,
+                screenshot_png=_CLAIM_MARKER,
+                updated_at=now,
+            )
+        )
+        s.flush()
+        return True
+
+
+def release_run(crawl_id: str) -> None:
+    """Drop a claim marker after a failed capture so a retry is allowed."""
+    with get_session() as s:
+        s.query(VisualAuditRow).filter(
+            VisualAuditRow.crawl_id == crawl_id,
+            VisualAuditRow.screenshot_png == _CLAIM_MARKER,
+        ).delete(synchronize_session=False)
+
+
 def get_stored(s: Session, crawl_id: str) -> VisualAuditRow | None:
     """The stored audit for a crawl; None when never captured.
 
-    Reads run inside the caller's session so transaction and test seams
-    stay explicit (same contract as :func:`webapp.services.funnel.emit`).
+    An in-flight claim marker reads as None, so the panel and ``GET`` keep
+    their uncaptured semantics until the real audit lands.
     """
-    return (
+    stored = (
         s.query(VisualAuditRow)
         .filter(VisualAuditRow.crawl_id == crawl_id)
         .one_or_none()
     )
+    if stored is None or stored.screenshot_png == _CLAIM_MARKER:
+        return None
+    return stored
 
 
 def payload_from(stored: VisualAuditRow) -> dict[str, Any]:
@@ -195,8 +264,7 @@ def panel_context(s: Session, row: Crawl) -> dict[str, Any]:
         context["can_run"] = True
         context["run_eta"] = ""
         return context
-    from webapp.utils.times import cooldown
-
-    minutes = int(os.getenv("VISUAL_MIN_AGE_MINUTES", "10"))
-    context["can_run"], context["run_eta"] = cooldown(stored.updated_at, minutes)
+    context["can_run"], context["run_eta"] = cooldown(
+        stored.updated_at, _min_age_minutes()
+    )
     return context
