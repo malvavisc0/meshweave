@@ -306,23 +306,16 @@ def _md_next_step(ctx: dict) -> str:
     return "\n".join(lines)
 
 
-def _md_visual(ctx: dict) -> str:
-    """The optional CTA visual-check section (present only when captured)."""
-    visual = ctx.get("visual")
-    if not visual:
-        return ""
-    lines: list[str] = ["## CTA Visual Check", ""]
-    label = _md_cell(visual.get("cta_text")) or "(no labelled action found)"
-    matched = visual.get("matched_by") or "none"
-    lines.append(f"**Selected action:** {label} (matched by {matched})")
-    lines.append("")
+def _md_visual_metrics(visual: dict) -> list[str]:
+    """The measured-metric bullets of the CTA visual check."""
+    lines: list[str] = []
     ratio = visual.get("contrast_ratio")
-    threshold = visual.get("contrast_threshold")
     if ratio is not None:
-        verdict = "meets" if ratio >= (threshold or 0) else "below"
+        threshold = visual.get("contrast_threshold") or 0
+        verdict = "meets" if ratio >= threshold else "below"
         lines.append(
             f"- **Label contrast:** {ratio:.2f}:1 ({verdict} the "
-            f"{(threshold or 0):.1f}:1 threshold)"
+            f"{threshold:.1f}:1 threshold)"
         )
     surface = visual.get("surface_contrast")
     if surface is not None:
@@ -335,34 +328,53 @@ def _md_visual(ctx: dict) -> str:
         + (f" ({_md_cell(names)})" if names else "")
     )
     share = visual.get("attention_share")
-    if share is not None:
-        rank = visual.get("attention_rank")
-        lines.append(
-            f"- **Estimated attention share:** {share * 100:.1f}%"
-            + (f" (rank {rank})" if rank is not None else "")
-        )
-    else:
+    if share is None:
         lines.append("- **Estimated attention share:** attention model not configured")
-    findings = visual.get("findings") or []
-    lines.append("")
-    if not findings:
-        lines.append("_No visual findings._")
-    else:
-        lines.append("### Findings")
-        lines.append("")
-        for finding in findings:
-            severity = str(finding.get("severity") or "").lower()
-            detail = _md_cell(finding.get("detail"))
-            fix = _md_cell(finding.get("fix"))
-            lines.append(f"- **[{severity}]** {detail}")
-            if fix:
-                lines.append(f"  - Fix: {fix}")
-    lines.append("")
+        return lines
+    rank = visual.get("attention_rank")
     lines.append(
+        f"- **Estimated attention share:** {share * 100:.1f}%"
+        + (f" (rank {rank})" if rank is not None else "")
+    )
+    return lines
+
+
+def _md_visual_findings(visual: dict) -> list[str]:
+    """The findings list of the CTA visual check."""
+    findings = visual.get("findings") or []
+    if not findings:
+        return ["_No visual findings._"]
+    lines: list[str] = ["### Findings", ""]
+    for finding in findings:
+        severity = str(finding.get("severity") or "").lower()
+        detail = _md_cell(finding.get("detail"))
+        fix = _md_cell(finding.get("fix"))
+        lines.append(f"- **[{severity}]** {detail}")
+        if fix:
+            lines.append(f"  - Fix: {fix}")
+    return lines
+
+
+def _md_visual(ctx: dict) -> str:
+    """The optional CTA visual-check section (present only when captured)."""
+    visual = ctx.get("visual")
+    if not visual:
+        return ""
+    label = _md_cell(visual.get("cta_text")) or "(no labelled action found)"
+    matched = visual.get("matched_by") or "none"
+    lines: list[str] = [
+        "## CTA Visual Check",
+        "",
+        f"**Selected action:** {label} (matched by {matched})",
+        "",
+        *_md_visual_metrics(visual),
+        "",
+        *_md_visual_findings(visual),
+        "",
         "_Attention share is a prediction from a saliency model over the"
         " captured screenshot, not eye tracking. Contrast is measured from"
-        " computed styles; background contrast may be estimated._"
-    )
+        " computed styles; background contrast may be estimated._",
+    ]
     return "\n".join(lines)
 
 
