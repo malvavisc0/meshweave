@@ -344,10 +344,12 @@ def _setup_template_globals() -> None:
 
 
 def _default_csp(telemetry_origin: str) -> str:
-    """Baseline CSP permitting self content plus Google Fonts/favicons.
+    """Baseline CSP permitting self content and the pinned web fonts.
 
     Mirrors the dev compose WEBAPP_CSP value so a deployment that enables
-    CSP without WEBAPP_CSP keeps the fonts and favicon the templates load.
+    CSP without WEBAPP_CSP stays in sync with the compose policy. The
+    Google Fonts origins are allowlisted to match that policy; the
+    templates self-host IBM Plex from /static/fonts.
 
     Args:
         telemetry_origin (str): Optional telemetry script origin to allow.
