@@ -21,6 +21,10 @@ from .crawling.visual import (
 from .scoring.cta_visual import CtaVisualAssessment, assess_visual_cta
 from .scoring.saliency import SALIENCY_MODEL_ENV, SaliencyMap, load_saliency_model
 
+# Bumped when the capture or assessment pipeline changes shape, so stored
+# audits can be told apart from re-captured ones.
+VISUAL_CAPTURE_VERSION = "1"
+
 
 @dataclass(frozen=True)
 class VisualAudit:

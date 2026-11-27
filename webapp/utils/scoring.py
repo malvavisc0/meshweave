@@ -285,6 +285,9 @@ def build_score_snapshot_context(crawl) -> dict | None:
     aax_analysis = ai_analysis.get("aax") or {}
 
     aax_composite = aax_section.get("composite")
+    # An AI review that failed ships no composite; the page must say why
+    # instead of showing a bare "—" (B11).
+    aax_degraded = bool(aax_section.get("degraded"))
     interp = interpret_profile(
         snapshot.aeo_score,
         snapshot.geo_score,
@@ -312,12 +315,17 @@ def build_score_snapshot_context(crawl) -> dict | None:
         "aax_score": aax_composite,
         "aax_rating": aax_section.get("rating", "Unknown"),
         "aax_rating_class": rating_class(aax_section.get("rating")),
+        "aax_degraded": aax_degraded,
         # AAX raw analysis data for diagnostic section
         "aax_analysis": aax_analysis,
         # Capability implication statements
         "aeo_implication": score_implication("aeo", snapshot.aeo_score),
         "geo_implication": score_implication("geo", snapshot.geo_score),
-        "aax_implication": score_implication("aax", aax_composite),
+        "aax_implication": (
+            "AI review failed — rule-based signals only."
+            if aax_degraded
+            else score_implication("aax", aax_composite)
+        ),
         # Interpretation matrix result
         "interpretation": interp,
     }

@@ -1,7 +1,6 @@
-import json
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -10,266 +9,55 @@ from sqlalchemy.orm import joinedload
 from webapp.db import get_session
 from webapp.infra import templates
 from webapp.models import Crawl
+from webapp.routers.analysis_diff import router as _diff_router
+from webapp.routers.analysis_visual import router as _visual_router
 from webapp.services import nudges as nudges_svc
-from webapp.utils.auth import require_ownership
-from webapp.utils.diff import (
-    CrossVersionComparisonError,
-    build_content_diff,
-    build_findings_diff,
-    build_score_diff,
-    ensure_same_scoring_version,
-    find_previous_revision,
-    list_revision_series,
+from webapp.services.visual_audit import (
+    get_stored as get_visual_audit,
 )
+from webapp.services.visual_audit import (
+    panel_context as visual_panel_context,
+)
+from webapp.services.visual_audit import (
+    visual_export_context,
+)
+from webapp.utils.auth import require_ownership
+from webapp.utils.diff import find_previous_revision, list_revision_series
 from webapp.utils.export import (
     build_export_context,
     render_export_markdown,
     safe_filename,
 )
-from webapp.utils.payload_counts import json_ld_count as _json_ld_count
-from webapp.utils.progress import progress_view
-from webapp.utils.reasons import friendly_reason
+from webapp.utils.result_meta import (
+    analysis_json_ld,
+    build_factor_extremes,
+    email_source_map,
+    meta_description,
+    page_title,
+    payload_scope,
+    seo_title_desc,
+)
 from webapp.utils.scoring import (
     _sorted_recommendations,
-    aax_pending,
 )
 from webapp.utils.scoring import (
     build_score_snapshot_context as _build_score_snapshot_context,
 )
 from webapp.utils.security import page_csrf, set_csrf_session_cookie
-from webapp.utils.times import ensure_utc
+from webapp.utils.times import cooldown
 from webapp.utils.url import _abs_url
+from webapp.utils.viewer_state import (
+    claim_min_hours,
+    claim_state,
+    compute_viewer_role,
+    progress_for,
+    public_refresh_state,
+    save_offer_state,
+)
 
 router = APIRouter()
-
-
-def _factor_extremes(factors: dict) -> tuple:
-    """Return (weakest_item, strongest_item, missing_keys).
-
-    Each item is (factor_key, factor_dict) or None. missing_keys lists
-    every factor key with no score (empty when all factors are scored),
-    so the missing-data caveat names all of them.
-    """
-    scored = [(k, v) for k, v in factors.items() if v.get("score") is not None]
-    missing = [k for k, v in factors.items() if v.get("score") is None]
-    if scored:
-        return (
-            min(scored, key=lambda x: x[1]["score"]),
-            max(scored, key=lambda x: x[1]["score"]),
-            missing,
-        )
-    return None, None, missing
-
-
-def _build_factor_extremes(ss: dict | None) -> dict:
-    """Build factor_extremes dict for all pillars from score_snapshot."""
-    if not ss or not ss.get("score_data"):
-        return {
-            "aeo": (None, None, []),
-            "geo": (None, None, []),
-            "aax": (None, None, []),
-        }
-    sd = ss["score_data"]
-    return {
-        "aeo": _factor_extremes(sd.get("aeo", {}).get("factors", {})),
-        "geo": _factor_extremes(sd.get("geo", {}).get("factors", {})),
-        "aax": _factor_extremes(sd.get("aax", {}).get("factors", {})),
-    }
-
-
-def _seo_title_desc(payload: dict | None) -> tuple[str, str]:
-    """Extract (title_from_payload, desc_from_payload) from the page payload."""
-    title_from_payload = ""
-    desc_from_payload = ""
-    try:
-        if payload:
-            pg = payload.get("page") or {}
-            title_from_payload = (pg.get("title") or "").strip()
-            desc_from_payload = (pg.get("description") or "").strip()
-    except Exception:
-        pass
-    return title_from_payload, desc_from_payload
-
-
-def _payload_scope(payload: dict | None, row: Crawl) -> str:
-    """Compute the effective scope value used for the SEO page title."""
-    scope_val = ""
-    try:
-        if isinstance(payload, dict):
-            scope_val = str(payload.get("scope") or "").strip().lower()
-    except Exception:
-        scope_val = ""
-    if not scope_val:
-        scope_val = str(getattr(row, "scope", "") or "").strip().lower()
-    return scope_val
-
-
-def _page_title(
-    scope_val: str,
-    domain_val: str,
-    path_val: str,
-    title_from_payload: str,
-    site_name: str,
-) -> str:
-    """Build the SEO-friendly page title for the given scope."""
-    if scope_val == "site":
-        return f"{domain_val} Site Analysis — Pages, Links, Emails | {site_name}"
-    path_or_title = title_from_payload or path_val
-    return f"Page Analysis — {path_or_title} — {domain_val} | {site_name}"
-
-
-def _meta_description(desc_from_payload: str) -> str:
-    """Build the truncated meta description for the page.
-
-    Derived from the page description only. It never falls back to payload
-    markdown: the meta description is embedded in the page head for every
-    viewer, and markdown is not part of the public preview allowlist.
-    """
-    meta_description = (desc_from_payload or "").strip()
-    if len(meta_description) > 300:
-        meta_description = meta_description[:297] + "…"
-    return meta_description
-
-
-def _structured_data(
-    identifier: str,
-    domain: str,
-    abs_page_url: str,
-    updated_at: datetime | None,
-    status: str | None,
-    counts: dict,
-) -> str:
-    """Build the JSON-LD CreativeWork payload (with fallback)."""
-    try:
-        return json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": identifier,
-                "about": (domain or "").strip(),
-                "url": abs_page_url,
-                "dateModified": (updated_at or datetime.now(UTC)).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
-                "creativeWorkStatus": (status or "").title(),
-                "measurementTechnique": [
-                    "web-crawl",
-                    "markdown-extraction",
-                    "link-analysis",
-                    "email-detection",
-                ],
-                "isAccessibleForFree": True,
-                "keywords": [
-                    "markdown",
-                    "link map",
-                    "email intelligence",
-                    "ai summary",
-                ],
-                "additionalProperty": [
-                    {
-                        "@type": "PropertyValue",
-                        "name": "content_pages_count",
-                        "value": str(counts["content_pages_count"]),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "emails_count",
-                        "value": str(counts["emails_count"]),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "internal_links_count",
-                        "value": str(counts["internal_links_count"]),
-                    },
-                    {
-                        "@type": "PropertyValue",
-                        "name": "external_links_count",
-                        "value": str(counts["external_links_count"]),
-                    },
-                ],
-            }
-        )
-    except Exception:
-        return json.dumps(
-            {
-                "@context": "https://schema.org",
-                "@type": "CreativeWork",
-                "name": "MeshWeave Analysis",
-                "identifier": identifier,
-                "about": (domain or "").strip(),
-                "url": abs_page_url,
-            }
-        )
-
-
-def _reason_stopped_label(payload: dict | None) -> str:
-    """Build the friendly reason-stopped label for the template."""
-    return (
-        friendly_reason(payload.get("summary", {}).get("reason_stopped", ""))
-        if payload and payload.get("summary")
-        else ""
-    )
-
-
-def _cooldown(updated_at: datetime, min_age_minutes: int) -> tuple[bool, str]:
-    """Return (can_proceed, eta_label) based on the row's update cooldown."""
-    now = datetime.now(UTC)
-    next_eligible = ensure_utc(updated_at) + timedelta(minutes=min_age_minutes)
-    can_proceed = now >= next_eligible
-    eta = (
-        f"{int((next_eligible - now).total_seconds() / 60)}m" if not can_proceed else ""
-    )
-    return can_proceed, eta
-
-
-def _email_source_map(payload: dict | None) -> dict[str, str]:
-    """Map each detected email to the page URL it was found on.
-
-    Derived from ``payload.emails.by_url`` (``{url: [emails]}``). Used to
-    server-render the owner email table's "Found On" column without any
-    client-side lookups.
-    """
-    mapping: dict[str, str] = {}
-    if not payload:
-        return mapping
-    by_url = (payload.get("emails") or {}).get("by_url") or {}
-    for url, addrs in by_url.items():
-        addresses = addrs if isinstance(addrs, list) else [addrs]
-        for addr in addresses:
-            mapping[str(addr)] = (url or "").strip()
-    return mapping
-
-
-def _compute_viewer_role(current_user, row: Crawl) -> str:
-    """Return the explicit viewer role for the result template.
-
-    One of: owner | ownerless_public | public_non_owner | anonymous_public.
-    Ownership is derived from the row's user_id, never inferred from the
-    presence of a logged-in user alone.
-    """
-    if current_user and getattr(row, "user_id", None) == current_user.id:
-        return "owner"
-    if current_user is None:
-        return "anonymous_public"
-    return (
-        "ownerless_public"
-        if getattr(row, "user_id", None) is None
-        else "public_non_owner"
-    )
-
-
-def _progress_for(row: Crawl, finalize: bool) -> tuple[Crawl, dict | None, bool]:
-    """Build SSR progress for in-flight crawls.
-
-    Returns (row, progress_or_None, aax_pending_value). finalize should be
-    False for non-owner renders so viewers cannot trigger stale finalization.
-    """
-    aax = aax_pending(row)
-    if str(row.status or "").lower() in ("pending", "running") or aax:
-        row, progress = progress_view(row, finalize=finalize)
-        return row, progress, aax
-    return row, None, aax
+router.include_router(_diff_router)
+router.include_router(_visual_router)
 
 
 def _is_uuid(ref: str) -> bool:
@@ -279,81 +67,6 @@ def _is_uuid(ref: str) -> bool:
         return True
     except Exception:
         return False
-
-
-def _analysis_json_ld(
-    row: Crawl, payload: dict | None, in_progress: bool, abs_page_url: str, identifier
-) -> tuple[str | None, str]:
-    """Return (json_ld, reason_stopped_label) for an analysis render."""
-    if in_progress:
-        return None, ""
-    # JSON-LD: CreativeWork (LLM-first)
-    counts = _json_ld_count(payload)
-    json_ld = _structured_data(
-        identifier, row.domain, abs_page_url, row.updated_at, row.status, counts
-    )
-    return json_ld, _reason_stopped_label(payload)
-
-
-def _claim_min_hours() -> int:
-    """Configured minimum age (hours) before a public analysis can be claimed."""
-    try:
-        return int(os.getenv("CLAIM_PUBLIC_MIN_AGE_HOURS", "24"))
-    except Exception:
-        return 24
-
-
-def _claim_state(row: Crawl, min_hours: int) -> tuple[bool, str]:
-    """Return (eligible, eta_label) for claiming an ownerless public row.
-
-    A row is claimable when it has no owner and its created_at is at least
-    min_hours in the past. eta_label is empty when eligible.
-    """
-    if getattr(row, "user_id", None) is not None:
-        return False, ""
-    created = getattr(row, "created_at", None)
-    if created is None:
-        return False, ""
-    created = ensure_utc(created)
-    eligible = created + timedelta(hours=min_hours) <= datetime.now(UTC)
-    if eligible:
-        return True, ""
-    remaining = int(
-        (created + timedelta(hours=min_hours) - datetime.now(UTC)).total_seconds()
-        / 3600
-    )
-    return False, f"{max(0, remaining)}h"
-
-
-def _public_refresh_state(row: Crawl, in_progress: bool) -> tuple[bool, str]:
-    """Compute (can_refresh, refresh_eta) against the public domain-root cooldown."""
-    # Cooldown for refresh (public domain root); irrelevant mid-crawl
-    can_refresh = False
-    refresh_eta = ""
-    if in_progress:
-        return can_refresh, refresh_eta
-    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    now = datetime.now(UTC)
-    with get_session() as s:
-        public_root = (
-            s.query(Crawl)
-            .filter(
-                Crawl.domain == row.domain,
-                Crawl.visibility == "public",
-                Crawl.path == "/",
-                Crawl.query == "",
-            )
-            .first()
-        )
-    if not public_root:
-        return can_refresh, refresh_eta
-    next_refresh_eligible = ensure_utc(public_root.updated_at) + timedelta(
-        minutes=refresh_min_age_minutes
-    )
-    can_refresh = now >= next_refresh_eligible
-    if not can_refresh:
-        refresh_eta = f"{int((next_refresh_eligible - now).total_seconds() / 60)}m"
-    return can_refresh, refresh_eta
 
 
 def _revision_series_for(row: Crawl) -> list[dict]:
@@ -401,125 +114,6 @@ def _since_last_run(row: Crawl) -> dict | None:
     }
 
 
-async def _render_private_view(request: Request, ref: str) -> Response:
-    """Render the owner-only private analysis view.
-
-    Only the authenticated owner may see a private analysis. An unauthenticated
-    request, an authenticated non-owner, or an ownerless row all return 404 so
-    that a private UUID's existence is never revealed.
-    """
-    try:
-        row = await require_ownership(request, ref)
-    except HTTPException as exc:
-        # 401 (unauthenticated) and 403 (authenticated non-owner) collapse to
-        # 404 so that UUID existence is not revealed.
-        if exc.status_code in (401, 403):
-            raise HTTPException(status_code=404, detail="Not found")
-        raise
-
-    row, progress, aax = _progress_for(row, finalize=True)
-    in_progress = progress is not None
-    payload: dict | None = row.payload_json
-    title_from_payload, desc_from_payload = _seo_title_desc(payload)
-    site_name = os.getenv("SITE_NAME", "MeshWeave")
-    scope_val = _payload_scope(payload, row)
-    domain_val = (row.domain or "").strip()
-    path_val = (row.path or "").strip() or "/"
-    page_title = _page_title(
-        scope_val, domain_val, path_val, title_from_payload, site_name
-    )
-    meta_description = _meta_description(desc_from_payload)
-    abs_page_url = _abs_url(request, f"/analysis/{row.id}")
-    og_image_url = os.getenv("OG_IMAGE_URL") or None
-    json_ld, reason_stopped_label = _analysis_json_ld(
-        row, payload, in_progress, abs_page_url, str(row.id)
-    )
-    api_url = f"/api/analysis/private/{row.id}"
-    abs_api_url = _abs_url(request, api_url)
-
-    # Cooldown for retry
-    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
-    can_retry_cooldown, retry_eta = _cooldown(row.updated_at, refresh_min_age_minutes)
-    can_retry = (row.status != "running") and can_retry_cooldown
-
-    # CSRF token for retry form (generate new session if missing and CSRF is enabled)
-    csrf_token, session_id, new_session = page_csrf(request)
-
-    _ss_private = None if in_progress else _build_score_snapshot_context(row)
-    since_last_run = _since_last_run(row)
-    resp = templates.TemplateResponse(
-        request,
-        "result.html",
-        {
-            "id": row.id,
-            "domain": row.domain,
-            "path": row.path,
-            "query": row.query,
-            "canonical_url": row.canonical_url,
-            "visibility": row.visibility,
-            "status": row.status,
-            "error": row.error,
-            "payload": payload,
-            "reason_stopped_label": reason_stopped_label,
-            "api_url": api_url,
-            "abs_api_url": abs_api_url,
-            "can_retry": can_retry,
-            "retry_eta": retry_eta,
-            "csrf_token": csrf_token,
-            # Ownership / gating
-            "viewer_role": "owner",
-            "email_source_map": _email_source_map(payload),
-            # SEO/Sharing
-            "page_title": page_title,
-            "meta_description": meta_description,
-            "abs_page_url": abs_page_url,
-            "og_image_url": og_image_url,
-            "site_name": site_name,
-            "json_ld": json_ld,
-            # Owner toggles
-            "listed": row.listed,
-            "can_refresh": can_retry,
-            "refresh_eta": retry_eta,
-            "score_snapshot": _ss_private,
-            "sorted_recommendations": _sorted_recommendations(_ss_private),
-            "factor_extremes": _build_factor_extremes(_ss_private),
-            "aax_pending": aax,
-            "aax_status": row.aax_status,
-            "in_progress": in_progress,
-            "progress": progress,
-            "revisions": _revision_series_for(row),
-            "since_last_run": since_last_run,
-            **_funnel_nudge_context(
-                getattr(request.state, "current_user", None),
-                "result",
-                "owner",
-            ),
-        },
-    )
-    # Prevent indexing of private results
-    resp.headers["X-Robots-Tag"] = "noindex"
-    set_csrf_session_cookie(resp, session_id, new_session)
-    return resp
-
-
-def _save_offer_state(request: Request, row: Crawl, current_user) -> dict:
-    """Inputs for the result page's "Save to my account" offer.
-
-    The offer shows only when the viewer is authenticated, the crawl is
-    ownerless, and this browser's anonymous cookie matches the crawl's
-    ``anonymous_user_id`` — provable per-analysis attribution.
-    """
-    ownerless = getattr(row, "user_id", None) is None
-    anon_cookie = request.cookies.get(
-        os.getenv("WEBAPP_ANON_ID_COOKIE_NAME", "mw_anon_id")
-    )
-    cookie_match = bool(anon_cookie and row.anonymous_user_id == anon_cookie)
-    return {
-        "can_save": bool(current_user and ownerless and cookie_match),
-        "anon_id": anon_cookie or "",
-    }
-
-
 def _funnel_nudge_context(
     current_user,
     surface: str,
@@ -543,15 +137,15 @@ def _funnel_nudge_context(
 
 def _public_viewer_state(request: Request, row: Crawl, in_progress: bool) -> dict:
     """Viewer-role, claim, refresh, save-offer, and CTA-impression state."""
-    claim_min_hours = _claim_min_hours()
+    min_hours = claim_min_hours()
     created_at_iso = (row.created_at or datetime.now(UTC)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     ownerless = getattr(row, "user_id", None) is None
-    can_refresh, refresh_eta = _public_refresh_state(row, in_progress)
+    can_refresh, refresh_eta = public_refresh_state(row, in_progress)
     current_user = getattr(request.state, "current_user", None)
-    viewer_role = _compute_viewer_role(current_user, row)
-    claim_eligible, claim_eta = _claim_state(row, claim_min_hours)
+    viewer_role = compute_viewer_role(current_user, row)
+    claim_eligible, claim_eta = claim_state(row, min_hours)
     if viewer_role == "anonymous_public":
         try:
             from webapp.utils.metrics import signin_cta_shown
@@ -560,7 +154,7 @@ def _public_viewer_state(request: Request, row: Crawl, in_progress: bool) -> dic
         except Exception:
             pass
     return {
-        "claim_min_hours": claim_min_hours,
+        "claim_min_hours": min_hours,
         "created_at": created_at_iso,
         "ownerless": ownerless,
         "can_refresh": can_refresh,
@@ -568,8 +162,113 @@ def _public_viewer_state(request: Request, row: Crawl, in_progress: bool) -> dic
         "viewer_role": viewer_role,
         "claim_eligible": claim_eligible,
         "claim_eta": claim_eta,
-        **_save_offer_state(request, row, current_user),
+        **save_offer_state(request, row, current_user),
     }
+
+
+async def _render_private_view(request: Request, ref: str) -> Response:
+    """Render the owner-only private analysis view.
+
+    Only the authenticated owner may see a private analysis. An unauthenticated
+    request, an authenticated non-owner, or an ownerless row all return 404 so
+    that a private UUID's existence is never revealed.
+    """
+    try:
+        row = await require_ownership(request, ref)
+    except HTTPException as exc:
+        # 401 (unauthenticated) and 403 (authenticated non-owner) collapse to
+        # 404 so that UUID existence is not revealed.
+        if exc.status_code in (401, 403):
+            raise HTTPException(status_code=404, detail="Not found")
+        raise
+
+    row, progress, aax = progress_for(row, finalize=True)
+    in_progress = progress is not None
+    payload: dict | None = row.payload_json
+    title_from_payload, desc_from_payload = seo_title_desc(payload)
+    site_name = os.getenv("SITE_NAME", "MeshWeave")
+    scope_val = payload_scope(payload, row)
+    domain_val = (row.domain or "").strip()
+    path_val = (row.path or "").strip() or "/"
+    doc_title = page_title(
+        scope_val, domain_val, path_val, title_from_payload, site_name
+    )
+    meta_desc = meta_description(desc_from_payload)
+    abs_page_url = _abs_url(request, f"/analysis/{row.id}")
+    og_image_url = os.getenv("OG_IMAGE_URL") or None
+    json_ld, reason_stopped_label = analysis_json_ld(
+        row, payload, in_progress, abs_page_url, str(row.id)
+    )
+    api_url = f"/api/analysis/private/{row.id}"
+    abs_api_url = _abs_url(request, api_url)
+
+    # Cooldown for retry
+    refresh_min_age_minutes = int(os.getenv("REFRESH_MIN_AGE_MINUTES", "60"))
+    can_retry_cooldown, retry_eta = cooldown(row.updated_at, refresh_min_age_minutes)
+    can_retry = (row.status != "running") and can_retry_cooldown
+
+    # CSRF token for retry form (generate new session if missing and CSRF is enabled)
+    csrf_token, session_id, new_session = page_csrf(request)
+
+    _ss_private = None if in_progress else _build_score_snapshot_context(row)
+    since_last_run = _since_last_run(row)
+    with get_session() as s:
+        visual = visual_panel_context(s, row)
+    resp = templates.TemplateResponse(
+        request,
+        "result.html",
+        {
+            "id": row.id,
+            "domain": row.domain,
+            "path": row.path,
+            "query": row.query,
+            "canonical_url": row.canonical_url,
+            "visibility": row.visibility,
+            "status": row.status,
+            "error": row.error,
+            "payload": payload,
+            "reason_stopped_label": reason_stopped_label,
+            "api_url": api_url,
+            "abs_api_url": abs_api_url,
+            "can_retry": can_retry,
+            "retry_eta": retry_eta,
+            "csrf_token": csrf_token,
+            # Ownership / gating
+            "viewer_role": "owner",
+            "email_source_map": email_source_map(payload),
+            # SEO/Sharing
+            "page_title": doc_title,
+            "meta_description": meta_desc,
+            "abs_page_url": abs_page_url,
+            "og_image_url": og_image_url,
+            "site_name": site_name,
+            "json_ld": json_ld,
+            # Owner toggles
+            "listed": row.listed,
+            "can_refresh": can_retry,
+            "refresh_eta": retry_eta,
+            "score_snapshot": _ss_private,
+            "sorted_recommendations": _sorted_recommendations(_ss_private),
+            "factor_extremes": build_factor_extremes(_ss_private),
+            "aax_pending": aax,
+            "aax_status": row.aax_status,
+            "in_progress": in_progress,
+            "progress": progress,
+            "revisions": _revision_series_for(row),
+            "since_last_run": since_last_run,
+            "visual_audit": visual,
+            "notice": request.query_params.get("notice"),
+            **_funnel_nudge_context(
+                getattr(request.state, "current_user", None),
+                "result",
+                "owner",
+            ),
+        },
+    )
+    # Prevent indexing of private results
+    resp.headers["X-Robots-Tag"] = "noindex"
+    set_csrf_session_cookie(resp, session_id, new_session)
+    return resp
 
 
 async def _render_public_view(request: Request, ref: str) -> Response:
@@ -586,22 +285,22 @@ async def _render_public_view(request: Request, ref: str) -> Response:
     row = row_result
 
     # Public viewers are not owners: never trigger stale finalization
-    row, progress, aax = _progress_for(row, finalize=False)
+    row, progress, aax = progress_for(row, finalize=False)
     in_progress = progress is not None
     payload = row.payload_json
-    title_from_payload, desc_from_payload = _seo_title_desc(payload)
+    title_from_payload, desc_from_payload = seo_title_desc(payload)
     site_name = os.getenv("SITE_NAME", "MeshWeave")
-    scope_val = _payload_scope(payload, row)
+    scope_val = payload_scope(payload, row)
     domain_val = (row.domain or "").strip()
     path_val = (row.path or "").strip() or "/"
-    page_title = _page_title(
+    doc_title = page_title(
         scope_val, domain_val, path_val, title_from_payload, site_name
     )
-    meta_description = _meta_description(desc_from_payload)
+    meta_desc = meta_description(desc_from_payload)
     abs_page_url = _abs_url(request, f"/analysis/{row.key}")
     og_image_url = os.getenv("OG_IMAGE_URL") or None
 
-    json_ld, reason_stopped_label = _analysis_json_ld(
+    json_ld, reason_stopped_label = analysis_json_ld(
         row, payload, in_progress, abs_page_url, str(row.key)
     )
 
@@ -634,12 +333,12 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             "reason_stopped_label": reason_stopped_label,
             "csrf_token": csrf_token,
             # Ownership / gating
-            "email_source_map": _email_source_map(payload),
+            "email_source_map": email_source_map(payload),
             # Provide private id to owners for chat scoping
             "id": row.id,
             # SEO/Sharing
-            "page_title": page_title,
-            "meta_description": meta_description,
+            "page_title": doc_title,
+            "meta_description": meta_desc,
             "abs_page_url": abs_page_url,
             "og_image_url": og_image_url,
             "site_name": site_name,
@@ -647,7 +346,7 @@ async def _render_public_view(request: Request, ref: str) -> Response:
             # Refresh cooldown
             "score_snapshot": _ss_public,
             "sorted_recommendations": _sorted_recommendations(_ss_public),
-            "factor_extremes": _build_factor_extremes(_ss_public),
+            "factor_extremes": build_factor_extremes(_ss_public),
             "aax_pending": aax,
             "aax_status": row.aax_status,
             "in_progress": in_progress,
@@ -757,20 +456,30 @@ async def delete_analysis(
     ref: str,
     csrf_token: str | None = Form(None),
 ) -> RedirectResponse:
-    """Delete one owned analysis (owner-only).
+    """Delete one owned analysis and every revision in its series.
 
-    The privacy page promises a claimed analysis can be removed; this is
-    the per-analysis delete behind that promise. Strangers get 404.
+    Strangers get 404 so a UUID's existence is never revealed. Only the
+    owner's own runs are removed: a series keyed by domain/path/query also
+    matches other users' runs (e.g. an ownerless public submission), and
+    those rows are untouched.
     """
     from webapp.utils.security import verify_request_csrf
 
     verify_request_csrf(request, csrf_token)
     row = await _require_owned_analysis(request, ref)
     with get_session() as s:
-        db_row = s.get(Crawl, row.id)
-        if not db_row or db_row.user_id != row.user_id:
-            raise HTTPException(status_code=404, detail="Not found")
-        s.delete(db_row)
+        for target in (
+            s.query(Crawl)
+            .filter(
+                Crawl.user_id == row.user_id,
+                Crawl.domain == row.domain,
+                Crawl.path == row.path,
+                Crawl.query == row.query,
+                Crawl.visibility == row.visibility,
+            )
+            .all()
+        ):
+            s.delete(target)
     return RedirectResponse(url="/dashboard?notice=analysis_deleted", status_code=303)
 
 
@@ -811,12 +520,14 @@ async def export_analysis(request: Request, ref: str) -> Response:
             domain=row.domain,
             format="markdown",
         )
+        visual = visual_export_context(get_visual_audit(s, row.id))
 
     markdown = render_export_markdown(
         build_export_context(
             row,
             site_name=os.getenv("SITE_NAME", "MeshWeave"),
             contact_email=os.getenv("FOOTER_CONTACT_EMAIL", "hello@meshweaveai.com"),
+            visual=visual,
         ),
     )
     response = Response(content=markdown, media_type="text/markdown; charset=utf-8")
@@ -826,132 +537,3 @@ async def export_analysis(request: Request, ref: str) -> Response:
         f'attachment; filename="ai-agent-audit-{safe_filename(row.domain)}.md"'
     )
     return response
-
-
-async def _resolve_vs_row(request: Request, vs: str, base_row: Crawl) -> Crawl | None:
-    """Load and validate the ``?vs=`` row; None on any mismatch.
-
-    The vs row must be owned by the current user, be a succeeded run, and
-    share the base row's domain, path, query, and scope (crawl_params
-    presence). Any failure — missing, non-owner, non-succeeded, mismatched
-    address — collapses to None so the caller 404s uniformly without
-    revealing whether the row exists.
-    """
-    try:
-        vs_row = await require_ownership(request, vs)
-    except HTTPException as exc:
-        if exc.status_code in (401, 403, 404):
-            return None
-        raise
-    if (
-        vs_row.status != "succeeded"
-        or vs_row.domain != base_row.domain
-        or vs_row.path != base_row.path
-        or vs_row.query != base_row.query
-        or (vs_row.crawl_params is not None) != (base_row.crawl_params is not None)
-    ):
-        return None
-    return vs_row
-
-
-def _diff_row_view(row: Crawl) -> dict:
-    """Return the header fields shown for one revision in the diff page."""
-    return {
-        "id": row.id,
-        "domain": row.domain,
-        "path": row.path,
-        "status": row.status,
-        "created_at": row.created_at,
-        "updated_at": row.updated_at,
-        "scope": "site" if row.crawl_params is not None else "page",
-    }
-
-
-def _diff_header_context(
-    request: Request, row: Crawl, old_row: Crawl | None, is_default_compare: bool
-) -> dict:
-    """Shared diff-page context: run headers, page chrome, empty diff fields."""
-    site_name = os.getenv("SITE_NAME", "MeshWeave")
-    domain = (row.domain or "").strip()
-    path = (row.path or "").strip() or "/"
-    return {
-        "new": _diff_row_view(row),
-        "old": _diff_row_view(old_row) if old_row else None,
-        "has_old": old_row is not None and old_row.id != row.id,
-        "is_default_compare": is_default_compare,
-        "score_diff": None,
-        "findings_diff": None,
-        "content_diff": None,
-        "comparison_refused": None,
-        "revisions": list_revision_series(row),
-        "page_title": f"Revision diff — {domain}{path} — {site_name}",
-        "site_name": site_name,
-        "csrf_token": "",
-        "domain": domain,
-        "path": path,
-        "canonical_url": row.canonical_url,
-        "abs_ref_url": _abs_url(request, f"/analysis/{row.id}"),
-    }
-
-
-def _build_diff_context(
-    request: Request, row: Crawl, old_row: Crawl | None, is_default_compare: bool
-) -> dict:
-    """Build the template context for the diff page.
-
-    Three states: empty (no comparison run), full diff, and a hard
-    refusal when the two runs were scored under different scoring
-    versions — a cross-version pair is an error state, never a diff with
-    an annotation.
-    """
-    ctx = _diff_header_context(request, row, old_row, is_default_compare)
-    if not ctx["has_old"] or old_row is None:
-        return ctx
-    old_ss = getattr(old_row, "score_snapshot", None)
-    new_ss = getattr(row, "score_snapshot", None)
-    try:
-        ensure_same_scoring_version(old_row, row, old_ss, new_ss)
-    except CrossVersionComparisonError as exc:
-        return {**ctx, "comparison_refused": str(exc), "revisions": []}
-    ctx["score_diff"] = build_score_diff(old_ss, new_ss, old_row, row)
-    ctx["findings_diff"] = build_findings_diff(old_ss, new_ss)
-    ctx["content_diff"] = build_content_diff(old_row.payload_json, row.payload_json)
-    return ctx
-
-
-@router.get("/analysis/{ref}/diff", response_class=HTMLResponse)
-async def view_analysis_diff(request: Request, ref: str, vs: str | None = None):
-    """Compare the current revision against a previous one (owner-only).
-
-    ``ref`` is a UUID addressed by the owner. ``?vs=`` overrides the default
-    previous-revision comparison and must be another owned row in the same
-    series. Unauthenticated, non-owner, or mismatched refs collapse to 404.
-    """
-    target = vs or ref
-    if not _is_uuid(target):
-        raise HTTPException(status_code=404, detail="Not found")
-
-    try:
-        row = await require_ownership(request, ref)
-    except HTTPException as exc:
-        if exc.status_code in (401, 403):
-            raise HTTPException(status_code=404, detail="Not found")
-        raise
-
-    # In-progress base rows are handled by the result page's meta-refresh loop.
-    if str(row.status or "").lower() in ("pending", "running"):
-        return RedirectResponse(url=f"/analysis/{ref}", status_code=303)
-
-    is_default_compare = False
-    if vs:
-        old_row = await _resolve_vs_row(request, vs, row)
-        if old_row is None:
-            raise HTTPException(status_code=404, detail="Not found")
-    else:
-        old_row = find_previous_revision(row)
-        is_default_compare = True
-
-    context = _build_diff_context(request, row, old_row, is_default_compare)
-    resp = templates.TemplateResponse(request, "diff.html", context)
-    resp.headers["X-Robots-Tag"] = "noindex"
-    return resp

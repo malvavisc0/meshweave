@@ -257,6 +257,32 @@ class TestLlmDownComposite:
         assert section["composite"] is not None
         assert section.get("degraded", False) is False
 
+    def test_degraded_label_reaches_the_report_page(self):
+        """B11: a failed AI review is labelled, not just shown as a dash."""
+        from types import SimpleNamespace
+
+        from meshweave.scoring.engine import compute_aax_score
+        from webapp.utils.scoring import build_score_snapshot_context
+
+        section = compute_aax_score(self._aax_result(failed=True))
+        snap = SimpleNamespace(
+            aeo_score=72.0,
+            geo_score=65.0,
+            aeo_rating="Reliably extractable",
+            geo_rating="Connected",
+            score_json={
+                "aeo": {"composite": 72.0},
+                "geo": {"composite": 65.0},
+                "aax": section,
+            },
+            ai_analysis_json={"aax": {}},
+        )
+        row = SimpleNamespace(id="cid-1", score_snapshot=snap)
+        ctx = build_score_snapshot_context(row)
+        assert ctx["aax_degraded"] is True
+        assert ctx["aax_score"] is None
+        assert ctx["aax_implication"] == "AI review failed — rule-based signals only."
+
 
 class TestGateTakenAllowlist:
     """: taken events pair with hits from gate features only."""

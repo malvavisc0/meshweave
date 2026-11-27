@@ -117,8 +117,9 @@ print(f"Minified CSS:{css_cnt} JS:{js_cnt}")
 PY
 RUN uv pip uninstall --system rjsmin rcssmin || true
 
-# Install curl for container healthchecks and diagnostics
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# Install curl for container healthchecks and diagnostics; libatomic1 is
+# required by the Playwright node driver used for visual CDP captures
+RUN apt-get update && apt-get install -y --no-install-recommends curl libatomic1 && rm -rf /var/lib/apt/lists/*
 
 # Pages are rendered by the LightPanda CDP service (docker-compose "lightpanda"),
 # so no local Chromium/CloakBrowser binary is needed in this image.

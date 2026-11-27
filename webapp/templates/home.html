@@ -50,7 +50,7 @@
       "name": "How much does MeshWeave cost?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "An audit is free and needs no sign-in. A free Google sign-in adds a before/after comparison of your runs, a downloadable client-ready report, and a free API key (up to 25 sites per call) whose report export is unbranded. Expert-guided audits and remediation roadmaps are available as separate engagements — email {{ FOOTER_CONTACT_EMAIL }} and you will get scope and price within two business days."
+        "text": "An audit is free and needs no sign-in. A free Google sign-in adds a before/after comparison of your runs, a downloadable client-ready report, and a free API key (submit up to 25 sites per call; how many run at once follows your concurrency and daily limits) whose report export is unbranded. Expert-guided audits and remediation roadmaps are available as separate engagements — email {{ FOOTER_CONTACT_EMAIL }} and you will get scope and price within two business days."
       }
     }
   ]
@@ -115,6 +115,37 @@
         <h1 class="landing-hero-title">Find what prevents AI agents from reading your website correctly.</h1>
         <p class="landing-hero-supporting">MeshWeave finds the pages, text, and next steps AI agents miss — then
           tells you what to fix, so agents can understand your site.</p>
+
+        <figure class="hero-report-preview" aria-hidden="true">
+          <div class="hero-report-head">
+            <span class="hero-report-domain">your-site.com</span>
+            <span class="hero-report-status">report ready</span>
+          </div>
+          <div class="hero-report-row">
+            <span class="hero-report-check">Reachable</span>
+            <span class="hero-report-bar"><span class="hero-report-bar-82"></span></span>
+            <span class="hero-report-score">82</span>
+          </div>
+          <div class="hero-report-row">
+            <span class="hero-report-check">Answerable</span>
+            <span class="hero-report-bar"><span class="hero-report-bar-64"></span></span>
+            <span class="hero-report-score">64</span>
+          </div>
+          <div class="hero-report-row">
+            <span class="hero-report-check">Actionable</span>
+            <span class="hero-report-bar"><span class="hero-report-bar-41"></span></span>
+            <span class="hero-report-score">41</span>
+          </div>
+          <div class="hero-report-fix">
+            <span class="hero-report-fix-label">Fix first</span>
+            <span>Add a clear contact path on the homepage</span>
+          </div>
+          <div class="hero-report-visual">
+            <span class="hero-report-visual-label">CTA visual check</span>
+            <span class="hero-report-visual-value">contrast 2.1:1 — below threshold</span>
+          </div>
+        </figure>
+
         <p class="landing-hero-lenses-label">Every report answers three questions.</p>
         <dl class="landing-hero-lenses">
           <div>
@@ -197,7 +228,9 @@
           <span class="pipeline-number">03</span>
           <h3 class="m0">We tell you what to fix</h3>
           <p class="m0">Each problem comes with a specific fix, such as adding missing schema, unblocking an AI crawler,
-            making your company description consistent, or adding a clear contact path.</p>
+            making your company description consistent, or adding a clear contact path. The audit also captures the live
+            page and measures the primary call to action — contrast, size, labelling, occlusion, and competing
+            actions — with an optional attention estimate.</p>
         </div>
       </div>
     </div>
@@ -341,45 +374,54 @@
   <div class="container">
     <h2 class="landing-section-title">Frequently asked questions</h2>
 
-    <div class="faq-item">
-      <h3>What does MeshWeave do?</h3>
-      <p class="m0">MeshWeave audits your website for AI agents. It checks whether agents can reach your pages, answer
+    <details class="faq-item">
+      <summary>What does MeshWeave do?</summary>
+      <p class="m0 faq-answer">MeshWeave audits your website for AI agents. It checks whether agents can reach your pages, answer
         questions from your content, and find what to do next, then gives you a ranked list of fixes.</p>
-    </div>
+    </details>
 
-    <div class="faq-item">
-      <h3>Is this an SEO tool?</h3>
-      <p class="m0"><strong>No</strong>. Traditional SEO focuses on how people find you through search engines.
+    <details class="faq-item">
+      <summary>Is this an SEO tool?</summary>
+      <p class="m0 faq-answer"><strong>No</strong>. Traditional SEO focuses on how people find you through search engines.
         MeshWeave checks whether AI agents can reach your site, answer from it, and act on it. It complements SEO rather
         than replacing it.
         Some call this GEO or AEO. MeshWeave covers the site-side part, not AI visibility tracking.</p>
-    </div>
+    </details>
 
-    <div class="faq-item">
-      <h3>Who is MeshWeave for?</h3>
-      <p class="m0">Agencies and consultants who audit client websites, and in-house web, SEO, and content teams who
+    <details class="faq-item">
+      <summary>Who is MeshWeave for?</summary>
+      <p class="m0 faq-answer">Agencies and consultants who audit client websites, and in-house web, SEO, and content teams who
         maintain their own site.</p>
-    </div>
+    </details>
 
-    <div class="faq-item">
-      <h3>What will I learn from an audit?</h3>
-      <p class="m0">You will learn which pages agents cannot reach, which questions your content cannot answer, whether
+    <details class="faq-item">
+      <summary>Does MeshWeave look at the page visually?</summary>
+      <p class="m0 faq-answer"><strong>Yes.</strong> The audit captures the live page as rendered and measures the primary call to
+        action: contrast, target size, labelling, occlusion, keyboard focus, and competing above-fold actions. When an
+        attention model is configured it also reports an estimated attention share — a prediction from a saliency model
+        over the screenshot, not eye tracking. The measurements are evidence attached to the report; they are not part of
+        the three scores.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>What will I learn from an audit?</summary>
+      <p class="m0 faq-answer">You will learn which pages agents cannot reach, which questions your content cannot answer, whether
         agents can find how to buy or contact you, and which fixes to make first.</p>
-    </div>
+    </details>
 
-    <div class="faq-item">
-      <h3>Can I share a report with my team or a client?</h3>
-      <p class="m0"><strong>Yes</strong>. Every public report has a shareable link. If you sign in, you can keep reports
+    <details class="faq-item">
+      <summary>Can I share a report with my team or a client?</summary>
+      <p class="m0 faq-answer"><strong>Yes</strong>. Every public report has a shareable link. If you sign in, you can keep reports
         private instead and compare each run with the previous one.</p>
-    </div>
+    </details>
 
-    <div class="faq-item">
-      <h3>How much does MeshWeave cost?</h3>
-      <p class="m0"><strong>An audit is free</strong> and needs no sign-in. A free Google sign-in adds a before/after
-        comparison of your runs, a downloadable client-ready report, and a free API key (up to 25 sites per call) whose
-        report export is unbranded. Expert-guided audits and remediation roadmaps are available as separate engagements —
+    <details class="faq-item">
+      <summary>How much does MeshWeave cost?</summary>
+      <p class="m0 faq-answer"><strong>An audit is free</strong> and needs no sign-in. A free Google sign-in adds a before/after
+        comparison of your runs, a downloadable client-ready report, and a free API key (submit up to 25 sites per call; how many run at once follows
+        your concurrency and daily limits) whose report export is unbranded. Expert-guided audits and remediation roadmaps are available as separate engagements —
         email {{ FOOTER_CONTACT_EMAIL }} and you will get scope and price within two business days.</p>
-    </div>
+    </details>
   </div>
 </section>
 
@@ -400,7 +442,7 @@
     <ul class="cta-banner-copy">
       <li><strong>Before/after comparison</strong> — re-run after your fixes and see what changed.</li>
       <li><strong>Client-ready report</strong> — download it, or get it unbranded through the API.</li>
-      <li><strong>Free API key</strong> — audit up to 25 sites in one call.</li>
+      <li><strong>Free API key</strong> — submit up to 25 sites in one call; how many run at once follows your limits.</li>
     </ul>
     <a href="/login?provider=google&next={{ abs_page_url or '/' }}" class="btn btn-primary mt-3">Sign in with Google — free →</a>
   </div>

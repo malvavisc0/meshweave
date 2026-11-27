@@ -7,7 +7,7 @@
 
 ## Design Philosophy
 
-MeshWeave presents as **sharp, disciplined, editorial but modern**: monochrome-first surfaces, one restrained green accent (`#00A36C`), subtle soft edges (3px radius), clear typographic hierarchy using a single typeface family (IBM Plex Sans), and quiet utility over decorative flourish.
+MeshWeave presents as **sharp, disciplined, editorial but modern**: monochrome-first surfaces, one restrained green accent (`#00A36C`), soft-but-tight edges (6–14px radius scale), a restrained shadow ramp for depth, clear typographic hierarchy built on IBM Plex Sans with IBM Plex Mono for machine-readable data, and quiet utility over decorative flourish.
 
 Every page must feel like part of the same operational product system — not a collection of individually styled sections. Visual decisions must read as intentional and authored by a designer, never synthetic, glossy, or over-ornamented. The product scores websites on machine-readability. The UI must itself embody machine-readable precision.
 
@@ -88,32 +88,33 @@ Filled controls use the `-strong` ramp so their label clears WCAG AA at 14px;
 ## Typography
 
 ### Typeface
-- **Primary:** IBM Plex Sans (weights: 300, 400, 500, 600)
-- **Monospace:** IBM Plex Sans (same family, monospace variant) — used for data values, scores, labels
-- **Source:** System/local font stack; the stylesheet does not load fonts from an external CDN
+- **Primary:** IBM Plex Sans (variable, weights 100–700; 400/500/600 in use)
+- **Monospace:** IBM Plex Mono (400, 600) — used for data values, scores, metric readouts, machine-facing labels
+- **Source:** Self-hosted woff2 subsets in `/static/fonts` with `font-display: swap`; the stylesheet does not load fonts from an external CDN
 
 ### Type Scale
 | Token | Weight | Size | Line-Height | Usage |
 |---|---|---|---|---|
-| `--font-display-xl` | 600 | 60px | 1.17 | Landing hero title only |
-| `--font-display-lg` | 600 | 42px | 1.20 | Page headers (h1), section titles |
-| `--font-headline` | 600 | 32px | 1.25 | h2, Dashboard title |
-| `--font-card-title` | 600 | 22px | 1.33 | h3, card titles |
+| `--font-display-xl` | 600 | 68px | 1.05 | Landing hero title only (−0.02em tracking) |
+| `--font-display-lg` | 600 | 46px | 1.12 | Page headers (h1), section titles |
+| `--font-headline` | 600 | 32px | 1.20 | h2, Dashboard title |
+| `--font-card-title` | 600 | 22px | 1.30 | h3, card titles |
 | `--font-subhead` | 500 | 22px | 1.40 | Hero subtitle, section subtitles |
-| `--font-body-lg` | 400 | 18px | 1.50 | Supporting copy, intro paragraphs |
-| `--font-body` | 400 | 14px | 1.50 | Body text, default |
-| `--font-body-sm` | 400 | 14px | 1.29 | Captions, meta, small text |
-| `--font-body-emphasis` | 600 | 14px | 1.29 | Emphasized body, score values |
-| `--font-caption` | 400 | 12px | 1.33 | Data labels, stat card keys |
-| `--font-label` | 400 | 12px | 1.33 | Uppercase kickers, form labels |
-| `--font-button` | 400 | 14px | 1.29 | Button text |
-| `--font-eyebrow` | 400 | 14px | 1.29 | Small introductory labels |
+| `--font-body-lg` | 400 | 18px | 1.55 | Supporting copy, intro paragraphs |
+| `--font-body` | 400 | 15px | 1.55 | Body text, default |
+| `--font-body-sm` | 400 | 14px | 1.45 | Captions, meta, small text |
+| `--font-body-emphasis` | 600 | 14px | 1.45 | Emphasized body |
+| `--font-caption` | 400 | 12px | 1.40 | Data labels, stat card keys |
+| `--font-label` | 500 | 11px | 1.30 | Uppercase kickers, machine-facing labels (mono) |
+| `--font-data` | 500 | 13px | 1.40 | Metric readouts, scores, IDs (mono) |
+| `--font-button` | 500 | 14px | 1.29 | Button text |
+| `--font-eyebrow` | 500 | 13px | 1.29 | Small introductory labels |
 
 ### Rules
 - All headings use **600 weight**
 - Body text uses **400 weight**
-- Data values (scores, stats) use **monospace family** with **600 weight**
-- Labels/kickers use **uppercase** with **0.05em letter-spacing**
+- Data values (scores, stats, IDs) use **IBM Plex Mono** at **500–600 weight**
+- Labels/kickers use **uppercase** with **0.06em letter-spacing**
 - Never mix typeface families within a single component
 
 ---
@@ -131,7 +132,7 @@ All spacing uses a **4px grid**. Use tokens, never hardcoded values.
 | `--space-lg` | 24px | Large gaps (section separation) |
 | `--space-xl` | 32px | XL gaps (hero bottom padding) |
 | `--space-xxl` | 48px | XXL gaps (footer padding, empty state) |
-| `--space-section` | 96px | Full section separation |
+| `--space-section` | 112px | Full section separation |
 
 ---
 
@@ -140,25 +141,43 @@ All spacing uses a **4px grid**. Use tokens, never hardcoded values.
 ### Border Radius
 | Token | Value | Usage |
 |---|---|---|
-| `--radius-none` | 3px | Structural containers (cards, panels, inputs) |
-| `--radius-xs` | 3px | Small elements (bar tracks, progress fills) |
-| `--radius-sm` | 3px | Badges, chips, avatar initials |
+| `--radius-xs` | 4px | Inline code, tiny tags |
+| `--radius-sm` | 6px | Badges, chips, bar tracks, progress fills |
+| `--radius-md` | 10px | Buttons, inputs, cards, panels, notices |
+| `--radius-lg` | 14px | Hero visual, score strip, large media frames |
 
-**All elements use 3px radius.** No exceptions. This produces a subtle softening that eliminates the harsh "cut" feeling of 0px while maintaining the disciplined aesthetic.
+The scale is soft-but-tight: enough rounding to remove the harsh "cut"
+feeling while keeping the disciplined, technical character. Nothing uses
+pill (999px) rounding except true pill controls.
 
 ### Border Style
 - All borders are **1px solid** using hairline tokens
-- No double borders, no outset/inset, no box shadows
+- No double borders, no outset/inset
 - Focus rings use **2px solid var(--color-primary)** with `outline` (not border)
 
 ---
 
 ## Elevation
 
-MeshWeave uses **no shadows**. Depth is communicated through:
+Depth is communicated through a **restrained shadow ramp** plus hairlines:
 1. **Surface color changes** (canvas → surface-1 → surface-2)
 2. **Hairline borders** (1px solid)
-3. **Focus rings** (2px solid primary)
+3. **Shadow ramp** — `--shadow-xs` (buttons, resting cards), `--shadow-sm`
+   (hover, sticky nav), `--shadow-md` (hovered cards, hero product visual).
+   Shadows are low-opacity and diffused; never dramatic or glassy.
+4. **Focus rings** (2px solid primary)
+
+### Motion
+| Token | Value | Usage |
+|---|---|---|
+| `--duration-fast` | 140ms | Hover/press feedback |
+| `--duration` | 240ms | Card transitions, hero entrance |
+| `--ease-out` | cubic-bezier(.2,.8,.2,1) | All motion |
+
+- Motion is **functional only**: hover lift on interactive elements,
+  shadow growth on cards, the FAQ chevron rotate, one hero entrance.
+- `prefers-reduced-motion: reduce` disables all animation and transitions
+  and removes hover transforms.
 
 ---
 
@@ -170,28 +189,28 @@ MeshWeave uses **no shadows**. Depth is communicated through:
   against `--color-on-primary`)
 - Secondary/Navy: transparent bg, hairline border, `--color-dark-text-muted` text
 - Danger: transparent bg, `--color-semantic-error` border and text
-- All buttons use `--radius-none` (3px)
-- Hover: background color shift, no scale/transform
+- All buttons use `--radius-md` (10px) with `--shadow-xs`
+- Hover: background/border shift, 1px lift, `--shadow-sm`; active returns to rest
 
 ### Cards
 - Background: `--color-canvas` or `--color-surface-1`
 - Border: 1px solid `--color-hairline`
 - Padding: 24px (`--component-card-padding`)
-- Radius: `--radius-none` (3px)
-- No shadows, no hover lift
+- Radius: `--radius-md` (10px); large framed media and hero visuals use `--radius-lg` (14px)
+- Shadow: `--shadow-xs` at rest, `--shadow-md` on hover with a 2px lift (cards only)
 
 ### Inputs
 - Background: `--color-surface-1`
 - Border: 1px solid `--color-hairline`
 - Focus: 2px solid `--color-primary`
 - Padding: 11px 16px
-- Radius: `--radius-none` (3px)
+- Radius: `--radius-md` (10px)
 
 ### Badges / Chips
 - Background: `--color-surface-1` (light) or `--color-dark-surface` (dark zones)
 - Border: 1px solid `--color-hairline` or `--color-dark-border`
 - Padding: 0 12px, min-height 32px
-- Radius: `--radius-sm` (3px)
+- Radius: `--radius-sm` (6px)
 - Font: `--font-body-sm`, letter-spacing 0.04em
 
 ### Status Badges
@@ -201,7 +220,7 @@ MeshWeave uses **no shadows**. Depth is communicated through:
 - **Pending**: `--color-surface-2` (#E0E0E0) background, `--color-ink` text
 
 ### Score Bars
-- Track: `--color-surface-2`, height 8px, radius `--radius-xs` (3px)
+- Track: `--color-surface-2`, height 8px, radius `--radius-sm` (6px)
 - Fill: `--color-primary`, radius inherits from track
 - No per-metric color variation — all scores use the same green fill
 
@@ -218,7 +237,7 @@ MeshWeave uses **no shadows**. Depth is communicated through:
 - Particles: 4 green dots (`--color-primary`) with unique drift animations and subtle pulse/glow
 - Connection lines: faint diagonal gradients at 1.5-2% opacity, 200px spacing
 - No gradients on content areas, no pseudoelement glows on content
-- Title: `--font-display-xl` (60px), `--color-dark-text`
+- Title: `--font-display-xl` (68px), `--color-dark-text`
 - Supporting text: `--font-subhead` (22px), `--color-dark-text`
 - Audience badges: background `#1A1A1A`, border `--color-dark-border`, text `--color-dark-text-muted`
 
@@ -239,7 +258,7 @@ topnav (56px, dark)
 ### Section Separation
 - Use **surface color alternation** (canvas → surface-1 → canvas) for section bands
 - Never use decorative dividers, shadows, or gradients for separation
-- Section titles use `--font-display-lg` (42px) on landing pages, `--font-headline` (32px) on utility pages
+- Section titles use `--font-display-lg` (46px) on landing pages, `--font-headline` (32px) on utility pages
 
 ### Grid
 - Max content width: 1280px
@@ -251,9 +270,12 @@ topnav (56px, dark)
 ## Anti-Patterns (Never Do These)
 
 1. **No gradients** on component backgrounds (hero constellation connection lines are the only exception)
-2. **No animations** except standard 0.15s transitions on color/border/background, and hero constellation particle drift (20-28s, subtle)
-3. **No box-shadow or text-shadow** anywhere
-4. **No pill shapes** (999px radius) — all elements use 3px
+2. **No decorative animation** — motion is functional only (hover/press feedback, hero entrance, FAQ
+   disclosure) and respects `prefers-reduced-motion`; the hero constellation particle drift (20–28s,
+   subtle) is the one ambient exception
+3. **No dramatic shadows** — use the shadow ramp (`--shadow-xs`…`--shadow-md`) only; no glow,
+   glass, or text-shadow
+4. **No pill shapes** (999px radius) — use the radius scale; pills only for true pill controls
 5. **No AI-narrator voice** in copy — use data-forward, precision language
 6. **No external CDN dependencies** — all assets self-hosted
 7. **No inline `style=""` attributes** — use CSS utility classes

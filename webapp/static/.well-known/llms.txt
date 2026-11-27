@@ -10,7 +10,7 @@ Some call this GEO or AEO. MeshWeave covers the site-side part, not AI visibilit
 
 Who it is for: agencies and consultants who audit client websites, and in-house web, SEO, and content teams.
 
-Pricing: an audit is free and needs no sign-in. A free Google sign-in adds private reports, before/after comparison of runs, a downloadable report, and a free API key (up to 25 sites per call) whose report export is unbranded. Expert-guided audits and remediation roadmaps are priced per engagement; ask by email via [Contact](/contact).
+Pricing: an audit is free and needs no sign-in. A free Google sign-in adds private reports, before/after comparison of runs, a downloadable report, and a free API key (submit up to 25 sites per call; how many run at once follows your concurrency and daily limits) whose report export is unbranded. Expert-guided audits and remediation roadmaps are priced per engagement; ask by email via [Contact](/contact).
 
 [API Reference](/profile#api-access): create a Bearer key in your account profile; endpoint reference lives in [llms-full.txt](/.well-known/llms-full.txt).
 
@@ -26,11 +26,13 @@ Every report scores three checks, each 0-100:
 
 ## API
 
-Two API surfaces. The browser UI uses `/api` endpoints with session auth; the v1 JSON API is Bearer-key authenticated (create a key at `/profile#api-access`).
+Two API surfaces. The browser UI reads `/api/status/{id}` with session auth; the v1 JSON API is Bearer-key authenticated (create a key at `/profile#api-access`).
 
 - `POST /api/v1/analyses` — bulk submit up to 25 pages or sites (Bearer key, durable queue)
 - `GET /api/v1/analyses` — list your analyses, cursor-paginated (per-check scores and ratings)
 - `GET /api/v1/analyses/{crawl_id}` — site-side contract (factors, weights, ratings, interpretation)
+- `POST /api/v1/analyses/{crawl_id}/visual` — capture the rendered page and assess its primary call to action: contrast, target size, labelling, occlusion, keyboard focus, competing actions, and (when an attention model is configured) estimated attention share. `?images=1` adds base64 screenshot and attention-overlay PNGs. One audit is stored per analysis; a re-run replaces it. Errors: 409 when the analysis is not finished, 502/503/504 when the capture cannot run.
+- `GET /api/v1/analyses/{crawl_id}/visual` — the stored visual assessment (404 when none captured yet, 202 while the analysis itself is still running); `?images=1` adds the PNGs. The assessment reports measured values only; attention share is a saliency prediction over the screenshot, not eye tracking.
 - `GET /api/v1/analyses/{crawl_id}/report.md` — unbranded client-ready report
 - `GET /api/v1/analyses/{crawl_id}/diff[.md]` — proof-of-work diff vs the previous revision
 

@@ -73,6 +73,9 @@ def _install_runtime_stubs() -> None:
             def put(self, *a: object, **k: object):
                 return lambda fn: fn
 
+            def include_router(self, *a: object, **k: object) -> None:
+                pass
+
         class _HTTPException(Exception):
             def __init__(self, status_code: int = 500, detail: object = None) -> None:
                 super().__init__(detail)
@@ -145,6 +148,7 @@ def _load_analysis_module():
 
 
 analysis = _load_analysis_module()
+analysis_diff = sys.modules["webapp.routers.analysis_diff"]
 
 
 @pytest.fixture
@@ -267,7 +271,7 @@ class TestBrowserDiffRefusesCrossVersion:
         old_row, new_row = _seed_series(
             sessions, old_version="1.2", new_version=SCORING_VERSION
         )
-        ctx = analysis._build_diff_context(_fake_request(), new_row, old_row, True)
+        ctx = analysis_diff.build_diff_context(_fake_request(), new_row, old_row, True)
         assert ctx["comparison_refused"]
         assert "scoring version" in ctx["comparison_refused"]
         # Refused, not annotated: no diff is built and no notes key exists.
@@ -280,7 +284,7 @@ class TestBrowserDiffRefusesCrossVersion:
         old_row, new_row = _seed_series(
             sessions, old_version=SCORING_VERSION, new_version=SCORING_VERSION
         )
-        ctx = analysis._build_diff_context(_fake_request(), new_row, old_row, True)
+        ctx = analysis_diff.build_diff_context(_fake_request(), new_row, old_row, True)
         assert ctx["comparison_refused"] is None
         assert ctx["score_diff"] is not None
         assert ctx["findings_diff"] is not None
@@ -291,7 +295,7 @@ class TestBrowserDiffRefusesCrossVersion:
         _, new_row = _seed_series(
             sessions, old_version=SCORING_VERSION, new_version=SCORING_VERSION
         )
-        ctx = analysis._build_diff_context(_fake_request(), new_row, None, True)
+        ctx = analysis_diff.build_diff_context(_fake_request(), new_row, None, True)
         assert ctx["has_old"] is False
         assert ctx["comparison_refused"] is None
         assert ctx["score_diff"] is None

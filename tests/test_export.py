@@ -184,6 +184,7 @@ def test_context_has_exactly_documented_keys() -> None:
         "scores",
         "interpretation",
         "answerability",
+        "visual",
         "recommendations",
         "consultation_email",
     }
