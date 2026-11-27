@@ -4,7 +4,9 @@ One stored visual CTA assessment per crawl: the assessment JSON, capture
 metadata, and the screenshot/attention-overlay PNGs, so the result page,
 the report export, and the API can re-serve a capture without re-running
 Chromium. A re-run replaces the row; the FK cascade removes it with the
-crawl.
+crawl. ``claimed_at`` marks an owner capture in flight (a claim row for a
+never-captured crawl has a NULL screenshot); claims never overwrite
+stored data.
 
 Revision ID: c4f2a8e1b9d0
 Revises: b7c4e1a9d2f3
@@ -35,7 +37,7 @@ def upgrade() -> None:
         sa.Column("attention_model", sa.Boolean(), nullable=False),
         sa.Column("viewport", sa.JSON(), nullable=False),
         sa.Column("element_count", sa.Integer(), nullable=False),
-        sa.Column("screenshot_png", sa.LargeBinary(), nullable=False),
+        sa.Column("screenshot_png", sa.LargeBinary(), nullable=True),
         sa.Column("overlay_png", sa.LargeBinary(), nullable=True),
         sa.Column("capture_version", sa.String(length=16), nullable=False),
         sa.Column(
@@ -48,6 +50,7 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             nullable=False,
         ),
+        sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
             ["crawl_id"],
             ["crawls.id"],

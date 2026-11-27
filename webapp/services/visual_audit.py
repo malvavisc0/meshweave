@@ -35,8 +35,6 @@ VISUAL_TIMEOUT_SECONDS = 20.0
 VISUAL_MAX_CONCURRENT = 4
 _capture_slots = asyncio.Semaphore(VISUAL_MAX_CONCURRENT)
 
-_CLAIM_MARKER = b""
-
 
 def _min_age_minutes() -> int:
     """Owner run cooldown from ``VISUAL_MIN_AGE_MINUTES`` (default 10)."""
@@ -92,23 +90,16 @@ async def run_capture(row: Crawl) -> VisualAudit:
         raise VisualCaptureUnavailable("Visual capture is not available") from exc
 
 
-def store_audit(
-    s: Session, row: Crawl, audit: VisualAudit, *, claim: bool
-) -> VisualAuditRow:
+def store_audit(s: Session, row: Crawl, audit: VisualAudit) -> VisualAuditRow:
     """Persist one audit per crawl (a re-run replaces the row) and emit.
 
-    A claim marker left by :func:`claim_run` keeps the cooldown stamp under
-    the owner's policy; a direct store (the API path) is stamped now. The
+    The crawl row is locked for the store, so two captures of the same
+    crawl (a retried API POST, an owner run racing the API) replace each
+    other instead of racing the one-row-per-crawl constraint. Storing
+    clears any claim and stamps ``updated_at`` now. The
     ``visual_audit_run`` funnel event shares ``s``'s transaction.
     """
     snapshot = audit.snapshot
-    now = datetime.now(UTC)
-    stored = (
-        s.query(VisualAuditRow).filter(VisualAuditRow.crawl_id == row.id).one_or_none()
-    )
-    updated_at = now
-    if stored is not None and claim:
-        updated_at = stored.updated_at
     values = {
         "url": snapshot.final_url,
         "assessment_json": audit.assessment.to_dict(),
@@ -121,10 +112,15 @@ def store_audit(
         "screenshot_png": snapshot.screenshot_png,
         "overlay_png": render_overlay(audit),
         "capture_version": VISUAL_CAPTURE_VERSION,
-        "updated_at": updated_at,
+        "claimed_at": None,
+        "updated_at": datetime.now(UTC),
     }
     from webapp.services import funnel
 
+    s.query(Crawl).filter(Crawl.id == row.id).with_for_update().one()
+    stored = (
+        s.query(VisualAuditRow).filter(VisualAuditRow.crawl_id == row.id).one_or_none()
+    )
     if stored is None:
         stored = VisualAuditRow(crawl_id=row.id, **values)
         s.add(stored)
@@ -145,68 +141,79 @@ def store_audit(
 def claim_run(crawl_id: str) -> bool:
     """Claim an owner run unless a capture is in flight or cooling down.
 
-    The owner form runs on the app's single event loop, so the read and the
-    write cannot interleave with another owner claim. An aged-out row is
-    replaced by a marker (id-keyed, so a concurrent API store is never
-    clobbered); a fresh row refuses; a never-captured crawl gets a marker.
+    The owner form runs on the app's single event loop, so the read and
+    the write cannot interleave with another owner claim. A claim is
+    live until the cooldown window passes — an older claim is a crashed
+    capture (the process died mid-run) and is claimed again. Claims
+    never touch stored data: a claim blocks another claim, it does not
+    hide the last successful capture.
     """
     now = datetime.now(UTC)
+    min_age = _min_age_minutes()
     with get_session() as s:
         stored = (
             s.query(VisualAuditRow)
             .filter(VisualAuditRow.crawl_id == crawl_id)
             .one_or_none()
         )
-        if stored is not None and cooldown(stored.updated_at, _min_age_minutes())[0]:
-            s.query(VisualAuditRow).filter(VisualAuditRow.id == stored.id).update(
-                {
-                    VisualAuditRow.screenshot_png: _CLAIM_MARKER,
-                    VisualAuditRow.updated_at: now,
-                },
-                synchronize_session=False,
-            )
+        if stored is not None:
+            if (
+                stored.claimed_at is not None
+                and not cooldown(stored.claimed_at, min_age)[0]
+            ):
+                return False
+            if not cooldown(stored.updated_at, min_age)[0]:
+                return False
+            stored.claimed_at = now
             s.flush()
             return True
-        if stored is not None:
-            return False
-        s.add(
-            VisualAuditRow(
-                crawl_id=crawl_id,
-                screenshot_png=_CLAIM_MARKER,
-                updated_at=now,
-            )
-        )
+        s.add(VisualAuditRow(crawl_id=crawl_id, claimed_at=now))
         s.flush()
         return True
 
 
 def release_run(crawl_id: str) -> None:
-    """Drop a claim marker after a failed capture so a retry is allowed."""
+    """Release a claim after a failed capture so a retry is allowed.
+
+    A claim row for a never-captured crawl is deleted (nothing was
+    stored); a claim over a stored audit just drops the claim, so the
+    last successful capture stays readable and the owner can retry
+    immediately.
+    """
     with get_session() as s:
-        s.query(VisualAuditRow).filter(
-            VisualAuditRow.crawl_id == crawl_id,
-            VisualAuditRow.screenshot_png == _CLAIM_MARKER,
-        ).delete(synchronize_session=False)
+        stored = (
+            s.query(VisualAuditRow)
+            .filter(VisualAuditRow.crawl_id == crawl_id)
+            .one_or_none()
+        )
+        if stored is None or stored.claimed_at is None:
+            return
+        if stored.screenshot_png is None:
+            s.delete(stored)
+        else:
+            stored.claimed_at = None
+        s.flush()
 
 
 def get_stored(s: Session, crawl_id: str) -> VisualAuditRow | None:
-    """The stored audit for a crawl; None when never captured.
+    """The stored audit for a crawl; None when no capture ever landed.
 
-    An in-flight claim marker reads as None, so the panel and ``GET`` keep
-    their uncaptured semantics until the real audit lands.
+    Reads are decided by data presence only: while an owner re-run is in
+    flight the last successful capture stays readable on every surface.
     """
     stored = (
         s.query(VisualAuditRow)
         .filter(VisualAuditRow.crawl_id == crawl_id)
         .one_or_none()
     )
-    if stored is None or stored.screenshot_png == _CLAIM_MARKER:
+    if stored is None or stored.screenshot_png is None:
         return None
     return stored
 
 
 def payload_from(stored: VisualAuditRow) -> dict[str, Any]:
     """The public JSON shape of a stored audit (images stay out)."""
+    assert stored.screenshot_png is not None  # only captured rows are served
     return {
         "id": stored.crawl_id,
         "url": stored.url,

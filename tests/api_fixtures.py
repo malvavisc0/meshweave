@@ -1,4 +1,4 @@
-"""Shared row builders for the webapp API tests.
+"""Shared row and audit builders for the webapp API tests.
 
 The ``sessions`` fixture lives in ``tests/conftest.py`` so pytest
 discovers it without imports; the builders are imported per module.
@@ -9,9 +9,57 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from meshweave.scoring.composite import SCORING_VERSION
 from webapp.models import ApiKey, Crawl, ScoreSnapshot, User
+
+SHIM_PNG = b"\x89PNG\r\n\x1a\nfake"
+
+
+def fake_audit(
+    *,
+    cta: str | None = "Start a campaign",
+    matched_by: str = "text",
+    attention: bool = False,
+    screenshot: bytes = SHIM_PNG,
+    contrast: float | None = 4.8,
+) -> SimpleNamespace:
+    """A minimal stand-in for meshweave.visual_audit.VisualAudit."""
+    assessment = SimpleNamespace(
+        to_dict=lambda: {
+            "cta_text": cta,
+            "matched_by": matched_by,
+            "contrast_ratio": contrast,
+            "contrast_threshold": 4.5,
+            "surface_contrast": 4.1,
+            "target_px": 36,
+            "competing_actions": 1,
+            "competing_names": ["Learn more"],
+            "attention_share": 0.42 if attention else None,
+            "attention_rank": 1 if attention else None,
+            "findings": [
+                {
+                    "code": "text_contrast",
+                    "severity": "high",
+                    "detail": "CTA label contrast is 2.1:1 (needs 4.5:1).",
+                    "fix": "Darken the label.",
+                }
+            ],
+        }
+    )
+    snapshot = SimpleNamespace(
+        final_url="https://voxlynow.com/",
+        viewport_width=1366,
+        viewport_height=768,
+        elements=(),
+        screenshot_png=screenshot,
+    )
+    return SimpleNamespace(
+        snapshot=snapshot,
+        assessment=assessment,
+        attention=SimpleNamespace() if attention else None,
+    )
 
 
 def user_with_key(factory, email: str) -> tuple[str, str]:

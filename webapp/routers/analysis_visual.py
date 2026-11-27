@@ -43,16 +43,26 @@ async def run_visual_check(
 
     Runs the audit inline (bounded by the shared capture timeout) and
     stores one audit per crawl; the result page re-renders with the panel.
-    The cooldown is enforced here, not only by a disabled button.
+    The cooldown is enforced here, not only by a disabled button. The
+    target is re-validated exactly like the API surface, and the claim is
+    released on every failure path — including unexpected errors — so a
+    retry is always allowed and the last successful capture survives.
     """
     from webapp.utils.security import verify_request_csrf
 
     from .analysis import _require_owned_analysis
+    from .submissions import _require_page_url
 
     verify_request_csrf(request, csrf_token)
     row = await _require_owned_analysis(request, ref)
     if row.status != "succeeded":
         return RedirectResponse(url=f"/analysis/{row.id}", status_code=303)
+    try:
+        _require_page_url(row.url)
+    except HTTPException:
+        return RedirectResponse(
+            url=f"/analysis/{row.id}?notice=visual_unavailable", status_code=303
+        )
     if not claim_run(row.id):
         return RedirectResponse(
             url=f"/analysis/{row.id}?notice=visual_cooldown", status_code=303
@@ -60,20 +70,21 @@ async def run_visual_check(
     try:
         audit = await run_capture(row)
     except VisualCaptureTimeout:
-        release_run(row.id)
         return RedirectResponse(
             url=f"/analysis/{row.id}?notice=visual_timeout", status_code=303
         )
     except VisualCaptureFailed, VisualCaptureUnavailable:
-        release_run(row.id)
         return RedirectResponse(
             url=f"/analysis/{row.id}?notice=visual_unavailable", status_code=303
         )
-    with get_session() as s:
-        store_audit(s, row, audit, claim=True)
-    return RedirectResponse(
-        url=f"/analysis/{row.id}?notice=visual_done", status_code=303
-    )
+    else:
+        with get_session() as s:
+            store_audit(s, row, audit)
+        return RedirectResponse(
+            url=f"/analysis/{row.id}?notice=visual_done", status_code=303
+        )
+    finally:
+        release_run(row.id)
 
 
 @router.get("/analysis/{ref}/visual/image/{kind}")

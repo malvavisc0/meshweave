@@ -27,7 +27,13 @@ from webapp.models import Base
 
 
 class VisualAudit(Base):
-    """One stored visual CTA assessment per crawl; a re-run replaces it."""
+    """One stored visual CTA assessment per crawl; a re-run replaces it.
+
+    ``claimed_at`` marks an owner capture in flight; a claim row for a
+    never-captured crawl carries a NULL ``screenshot_png``. Claims never
+    touch stored data, so a failed re-run leaves the last successful
+    capture intact.
+    """
 
     __tablename__ = "visual_audits"
     __table_args__ = (Index("ix_visual_audits_created_at", "created_at"),)
@@ -48,7 +54,7 @@ class VisualAudit(Base):
     )
     viewport: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     element_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    screenshot_png: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    screenshot_png: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     overlay_png: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     capture_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
@@ -60,4 +66,8 @@ class VisualAudit(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )

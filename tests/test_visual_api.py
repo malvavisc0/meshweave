@@ -1,9 +1,10 @@
 """Tests for the visual CTA assessment API and its persistence.
 
 Covers ``webapp.routers.api_v1_visual`` (POST/GET) and
-``webapp.services.visual_audit`` (store-once-per-crawl, export context,
-panel states). The capture itself is monkeypatched at the service seam —
-no browser runs in tests.
+``webapp.services.visual_audit`` (store-once-per-crawl, claim lifecycle,
+export context, panel states). The owner form runner is covered by
+``tests/test_owner_visual_runner.py``. The capture itself is
+monkeypatched at the service seam — no browser runs in tests.
 """
 
 from __future__ import annotations
@@ -18,7 +19,12 @@ import pytest
 
 os.environ.setdefault("SQLITE_PATH", os.path.join(tempfile.mkdtemp(), "apiv1.db"))
 
-from api_fixtures import bearer_request, crawl_row, user_with_key  # noqa: E402
+from api_fixtures import (  # noqa: E402
+    bearer_request,
+    crawl_row,
+    fake_audit,
+    user_with_key,
+)
 from fastapi_stub import load_api_v1_module  # noqa: E402
 
 load_api_v1_module()
@@ -38,51 +44,6 @@ from webapp.services.visual_audit import (  # noqa: E402
 )
 
 SHIM_PNG = b"\x89PNG\r\n\x1a\nfake"
-
-
-def fake_audit(
-    *,
-    cta: str | None = "Start a campaign",
-    matched_by: str = "text",
-    attention: bool = False,
-    screenshot: bytes = SHIM_PNG,
-    contrast: float | None = 4.8,
-) -> SimpleNamespace:
-    """A minimal stand-in for meshweave.visual_audit.VisualAudit."""
-    assessment = SimpleNamespace(
-        to_dict=lambda: {
-            "cta_text": cta,
-            "matched_by": matched_by,
-            "contrast_ratio": contrast,
-            "contrast_threshold": 4.5,
-            "surface_contrast": 4.1,
-            "target_px": 36,
-            "competing_actions": 1,
-            "competing_names": ["Learn more"],
-            "attention_share": 0.42 if attention else None,
-            "attention_rank": 1 if attention else None,
-            "findings": [
-                {
-                    "code": "text_contrast",
-                    "severity": "high",
-                    "detail": "CTA label contrast is 2.1:1 (needs 4.5:1).",
-                    "fix": "Darken the label.",
-                }
-            ],
-        }
-    )
-    snapshot = SimpleNamespace(
-        final_url="https://voxlynow.com/",
-        viewport_width=1366,
-        viewport_height=768,
-        elements=(),
-        screenshot_png=screenshot,
-    )
-    return SimpleNamespace(
-        snapshot=snapshot,
-        assessment=assessment,
-        attention=SimpleNamespace() if attention else None,
-    )
 
 
 class TestVisualCapture:
@@ -432,7 +393,7 @@ async def test_owner_claim_refuses_rerun_inside_cooldown(sessions, monkeypatch):
         from webapp.models import Crawl
 
         row = s.get(Crawl, cid)
-        store_audit(s, row, fake_audit(), claim=True)
+        store_audit(s, row, fake_audit())
     assert visual_audit_mod.claim_run(cid) is False
     with factory() as s:
         assert get_stored(s, cid) is not None
@@ -452,4 +413,73 @@ async def test_failed_capture_releases_the_claim(sessions, monkeypatch):
     with factory() as s:
         assert get_stored(s, cid) is None
     visual_audit_mod.release_run(cid)
+    assert visual_audit_mod.claim_run(cid) is True
+
+
+@pytest.mark.asyncio
+async def test_failed_rerun_keeps_the_previous_audit(sessions, monkeypatch):
+    """A failed re-run must not destroy the last successful capture.
+
+    Regression: the claim used to overwrite the stored screenshot with a
+    marker and the release deleted the row, so a timed-out re-run wiped
+    the previous audit the panel promises to keep showing.
+    """
+    factory = sessions[1]
+    uid, token = user_with_key(factory, "a@b.c")
+    cid = crawl_row(factory, user_id=uid, domain="voxlynow.com")
+
+    async def first(url, **kwargs):
+        return fake_audit(contrast=2.1)
+
+    monkeypatch.setattr(visual_audit_mod, "run_visual_audit", first)
+    await api_v1_visual.create_visual(bearer_request(token), cid)
+
+    with factory() as s:
+        from webapp.models_visual import VisualAudit
+
+        stored = s.query(VisualAudit).filter(VisualAudit.crawl_id == cid).one()
+        stored.updated_at = datetime.now(UTC) - timedelta(hours=2)
+        s.commit()
+
+    import webapp.db as db_mod
+
+    monkeypatch.setattr(visual_audit_mod, "get_session", db_mod.get_session)
+    assert visual_audit_mod.claim_run(cid) is True
+
+    # The previous audit stays readable while the re-run is in flight.
+    with factory() as s:
+        in_flight = get_stored(s, cid)
+        assert in_flight is not None
+
+    # The capture fails; the claim is released and the audit survives.
+    visual_audit_mod.release_run(cid)
+    with factory() as s:
+        survived = get_stored(s, cid)
+        assert survived is not None
+        assert survived.assessment_json["contrast_ratio"] == 2.1
+    # The owner can retry immediately.
+    assert visual_audit_mod.claim_run(cid) is True
+
+
+@pytest.mark.asyncio
+async def test_crashed_claim_recovers_after_the_cooldown_window(sessions, monkeypatch):
+    """A claim left by a crashed capture is reclaimable once it ages out."""
+    factory = sessions[1]
+    uid, _token = user_with_key(factory, "a@b.c")
+    import webapp.db as db_mod
+
+    cid = crawl_row(factory, user_id=uid, domain="voxlynow.com")
+    monkeypatch.setattr(visual_audit_mod, "get_session", db_mod.get_session)
+
+    assert visual_audit_mod.claim_run(cid) is True
+    assert visual_audit_mod.claim_run(cid) is False  # live claim refuses
+
+    # Simulate a crashed capture: the claim is never released and ages out.
+    with factory() as s:
+        from webapp.models_visual import VisualAudit
+
+        marker = s.query(VisualAudit).filter(VisualAudit.crawl_id == cid).one()
+        marker.claimed_at = datetime.now(UTC) - timedelta(hours=2)
+        marker.updated_at = datetime.now(UTC) - timedelta(hours=2)
+        s.commit()
     assert visual_audit_mod.claim_run(cid) is True
