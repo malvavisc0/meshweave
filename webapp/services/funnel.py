@@ -45,6 +45,7 @@ EVENT_API_KEY_FIRST_USED = "api_key_first_used"
 EVENT_NUDGE_DISMISSED = "nudge_dismissed"
 EVENT_SEGMENT_UPGRADED = "segment_upgraded"
 EVENT_BECAME_CUSTOMER = "became_customer"
+EVENT_VISUAL_AUDIT_RUN = "visual_audit_run"
 
 
 def _now() -> datetime:

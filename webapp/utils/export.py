@@ -117,7 +117,9 @@ def _report_date(row) -> str:
     return ensure_utc(updated).strftime("%Y-%m-%d")
 
 
-def build_export_context(row, *, site_name: str, contact_email: str) -> dict:
+def build_export_context(
+    row, *, site_name: str, contact_email: str, visual: dict | None = None
+) -> dict:
     """Build the export context from a detached ``Crawl`` row.
 
     Reads only column attributes and the eager-loaded ``score_snapshot``; never
@@ -125,7 +127,8 @@ def build_export_context(row, *, site_name: str, contact_email: str) -> dict:
     ``aax_analysis``. ``interpretation`` passes through whole; recommendations
     are serialized through :func:`export_recommendation` in sorted order and
     answerability evidence through :func:`export_answerability_question` from
-    the snapshot's ``score_json`` factor raw.
+    the snapshot's ``score_json`` factor raw. ``visual`` carries the stored
+    CTA visual-check inputs (:func:`webapp.services.visual_audit.visual_export_context`).
     """
     score_ctx = build_score_snapshot_context(row) or {}
     sorted_recs = _sorted_recommendations(score_ctx)
@@ -147,6 +150,7 @@ def build_export_context(row, *, site_name: str, contact_email: str) -> dict:
         },
         "interpretation": score_ctx.get("interpretation") or {},
         "answerability": answerability_questions(getattr(snap, "score_json", None)),
+        "visual": visual,
         "recommendations": [export_recommendation(r) for r in sorted_recs],
         "consultation_email": str(contact_email),
     }
@@ -302,6 +306,66 @@ def _md_next_step(ctx: dict) -> str:
     return "\n".join(lines)
 
 
+def _md_visual(ctx: dict) -> str:
+    """The optional CTA visual-check section (present only when captured)."""
+    visual = ctx.get("visual")
+    if not visual:
+        return ""
+    lines: list[str] = ["## CTA Visual Check", ""]
+    label = _md_cell(visual.get("cta_text")) or "(no labelled action found)"
+    matched = visual.get("matched_by") or "none"
+    lines.append(f"**Selected action:** {label} (matched by {matched})")
+    lines.append("")
+    ratio = visual.get("contrast_ratio")
+    threshold = visual.get("contrast_threshold")
+    if ratio is not None:
+        verdict = "meets" if ratio >= (threshold or 0) else "below"
+        lines.append(
+            f"- **Label contrast:** {ratio:.2f}:1 ({verdict} the "
+            f"{(threshold or 0):.1f}:1 threshold)"
+        )
+    surface = visual.get("surface_contrast")
+    if surface is not None:
+        lines.append(f"- **Button-to-page contrast:** {surface:.2f}:1")
+    lines.append(f"- **Target size:** {visual.get('target_px')}px (24px minimum)")
+    competing = visual.get("competing_actions") or 0
+    names = ", ".join(visual.get("competing_names") or [])
+    lines.append(
+        f"- **Competing above-fold actions:** {competing}"
+        + (f" ({_md_cell(names)})" if names else "")
+    )
+    share = visual.get("attention_share")
+    if share is not None:
+        rank = visual.get("attention_rank")
+        lines.append(
+            f"- **Estimated attention share:** {share * 100:.1f}%"
+            + (f" (rank {rank})" if rank is not None else "")
+        )
+    else:
+        lines.append("- **Estimated attention share:** attention model not configured")
+    findings = visual.get("findings") or []
+    lines.append("")
+    if not findings:
+        lines.append("_No visual findings._")
+    else:
+        lines.append("### Findings")
+        lines.append("")
+        for finding in findings:
+            severity = str(finding.get("severity") or "").lower()
+            detail = _md_cell(finding.get("detail"))
+            fix = _md_cell(finding.get("fix"))
+            lines.append(f"- **[{severity}]** {detail}")
+            if fix:
+                lines.append(f"  - Fix: {fix}")
+    lines.append("")
+    lines.append(
+        "_Attention share is a prediction from a saliency model over the"
+        " captured screenshot, not eye tracking. Contrast is measured from"
+        " computed styles; background contrast may be estimated._"
+    )
+    return "\n".join(lines)
+
+
 def render_export_markdown(ctx: dict) -> str:
     """Render the export context as a plain-Markdown artifact for agents."""
     blocks = [
@@ -309,6 +373,7 @@ def render_export_markdown(ctx: dict) -> str:
         _md_executive_summary(ctx),
         _md_scores(ctx),
         _md_answerability(ctx),
+        _md_visual(ctx),
         _md_recommendations(ctx),
         _md_methodology(ctx),
         _md_next_step(ctx),

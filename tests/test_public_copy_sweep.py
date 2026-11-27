@@ -364,7 +364,8 @@ def test_private_api_diff_payload_is_clean() -> None:
             score_json={},
         ),
     )
-    payload = api_v1._diff_payload(row, old_row)
+    reports = sys.modules["webapp.routers.api_v1_reports"]
+    payload = reports._diff_payload(row, old_row)
     for text in _iter_strings(payload):
         _scan_text("private API diff payload", text)
 

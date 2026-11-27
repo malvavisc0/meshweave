@@ -1,0 +1,145 @@
+{# --- CTA visual check (owner-only): capture, attention, deterministic checks --- #}
+{% if visual_audit %}
+<section class="panel result-section visual-cta-panel" role="region" aria-label="CTA visual check"
+  id="visual-cta-check">
+  <h2>CTA visual check</h2>
+  <p class="small">How the primary call to action renders on the live page: contrast, size, labelling,
+    occlusion, keyboard focus, competing actions, and — when an attention model is configured —
+    estimated attention share.</p>
+
+  {% if notice == 'visual_done' %}
+  <p class="notice notice-ok" role="status">Capture complete. The measurements below are current.</p>
+  {% elif notice == 'visual_cooldown' %}
+  <p class="notice" role="status">A capture just ran. Try again in a few minutes.</p>
+  {% elif notice in ['visual_timeout', 'visual_unavailable'] %}
+  <p class="notice notice-err" role="status">The page could not be captured right now. Nothing was
+    stored; the measurements below are from the last successful capture (if any).</p>
+  {% endif %}
+
+  {% if not visual_audit.stored %}
+  <p class="visual-cta-empty">No capture yet. Run the check to measure how the call to action renders.</p>
+  {% else %}
+  {% set v = visual_audit.payload %}
+  {% set a = v.assessment %}
+  {% set finding_codes = a.findings | map(attribute='code') | list %}
+  <div class="visual-cta-summary">
+    <div class="visual-cta-metrics">
+      <table class="table-clean">
+        <caption class="small">Measured on the captured page</caption>
+        <tbody>
+          <tr>
+            <th scope="row">Selected action</th>
+            <td>
+              {% if a.cta_text %}<code>{{ a.cta_text }}</code>{% else %}<span class="visual-missing">no labelled action found</span>{% endif %}
+              {% if a.matched_by and a.matched_by != 'none' %}<span class="small"> (matched by {{ a.matched_by }})</span>{% endif %}
+            </td>
+          </tr>
+          {% if a.contrast_ratio is not none %}
+          <tr>
+            <th scope="row">Label contrast</th>
+            <td>
+              <span class="visual-verdict {% if a.contrast_ratio >= a.contrast_threshold %}visual-verdict-pass{% else %}visual-verdict-fail{% endif %}">
+                {{ "%.2f" | format(a.contrast_ratio) }}:1
+              </span>
+              <span class="small">needs {{ "%.1f" | format(a.contrast_threshold) }}:1</span>
+              {% if 'contrast_estimated' in finding_codes %}<span class="small">(estimated background)</span>{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% if a.surface_contrast is not none %}
+          <tr>
+            <th scope="row">Button-to-page contrast</th>
+            <td>
+              <span class="visual-verdict {% if a.surface_contrast >= 3.0 %}visual-verdict-pass{% else %}visual-verdict-fail{% endif %}">
+                {{ "%.2f" | format(a.surface_contrast) }}:1
+              </span>
+              {% if 'surface_estimated' in finding_codes %}<span class="small">(estimated background)</span>{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          <tr>
+            <th scope="row">Target size</th>
+            <td>
+              <span class="visual-verdict {% if a.target_px >= 24 %}visual-verdict-pass{% else %}visual-verdict-fail{% endif %}">
+                {{ a.target_px }}px
+              </span>
+              <span class="small">24px minimum</span>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Competing above-fold actions</th>
+            <td>
+              {{ a.competing_actions | default(0) }}
+              {% if a.competing_names %}<span class="small">{{ a.competing_names | join(', ') }}</span>{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Estimated attention share</th>
+            <td>
+              {% if a.attention_share is not none %}
+              {{ (a.attention_share * 100) | round(1) }}%
+              {% if a.attention_rank is not none %}<span class="small">rank {{ a.attention_rank }}</span>{% endif %}
+              <span class="small">saliency prediction, not eye tracking</span>
+              {% else %}
+              <span class="visual-missing">attention model not configured</span>
+              {% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    {% if visual_audit.image_url %}
+    <figure class="visual-cta-shot">
+      <img src="{{ visual_audit.image_url }}" alt="Captured page with the call to action outlined"
+        width="{{ v.viewport.width }}" height="{{ v.viewport.height }}" loading="lazy">
+      {% if visual_audit.overlay_url %}
+      <img src="{{ visual_audit.overlay_url }}" alt="Estimated attention heatmap over the captured page"
+        width="{{ v.viewport.width }}" height="{{ v.viewport.height }}" loading="lazy">
+      {% endif %}
+      {% if visual_audit.overlay_url %}
+      <figcaption class="small">Top: the captured page with the selected action outlined. Bottom: the estimated
+        attention heatmap.</figcaption>
+      {% else %}
+      <figcaption class="small">The captured page with the selected action outlined.</figcaption>
+      {% endif %}
+    </figure>
+    {% endif %}
+  </div>
+
+  {% if a.findings %}
+  <h3 class="visual-findings-title">Findings</h3>
+  <ol class="visual-findings">
+    {% for f in a.findings %}
+    <li class="visual-finding visual-finding--{{ f.severity }}">
+      <span class="visual-finding-severity">{{ f.severity }}</span>
+      <div>
+        <p class="m0">{{ f.detail }}</p>
+        {% if f.fix %}<p class="small m0 visual-finding-fix">Fix: {{ f.fix }}</p>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="small">No visual findings.</p>
+  {% endif %}
+  {% endif %}
+
+  <div class="visual-cta-run">
+    {% if visual_audit.can_run %}
+    <form method="post" action="/analysis/{{ id }}/visual" class="inline-block">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+      <button type="submit" class="btn btn-primary">
+        {% if visual_audit.stored %}Run again{% else %}Run visual check{% endif %}
+      </button>
+    </form>
+    {% else %}
+    <button type="button" class="btn" disabled title="Available in {{ visual_audit.run_eta }}">
+      Available in {{ visual_audit.run_eta }}
+    </button>
+    {% endif %}
+    <span class="small">Captures the live page as rendered. Attention share is a saliency prediction
+      over the screenshot, not eye tracking; contrast against captured background images is estimated.</span>
+  </div>
+</section>
+{% endif %}

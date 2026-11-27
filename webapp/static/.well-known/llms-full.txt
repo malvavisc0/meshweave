@@ -37,6 +37,8 @@ v1 API (Bearer key, owner-scoped):
 - `POST /api/v1/analyses` — bulk submit up to 25 pages or sites (durable queue)
 - `GET /api/v1/analyses` — list your analyses, cursor-paginated
 - `GET /api/v1/analyses/{crawl_id}` — site-side contract (factors, weights, ratings, interpretation)
+- `POST /api/v1/analyses/{crawl_id}/visual` — capture the rendered page and assess its primary call to action (contrast, target size, labelling, occlusion, focus, competing actions, optional estimated attention share); `?images=1` adds base64 PNGs; one stored audit per analysis, re-run replaces it
+- `GET /api/v1/analyses/{crawl_id}/visual` — the stored visual assessment (404 when uncaptured, 202 while the analysis runs); `?images=1` adds the PNGs
 - `GET /api/v1/analyses/{crawl_id}/report.md` — unbranded client-ready report (agent-readable Markdown)
 - `GET /api/v1/analyses/{crawl_id}/diff` — proof-of-work diff vs the previous revision
 - `GET /api/v1/analyses/{crawl_id}/diff.md` — the same diff as Markdown

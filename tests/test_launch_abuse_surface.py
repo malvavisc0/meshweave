@@ -373,6 +373,7 @@ _KNOWN_ROUTES = (
     "/api/v1/analyses/{crawl_id}/diff",
     "/api/v1/analyses/{crawl_id}/diff.md",
     "/api/v1/analyses/{crawl_id}/report.md",
+    "/api/v1/analyses/{crawl_id}/visual",
     "/api/analysis/public/{key}",
     "/api/status/{crawl_id}",
     "/api/claim/public/{key}",
